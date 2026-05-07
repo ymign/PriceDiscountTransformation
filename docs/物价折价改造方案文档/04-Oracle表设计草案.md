@@ -234,6 +234,7 @@ Oracle 11g 没有原生 JSON 类型，扩展参数建议用 `CLOB` 存 JSON 字�
 | `ACTION_TYPE` | `VARCHAR2(50)` | 动作类型 |
 | `EXECUTOR_CODE` | `VARCHAR2(50)` | 执行器编码 |
 | `PARAMS_JSON` | `CLOB` | 动作参数 |
+| `EXCLUSIVE_GROUP` | `VARCHAR2(50)` | 互斥组编码。同组内只执行优先级最高的动作，用于"同项目不同部位不同换算"等场景 |
 | `SORT_NO` | `NUMBER(10,0)` | 执行顺序 |
 | `ON_ERROR` | `VARCHAR2(20)` | STOP、SKIP、WARN |
 | `IS_ENABLED` | `CHAR(1)` | 是否启用 |
@@ -503,10 +504,12 @@ Oracle 11g 没有原生 JSON 类型，扩展参数建议用 `CLOB` 存 JSON 字�
 | `ITEM_CODE` | `VARCHAR2(50)` | 项目编码 |
 | `RULE_ID` | `NUMBER(18,0)` | 规则 ID |
 | `RULE_VERSION_NO` | `NUMBER(10,0)` | 规则版本 |
-| `LIMIT_TYPE` | `VARCHAR2(50)` | DAY_QTY、ONCE_QTY、TIME_WINDOW、DAY_AMOUNT |
-| `LIMIT_KEY` | `VARCHAR2(200)` | 限额维度键 |
-| `OCCUPY_QTY` | `NUMBER(18,4)` | 占用数量 |
-| `OCCUPY_AMT` | `NUMBER(18,4)` | 占用金额 |
+| `LIMIT_TYPE` | `VARCHAR2(50)` | DAY_QTY、ONCE_QTY、TIME_WINDOW、DAY_AMOUNT、SAME_OPERATION、SAME_PREGNANCY、SAME_GROUP |
+| `LIMIT_KEY` | `VARCHAR2(200)` | 限额维度键，由引擎按规则自动生成（见下方生成规则） |
+| `OCCUPY_QTY` | `NUMBER(18,4)` | 占用数量（退费时为负数） |
+| `OCCUPY_AMT` | `NUMBER(18,4)` | 占用金额（退费时为负数） |
+| `OCCUPY_TYPE` | `VARCHAR2(20)` | CHARGE（收费占用）、REVERSE（退费释放） |
+| `ORIGINAL_OCCUPY_ID` | `NUMBER(18,0)` | 关联的原占用记录ID（退费时填写） |
 | `STATUS` | `VARCHAR2(20)` | PENDING、CONFIRMED、CANCELLED、REVERSED、EXPIRED |
 | `OCCUPIED_AT` | `DATE` | 占用时间 |
 | `CONFIRMED_AT` | `DATE` | 确认时间 |
@@ -529,9 +532,58 @@ Oracle 11g 没有原生 JSON 类型，扩展参数建议用 `CLOB` 存 JSON 字�
 
 说明：
 
-- 例如单日限制锁键可以是 `DAY:P001:CT001:20260507`。
 - 事务中使用 `SELECT ... FOR UPDATE` 锁住该行，再计算剩余额度。
 - 试算不锁定、不占额。
+- LIMIT_KEY 由引擎按下方规则自动生成，不由渠道传入。
+
+### LIMIT_KEY 生成规则
+
+| 限制类型 | LIMIT_KEY 格式 | 锁粒度 |
+|---|---|---|
+| DAY_QTY | `DQ:{patientId}:{itemCode}:{yyyyMMdd}` | 患者+项目+日期 |
+| DAY_AMOUNT | `DA:{patientId}:{itemCode}:{yyyyMMdd}` | 患者+项目+日期 |
+| ONCE_QTY | `OQ:{chargeNo}:{itemCode}` | 收费单+项目 |
+| TIME_WINDOW | `TW:{patientId}:{itemCode}:{yyyyMMddHH}` | 患者+项目+窗口起始小时 |
+| SAME_OPERATION | `SO:{operationNo}:{itemCode}` | 手术号+项目 |
+| SAME_PREGNANCY | `SP:{pregnancyNo}:{groupCode}` | 孕次号+项目组 |
+| SAME_GROUP | `SG:{patientId}:{groupCode}:{yyyyMMdd}` | 患者+组+日期 |
+
+规则：
+1. 所有键值统一转大写
+2. TIME_WINDOW 采用滑动窗口，窗口起始小时 = floor(当前时间到小时)
+3. 同一2小时窗口内（如10:15和10:45）映射到同一锁键
+4. 锁定滑动窗口时需同时锁定当前小时和前一小时的锁行（按字典序排序防死锁）
+5. 生成逻辑封装在 `LimitKeyGenerator` 类中
+
+### 2小时滑动窗口累计查询
+
+```sql
+SELECT NVL(SUM(OCCUPY_QTY), 0)
+FROM PR_LIMIT_OCCUPY
+WHERE LIMIT_KEY LIKE 'TW:{patientId}:{itemCode}:%'
+  AND STATUS IN ('CONFIRMED', 'PENDING')
+  AND OCCUPIED_AT >= :windowStart   -- 当前时间 - TIME_WINDOW_MINUTES
+  AND OCCUPIED_AT <= :currentTime
+```
+
+### 部分退费额度释放规则
+
+全额退费：
+1. 查找原确认请求对应的 PR_LIMIT_OCCUPY 记录
+2. 将 STATUS 从 CONFIRMED 改为 REVERSED
+
+部分退费：
+1. 插入一条新 PR_LIMIT_OCCUPY 记录
+2. OCCUPY_TYPE = 'REVERSE'
+3. OCCUPY_QTY = -退费数量（负数）
+4. OCCUPY_AMT = -退费金额（负数）
+5. LIMIT_KEY = 与原记录相同
+6. STATUS = 'CONFIRMED'（退费立即生效）
+7. 累计查询时 SUM(OCCUPY_QTY) 自动扣除
+
+约束：
+- 退费数量不能超过原确认数量（引擎校验）
+- 不修改原占用记录（保留审计痕迹）
 
 ## 8.3 计价冲正表 `PR_CHARGE_REVERSE_LOG`
 
@@ -610,9 +662,74 @@ C# 中使用：
 - `double`
 - `float`
 
-## 10. 扩展性设计说明
+## 10. 条件执行语义
 
-## 10.1 新增一种条件
+### 条件间逻辑关系
+
+同 CONDITION_GROUP 内的条件为 **AND** 关系（全部满足才算命中）。
+
+不同 CONDITION_GROUP 之间为 **OR** 关系（任一组满足即命中）。
+
+示例：
+```
+规则1：
+  GROUP_A: ITEM_CODE = 'CT001' AND BODY_PART = 'HEAD'
+  GROUP_B: ITEM_CODE = 'CT001' AND BODY_PART = 'TRUNK'
+
+含义：头面部 OR 躯干部，命中任一组即执行动作
+```
+
+### 多规则叠加执行
+
+一个项目可能命中多条规则，执行逻辑：
+
+1. 按 PRIORITY 排序（数字越小越先执行）
+2. 每条规则的动作按 SORT_NO 顺序执行
+3. 同一 EXCLUSIVE_GROUP 内只执行优先级最高的动作（不叠加）
+4. 不同 EXCLUSIVE_GROUP 的动作全部执行
+
+全局执行顺序约束：
+```
+第一组：CONVERT_QTY（换算）
+第二组：FORMULA_CALC（公式）
+第三组：APPLY_MIN_AMOUNT（金额下限）
+第四组：APPLY_MAX_AMOUNT（金额上限）
+第五组：APPLY_DAY_LIMIT_QTY（日数量限制）
+第六组：APPLY_TIME_WINDOW_LIMIT（时间窗限制）
+第七组：APPLY_ONCE_LIMIT_QTY（单次数量限制）
+第八组：SAME_GROUP_MUTEX（同组互斥）
+第九组：ADD_CHILD_ITEM（子项加收）
+第十组：DISCOUNT_EXCEED_TO_ZERO（超出折为0）
+```
+
+引擎先收集所有命中规则的全部动作，按 ACTION_TYPE 分组，再按上述顺序执行。
+
+### 金额下限语义
+
+默认为单次下限：finalAmount = max(calculatedAmount, minAmount)
+
+如需单日累计下限，在 PARAMS_JSON 中设置 limitScope = "DAY_ACCUMULATED"
+
+## 11. 版本一致性机制
+
+版本升级时，不修改已有版本的条件和动作记录，而是新增一组带新版本号的记录。
+
+发布流程（同一事务）：
+1. 读取 PR_RULE_HEADER.CURRENT_VERSION
+2. 新版本号 = CURRENT_VERSION + 1
+3. 复制当前版本的所有 PR_RULE_CONDITION 记录，VERSION_NO 改为新版本号
+4. 复制当前版本的所有 PR_RULE_ACTION 记录，VERSION_NO 改为新版本号
+5. 如果是修改后发布，用草稿中的条件/动作替换复制的记录
+6. 更新 PR_RULE_HEADER.CURRENT_VERSION = 新版本号
+7. 插入 PR_RULE_VERSION 记录（含快照）
+8. 插入 PR_RULE_PUBLISH 记录
+9. 插入 PR_RULE_CHANGE_LOG 记录
+
+约束：PR_RULE_CONDITION 和 PR_RULE_ACTION 的 (RULE_ID, VERSION_NO, CONDITION_ID/ACTION_ID) 组合必须唯一。
+
+## 12. 扩展性设计说明
+
+## 12.1 新增一种条件
 
 如果未来新增规则：
 
@@ -626,7 +743,7 @@ C# 中使用：
 
 不需要改主表字段。
 
-## 10.2 新增一种动作
+## 12.2 新增一种动作
 
 如果未来新增规则：
 
@@ -640,7 +757,7 @@ C# 中使用：
 
 不需要改已有规则表结构。
 
-## 10.3 新增一种公式
+## 12.3 新增一种公式
 
 如果未来新增规则：
 
@@ -654,7 +771,7 @@ C# 中使用：
 
 不需要让业务写脚本，也不需要让 HIS、自助机、公众号改自己的代码。
 
-## 11. 最小落地版本建议
+## 13. 最小落地版本建议
 
 第一阶段可以先落以下表：
 
@@ -677,7 +794,7 @@ C# 中使用：
 - `PR_ITEM_GROUP_DETAIL`
 - `PR_CHARGE_REVERSE_LOG`
 
-## 12. 结论
+## 14. 结论
 
 如果希望长期适应“国家规则乱调整、规则乱七八糟”的现实，表结构不能只围绕当前几个字段设计。
 
