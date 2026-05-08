@@ -535,6 +535,20 @@ Oracle 11g 没有原生 JSON 类型，扩展参数建议用 `CLOB` 存 JSON 字�
 - 事务中使用 `SELECT ... FOR UPDATE` 锁住该行，再计算剩余额度。
 - 试算不锁定、不占额。
 - LIMIT_KEY 由引擎按下方规则自动生成，不由渠道传入。
+- 锁行不要求预初始化。确认计价前由引擎按需创建锁行，再按固定顺序 `SELECT ... FOR UPDATE` 锁定。
+
+锁行按需创建建议：
+
+```sql
+INSERT INTO PR_LIMIT_LOCK (LOCK_KEY, LOCK_DESC, UPDATED_AT)
+VALUES (:lockKey, :lockDesc, SYSDATE)
+```
+
+约束：
+
+- `LOCK_KEY` 必须是主键或唯一键。
+- 如果并发创建同一个锁键，其中一个事务插入成功，另一个事务捕获唯一键冲突后继续查询并锁定已有行。
+- TIME_WINDOW 这类动态键不适合依赖预初始化，必须支持运行时创建。
 
 ### LIMIT_KEY 生成规则
 

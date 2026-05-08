@@ -114,8 +114,8 @@
 
 | 字段 | 校验 | 说明 |
 |---|---|---|
-| 数量字段 | ≥0 的整数 | 0 或 NULL 表示不校验 |
-| 金额字段 | ≥0，保留2位小数 | 0 或 NULL 表示不校验 |
+| 数量字段 | ≥0 的整数，可为空 | NULL 表示不校验；0 表示限制为零 |
+| 金额字段 | ≥0，保留2位小数，可为空 | NULL 表示不校验；0 表示限制为零 |
 | 上限 vs 下限 | 上限 ≥ 下限 | 同时填写时校验 |
 | 换算数量 | 固定为1，禁用 | 不可编辑 |
 | 公式类型 | 下拉选择 | 空值 = 不启用公式计价 |
@@ -139,8 +139,11 @@
 1. 收费员在收费录入界面输入项目编码
 2. 调用 GET /api/pricing/items/{itemCode}/special-flag
 3. 如果 special = true，弹出计价输入窗体
-4. 如果 special = false 或接口异常（超时），按原流程处理
+4. 如果 special = false，按原流程处理
+5. 如果接口异常或超时，按 special = true 处理，禁止绕回普通计价
 ```
+
+说明：特殊项目判断接口异常时必须走安全策略。宁可多进入一次计价弹窗或提示服务不可用，也不能漏掉特殊项目后按普通价格收费。
 
 **弹窗布局：**
 
@@ -402,22 +405,19 @@ CREATE INDEX IDX_PR_DISC_ITEM_DATE
 ON PR_CHARGE_DISCOUNT_DETAIL (ITEM_CODE, OCCURRED_AT);
 ```
 
-**PR_LIMIT_LOCK 表预初始化：**
+**PR_LIMIT_LOCK 锁行创建：**
 
-PR_LIMIT_LOCK 用于 SELECT FOR UPDATE 锁定，需要预初始化常用锁键：
+PR_LIMIT_LOCK 用于 `SELECT FOR UPDATE` 锁定。由于 `LIMIT_KEY` 包含患者、项目、日期、小时、手术号、孕次号等动态维度，不要求提前预初始化所有锁键。
 
-```sql
--- 每日凌晨预创建当日锁键（避免并发 INSERT）
--- 由定时任务执行
-INSERT INTO PR_LIMIT_LOCK (LOCK_KEY, LOCK_DESC, UPDATED_AT)
-SELECT DISTINCT
-    'DQ:' || PATIENT_ID || ':' || ITEM_CODE || ':' || TO_CHAR(SYSDATE, 'YYYYMMDD'),
-    '单日数量锁',
-    SYSDATE
-FROM PR_CHARGE_REQUEST_LOG
-WHERE REQUEST_AT >= SYSDATE - 1
-  AND IS_SUCCESS = 'Y';
-```
+推荐策略：
+
+1. 计价引擎根据规则生成本次需要锁定的 `LOCK_KEY` 列表。
+2. 对不存在的锁键先尝试插入 `PR_LIMIT_LOCK`。
+3. 如果并发插入同一锁键触发唯一键冲突，忽略该错误，继续查询已有锁行。
+4. 按 `LOCK_KEY` 字典序依次 `SELECT ... FOR UPDATE`，避免多锁键场景死锁。
+5. 锁定完成后再查询 `PR_LIMIT_OCCUPY` 并计算剩余额度。
+
+预初始化只能作为性能优化，用于提前创建少量确定性强的锁键；不能作为正确性依赖。
 
 ### 6.4 缓存策略
 
