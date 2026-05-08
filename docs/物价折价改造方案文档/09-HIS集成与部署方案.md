@@ -446,6 +446,15 @@ CREATE TABLE PR_GRAYSCALE_CONFIG (
 | ENABLED_ITEMS | 启用的项目列表（为空则全部启用） | CT001,CT002 |
 | ENABLED_BRANCHES | 启用的院区（多院区医院） | MAIN,BRANCH_01 |
 
+特殊项目还必须维护回滚模式，不能一律切回普通计价：
+
+| rollbackMode | 含义 | 回滚行为 |
+|---|---|---|
+| LEGACY_EQUIVALENT | 旧逻辑与新规则等价 | 可切回旧逻辑 |
+| MANUAL_REVIEW | 无等价旧逻辑，但可人工处理 | 暂停自动收费，转人工 |
+| STOP_CHARGE | 无安全回退路径 | 暂停收费 |
+| NEW_SERVICE_ONLY | 只能走新计价服务 | 服务异常时不可收费 |
+
 ### 5.2 灰度切换流程
 
 **第一阶段：影子模式（1-2周）**
@@ -494,7 +503,12 @@ CREATE TABLE PR_GRAYSCALE_CONFIG (
 | 单渠道回滚 | 从 ENABLED_SYSTEMS 中移除该渠道 | 仅该渠道 |
 | 全局回滚 | GLOBAL_SWITCH 设为 N | 所有渠道 |
 
-回滚后，所有渠道自动走旧逻辑，无需重新发版。
+回滚约束：
+
+1. 只有 `rollbackMode = LEGACY_EQUIVALENT` 的项目可以自动走旧逻辑。
+2. `MANUAL_REVIEW`、`STOP_CHARGE`、`NEW_SERVICE_ONLY` 项目不能因全局开关关闭而按普通单价收费。
+3. 全局回滚后，渠道仍必须先判断项目回滚模式；无安全回退路径时提示转人工或暂停收费。
+4. 回滚前必须验证旧逻辑与新规则的金额一致性，否则不得标记为 `LEGACY_EQUIVALENT`。
 
 ---
 

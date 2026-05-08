@@ -394,19 +394,26 @@ Oracle 11g 没有原生 JSON 类型，扩展参数建议用 `CLOB` 存 JSON 字�
 | --- | --- | --- |
 | `REQUEST_ID` | `NUMBER(18,0)` | 主键 |
 | `REQUEST_NO` | `VARCHAR2(50)` | 请求流水号 |
+| `BUSINESS_REQUEST_NO` | `VARCHAR2(80)` | 调用方稳定业务号，confirm 重试必须复用 |
+| `REQUEST_FINGERPRINT` | `VARCHAR2(128)` | 规范化请求指纹，用于幂等参数一致性校验 |
 | `TRACE_ID` | `VARCHAR2(50)` | 追踪号 |
 | `CALL_TYPE` | `VARCHAR2(20)` | SIMULATE、CONFIRM、REVERSE |
+| `BUSINESS_STATUS` | `VARCHAR2(30)` | SIMULATED、CONFIRM_PENDING、CONFIRMED、CANCELLED、EXPIRED、REVERSED、FAILED |
 | `SOURCE_SYSTEM` | `VARCHAR2(50)` | HIS、SELF_MACHINE、WECHAT |
 | `SOURCE_TERMINAL` | `VARCHAR2(100)` | 终端或服务标识 |
 | `PATIENT_ID` | `VARCHAR2(50)` | 患者 ID |
 | `VISIT_ID` | `VARCHAR2(50)` | 就诊 ID |
 | `CHARGE_SCENE` | `VARCHAR2(50)` | 收费场景 |
 | `CHARGE_NO` | `VARCHAR2(50)` | 收费单号 |
+| `CHARGE_DETAIL_NO` | `VARCHAR2(50)` | 收费明细号 |
+| `RESULT_GROUP_NO` | `VARCHAR2(80)` | 主子项目同组结果号 |
 | `ITEM_CODE` | `VARCHAR2(50)` | 项目编码 |
 | `ITEM_NAME` | `VARCHAR2(200)` | 项目名称 |
 | `INPUT_QTY` | `NUMBER(18,4)` | 原始数量 |
 | `INPUT_UNIT` | `VARCHAR2(50)` | 原始单位 |
 | `BODY_PART_CODE` | `VARCHAR2(50)` | 部位 |
+| `BUSINESS_CHARGE_TIME` | `DATE` | 业务收费发生时间 |
+| `PRICE_VERSION` | `VARCHAR2(50)` | 命中的物价版本或价格快照版本 |
 | `REQUEST_JSON` | `CLOB` | 请求快照 |
 | `RESPONSE_JSON` | `CLOB` | 响应快照 |
 | `REQUEST_AT` | `DATE` | 请求时间 |
@@ -417,6 +424,7 @@ Oracle 11g 没有原生 JSON 类型，扩展参数建议用 `CLOB` 存 JSON 字�
 建议索引：
 
 - `IDX_PR_REQ_TRACE`：`TRACE_ID`
+- `UK_PR_REQ_BIZ`：`SOURCE_SYSTEM, BUSINESS_REQUEST_NO, CALL_TYPE`
 - `IDX_PR_REQ_PATIENT`：`PATIENT_ID, REQUEST_AT`
 - `IDX_PR_REQ_CHARGE`：`CHARGE_NO, ITEM_CODE`
 
@@ -465,6 +473,10 @@ Oracle 11g 没有原生 JSON 类型，扩展参数建议用 `CLOB` 存 JSON 字�
 | `RULE_ID` | `NUMBER(18,0)` | 命中规则 |
 | `RULE_VERSION_NO` | `NUMBER(10,0)` | 命中版本 |
 | `DISCOUNT_TYPE` | `VARCHAR2(50)` | 折价类型 |
+| `STATUS` | `VARCHAR2(30)` | PENDING、CONFIRMED、CANCELLED、EXPIRED、REVERSED |
+| `RESULT_GROUP_NO` | `VARCHAR2(80)` | 主子项目同组结果号 |
+| `PARENT_DISCOUNT_ID` | `NUMBER(18,0)` | 子项目关联主项目明细 |
+| `PART_SEQ` | `NUMBER(10,0)` | 多部位、多肿物明细序号 |
 | `ORIGINAL_QTY` | `NUMBER(18,4)` | 原始数量 |
 | `CONVERTED_QTY` | `NUMBER(18,4)` | 换算后数量 |
 | `FINAL_QTY` | `NUMBER(18,4)` | 最终收费数量 |
@@ -477,6 +489,10 @@ Oracle 11g 没有原生 JSON 类型，扩展参数建议用 `CLOB` 存 JSON 字�
 | `LIMIT_BASE_INFO` | `CLOB` | 累计依据 |
 | `OCCURRED_AT` | `DATE` | 发生时间 |
 | `CONFIRMED_BY` | `VARCHAR2(50)` | 确认人 |
+| `COMMITTED_AT` | `DATE` | 落账确认时间 |
+| `CANCELLED_AT` | `DATE` | 取消时间 |
+| `EXPIRED_AT` | `DATE` | 过期时间 |
+| `REVERSED_AT` | `DATE` | 冲正时间 |
 
 建议索引：
 
@@ -510,6 +526,9 @@ Oracle 11g 没有原生 JSON 类型，扩展参数建议用 `CLOB` 存 JSON 字�
 | `OCCUPY_AMT` | `NUMBER(18,4)` | 占用金额（退费时为负数） |
 | `OCCUPY_TYPE` | `VARCHAR2(20)` | CHARGE（收费占用）、REVERSE（退费释放） |
 | `ORIGINAL_OCCUPY_ID` | `NUMBER(18,0)` | 关联的原占用记录ID（退费时填写） |
+| `BUSINESS_CHARGE_TIME` | `DATE` | 业务收费发生时间，用于规则生效和时间窗口累计 |
+| `LIMIT_DIMENSION_CODE` | `VARCHAR2(200)` | 限额查询维度，如患者+项目或患者+组 |
+| `PART_SEQ` | `NUMBER(10,0)` | 多部位、多肿物明细序号 |
 | `STATUS` | `VARCHAR2(20)` | PENDING、CONFIRMED、CANCELLED、REVERSED、EXPIRED |
 | `OCCUPIED_AT` | `DATE` | 占用时间 |
 | `CONFIRMED_AT` | `DATE` | 确认时间 |
@@ -557,28 +576,34 @@ VALUES (:lockKey, :lockDesc, SYSDATE)
 | DAY_QTY | `DQ:{patientId}:{itemCode}:{yyyyMMdd}` | 患者+项目+日期 |
 | DAY_AMOUNT | `DA:{patientId}:{itemCode}:{yyyyMMdd}` | 患者+项目+日期 |
 | ONCE_QTY | `OQ:{chargeNo}:{itemCode}` | 收费单+项目 |
-| TIME_WINDOW | `TW:{patientId}:{itemCode}:{yyyyMMddHH}` | 患者+项目+窗口起始小时 |
+| TIME_WINDOW | `TW:{patientId}:{itemOrGroup}:{yyyyMMddHH}` | 患者+项目或组+窗口覆盖小时桶 |
 | SAME_OPERATION | `SO:{operationNo}:{itemCode}` | 手术号+项目 |
 | SAME_PREGNANCY | `SP:{pregnancyNo}:{groupCode}` | 孕次号+项目组 |
 | SAME_GROUP | `SG:{patientId}:{groupCode}:{yyyyMMdd}` | 患者+组+日期 |
 
 规则：
 1. 所有键值统一转大写
-2. TIME_WINDOW 采用滑动窗口，窗口起始小时 = floor(当前时间到小时)
-3. 同一2小时窗口内（如10:15和10:45）映射到同一锁键
-4. 锁定滑动窗口时需同时锁定当前小时和前一小时的锁行（按字典序排序防死锁）
-5. 生成逻辑封装在 `LimitKeyGenerator` 类中
+2. TIME_WINDOW 采用滑动窗口，累计时间使用 `BUSINESS_CHARGE_TIME`，不能使用技术占用时间 `OCCUPIED_AT`
+3. 锁定滑动窗口时需枚举 `[chargeTime - TIME_WINDOW_MINUTES, chargeTime]` 覆盖到的所有小时桶，并按字典序 `SELECT FOR UPDATE`
+4. 2小时窗口在整点边界可能覆盖3个小时桶，不能只锁当前小时和前一小时
+5. 生成逻辑封装在 `LimitKeyGenerator` 类中，LIMIT_KEY 不由渠道传入
 
 ### 2小时滑动窗口累计查询
 
 ```sql
 SELECT NVL(SUM(OCCUPY_QTY), 0)
 FROM PR_LIMIT_OCCUPY
-WHERE LIMIT_KEY LIKE 'TW:{patientId}:{itemCode}:%'
+WHERE LIMIT_TYPE = 'TIME_WINDOW'
+  AND LIMIT_DIMENSION_CODE = :dimensionCode
   AND STATUS IN ('CONFIRMED', 'PENDING')
-  AND OCCUPIED_AT >= :windowStart   -- 当前时间 - TIME_WINDOW_MINUTES
-  AND OCCUPIED_AT <= :currentTime
+  AND BUSINESS_CHARGE_TIME >= :windowStart
+  AND BUSINESS_CHARGE_TIME <= :currentTime
 ```
+
+说明：
+
+- `LIMIT_KEY` 用于加锁，`LIMIT_DIMENSION_CODE + BUSINESS_CHARGE_TIME` 用于稳定查询。
+- 补缴费、补录、延迟确认时，窗口累计必须按业务收费发生时间计算。
 
 ### 部分退费额度释放规则
 
@@ -596,7 +621,9 @@ WHERE LIMIT_KEY LIKE 'TW:{patientId}:{itemCode}:%'
 7. 累计查询时 SUM(OCCUPY_QTY) 自动扣除
 
 约束：
-- 退费数量不能超过原确认数量（引擎校验）
+- 退费数量不能超过原确认数量，且本次退费 + 历史已退不能超过原有效收费数量（引擎校验）
+- 退费金额不能超过原确认金额，且本次退费 + 历史已退不能超过原有效收费金额（引擎校验）
+- 多部位、多肿物项目退费时必须明确 `PART_SEQ` 或按规则配置比例释放；无法明确时转人工审核
 - 不修改原占用记录（保留审计痕迹）
 
 ## 8.3 计价冲正表 `PR_CHARGE_REVERSE_LOG`
