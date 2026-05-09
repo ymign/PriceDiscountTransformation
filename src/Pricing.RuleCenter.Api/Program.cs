@@ -1,4 +1,5 @@
 using Pricing.RuleCenter.Api.Filters;
+using Pricing.RuleCenter.Api.Services;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Options;
 using Pricing.RuleCenter.Infrastructure.Database;
@@ -18,6 +19,9 @@ builder.Services.AddScoped<IRuleVersionRepository, RuleVersionRepository>();
 builder.Services.AddScoped<IRuleConditionRepository, RuleConditionRepository>();
 builder.Services.AddScoped<IRuleActionRepository, RuleActionRepository>();
 builder.Services.AddScoped<IFormulaDefRepository, FormulaDefRepository>();
+
+builder.Services.AddScoped<DictService>();
+builder.Services.AddScoped<FormulaDefService>();
 
 builder.Services.AddControllers(options =>
 {
