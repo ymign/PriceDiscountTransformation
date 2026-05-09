@@ -19,6 +19,8 @@ builder.Services.AddScoped<IRuleVersionRepository, RuleVersionRepository>();
 builder.Services.AddScoped<IRuleConditionRepository, RuleConditionRepository>();
 builder.Services.AddScoped<IRuleActionRepository, RuleActionRepository>();
 builder.Services.AddScoped<IFormulaDefRepository, FormulaDefRepository>();
+builder.Services.AddScoped<IRulePublishRepository, RulePublishRepository>();
+builder.Services.AddScoped<IRuleChangeLogRepository, RuleChangeLogRepository>();
 
 builder.Services.AddScoped<DictService>();
 builder.Services.AddScoped<FormulaDefService>();
@@ -26,6 +28,7 @@ builder.Services.AddScoped<RuleHeaderService>();
 builder.Services.AddScoped<RuleVersionService>();
 builder.Services.AddScoped<RuleConditionService>();
 builder.Services.AddScoped<RuleActionService>();
+builder.Services.AddScoped<RulePublishService>();
 
 builder.Services.AddControllers(options =>
 {
