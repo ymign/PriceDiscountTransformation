@@ -28,6 +28,8 @@ builder.Services.AddScoped<ILimitOccupyRepository, LimitOccupyRepository>();
 builder.Services.AddScoped<IChargeRequestLogRepository, ChargeRequestLogRepository>();
 builder.Services.AddScoped<IChargeDiscountDetailRepository, ChargeDiscountDetailRepository>();
 builder.Services.AddScoped<IChargeTraceStepRepository, ChargeTraceStepRepository>();
+builder.Services.AddScoped<IChargeReverseLogRepository, ChargeReverseLogRepository>();
+builder.Services.AddScoped<IPriceMasterRepository, PriceMasterRepository>();
 
 builder.Services.AddScoped<DictService>();
 builder.Services.AddScoped<FormulaDefService>();

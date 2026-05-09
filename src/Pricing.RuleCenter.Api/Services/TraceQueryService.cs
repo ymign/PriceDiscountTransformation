@@ -4,12 +4,34 @@ using Pricing.RuleCenter.Core.Models;
 
 namespace Pricing.RuleCenter.Api.Services;
 
+/// <summary>
+/// 计价追踪查询服务，负责把请求日志、执行步骤和折扣明细组装成可查看的追踪结果。
+/// </summary>
+/// <remarks>
+/// 该服务只读取已经落库的审计数据，不重新执行规则，也不修正历史结果。这样可以保证追踪页面展示的是
+/// 当次计价实际发生过的状态，而不是当前规则重新计算后的结果。
+/// </remarks>
 public sealed class TraceQueryService
 {
+    /// <summary>
+    /// 请求日志仓储，提供计价请求主记录的单条查询和分页查询。
+    /// </summary>
     private readonly IChargeRequestLogRepository _requestLogRepository;
+    /// <summary>
+    /// 执行步骤仓储，用于读取规则匹配、动作执行和状态推进的步骤快照。
+    /// </summary>
     private readonly IChargeTraceStepRepository _traceStepRepository;
+    /// <summary>
+    /// 折扣明细仓储，用于读取最终数量、金额和折扣差额。
+    /// </summary>
     private readonly IChargeDiscountDetailRepository _discountRepository;
 
+    /// <summary>
+    /// 初始化计价追踪查询服务。
+    /// </summary>
+    /// <param name="requestLogRepository">请求日志仓储。</param>
+    /// <param name="traceStepRepository">执行步骤仓储。</param>
+    /// <param name="discountRepository">折扣明细仓储。</param>
     public TraceQueryService(
         IChargeRequestLogRepository requestLogRepository,
         IChargeTraceStepRepository traceStepRepository,
@@ -20,13 +42,21 @@ public sealed class TraceQueryService
         _discountRepository = discountRepository;
     }
 
+    /// <summary>
+    /// 查询计价追踪记录。
+    /// </summary>
+    /// <param name="request">追踪查询条件；指定 RequestId 时走精确查询，否则走分页列表查询。</param>
+    /// <returns>分页包装后的追踪结果，每条结果包含主请求、步骤和折扣明细。</returns>
     public async Task<PagedResponse<TraceQueryResponse>> QueryAsync(TraceQueryRequest request)
     {
+        // ========== 第一阶段：RequestId 精确查询优先 ==========
+        // 精确查询用于从接口返回或日志中直接跳转到某次计价。此时忽略其他筛选条件，避免多条件组合导致查不到目标记录。
         if (request.RequestId.HasValue)
         {
             var log = await _requestLogRepository.GetByIdAsync(request.RequestId.Value);
             if (log is null)
             {
+                // 找不到主请求时返回空分页，而不是抛异常；追踪页面可以自然展示“无数据”。
                 return new PagedResponse<TraceQueryResponse> { PageIndex = 1, PageSize = 1 };
             }
 
@@ -40,11 +70,15 @@ public sealed class TraceQueryService
             };
         }
 
+        // ========== 第二阶段：按业务条件分页查询主请求 ==========
+        // 分页只针对请求主表做，步骤和折扣明细随后按请求逐条补齐，避免明细表 join 放大分页结果。
         var (items, total) = await _requestLogRepository.GetPagedAsync(
             request.PatientId, request.ItemCode, request.ChargeNo,
             request.StartTime, request.EndTime,
             request.PageIndex, request.PageSize);
 
+        // ========== 第三阶段：组装每条追踪明细 ==========
+        // 这里逐条读取明细，换取返回结构清晰；追踪查询通常不是高频交易路径，不影响计价主链路性能。
         var results = new List<TraceQueryResponse>();
         foreach (var item in items)
         {
@@ -60,11 +94,20 @@ public sealed class TraceQueryService
         };
     }
 
+    /// <summary>
+    /// 根据请求主记录组装完整追踪明细。
+    /// </summary>
+    /// <param name="log">请求主记录，提供患者、项目、调用类型和业务状态等主维度。</param>
+    /// <returns>包含步骤快照和折扣明细的追踪响应。</returns>
     private async Task<TraceQueryResponse> BuildTraceDetail(ChargeRequestLog log)
     {
+        // ========== 第一阶段：读取关联明细 ==========
+        // 步骤表解释“为什么这样计算”，折扣表解释“最终数量和金额变成了什么”。
         var steps = await _traceStepRepository.GetByRequestIdAsync(log.RequestId);
         var discounts = await _discountRepository.GetByRequestIdAsync(log.RequestId);
 
+        // ========== 第二阶段：保持历史快照原样返回 ==========
+        // InputSnapshot/OutputSnapshot 不在查询层重新解析，避免因为当前 DTO 结构变化破坏历史记录可读性。
         return new TraceQueryResponse
         {
             RequestId = log.RequestId,
