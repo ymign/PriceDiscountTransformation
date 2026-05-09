@@ -1,3 +1,5 @@
+using Pricing.RuleCenter.Api.Engine;
+using Pricing.RuleCenter.Api.Engine.Evaluators;
 using Pricing.RuleCenter.Api.Filters;
 using Pricing.RuleCenter.Api.Services;
 using Pricing.RuleCenter.Core.Interfaces;
@@ -29,6 +31,17 @@ builder.Services.AddScoped<RuleVersionService>();
 builder.Services.AddScoped<RuleConditionService>();
 builder.Services.AddScoped<RuleActionService>();
 builder.Services.AddScoped<RulePublishService>();
+
+builder.Services.AddScoped<IRuleConditionEvaluator, ItemMatchEvaluator>();
+builder.Services.AddScoped<IRuleConditionEvaluator, ChargeSceneMatchEvaluator>();
+builder.Services.AddScoped<IRuleConditionEvaluator, BodyPartMatchEvaluator>();
+builder.Services.AddScoped<IRuleConditionEvaluator, TimeRangeEvaluator>();
+
+builder.Services.AddScoped<ConditionEvaluatorFactory>();
+builder.Services.AddScoped<ActionExecutorFactory>();
+builder.Services.AddScoped<RuleMatchService>();
+builder.Services.AddScoped<ActionExecutionPipeline>();
+builder.Services.AddScoped<IPricingEngine, PricingEngine>();
 
 builder.Services.AddControllers(options =>
 {
