@@ -27,6 +27,7 @@ builder.Services.AddScoped<IRuleChangeLogRepository, RuleChangeLogRepository>();
 builder.Services.AddScoped<ILimitOccupyRepository, LimitOccupyRepository>();
 builder.Services.AddScoped<IChargeRequestLogRepository, ChargeRequestLogRepository>();
 builder.Services.AddScoped<IChargeDiscountDetailRepository, ChargeDiscountDetailRepository>();
+builder.Services.AddScoped<IChargeTraceStepRepository, ChargeTraceStepRepository>();
 
 builder.Services.AddScoped<DictService>();
 builder.Services.AddScoped<FormulaDefService>();
@@ -36,6 +37,8 @@ builder.Services.AddScoped<RuleConditionService>();
 builder.Services.AddScoped<RuleActionService>();
 builder.Services.AddScoped<RulePublishService>();
 builder.Services.AddScoped<PricingApiService>();
+builder.Services.AddScoped<TraceQueryService>();
+builder.Services.AddHostedService<ExpireCleanupService>();
 
 builder.Services.AddScoped<IRuleConditionEvaluator, ItemMatchEvaluator>();
 builder.Services.AddScoped<IRuleConditionEvaluator, ChargeSceneMatchEvaluator>();

@@ -36,4 +36,28 @@ public sealed class ChargeRequestLogRepository : IChargeRequestLogRepository
     {
         await _db.Updateable(entity).ExecuteCommandAsync();
     }
+
+    public async Task<(IReadOnlyList<ChargeRequestLog> Items, int Total)> GetPagedAsync(
+        string? patientId, string? itemCode, string? chargeNo,
+        DateTime? startTime, DateTime? endTime,
+        int pageIndex, int pageSize)
+    {
+        var total = new RefAsync<int>();
+        var items = await _db.Queryable<ChargeRequestLog>()
+            .WhereIF(!string.IsNullOrEmpty(patientId), r => r.PatientId == patientId)
+            .WhereIF(!string.IsNullOrEmpty(itemCode), r => r.ItemCode == itemCode)
+            .WhereIF(!string.IsNullOrEmpty(chargeNo), r => r.ChargeNo == chargeNo)
+            .WhereIF(startTime.HasValue, r => r.RequestAt >= startTime!.Value)
+            .WhereIF(endTime.HasValue, r => r.RequestAt <= endTime!.Value)
+            .OrderByDescending(r => r.RequestAt)
+            .ToPageListAsync(pageIndex, pageSize, total);
+        return (items, total.Value);
+    }
+
+    public async Task<IReadOnlyList<ChargeRequestLog>> GetPendingExpiredAsync(DateTime expireBefore)
+    {
+        return await _db.Queryable<ChargeRequestLog>()
+            .Where(r => r.BusinessStatus == "CONFIRMED" && r.RequestAt < expireBefore)
+            .ToListAsync();
+    }
 }
