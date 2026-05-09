@@ -1,5 +1,6 @@
 using Pricing.RuleCenter.Api.Engine;
 using Pricing.RuleCenter.Api.Engine.Evaluators;
+using Pricing.RuleCenter.Api.Engine.Executors;
 using Pricing.RuleCenter.Api.Filters;
 using Pricing.RuleCenter.Api.Services;
 using Pricing.RuleCenter.Core.Interfaces;
@@ -23,6 +24,7 @@ builder.Services.AddScoped<IRuleActionRepository, RuleActionRepository>();
 builder.Services.AddScoped<IFormulaDefRepository, FormulaDefRepository>();
 builder.Services.AddScoped<IRulePublishRepository, RulePublishRepository>();
 builder.Services.AddScoped<IRuleChangeLogRepository, RuleChangeLogRepository>();
+builder.Services.AddScoped<ILimitOccupyRepository, LimitOccupyRepository>();
 
 builder.Services.AddScoped<DictService>();
 builder.Services.AddScoped<FormulaDefService>();
@@ -36,6 +38,13 @@ builder.Services.AddScoped<IRuleConditionEvaluator, ItemMatchEvaluator>();
 builder.Services.AddScoped<IRuleConditionEvaluator, ChargeSceneMatchEvaluator>();
 builder.Services.AddScoped<IRuleConditionEvaluator, BodyPartMatchEvaluator>();
 builder.Services.AddScoped<IRuleConditionEvaluator, TimeRangeEvaluator>();
+
+builder.Services.AddScoped<IRuleActionExecutor, AmountFloorExecutor>();
+builder.Services.AddScoped<IRuleActionExecutor, AmountCeilingExecutor>();
+builder.Services.AddScoped<IRuleActionExecutor, IncrementPercentExecutor>();
+builder.Services.AddScoped<IRuleActionExecutor, TimeWindowLimitExecutor>();
+builder.Services.AddScoped<IRuleActionExecutor, DailyQtyLimitExecutor>();
+builder.Services.AddScoped<IRuleActionExecutor, ExceedToZeroExecutor>();
 
 builder.Services.AddScoped<ConditionEvaluatorFactory>();
 builder.Services.AddScoped<ActionExecutorFactory>();
