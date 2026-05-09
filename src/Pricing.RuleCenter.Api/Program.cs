@@ -24,6 +24,8 @@ builder.Services.AddScoped<DictService>();
 builder.Services.AddScoped<FormulaDefService>();
 builder.Services.AddScoped<RuleHeaderService>();
 builder.Services.AddScoped<RuleVersionService>();
+builder.Services.AddScoped<RuleConditionService>();
+builder.Services.AddScoped<RuleActionService>();
 
 builder.Services.AddControllers(options =>
 {
