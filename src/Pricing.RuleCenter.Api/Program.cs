@@ -22,6 +22,8 @@ builder.Services.AddScoped<IFormulaDefRepository, FormulaDefRepository>();
 
 builder.Services.AddScoped<DictService>();
 builder.Services.AddScoped<FormulaDefService>();
+builder.Services.AddScoped<RuleHeaderService>();
+builder.Services.AddScoped<RuleVersionService>();
 
 builder.Services.AddControllers(options =>
 {
