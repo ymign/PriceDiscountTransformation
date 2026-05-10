@@ -2,73 +2,153 @@ using SqlSugar;
 
 namespace Pricing.RuleCenter.Core.Models;
 
-[SugarTable("PR_RULE_ACTION")]
 /// <summary>
-/// 规则动作实体，对应 PR_RULE_ACTION。
+/// 规则动作实体。
 /// </summary>
 /// <remarks>
-/// 动作定义规则命中后要执行的计算、限额或折扣策略。动作归属于具体规则版本，
+/// <para>
+/// 对应 Oracle 表：PR_RULE_ACTION
+/// </para>
+/// <para>
+/// 在规则体系中的角色：动作定义规则命中后要执行的计算、限额或折扣策略。
+/// 动作归属于具体规则版本（通过 RuleId + VersionNo 关联），
 /// 发布后应保持稳定，后续调整需要创建新版本。
+/// </para>
+/// <para>
+/// 条件-动作分离设计：规则建模为"满足条件时执行动作"。
+/// PR_RULE_CONDITION 定义"何时命中"，PR_RULE_ACTION 定义"命中后做什么"。
+/// 新增规则类型只需新增执行器（IRuleConditionEvaluator / IRuleActionExecutor），
+/// 无需修改各渠道代码。
+/// </para>
+/// <para>
+/// 互斥组：同组动作只应执行优先级最高的一条（由 ExclusiveGroup + SortNo 控制）。
+/// 例如同组互斥项目只保留优先级最高的那条收费。
+/// </para>
 /// </remarks>
+[SugarTable("PR_RULE_ACTION")]
 public sealed class RuleAction
 {
-    [SugarColumn(IsPrimaryKey = true, ColumnName = "ACTION_ID")]
     /// <summary>
-    /// 规则动作主键
+    /// 规则动作主键。
     /// </summary>
+    /// <remarks>
+    /// 对应 Oracle 列 ACTION_ID，NUMBER 类型，由 SEQUENCE 生成。
+    /// 全局唯一标识一条规则动作记录。
+    /// </remarks>
+    [SugarColumn(IsPrimaryKey = true, ColumnName = "ACTION_ID")]
     public long ActionId { get; set; }
 
-    [SugarColumn(ColumnName = "RULE_ID")]
     /// <summary>
-    /// 规则主键，用于关联规则头、版本、条件、动作和追溯结果
+    /// 关联的规则主键。
     /// </summary>
+    /// <remarks>
+    /// 对应 PR_RULE_HEADER.RULE_ID，用于关联规则头、版本、条件、动作和追溯结果。
+    /// 同一规则下可以有多条动作，按 SortNo 排序执行。
+    /// </remarks>
+    [SugarColumn(ColumnName = "RULE_ID")]
     public long RuleId { get; set; }
 
-    [SugarColumn(ColumnName = "VERSION_NO")]
     /// <summary>
-    /// 规则版本号，与规则条件和动作的 VERSION_NO 对齐
+    /// 规则版本号。
     /// </summary>
+    /// <remarks>
+    /// 对应 PR_RULE_VERSION.VERSION_NO，用于将动作锁定到特定版本。
+    /// 同一规则的不同版本可以有不同的动作配置。
+    /// 规则条件和动作的 VERSION_NO 必须对齐。
+    /// </remarks>
+    [SugarColumn(ColumnName = "VERSION_NO")]
     public int VersionNo { get; set; }
 
-    [SugarColumn(ColumnName = "ACTION_TYPE")]
     /// <summary>
-    /// 动作类型，决定由哪个动作执行器处理
+    /// 动作类型编码。
     /// </summary>
+    /// <remarks>
+    /// 决定由哪个动作执行器（IRuleActionExecutor）处理该动作。
+    /// 常见值：
+    /// <list type="bullet">
+    /// <item>FORMULA — 公式计算，由 IPricingFormulaExecutor 处理</item>
+    /// <item>LIMIT_QTY — 数量限制，检查日限额/时间窗限额</item>
+    /// <item>LIMIT_AMT — 金额限制，检查金额上下限</item>
+    /// <item>GROUP_EXCLUSIVE — 同组互斥，同组只保留优先级最高的一条</item>
+    /// <item>CONVERT — 双单位换算</item>
+    /// <item>ADD_CHILD — 子项加收</item>
+    /// </list>
+    /// 不可为空。
+    /// </remarks>
+    [SugarColumn(ColumnName = "ACTION_TYPE")]
     public string ActionType { get; set; } = string.Empty;
 
-    [SugarColumn(ColumnName = "EXECUTOR_CODE")]
     /// <summary>
-    /// 执行器编码，用于在同一动作类型下区分具体公式或策略
+    /// 执行器编码。
     /// </summary>
+    /// <remarks>
+    /// 用于在同一动作类型下区分具体公式或策略。
+    /// 例如 ACTION_TYPE = FORMULA 时，ExecutorCode 指定使用哪个公式定义（PR_FORMULA_DEF.FORMULA_CODE）。
+    /// 由计价引擎根据该编码查找对应的执行器实例。
+    /// </remarks>
+    [SugarColumn(ColumnName = "EXECUTOR_CODE")]
     public string ExecutorCode { get; set; } = string.Empty;
 
-    [SugarColumn(ColumnName = "PARAMS_JSON", ColumnDataType = "CLOB", IsNullable = true)]
     /// <summary>
-    /// 扩展参数 JSON，用于承载动作或条件的可变配置
+    /// 扩展参数 JSON。
     /// </summary>
+    /// <remarks>
+    /// 用于承载动作或条件的可变配置，格式由执行器定义。
+    /// 例如公式动作的参数可能包含：{"formulaId": 1, "baseQty": 1, "multiplier": 2.5}
+    /// Oracle 存储类型为 CLOB，无原生 JSON 支持。
+    /// 空值表示该动作不需要额外参数。
+    /// </remarks>
+    [SugarColumn(ColumnName = "PARAMS_JSON", ColumnDataType = "CLOB", IsNullable = true)]
     public string? ParamsJson { get; set; }
 
-    [SugarColumn(ColumnName = "EXCLUSIVE_GROUP", IsNullable = true)]
     /// <summary>
-    /// 互斥组编码，同组动作只应执行优先级最高的一条
+    /// 互斥组编码。
     /// </summary>
+    /// <remarks>
+    /// 同组动作只应执行优先级最高的一条（由 SortNo 控制优先级）。
+    /// 例如同手术互斥：同一手术下的多个项目，只执行优先级最高的那条收费规则。
+    /// 空值表示该动作不参与互斥判断。
+    /// </remarks>
+    [SugarColumn(ColumnName = "EXCLUSIVE_GROUP", IsNullable = true)]
     public string? ExclusiveGroup { get; set; }
 
-    [SugarColumn(ColumnName = "SORT_NO")]
     /// <summary>
-    /// 排序号，用于控制展示顺序或同类动作内部顺序
+    /// 排序号。
     /// </summary>
+    /// <remarks>
+    /// 数字越小越先执行。用于：
+    /// 1. 控制同一规则内多条动作的执行顺序（如先换算、再公式、再限额）
+    /// 2. 互斥组内确定优先级（数字越小优先级越高）
+    /// 默认值通常从 10 开始，间隔 10，便于插入。
+    /// </remarks>
+    [SugarColumn(ColumnName = "SORT_NO")]
     public int SortNo { get; set; }
 
-    [SugarColumn(ColumnName = "ON_ERROR")]
     /// <summary>
-    /// 动作异常处理策略，资金相关动作默认应 STOP
+    /// 动作异常处理策略。
     /// </summary>
+    /// <remarks>
+    /// 当动作执行器抛出异常时的处理方式：
+    /// <list type="bullet">
+    /// <item>STOP — 停止执行后续动作，返回错误（资金相关动作默认策略）</item>
+    /// <item>SKIP — 跳过该动作，继续执行后续动作</item>
+    /// <item>DEFAULT — 使用默认值继续</item>
+    /// </list>
+    /// 资金相关动作（如 FORMULA、LIMIT_AMT）默认应为 STOP，防止异常导致金额错误。
+    /// 默认值为 "STOP"。
+    /// </remarks>
+    [SugarColumn(ColumnName = "ON_ERROR")]
     public string OnError { get; set; } = "STOP";
 
-    [SugarColumn(ColumnName = "IS_ENABLED")]
     /// <summary>
-    /// 启用标识，Y 表示参与查询或匹配
+    /// 启用标识。
     /// </summary>
+    /// <remarks>
+    /// "Y" 表示该动作参与规则匹配和执行，"N" 表示禁用。
+    /// 禁用的动作在规则发布后不会被执行器处理。
+    /// 工作台可以通过该标识临时禁用某条动作而不删除。
+    /// 默认值为 "Y"。
+    /// </remarks>
+    [SugarColumn(ColumnName = "IS_ENABLED")]
     public string IsEnabled { get; set; } = "Y";
 }

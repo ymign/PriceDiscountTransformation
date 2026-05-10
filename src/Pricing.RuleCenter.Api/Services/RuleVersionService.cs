@@ -8,21 +8,34 @@ namespace Pricing.RuleCenter.Api.Services;
 /// 规则版本应用服务，负责规则版本草稿的创建和查询。
 /// </summary>
 /// <remarks>
-/// 规则版本承载条件、动作和发布快照。发布、停用、回滚属于更完整的状态流转，
-/// 统一放在 <see cref="RulePublishService"/> 中处理；本服务只负责生成新的 DRAFT 版本。
+/// <para>
+/// 职责边界：规则版本承载条件、动作和发布快照。发布、停用、回滚属于更完整的状态流转，
+/// 统一放在 RulePublishService 中处理；本服务只负责生成新的 DRAFT 版本和版本查询。
+/// </para>
+/// <para>
+/// 版本号规则：版本号在单条规则内部从 1 开始递增，发布和回滚不会复用旧版本号。
+/// 这保证了每个版本号在同一条规则下唯一，便于审计追踪时精确定位当时生效的规则配置。
+/// </para>
+/// <para>
+/// 草稿生命周期：CreateDraftAsync 创建的版本状态为 DRAFT，条件和动作由各自服务
+/// 保存到该版本号下。草稿在发布前不参与计价匹配，发布后状态变为 PUBLISHED 并生成快照。
+/// </para>
 /// </remarks>
 public sealed class RuleVersionService
 {
     /// <summary>
-    /// 规则版本仓储，负责按规则读取版本、插入草稿和更新版本状态。
+    /// 规则版本仓储，负责 PR_RULE_VERSION 表的按规则查询、插入草稿和更新版本状态。
     /// </summary>
     private readonly IRuleVersionRepository _versionRepository;
+
     /// <summary>
-    /// 规则主档仓储，用于创建版本前确认规则存在并继承生效时间。
+    /// 规则主档仓储，用于创建版本前确认规则存在，并从主档继承生效时间作为版本的默认生效范围。
     /// </summary>
     private readonly IRuleHeaderRepository _headerRepository;
+
     /// <summary>
-    /// 服务日志，用于记录版本草稿创建结果。
+    /// 服务日志，用于记录版本草稿创建结果，同时输出 RuleId、VersionNo 和 VersionId
+    /// 以便从接口返回、数据库记录和日志三方互相定位。
     /// </summary>
     private readonly ILogger<RuleVersionService> _logger;
 
@@ -106,8 +119,12 @@ public sealed class RuleVersionService
     /// <summary>
     /// 将规则版本实体映射为接口响应。
     /// </summary>
-    /// <param name="entity">规则版本实体。</param>
-    /// <returns>规则版本响应 DTO。</returns>
+    /// <remarks>
+    /// RuleSnapshot 字段在已发布版本中包含完整的条件和动作快照 JSON，
+    /// 用于计价追溯时还原当时的规则配置。草稿版本中该字段为 null。
+    /// </remarks>
+    /// <param name="entity">规则版本实体，来自 PR_RULE_VERSION 表。</param>
+    /// <returns>规则版本响应 DTO，包含版本状态、发布人和发布快照。</returns>
     private static RuleVersionResponse MapToResponse(RuleVersion entity)
     {
         return new RuleVersionResponse

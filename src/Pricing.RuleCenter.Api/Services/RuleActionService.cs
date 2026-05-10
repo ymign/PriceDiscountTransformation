@@ -8,21 +8,38 @@ namespace Pricing.RuleCenter.Api.Services;
 /// 规则动作应用服务，负责维护指定规则版本下的动作执行链。
 /// </summary>
 /// <remarks>
-/// 动作是规则真正改变数量、金额或限额占用的执行单元。与条件一样，动作只允许保存到 DRAFT 版本，
-/// 已发布版本必须保持稳定，确保计价追踪中的动作链能够还原当时的规则配置。
+/// <para>
+/// 职责边界：动作是规则真正改变数量、金额或限额占用的执行单元。与条件一样，
+/// 动作只允许保存到 DRAFT 版本，已发布版本必须保持稳定，
+/// 确保计价追踪中的动作链能够还原当时的规则配置。
+/// </para>
+/// <para>
+/// 保存策略：与条件服务相同，采用"先删除后重建"模式整体替换。
+/// 动作链的排序、互斥组和错误策略共同决定执行结果，逐项补丁容易产生不一致状态。
+/// </para>
+/// <para>
+/// 关键字段说明：
+/// - ExecutorCode：决定运行时使用哪个 IRuleActionExecutor 执行器
+/// - ExclusiveGroup：互斥组编码，同组动作只执行第一个匹配的（如金额折扣和数量折扣互斥）
+/// - OnError：执行失败策略（STOP/CONTINUE/SKIP），控制动作链是否继续
+/// - SortNo：动作执行顺序，数值小的先执行
+/// </para>
 /// </remarks>
 public sealed class RuleActionService
 {
     /// <summary>
-    /// 规则动作仓储，负责读取、清空和批量写入某个版本下的动作明细。
+    /// 规则动作仓储，负责 PR_RULE_ACTION 表的读取、按版本清空和批量写入。
     /// </summary>
     private readonly IRuleActionRepository _actionRepository;
+
     /// <summary>
-    /// 规则版本仓储，用于保存动作前确认版本仍可编辑。
+    /// 规则版本仓储，用于保存动作前确认版本仍处于 DRAFT 状态，
+    /// 防止对已发布版本做意外修改。
     /// </summary>
     private readonly IRuleVersionRepository _versionRepository;
+
     /// <summary>
-    /// 服务日志，用于记录动作集合保存数量。
+    /// 服务日志，用于记录动作集合保存数量，便于追溯某次保存是否清空了所有动作。
     /// </summary>
     private readonly ILogger<RuleActionService> _logger;
 
@@ -107,8 +124,13 @@ public sealed class RuleActionService
     /// <summary>
     /// 将规则动作实体映射为接口响应。
     /// </summary>
-    /// <param name="entity">规则动作实体。</param>
-    /// <returns>规则动作响应 DTO。</returns>
+    /// <remarks>
+    /// ParamsJson 原样返回，不在此处解析。该字段保存执行器私有参数（如公式参数、限额值等），
+    /// 结构由 ExecutorCode 对应的 IRuleActionExecutor 定义。
+    /// ExclusiveGroup 为 null 表示该动作不属于任何互斥组，总是执行。
+    /// </remarks>
+    /// <param name="entity">规则动作实体，来自 PR_RULE_ACTION 表。</param>
+    /// <returns>规则动作响应 DTO，包含执行器编码、参数、互斥组和错误策略。</returns>
     private static RuleActionResponse MapToResponse(RuleAction entity)
     {
         return new RuleActionResponse

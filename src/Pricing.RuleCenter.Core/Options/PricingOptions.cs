@@ -1,36 +1,70 @@
 namespace Pricing.RuleCenter.Core.Options;
 
 /// <summary>
-/// 计价规则中心运行配置。
+/// 计价规则中心运行配置，集中管理计价服务的核心运行参数。
 /// </summary>
 /// <remarks>
-/// 该对象通常绑定自 appsettings 的 Pricing 配置段，集中控制数据库连接、confirm 保护期、
-/// 过期清理频率和权威价格校验开关。
+/// <para>
+/// 该配置对象通过 ASP.NET Core 的 Options 模式绑定自 appsettings.json 的 "Pricing" 配置段。
+/// 注册方式：<c>builder.Services.Configure&lt;PricingOptions&gt;(builder.Configuration.GetSection("Pricing"));</c>
+/// </para>
+/// <para>
+/// 配置涵盖四个维度：
+/// 1. 数据库连接（<see cref="OracleConnectionString"/>）
+/// 2. confirm 占用保护（<see cref="ConfirmExpireMinutes"/>）和过期清理（<see cref="ExpireCleanupIntervalSeconds"/>）
+/// 3. 外部调用容错（<see cref="HttpTimeoutSeconds"/>、<see cref="MaxRetryCount"/>）
+/// 4. 资金安全开关（<see cref="EnableAuthorityPriceCheck"/>）
+/// </para>
+/// <para>
+/// 所有时间相关的配置均使用整数类型，避免配置文件中的浮点解析精度问题。
+/// 修改配置后需重启服务生效（不支持运行时热更新）。
+/// </para>
 /// </remarks>
 public sealed class PricingOptions
 {
     /// <summary>
-    /// Oracle 数据库连接字符串，用于访问规则中心 PR_ 表和必要的 HIS 主数据视图。
+    /// Oracle 数据库连接字符串，用于访问规则中心 PR_ 前缀表和必要的 HIS 主数据视图。
+    /// 连接使用 Oracle.ManagedDataAccess.Core 驱动，格式遵循 Oracle 连接字符串规范。
+    /// 此连接字符串同时用于 SqlSugarCore 的 DbContext 初始化。
     /// </summary>
     public string OracleConnectionString { get; set; } = string.Empty;
+
     /// <summary>
-    /// confirm 保护占用的过期分钟数。超过后后台清理会把待确认记录置为过期。
+    /// confirm 保护占用的过期分钟数，默认 30 分钟。
+    /// 当调用方执行 confirm（确认计价，占用额度）后，若超过此时间仍未收到 commit（HIS 结算成功）
+    /// 或 cancel（取消确认），后台清理任务会将该记录状态置为 EXPIRED 并释放额度。
+    /// 此机制防止因调用方异常（如 HIS 崩溃、网络中断）导致额度永久占用。
+    /// 建议值：根据 HIS 结算流程的正常耗时设置，一般 15-30 分钟。
     /// </summary>
     public int ConfirmExpireMinutes { get; set; } = 30;
+
     /// <summary>
-    /// 过期清理后台任务的轮询间隔，单位秒。
+    /// 过期清理后台任务的轮询间隔，单位秒，默认 300 秒（5 分钟）。
+    /// 后台 IHostedService 按此间隔扫描 PR_LIMIT_OCCUPY 和 PR_CHARGE_REQUEST_LOG，
+    /// 将超过 <see cref="ConfirmExpireMinutes"/> 的 CONFIRM_PENDING 记录置为 EXPIRED。
+    /// 间隔越短清理越及时，但数据库负载越高。建议值：120-600 秒。
     /// </summary>
     public int ExpireCleanupIntervalSeconds { get; set; } = 300;
+
     /// <summary>
-    /// 预留 HTTP 调用超时时间，单位秒，用于后续对接外部服务时统一读取。
+    /// HTTP 调用超时时间，单位秒，默认 10 秒。
+    /// 用于后续对接外部服务（如 HIS 物价主数据查询、权威单价校验）时统一设置超时。
+    /// 超时后应按重试策略（<see cref="MaxRetryCount"/>）进行有限次重试。
     /// </summary>
     public int HttpTimeoutSeconds { get; set; } = 10;
+
     /// <summary>
-    /// 预留最大重试次数，用于后续外部调用或补偿任务统一配置。
+    /// 最大重试次数，默认 3 次。
+    /// 用于外部服务调用失败时的重试策略，以及后台补偿任务的执行次数上限。
+    /// 重试之间建议采用指数退避策略（如 1s、2s、4s）。
     /// </summary>
     public int MaxRetryCount { get; set; } = 3;
+
     /// <summary>
-    /// 是否启用权威物价校验。启用后 confirm 会校验请求单价与 HIS 物价主数据是否一致。
+    /// 是否启用权威物价校验，默认 true。
+    /// 启用后，confirm（确认计价）时会校验调用方传入的单价与 HIS 物价主数据是否一致。
+    /// 不一致时返回 PRICE_MISMATCH 错误，防止调用方传入错误单价导致资损。
+    /// 此开关是资金安全硬约束，生产环境必须为 true。仅在开发和测试环境可临时关闭。
     /// </summary>
     public bool EnableAuthorityPriceCheck { get; set; } = true;
 }

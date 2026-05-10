@@ -8,17 +8,31 @@ namespace Pricing.RuleCenter.Api.Services;
 /// 规则主档应用服务，负责维护规则的基础信息和当前发布状态。
 /// </summary>
 /// <remarks>
-/// 规则主档描述“这条规则面向什么项目、属于什么类别、当前版本是多少”。条件和动作属于版本明细，
-/// 发布服务负责推进版本状态，因此本服务只处理主档信息的增改查，避免把版本状态机混入基础维护入口。
+/// <para>
+/// 职责边界：规则主档描述”这条规则面向什么项目、属于什么类别、当前版本是多少”。
+/// 条件和动作属于版本明细（由 RuleConditionService 和 RuleActionService 维护），
+/// 发布状态推进由 RulePublishService 负责。本服务只处理主档信息的增改查，
+/// 避免把版本状态机混入基础维护入口。
+/// </para>
+/// <para>
+/// 状态字段：Status（DRAFT/PUBLISHED/DISABLED）和 CurrentVersion 由发布服务推进，
+/// UpdateAsync 不允许修改这两个字段，防止绕过发布状态机。
+/// </para>
+/// <para>
+/// 生效时间：主档的 EffectiveFrom/EffectiveTo 是规则的全局生效范围，
+/// 版本创建时会继承主档的生效时间，但版本可以单独调整。
+/// </para>
 /// </remarks>
 public sealed class RuleHeaderService
 {
     /// <summary>
-    /// 规则主档仓储，负责分页、按项目查询、编码唯一性校验和主档写入。
+    /// 规则主档仓储，负责 PR_RULE_HEADER 表的分页查询、按项目查询、编码唯一性校验和主档写入。
     /// </summary>
     private readonly IRuleHeaderRepository _repository;
+
     /// <summary>
     /// 服务日志，用于记录规则主档新增等配置变更。
+    /// 主档变更会影响规则匹配结果，保留操作线索便于审计追踪。
     /// </summary>
     private readonly ILogger<RuleHeaderService> _logger;
 
@@ -156,8 +170,12 @@ public sealed class RuleHeaderService
     /// <summary>
     /// 将规则主档实体映射为接口响应。
     /// </summary>
-    /// <param name="entity">规则主档实体。</param>
-    /// <returns>规则主档响应 DTO。</returns>
+    /// <remarks>
+    /// 映射包含全部主档字段，包括创建/更新人和时间等审计字段，
+    /// 供前端规则详情页完整展示。Status 和 IsEnabled 保留原始编码值。
+    /// </remarks>
+    /// <param name="entity">规则主档实体，来自 PR_RULE_HEADER 表。</param>
+    /// <returns>规则主档响应 DTO，包含完整的主档信息和审计字段。</returns>
     private static RuleHeaderResponse MapToResponse(RuleHeader entity)
     {
         return new RuleHeaderResponse

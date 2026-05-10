@@ -8,17 +8,30 @@ namespace Pricing.RuleCenter.Api.Services;
 /// 字典应用服务，负责维护规则中心内部使用的枚举型基础数据。
 /// </summary>
 /// <remarks>
-/// 字典数据通常被前端配置页用于下拉框、状态名称和分类名称展示。该服务只处理规则中心自有字典，
+/// <para>
+/// 职责边界：该服务只处理规则中心自有字典（计价类型、动作类型、条件类型等），
 /// 不直接读取 HIS 项目主数据，避免把业务主数据同步逻辑混入配置维护入口。
+/// </para>
+/// <para>
+/// 使用场景：字典数据被前端配置页用于下拉框、状态名称和分类名称展示。
+/// 规则配置中引用的字典编码（如 ConditionType、ActionType）都通过本服务维护可选项。
+/// </para>
+/// <para>
+/// 生命周期：字典项采用软删除（IsEnabled="N"），不物理删除，以保留历史规则配置中
+/// 已保存编码的可解释性。前端下拉框只显示 IsEnabled="Y" 的项。
+/// </para>
 /// </remarks>
 public sealed class DictService
 {
     /// <summary>
-    /// 字典仓储，负责字典项查询、唯一性判断、写入和软停用。
+    /// 字典仓储，负责 PR_DICT 表的查询、唯一性判断、插入和软停用。
+    /// 仓储层隔离了 SqlSugar 的具体 API，服务层只通过接口调用。
     /// </summary>
     private readonly IDictRepository _repository;
+
     /// <summary>
     /// 服务日志，用于记录新增和停用等会影响配置展示的操作。
+    /// 字典变更会直接影响前端可选项，保留操作线索便于定位"页面选项为什么变化"。
     /// </summary>
     private readonly ILogger<DictService> _logger;
 
@@ -143,8 +156,12 @@ public sealed class DictService
     /// <summary>
     /// 将字典实体映射为接口返回对象。
     /// </summary>
-    /// <param name="entity">数据库中的字典实体。</param>
-    /// <returns>面向接口层的字典响应对象。</returns>
+    /// <remarks>
+    /// 映射逻辑采用逐字段赋值而非 AutoMapper，原因：字典字段数量少且稳定，
+    /// 逐字段赋值可以在编译期发现字段遗漏，避免运行时因映射缺失产生空值。
+    /// </remarks>
+    /// <param name="entity">数据库中的字典实体，来自 PR_DICT 表。</param>
+    /// <returns>面向接口层的字典响应对象，IsEnabled 字段保留原始 "Y"/"N" 值供前端判断显示样式。</returns>
     private static DictResponse MapToResponse(Dict entity)
     {
         return new DictResponse

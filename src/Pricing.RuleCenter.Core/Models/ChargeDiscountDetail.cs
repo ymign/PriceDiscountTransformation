@@ -2,211 +2,389 @@ using SqlSugar;
 
 namespace Pricing.RuleCenter.Core.Models;
 
-[SugarTable("PR_CHARGE_DISCOUNT_DETAIL")]
 /// <summary>
-/// 计价折扣明细实体，对应 PR_CHARGE_DISCOUNT_DETAIL。
+/// 计价折扣明细实体。
 /// </summary>
 /// <remarks>
-/// 该实体保存一次计价中原始数量/金额、换算数量、最终数量/金额和折价原因。它跟随请求状态流转，
-/// 用于 HIS 对账、规则追踪和后续退费冲正。
+/// <para>
+/// 对应 Oracle 表：PR_CHARGE_DISCOUNT_DETAIL
+/// </para>
+/// <para>
+/// 在计价链路中的角色：保存一次计价中原始数量/金额、换算数量、最终数量/金额和折价原因。
+/// 它跟随请求状态流转，用于 HIS 对账、规则追踪和后续退费冲正。
+/// </para>
+/// <para>
+/// 金额精度约束：所有金额字段类型为 decimal（对应 Oracle NUMBER(18,4)）。
+/// 中间计算保留全部精度（ORIGINAL_AMT、CALCULATED_AMT），最终对外金额（FINAL_AMT）
+/// 保留 2 位小数、四舍五入。
+/// </para>
+/// <para>
+/// 状态机流转：PENDING → CONFIRMED（commit 后）→ CANCELLED（cancel 后）| EXPIRED（过期清理）
+/// | REVERSED（冲正后）。主子项目同 resultGroupNo 原子 commit/cancel。
+/// </para>
 /// </remarks>
+[SugarTable("PR_CHARGE_DISCOUNT_DETAIL")]
 public sealed class ChargeDiscountDetail
 {
-    [SugarColumn(IsPrimaryKey = true, ColumnName = "DISCOUNT_ID")]
     /// <summary>
     /// 折扣明细主键。
     /// </summary>
+    /// <remarks>
+    /// 对应 Oracle 列 DISCOUNT_ID，NUMBER 类型，由 SEQUENCE 生成。
+    /// 全局唯一标识一条折扣明细记录。
+    /// </remarks>
+    [SugarColumn(IsPrimaryKey = true, ColumnName = "DISCOUNT_ID")]
     public long DiscountId { get; set; }
 
-    [SugarColumn(ColumnName = "REQUEST_ID")]
     /// <summary>
-    /// 计价请求日志主键，用于串联请求、步骤、折价明细和限额占用
+    /// 关联的计价请求日志主键。
     /// </summary>
+    /// <remarks>
+    /// 对应 PR_CHARGE_REQUEST_LOG.REQUEST_ID，用于串联请求、步骤、折价明细和限额占用四张表。
+    /// 一条请求日志可以产生多条折扣明细（如多部位拆分、主子项目）。
+    /// </remarks>
+    [SugarColumn(ColumnName = "REQUEST_ID")]
     public long RequestId { get; set; }
 
-    [SugarColumn(ColumnName = "TRACE_ID", IsNullable = true)]
     /// <summary>
-    /// 计价追踪号，用于跨表查看一次计价过程
+    /// 计价追踪号。
     /// </summary>
+    /// <remarks>
+    /// 全局唯一的追踪标识，用于跨表查看一次完整计价过程。
+    /// 与 ChargeRequestLog.TraceId 一致。
+    /// </remarks>
+    [SugarColumn(ColumnName = "TRACE_ID", IsNullable = true)]
     public string? TraceId { get; set; }
 
-    [SugarColumn(ColumnName = "CHARGE_NO", IsNullable = true)]
     /// <summary>
-    /// 收费单号，用于与 HIS 落账结果关联
+    /// 收费单号。
     /// </summary>
+    /// <remarks>
+    /// 来源为 HIS 传入的收费单号，用于与 HIS 落账结果关联。
+    /// 一张收费单可能包含多条收费明细。
+    /// </remarks>
+    [SugarColumn(ColumnName = "CHARGE_NO", IsNullable = true)]
     public string? ChargeNo { get; set; }
 
-    [SugarColumn(ColumnName = "CHARGE_DETAIL_NO", IsNullable = true)]
     /// <summary>
-    /// 收费明细号，用于定位单条收费项目
+    /// 收费明细号。
     /// </summary>
+    /// <remarks>
+    /// 来源为 HIS 传入的收费明细号，用于定位单条收费项目。
+    /// "单条"指单条收费明细，与"单次"（单次收费动作）不同。
+    /// </remarks>
+    [SugarColumn(ColumnName = "CHARGE_DETAIL_NO", IsNullable = true)]
     public string? ChargeDetailNo { get; set; }
 
-    [SugarColumn(ColumnName = "PATIENT_ID", IsNullable = true)]
     /// <summary>
-    /// 患者标识，是限额累计和追溯查询的重要维度
+    /// 患者标识。
     /// </summary>
+    /// <remarks>
+    /// 限额累计和追溯查询的重要维度。
+    /// 空值理论上不应出现。
+    /// </remarks>
+    [SugarColumn(ColumnName = "PATIENT_ID", IsNullable = true)]
     public string? PatientId { get; set; }
 
-    [SugarColumn(ColumnName = "VISIT_ID", IsNullable = true)]
     /// <summary>
-    /// 就诊标识，可为空，存在时用于缩小追溯和对账范围
+    /// 就诊标识。
     /// </summary>
+    /// <remarks>
+    /// 可为空，存在时用于缩小追溯和对账范围。
+    /// </remarks>
+    [SugarColumn(ColumnName = "VISIT_ID", IsNullable = true)]
     public string? VisitId { get; set; }
 
-    [SugarColumn(ColumnName = "ITEM_CODE", IsNullable = true)]
     /// <summary>
-    /// 项目编码，是规则匹配、价格校验和限额累计的核心维度
+    /// 项目编码。
     /// </summary>
+    /// <remarks>
+    /// 对应 HIS 物价主数据表 FIN_COM_UNDRUGINFO.ITEM_CODE。
+    /// 是规则匹配、价格校验和限额累计的核心维度。
+    /// </remarks>
+    [SugarColumn(ColumnName = "ITEM_CODE", IsNullable = true)]
     public string? ItemCode { get; set; }
 
-    [SugarColumn(ColumnName = "ITEM_NAME", IsNullable = true)]
     /// <summary>
-    /// 项目名称，用于展示、审计和追溯说明
+    /// 项目名称。
     /// </summary>
+    /// <remarks>
+    /// 来源为 HIS 物价主数据，用于展示、审计和追溯说明。
+    /// 非计算字段，仅用于可读性。
+    /// </remarks>
+    [SugarColumn(ColumnName = "ITEM_NAME", IsNullable = true)]
     public string? ItemName { get; set; }
 
-    [SugarColumn(ColumnName = "RULE_ID", IsNullable = true)]
     /// <summary>
-    /// 规则主键，用于关联规则头、版本、条件、动作和追溯结果
+    /// 产生本次折价结果的规则主键。
     /// </summary>
+    /// <remarks>
+    /// 关联 PR_RULE_HEADER.RULE_ID，用于追溯该折价是由哪条规则触发的。
+    /// 空值表示未命中折价规则（普通计价，原价收费）。
+    /// </remarks>
+    [SugarColumn(ColumnName = "RULE_ID", IsNullable = true)]
     public long? RuleId { get; set; }
 
-    [SugarColumn(ColumnName = "RULE_VERSION_NO", IsNullable = true)]
     /// <summary>
     /// 产生本次折价结果的规则版本号。
     /// </summary>
+    /// <remarks>
+    /// 关联 PR_RULE_VERSION.VERSION_NO，用于锁定产生折价时的规则版本，
+    /// 便于后续版本回滚或变更时评估影响范围。
+    /// </remarks>
+    [SugarColumn(ColumnName = "RULE_VERSION_NO", IsNullable = true)]
     public int? RuleVersionNo { get; set; }
 
-    [SugarColumn(ColumnName = "DISCOUNT_TYPE", IsNullable = true)]
     /// <summary>
-    /// 折价类型，例如公式折算、限额截断或超额归零。
+    /// 折价类型编码。
     /// </summary>
+    /// <remarks>
+    /// 标识本次折价的计算方式：
+    /// <list type="bullet">
+    /// <item>FORMULA — 公式折算，通过配置的公式计算最终金额</item>
+    /// <item>LIMIT_CUT — 限额截断，超出限额部分为 0 元</item>
+    /// <item>EXCESS_ZERO — 超额归零，超出部分全部为 0 元</item>
+    /// <item>GROUP_EXCLUSIVE — 同组互斥，同组只保留优先级最高的一条</item>
+    /// </list>
+    /// 空值表示未命中折价规则。
+    /// </remarks>
+    [SugarColumn(ColumnName = "DISCOUNT_TYPE", IsNullable = true)]
     public string? DiscountType { get; set; }
 
-    [SugarColumn(ColumnName = "STATUS")]
     /// <summary>
-    /// 当前记录状态，具体含义由所在表的状态机定义
+    /// 折扣明细记录状态。
     /// </summary>
+    /// <remarks>
+    /// 状态机流转：
+    /// <list type="bullet">
+    /// <item>PENDING — confirm 阶段写入，尚未 commit</item>
+    /// <item>CONFIRMED — HIS 调用 commit 后确认</item>
+    /// <item>CANCELLED — HIS 调用 cancel 后取消</item>
+    /// <item>EXPIRED — 超时过期，被后台清理任务释放</item>
+    /// <item>REVERSED — HIS 调用 reverse 后冲正</item>
+    /// </list>
+    /// 默认值为 "PENDING"。
+    /// </remarks>
+    [SugarColumn(ColumnName = "STATUS")]
     public string Status { get; set; } = "PENDING";
 
-    [SugarColumn(ColumnName = "RESULT_GROUP_NO", IsNullable = true)]
     /// <summary>
-    /// 主子项目同组结果号，用于保证主项目和加收子项目原子处理
+    /// 主子项目同组结果号。
     /// </summary>
+    /// <remarks>
+    /// 子项加收必须与主项目同 resultGroupNo 原子 commit/cancel。
+    /// 同组的所有明细在同一 confirm 中一起提交，commit 和 cancel 也必须一起处理。
+    /// 空值表示该明细不涉及主子项目关系。
+    /// </remarks>
+    [SugarColumn(ColumnName = "RESULT_GROUP_NO", IsNullable = true)]
     public string? ResultGroupNo { get; set; }
 
-    [SugarColumn(ColumnName = "PARENT_DISCOUNT_ID", IsNullable = true)]
     /// <summary>
-    /// 父折扣明细主键，用于主子项目或拆分明细之间建立层级关系。
+    /// 父折扣明细主键。
     /// </summary>
+    /// <remarks>
+    /// 用于主子项目或拆分明细之间建立层级关系。
+    /// 例如：主项目的 DiscountId 作为子项目的 ParentDiscountId。
+    /// 空值表示该明细是顶层记录，没有父级。
+    /// </remarks>
+    [SugarColumn(ColumnName = "PARENT_DISCOUNT_ID", IsNullable = true)]
     public long? ParentDiscountId { get; set; }
 
-    [SugarColumn(ColumnName = "PART_SEQ", IsNullable = true)]
     /// <summary>
     /// 多部位或多片段计价时的片段序号。
     /// </summary>
+    /// <remarks>
+    /// 当一个收费项目包含多个部位或片段时（如多肿物切除），每个部位独立计价。
+    /// PartSeq 从 1 开始递增，用于区分同一请求内的不同部位明细。
+    /// 空值表示该项目不涉及多部位拆分。
+    /// </remarks>
+    [SugarColumn(ColumnName = "PART_SEQ", IsNullable = true)]
     public int? PartSeq { get; set; }
 
-    [SugarColumn(ColumnName = "ORIGINAL_QTY", IsNullable = true)]
     /// <summary>
-    /// 原始数量，保存折价前的业务输入
+    /// 原始数量。
     /// </summary>
+    /// <remarks>
+    /// 保存折价前的业务输入数量，单位为调用方传入的 inputUnit。
+    /// 用于与 FinalQty 对比展示折价过程。
+    /// 精度 NUMBER(18,4)。
+    /// </remarks>
+    [SugarColumn(ColumnName = "ORIGINAL_QTY", IsNullable = true)]
     public decimal? OriginalQty { get; set; }
 
-    [SugarColumn(ColumnName = "CONVERTED_QTY", IsNullable = true)]
     /// <summary>
-    /// 换算后的计价数量
+    /// 换算后的计价数量。
     /// </summary>
+    /// <remarks>
+    /// 经过双单位换算后的数量，用于公式计算。
+    /// 换算数量固定为 1（即换算比例 × 1），公式使用换算后数量。
+    /// 若未配置换算规则，该值等于 OriginalQty。
+    /// 精度 NUMBER(18,4)。
+    /// </remarks>
+    [SugarColumn(ColumnName = "CONVERTED_QTY", IsNullable = true)]
     public decimal? ConvertedQty { get; set; }
 
-    [SugarColumn(ColumnName = "FINAL_QTY", IsNullable = true)]
     /// <summary>
-    /// 最终可收费数量
+    /// 最终可收费数量。
     /// </summary>
+    /// <remarks>
+    /// 经过日数量限制、时间窗数量限制、同组互斥等全部处理后的最终数量。
+    /// 若存在数量下限或上限，该值已在限制范围内。
+    /// 若超出限制，超出部分为 0（不是整单归零，不是拒单）。
+    /// 精度 NUMBER(18,4)。
+    /// </remarks>
+    [SugarColumn(ColumnName = "FINAL_QTY", IsNullable = true)]
     public decimal? FinalQty { get; set; }
 
-    [SugarColumn(ColumnName = "UNIT_PRICE", IsNullable = true)]
     /// <summary>
-    /// 项目单价，confirm 时应与权威物价主数据强校验
+    /// 项目单价。
     /// </summary>
+    /// <remarks>
+    /// 项目权威单价，来源为 HIS 物价主数据表 FIN_COM_UNDRUGINFO。
+    /// confirm 阶段计价中心必须读取权威单价或强校验，不一致返回 PRICE_MISMATCH。
+    /// 单位：元（人民币），精度 NUMBER(18,4)。
+    /// </remarks>
+    [SugarColumn(ColumnName = "UNIT_PRICE", IsNullable = true)]
     public decimal? UnitPrice { get; set; }
 
-    [SugarColumn(ColumnName = "ORIGINAL_AMT", IsNullable = true)]
     /// <summary>
-    /// 原始金额，通常为原始数量乘权威单价
+    /// 原始金额。
     /// </summary>
+    /// <remarks>
+    /// 通常为 OriginalQty * UnitPrice，即折价前的原始收费金额。
+    /// 用于与 FinalAmt 对比展示折价让利了多少。
+    /// 中间计算字段，保留全部精度，不做取整。
+    /// 单位：元（人民币），精度 NUMBER(18,4)。
+    /// </remarks>
+    [SugarColumn(ColumnName = "ORIGINAL_AMT", IsNullable = true)]
     public decimal? OriginalAmt { get; set; }
 
-    [SugarColumn(ColumnName = "CALCULATED_AMT", IsNullable = true)]
     /// <summary>
-    /// 公式或动作链中间计算金额
+    /// 公式或动作链中间计算金额。
     /// </summary>
+    /// <remarks>
+    /// 经过公式计算后的中间金额，尚未经过金额上下限校验。
+    /// 公式优先于限制：先算公式，再与金额限制比较。
+    /// 中间计算字段，保留全部精度，不做取整。
+    /// 单位：元（人民币），精度 NUMBER(18,4)。
+    /// </remarks>
+    [SugarColumn(ColumnName = "CALCULATED_AMT", IsNullable = true)]
     public decimal? CalculatedAmt { get; set; }
 
-    [SugarColumn(ColumnName = "FINAL_AMT", IsNullable = true)]
     /// <summary>
-    /// 最终收费金额
+    /// 最终收费金额。
     /// </summary>
+    /// <remarks>
+    /// 经过公式计算、金额上下限、数量限制等全部处理后的最终收费金额。
+    /// 最终对外金额保留 2 位小数，四舍五入（roundMode 可配置）。
+    /// 若项目超出限额，超出部分为 0 元。
+    /// 单位：元（人民币），精度 NUMBER(18,4)。
+    /// </remarks>
+    [SugarColumn(ColumnName = "FINAL_AMT", IsNullable = true)]
     public decimal? FinalAmt { get; set; }
 
-    [SugarColumn(ColumnName = "DISCOUNT_AMT", IsNullable = true)]
     /// <summary>
-    /// 折价金额，等于原始金额减最终金额
+    /// 折价金额。
     /// </summary>
+    /// <remarks>
+    /// 等于 OriginalAmt - FinalAmt，即折价让利的金额。
+    /// 若未命中折价规则，该值为 0。
+    /// 用于 HIS 对账和审计，展示折价让利了多少。
+    /// 单位：元（人民币），精度 NUMBER(18,4)。
+    /// </remarks>
+    [SugarColumn(ColumnName = "DISCOUNT_AMT", IsNullable = true)]
     public decimal? DiscountAmt { get; set; }
 
-    [SugarColumn(ColumnName = "REASON_CODE", IsNullable = true)]
     /// <summary>
-    /// 折价原因编码，便于与规则或业务原因字典关联。
+    /// 折价原因编码。
     /// </summary>
+    /// <remarks>
+    /// 便于与规则或业务原因字典关联。
+    /// 常见值：FORMULA（公式折算）、LIMIT_EXCEEDED（超限）、ZERO_EXCESS（超额归零）。
+    /// </remarks>
+    [SugarColumn(ColumnName = "REASON_CODE", IsNullable = true)]
     public string? ReasonCode { get; set; }
 
-    [SugarColumn(ColumnName = "REASON_DESC", IsNullable = true)]
     /// <summary>
-    /// 折价原因描述，面向追踪页面或对账说明展示。
+    /// 折价原因描述。
     /// </summary>
+    /// <remarks>
+    /// 面向追踪页面或对账说明展示的人类可读描述。
+    /// 例如："超出日限额 3 次，超出部分为 0 元"。
+    /// </remarks>
+    [SugarColumn(ColumnName = "REASON_DESC", IsNullable = true)]
     public string? ReasonDesc { get; set; }
 
-    [SugarColumn(ColumnName = "LIMIT_BASE_INFO", ColumnDataType = "CLOB", IsNullable = true)]
     /// <summary>
-    /// 限额计算依据快照 JSON，用于解释当时累计了哪些维度和窗口。
+    /// 限额计算依据快照 JSON。
     /// </summary>
+    /// <remarks>
+    /// 存储限额校验时的累计依据，用于解释当时累计了哪些维度和窗口。
+    /// 包含：已占用数量、已占用金额、时间窗口范围、同组项目列表等。
+    /// Oracle 存储类型为 CLOB。
+    /// </remarks>
+    [SugarColumn(ColumnName = "LIMIT_BASE_INFO", ColumnDataType = "CLOB", IsNullable = true)]
     public string? LimitBaseInfo { get; set; }
 
-    [SugarColumn(ColumnName = "OCCURRED_AT")]
     /// <summary>
     /// 折价明细生成时间。
     /// </summary>
+    /// <remarks>
+    /// 由计价中心在 confirm 阶段自动填充。
+    /// 用于审计和排序。
+    /// </remarks>
+    [SugarColumn(ColumnName = "OCCURRED_AT")]
     public DateTime OccurredAt { get; set; }
 
-    [SugarColumn(ColumnName = "CONFIRMED_BY", IsNullable = true)]
     /// <summary>
     /// 确认操作人或来源系统账号。
     /// </summary>
+    /// <remarks>
+    /// 记录 confirm 操作的执行者，用于审计。
+    /// 可为空，空值表示来源系统未提供操作人信息。
+    /// </remarks>
+    [SugarColumn(ColumnName = "CONFIRMED_BY", IsNullable = true)]
     public string? ConfirmedBy { get; set; }
 
-    [SugarColumn(ColumnName = "COMMITTED_AT", IsNullable = true)]
     /// <summary>
     /// HIS 成功落账并调用 commit 的时间。
     /// </summary>
+    /// <remarks>
+    /// 由计价中心在 commit 阶段填充。
+    /// 空值表示尚未 commit（仍为 PENDING 状态）。
+    /// 用于审计和对账，确认 HIS 何时完成落账。
+    /// </remarks>
+    [SugarColumn(ColumnName = "COMMITTED_AT", IsNullable = true)]
     public DateTime? CommittedAt { get; set; }
 
-    [SugarColumn(ColumnName = "CANCELLED_AT", IsNullable = true)]
     /// <summary>
     /// 保护占用被取消的时间。
     /// </summary>
+    /// <remarks>
+    /// 由计价中心在 cancel 阶段填充。
+    /// 空值表示未被取消。
+    /// </remarks>
+    [SugarColumn(ColumnName = "CANCELLED_AT", IsNullable = true)]
     public DateTime? CancelledAt { get; set; }
 
-    [SugarColumn(ColumnName = "EXPIRED_AT", IsNullable = true)]
     /// <summary>
     /// confirm 保护期过期并被清理的时间。
     /// </summary>
+    /// <remarks>
+    /// 由后台挂起清理任务（expire）在超时后填充。
+    /// 防止 HIS 超时未调用 commit/cancel 导致额度被永久占用。
+    /// </remarks>
+    [SugarColumn(ColumnName = "EXPIRED_AT", IsNullable = true)]
     public DateTime? ExpiredAt { get; set; }
 
-    [SugarColumn(ColumnName = "REVERSED_AT", IsNullable = true)]
     /// <summary>
     /// 已提交折扣明细被冲正的时间。
     /// </summary>
+    /// <remarks>
+    /// 由计价中心在 reverse 阶段填充。
+    /// 空值表示未被冲正。
+    /// 退费规则：当日退费释放数量；隔日退费重收后按重收当天重新做额度校验。
+    /// </remarks>
+    [SugarColumn(ColumnName = "REVERSED_AT", IsNullable = true)]
     public DateTime? ReversedAt { get; set; }
 }
