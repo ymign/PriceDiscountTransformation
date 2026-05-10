@@ -52,6 +52,7 @@ builder.Services.AddScoped<IRuleActionExecutor, AmountCeilingExecutor>();
 builder.Services.AddScoped<IRuleActionExecutor, IncrementPercentExecutor>();
 builder.Services.AddScoped<IRuleActionExecutor, TimeWindowLimitExecutor>();
 builder.Services.AddScoped<IRuleActionExecutor, DailyQtyLimitExecutor>();
+builder.Services.AddScoped<IRuleActionExecutor, OnceQtyLimitExecutor>();
 builder.Services.AddScoped<IRuleActionExecutor, ExceedToZeroExecutor>();
 
 builder.Services.AddScoped<ConditionEvaluatorFactory>();

@@ -7,5 +7,6 @@ namespace Pricing.RuleCenter.Core.Interfaces;
 /// </summary>
 public interface IChargeReverseLogRepository
 {
+    Task<IReadOnlyList<ChargeReverseLog>> GetByOriginalRequestIdAsync(long originalRequestId);
     Task<long> InsertAsync(ChargeReverseLog entity);
 }

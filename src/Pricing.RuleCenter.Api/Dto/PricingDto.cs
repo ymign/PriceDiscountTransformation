@@ -31,35 +31,6 @@ public sealed class PricingCalculateRequest
     /// </summary>
     public string? EncounterNo { get; init; }
 
-    [Required(ErrorMessage = "项目编码不能为空")]
-    /// <summary>
-    /// 项目编码，是规则匹配、价格校验和限额累计的核心维度
-    /// </summary>
-    public string ItemCode { get; init; } = string.Empty;
-
-    /// <summary>
-    /// 项目名称，用于展示、审计和追溯说明
-    /// </summary>
-    public string? ItemName { get; init; }
-
-    [Required(ErrorMessage = "数量不能为空")]
-    /// <summary>
-    /// 调用方录入的原始数量，金额计算前不得随意覆盖
-    /// </summary>
-    public decimal InputQty { get; init; }
-
-    /// <summary>
-    /// 调用方录入数量的单位，例如 PART、CM2、EACH
-    /// </summary>
-    public string? Unit { get; init; }
-    /// <summary>
-    /// 项目单价，confirm 时应与权威物价主数据强校验
-    /// </summary>
-    public decimal UnitPrice { get; init; }
-    /// <summary>
-    /// 身体部位编码，用于分部位换算、部位差异规则和请求指纹
-    /// </summary>
-    public string? BodyPartCode { get; init; }
     /// <summary>
     /// 收费场景编码，用于匹配门诊、住院、手术批费等差异化规则
     /// </summary>
@@ -84,10 +55,6 @@ public sealed class PricingCalculateRequest
     /// </summary>
     public string? ChargeNo { get; init; }
     /// <summary>
-    /// 收费明细号，用于定位单条收费项目
-    /// </summary>
-    public string? ChargeDetailNo { get; init; }
-    /// <summary>
     /// 调用方稳定业务号，confirm 重试必须复用，用于幂等保护
     /// </summary>
     public string? BusinessRequestNo { get; init; }
@@ -103,6 +70,65 @@ public sealed class PricingCalculateRequest
     /// 调用方扩展参数。规则中心不会把它作为核心幂等字段，除非后续显式纳入指纹规则。
     /// </summary>
     public Dictionary<string, object?>? ExtraParams { get; init; }
+    [Required(ErrorMessage = "费用明细不能为空")]
+    [MinLength(1, ErrorMessage = "费用明细至少包含一条")]
+    /// <summary>
+    /// 本次结算包含的费用明细集合。一次结算可同时传入多条费用，每条费用独立携带项目、数量和单价。
+    /// </summary>
+    public IReadOnlyList<PricingCalculateItemRequest> Items { get; init; } = Array.Empty<PricingCalculateItemRequest>();
+}
+
+/// <summary>
+/// 计价请求中的单条费用明细 DTO。
+/// </summary>
+public sealed class PricingCalculateItemRequest
+{
+    /// <summary>
+    /// 单条费用明细的请求号，用于批量响应和调用方本地行号关联。
+    /// </summary>
+    public string? ItemRequestNo { get; init; }
+    /// <summary>
+    /// 收费明细号，用于定位单条收费项目。
+    /// </summary>
+    public string? ChargeDetailNo { get; init; }
+
+    [Required(ErrorMessage = "项目编码不能为空")]
+    /// <summary>
+    /// 项目编码，是规则匹配、价格校验和限额累计的核心维度。
+    /// </summary>
+    public string ItemCode { get; init; } = string.Empty;
+
+    /// <summary>
+    /// 项目名称，用于展示、审计和追溯说明。
+    /// </summary>
+    public string? ItemName { get; init; }
+
+    [Required(ErrorMessage = "数量不能为空")]
+    /// <summary>
+    /// 调用方录入的原始数量，金额计算前不得随意覆盖。
+    /// </summary>
+    public decimal InputQty { get; init; }
+
+    /// <summary>
+    /// 调用方录入数量的单位，例如 PART、CM2、EACH。
+    /// </summary>
+    public string? Unit { get; init; }
+    /// <summary>
+    /// 项目单价，confirm 时应与权威物价主数据强校验。
+    /// </summary>
+    public decimal UnitPrice { get; init; }
+    /// <summary>
+    /// 身体部位编码，用于分部位换算、部位差异规则和请求指纹。
+    /// </summary>
+    public string? BodyPartCode { get; init; }
+    /// <summary>
+    /// 单条费用的业务收费发生时间。为空时使用结算请求上的 BusinessChargeTime。
+    /// </summary>
+    public DateTime? BusinessChargeTime { get; init; }
+    /// <summary>
+    /// 单条费用扩展参数。与结算级 ExtraParams 合并后进入规则上下文和幂等指纹。
+    /// </summary>
+    public Dictionary<string, object?>? ExtraParams { get; init; }
     /// <summary>
     /// 多部位或多片段明细，用于更细粒度的部位匹配、面积折算和追踪展示。
     /// </summary>
@@ -114,7 +140,7 @@ public sealed class PricingCalculateRequest
 /// </summary>
 /// <remarks>
 /// 明细项是可选扩展结构，用于表达一个收费项目内部的多个部位、面积或病灶。当前项目主字段仍然以
-/// PricingCalculateRequest 上的 ItemCode、InputQty 和 UnitPrice 为准。
+/// PricingCalculateItemRequest 上的 ItemCode、InputQty 和 UnitPrice 为准。
 /// </remarks>
 public sealed class PricingPartItemRequest
 {
@@ -170,6 +196,10 @@ public sealed class PricingPartItemRequest
 public sealed class PricingCalculateResponse
 {
     /// <summary>
+    /// 多费用明细计价结果。一次结算包含多条费用时，调用方应优先使用该集合落账和展示。
+    /// </summary>
+    public IReadOnlyList<PricingCalculateItemResponse> Items { get; init; } = Array.Empty<PricingCalculateItemResponse>();
+    /// <summary>
     /// 计价请求日志主键，用于串联请求、步骤、折价明细和限额占用
     /// </summary>
     public long RequestId { get; init; }
@@ -203,6 +233,65 @@ public sealed class PricingCalculateResponse
     public IReadOnlyList<PricingTraceStepResponse> TraceSteps { get; init; } = Array.Empty<PricingTraceStepResponse>();
     /// <summary>
     /// 本次计价命中的规则主键集合。
+    /// </summary>
+    public IReadOnlyList<long> MatchedRuleIds { get; init; } = Array.Empty<long>();
+}
+
+/// <summary>
+/// 单条费用明细计价响应 DTO。
+/// </summary>
+public sealed class PricingCalculateItemResponse
+{
+    /// <summary>
+    /// 单条费用明细的请求号，用于和调用方传入的 itemRequestNo 对齐。
+    /// </summary>
+    public string? ItemRequestNo { get; init; }
+    /// <summary>
+    /// 收费明细号，用于定位单条收费项目。
+    /// </summary>
+    public string? ChargeDetailNo { get; init; }
+    /// <summary>
+    /// 计价请求日志主键，用于串联请求、步骤、折价明细和限额占用。
+    /// </summary>
+    public long RequestId { get; init; }
+    /// <summary>
+    /// 项目编码，是规则匹配、价格校验和限额累计的核心维度。
+    /// </summary>
+    public string ItemCode { get; init; } = string.Empty;
+    /// <summary>
+    /// 项目名称，用于展示、审计和追溯说明。
+    /// </summary>
+    public string? ItemName { get; init; }
+    /// <summary>
+    /// 是否命中特殊计价规则。
+    /// </summary>
+    public bool IsSpecialItem { get; init; }
+    /// <summary>
+    /// 调用方录入的原始数量，金额计算前不得随意覆盖。
+    /// </summary>
+    public decimal InputQty { get; init; }
+    /// <summary>
+    /// 最终可收费数量。
+    /// </summary>
+    public decimal FinalQty { get; init; }
+    /// <summary>
+    /// 项目单价，confirm 时应与权威物价主数据强校验。
+    /// </summary>
+    public decimal UnitPrice { get; init; }
+    /// <summary>
+    /// 最终可收费金额。
+    /// </summary>
+    public decimal FinalAmount { get; init; }
+    /// <summary>
+    /// 折价金额，通常等于原始金额减最终金额。
+    /// </summary>
+    public decimal DiscountAmount { get; init; }
+    /// <summary>
+    /// 本条费用计价追踪步骤，用于接口调用方展示或排查。
+    /// </summary>
+    public IReadOnlyList<PricingTraceStepResponse> TraceSteps { get; init; } = Array.Empty<PricingTraceStepResponse>();
+    /// <summary>
+    /// 本条费用命中的规则主键集合。
     /// </summary>
     public IReadOnlyList<long> MatchedRuleIds { get; init; } = Array.Empty<long>();
 }
@@ -289,6 +378,22 @@ public sealed class PricingReverseRequest
     /// 调用方冲正流水号，用于和 HIS 退费或撤销单据关联。
     /// </summary>
     public string? ReverseNo { get; init; }
+    /// <summary>
+    /// 被退费的原收费明细号。多费用明细请求执行部分退费时必须提供。
+    /// </summary>
+    public string? ChargeDetailNo { get; init; }
+    /// <summary>
+    /// 被退费的项目编码。多费用明细请求执行部分退费时用于二次定位。
+    /// </summary>
+    public string? ItemCode { get; init; }
+    /// <summary>
+    /// 多部位或多片段退费时的片段序号。
+    /// </summary>
+    public int? PartSeq { get; init; }
+    /// <summary>
+    /// 退费业务发生时间。为空时使用当前时间。
+    /// </summary>
+    public DateTime? ReverseTime { get; init; }
     /// <summary>
     /// 本次冲正数量；为空时可由服务层按原请求数量处理。
     /// </summary>

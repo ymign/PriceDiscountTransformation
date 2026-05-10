@@ -7,6 +7,7 @@ using Pricing.RuleCenter.Api.Dto;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 using Pricing.RuleCenter.Core.Options;
+using Pricing.RuleCenter.Core.Services;
 using SqlSugar;
 
 namespace Pricing.RuleCenter.Api.Services;
@@ -109,6 +110,10 @@ public sealed class PricingApiService
         _logger = logger;
     }
 
+    private sealed record ItemPricingCalculation(
+        PricingCalculateItemRequest Item,
+        PricingResult Result);
+
     /// <summary>
     /// 执行试算计价。
     /// </summary>
@@ -121,26 +126,42 @@ public sealed class PricingApiService
     /// </remarks>
     public async Task<PricingCalculateResponse> SimulateAsync(PricingCalculateRequest request)
     {
+        var items = GetRequiredItems(request);
+
         // ========== 第一阶段：价格入口校验 ==========
         // 即使是试算，也不允许在启用权威单价校验时用错误单价继续计算。
         // 这样可以提前暴露 HIS、自助机或公众号传参错误，避免试算展示和最终确认口径不一致。
-        await ValidateAuthorityPriceAsync(request);
+        await ValidateAuthorityPriceAsync(items);
 
         // ========== 第二阶段：构造非占额上下文并执行引擎 ==========
         // shouldLockLimits=false 表示执行器只按历史 PENDING/CONFIRMED 数据试算，
         // 不创建 PR_LIMIT_LOCK 锁，也不写 PR_LIMIT_OCCUPY 占用。
-        var context = BuildContext(request, "SIMULATE", shouldLockLimits: false);
-        var result = await _engine.CalculateAsync(context);
+        var inRequestOccupiedQtyByLimitDimension = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+        var inRequestLimitOccupies = new List<LimitOccupy>();
+        var calculations = new List<ItemPricingCalculation>(items.Count);
+        foreach (var item in items)
+        {
+            var context = BuildContext(
+                request,
+                item,
+                "SIMULATE",
+                shouldLockLimits: false,
+                inRequestOccupiedQtyByLimitDimension,
+                inRequestLimitOccupies);
+            var result = await _engine.CalculateAsync(context);
+            AccumulateInRequestLimits(inRequestOccupiedQtyByLimitDimension, inRequestLimitOccupies, result);
+            calculations.Add(new ItemPricingCalculation(item, result));
+        }
 
         // ========== 第三阶段：保存试算追溯 ==========
         // 试算不会进入资金状态机，但保留请求和步骤日志可以支持后续页面解释、问题复盘和影子对账。
         var requestLog = await SaveRequestLog(
-            request, result, "SIMULATE", "SIMULATED", fingerprint: null);
-        await SaveTraceSteps(requestLog.RequestId, result);
+            request, items, calculations, "SIMULATE", "SIMULATED", fingerprint: null);
+        await SaveTraceSteps(requestLog.RequestId, calculations);
 
         // ========== 第四阶段：保存响应快照 ==========
         // 响应快照不是幂等必需，但可以让追溯查询直接展示当时返回给渠道的结果。
-        var response = BuildResponse(requestLog.RequestId, result);
+        var response = BuildResponse(requestLog.RequestId, calculations);
         await SaveResponseJson(requestLog, response);
         return response;
     }
@@ -159,6 +180,8 @@ public sealed class PricingApiService
     /// </remarks>
     public async Task<PricingCalculateResponse> ConfirmAsync(PricingCalculateRequest request)
     {
+        var items = GetRequiredItems(request);
+
         // ========== 第一阶段：强制稳定业务号 ==========
         // requestNo 是一次 HTTP 调用流水，超时重试时可能变化；BusinessRequestNo 才代表一次收费确认动作。
         // 如果这里允许空业务号，服务端无法区分“同一动作重试”和“新收费动作”，会导致重复占额。
@@ -169,12 +192,12 @@ public sealed class PricingApiService
 
         // ========== 第二阶段：权威单价校验 ==========
         // 单价错误属于资金风险，不应该进入规则引擎后再修正。这里直接失败，让渠道重新取价或修正参数。
-        await ValidateAuthorityPriceAsync(request);
+        await ValidateAuthorityPriceAsync(items);
 
         // ========== 第三阶段：幂等键和请求指纹校验 ==========
         // 幂等键只定位“是否同一次业务动作”；请求指纹负责证明“这次业务动作的参数没有悄悄变化”。
         // 两者不能互相替代，否则用户改了部位、数量或 extraParams 后可能继续复用旧结果。
-        var fingerprint = BuildFingerprint(request, "CONFIRM");
+        var fingerprint = BuildFingerprint(request, items, "CONFIRM");
         var existing = await _requestLogRepository.GetByBusinessKeyAsync(
             request.SourceSystem, request.BusinessRequestNo!, "CONFIRM");
         if (existing is not null)
@@ -205,24 +228,39 @@ public sealed class PricingApiService
         {
             // shouldLockLimits=true 表示限额执行器会在计算窗口累计前锁定 PR_LIMIT_LOCK，
             // 以防两个渠道同时确认同一患者同一项目时一起看到“还剩额度”。
-            var context = BuildContext(request, "CONFIRM", shouldLockLimits: true);
-            var result = await _engine.CalculateAsync(context);
+            var inRequestOccupiedQtyByLimitDimension = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
+            var inRequestLimitOccupies = new List<LimitOccupy>();
+            var calculations = new List<ItemPricingCalculation>(items.Count);
+            foreach (var item in items)
+            {
+                var context = BuildContext(
+                    request,
+                    item,
+                    "CONFIRM",
+                    shouldLockLimits: true,
+                    inRequestOccupiedQtyByLimitDimension,
+                    inRequestLimitOccupies);
+                var result = await _engine.CalculateAsync(context);
+                AccumulateInRequestLimits(inRequestOccupiedQtyByLimitDimension, inRequestLimitOccupies, result);
+                calculations.Add(new ItemPricingCalculation(item, result));
+            }
 
             // 请求日志先落库并拿到 RequestId，后续步骤、折价明细和占额都用它串联。
             var requestLog = await SaveRequestLog(
-                request, result, "CONFIRM", "CONFIRM_PENDING", fingerprint);
-            await SaveTraceSteps(requestLog.RequestId, result);
+                request, items, calculations, "CONFIRM", "CONFIRM_PENDING", fingerprint);
+            await SaveTraceSteps(requestLog.RequestId, calculations);
 
             // 普通项目没有命中特殊规则时仍有请求日志和响应快照，但不写折价明细和占额。
             // 特殊项目必须写 PENDING 明细与 PENDING 占额，等待 HIS commit/cancel。
-            if (result.IsSpecialItem)
+            foreach (var calculation in calculations.Where(c => c.Result.IsSpecialItem))
             {
-                await SaveDiscountDetail(requestLog.RequestId, request, result, "PENDING");
-                await SaveLimitOccupies(requestLog.RequestId, result);
+                await SaveDiscountDetail(
+                    requestLog.RequestId, request, calculation.Item, calculation.Result, "PENDING");
+                await SaveLimitOccupies(requestLog.RequestId, calculation.Result);
             }
 
             // 最后保存响应快照。幂等重试优先读取这个快照，保证返回内容和首次 confirm 完全一致。
-            var response = BuildResponse(requestLog.RequestId, result);
+            var response = BuildResponse(requestLog.RequestId, calculations);
             await SaveResponseJson(requestLog, response);
             return response;
         });
@@ -319,12 +357,12 @@ public sealed class PricingApiService
     /// <summary>
     /// 对已经落账确认的计价结果执行冲正。
     /// </summary>
-    /// <param name="request">冲正请求，当前实现只支持整笔冲正。</param>
+    /// <param name="request">冲正请求，支持按收费明细、项目和片段定位部分退费。</param>
     /// <returns>异步任务。</returns>
     /// <remarks>
     /// reverse 的语义不同于 cancel。cancel 处理“未落账的确认结果”，reverse 处理“已经落账的收费结果”。
-    /// 当前阶段为了避免部分退费释放额度过量，仅支持整笔冲正；部分退费需要按 partSeq、历史已退数量和金额
-    /// 做更细的校验后再开放。
+    /// 部分退费必须校验“本次退费 + 历史已退 <= 原有效收费数量”。当日退费通过负向占额释放额度；
+    /// 隔日退费只记录冲正事实，不回写历史窗口，重收时按重收当天业务时间重新校验。
     /// </remarks>
     public async Task ReverseAsync(PricingReverseRequest request)
     {
@@ -343,41 +381,75 @@ public sealed class PricingApiService
                     $"只有CONFIRMED状态可以REVERSE, 当前: {log.BusinessStatus}");
             }
 
-            // ========== 第二阶段：确认当前是否为整笔冲正 ==========
-            // 部分退费需要校验“本次退费 + 历史已退 <= 原有效收费”，还要处理多部位 partSeq。
-            // 当前接口没有足够信息表达这些口径，所以宁可明确拒绝，也不能自动释放错误额度。
+            // ========== 第二阶段：定位原折价明细并校验可退数量 ==========
             var details = await _discountRepository.GetByRequestIdAsync(request.OriginalRequestId);
-            var originalQty = details.Sum(d => d.FinalQty ?? 0);
-            var originalAmt = details.Sum(d => d.FinalAmt ?? 0);
-            var reverseQty = request.ReverseQty ?? originalQty;
-            var reverseAmt = request.ReverseAmt ?? originalAmt;
-            if (reverseQty != originalQty || reverseAmt != originalAmt)
+            var matchedDetails = FilterReverseDetails(details, request);
+            if (matchedDetails.Count == 0)
             {
-                throw new InvalidOperationException("PARTIAL_REVERSE_NOT_SUPPORTED: 当前接口只支持整笔冲正");
+                throw new InvalidOperationException("REVERSE_DETAIL_NOT_FOUND: 未找到可退费的原收费明细");
             }
 
-            // ========== 第三阶段：推进原请求与关联记录状态 ==========
-            // 整笔冲正下，原占用和折价明细可直接标记 REVERSED，后续累计查询不再把它当作有效收费。
-            log.BusinessStatus = "REVERSED";
-            log.ResponseAt = DateTime.Now;
-            await _requestLogRepository.UpdateAsync(log);
+            var allOriginalQty = details
+                .Where(d => d.Status == "CONFIRMED" || d.Status == "COMMITTED")
+                .Sum(d => d.FinalQty ?? 0);
+            var originalQty = matchedDetails.Sum(d => d.FinalQty ?? 0);
+            var originalAmt = matchedDetails.Sum(d => d.FinalAmt ?? 0);
+            var reverseQty = request.ReverseQty ?? originalQty;
+            if (reverseQty <= 0)
+            {
+                throw new InvalidOperationException("REVERSE_QTY_INVALID: 退费数量必须大于0");
+            }
 
-            await _discountRepository.UpdateStatusByRequestIdAsync(request.OriginalRequestId, "REVERSED");
-            await _limitRepository.UpdateStatusByRequestIdAsync(request.OriginalRequestId, "REVERSED");
+            var historicalReversedQty = await GetHistoricalReversedQtyAsync(request);
+            var allHistoricalReversedQty = await GetHistoricalReversedQtyAsync(request.OriginalRequestId);
+            if (historicalReversedQty + reverseQty > originalQty)
+            {
+                throw new InvalidOperationException(
+                    $"REVERSE_QTY_EXCEEDED: 原有效数量={originalQty}, 历史已退={historicalReversedQty}, 本次退费={reverseQty}");
+            }
 
-            // ========== 第四阶段：写冲正审计 ==========
+            var reverseAmt = request.ReverseAmt ??
+                (originalQty == 0 ? 0 : originalAmt * reverseQty / originalQty);
+            reverseAmt = PricingAmountRounder.RoundFinalAmount(reverseAmt);
+            var historicalReversedAmt = await GetHistoricalReversedAmtAsync(request);
+            if (historicalReversedAmt + reverseAmt > originalAmt)
+            {
+                throw new InvalidOperationException(
+                    $"REVERSE_AMT_EXCEEDED: 原有效金额={originalAmt}, 历史已退={historicalReversedAmt}, 本次退费={reverseAmt}");
+            }
+
+            // ========== 第三阶段：根据全退或部分退费推进状态 ==========
+            // 全退时原请求整体进入 REVERSED，旧占额不再参与累计；部分退费则保留原 CONFIRMED，
+            // 并用负向占额扣减当前累计，避免把未退数量也释放掉。
+            if (allHistoricalReversedQty + reverseQty == allOriginalQty)
+            {
+                log.BusinessStatus = "REVERSED";
+                log.ResponseAt = DateTime.Now;
+                await _requestLogRepository.UpdateAsync(log);
+
+                await _discountRepository.UpdateStatusByRequestIdAsync(request.OriginalRequestId, "REVERSED");
+                await _limitRepository.UpdateStatusByRequestIdAsync(request.OriginalRequestId, "REVERSED");
+            }
+
+            // ========== 第四阶段：当日退费写负向占额 ==========
+            var reverseTime = request.ReverseTime ?? DateTime.Now;
+            await InsertNegativeLimitOccupiesAsync(request, reverseQty, reverseAmt, reverseTime);
+
+            // ========== 第五阶段：写冲正审计 ==========
             // 这张表回答“为什么原来的收费结果被冲掉”，也是后续财务追查和退费口径复盘的入口。
             await _reverseLogRepository.InsertAsync(new ChargeReverseLog
             {
                 OriginalRequestId = request.OriginalRequestId,
                 ChargeNo = log.ChargeNo,
                 ReverseNo = request.ReverseNo,
-                ItemCode = log.ItemCode,
+                ChargeDetailNo = NormalizeString(request.ChargeDetailNo),
+                ItemCode = NormalizeString(request.ItemCode) ?? matchedDetails.FirstOrDefault()?.ItemCode ?? log.ItemCode,
+                PartSeq = request.PartSeq,
                 ReverseQty = reverseQty,
                 ReverseAmt = reverseAmt,
                 ReverseReason = request.Reason,
                 ReversedBy = request.ReversedBy,
-                ReversedAt = DateTime.Now
+                ReversedAt = reverseTime
             });
 
             _logger.LogInformation("REVERSE OriginalRequestId={OriginalRequestId}", request.OriginalRequestId);
@@ -407,7 +479,128 @@ public sealed class PricingApiService
         };
     }
 
-    private async Task ValidateAuthorityPriceAsync(PricingCalculateRequest request)
+    private static IReadOnlyList<ChargeDiscountDetail> FilterReverseDetails(
+        IReadOnlyList<ChargeDiscountDetail> details,
+        PricingReverseRequest request)
+    {
+        var query = details.Where(d => d.Status == "CONFIRMED" || d.Status == "COMMITTED");
+
+        var chargeDetailNo = NormalizeString(request.ChargeDetailNo);
+        if (!string.IsNullOrWhiteSpace(chargeDetailNo))
+        {
+            query = query.Where(d => string.Equals(
+                d.ChargeDetailNo, chargeDetailNo, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var itemCode = NormalizeString(request.ItemCode);
+        if (!string.IsNullOrWhiteSpace(itemCode))
+        {
+            query = query.Where(d => string.Equals(
+                d.ItemCode, itemCode, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (request.PartSeq.HasValue)
+        {
+            query = query.Where(d => d.PartSeq == request.PartSeq);
+        }
+
+        return query.ToList();
+    }
+
+    private async Task<decimal> GetHistoricalReversedQtyAsync(PricingReverseRequest request)
+    {
+        var reverseLogs = await _reverseLogRepository.GetByOriginalRequestIdAsync(request.OriginalRequestId);
+        var chargeDetailNo = NormalizeString(request.ChargeDetailNo);
+        var itemCode = NormalizeString(request.ItemCode);
+
+        return reverseLogs
+            .Where(r => string.IsNullOrWhiteSpace(chargeDetailNo) ||
+                        string.Equals(r.ChargeDetailNo, chargeDetailNo, StringComparison.OrdinalIgnoreCase))
+            .Where(r => string.IsNullOrWhiteSpace(itemCode) ||
+                        string.Equals(r.ItemCode, itemCode, StringComparison.OrdinalIgnoreCase))
+            .Where(r => !request.PartSeq.HasValue || r.PartSeq == request.PartSeq)
+            .Sum(r => r.ReverseQty ?? 0);
+    }
+
+    private async Task<decimal> GetHistoricalReversedQtyAsync(long originalRequestId)
+    {
+        var reverseLogs = await _reverseLogRepository.GetByOriginalRequestIdAsync(originalRequestId);
+        return reverseLogs.Sum(r => r.ReverseQty ?? 0);
+    }
+
+    private async Task<decimal> GetHistoricalReversedAmtAsync(PricingReverseRequest request)
+    {
+        var reverseLogs = await _reverseLogRepository.GetByOriginalRequestIdAsync(request.OriginalRequestId);
+        var chargeDetailNo = NormalizeString(request.ChargeDetailNo);
+        var itemCode = NormalizeString(request.ItemCode);
+
+        return reverseLogs
+            .Where(r => string.IsNullOrWhiteSpace(chargeDetailNo) ||
+                        string.Equals(r.ChargeDetailNo, chargeDetailNo, StringComparison.OrdinalIgnoreCase))
+            .Where(r => string.IsNullOrWhiteSpace(itemCode) ||
+                        string.Equals(r.ItemCode, itemCode, StringComparison.OrdinalIgnoreCase))
+            .Where(r => !request.PartSeq.HasValue || r.PartSeq == request.PartSeq)
+            .Sum(r => r.ReverseAmt ?? 0);
+    }
+
+    private async Task InsertNegativeLimitOccupiesAsync(
+        PricingReverseRequest request,
+        decimal reverseQty,
+        decimal reverseAmt,
+        DateTime reverseTime)
+    {
+        var originalOccupies = await _limitRepository.GetByRequestIdAsync(request.OriginalRequestId);
+        var candidates = originalOccupies
+            .Where(o => o.Status == "CONFIRMED")
+            .Where(o => o.OccupyType == "CHARGE")
+            .Where(o => string.IsNullOrWhiteSpace(request.ItemCode) ||
+                        string.Equals(o.ItemCode, request.ItemCode, StringComparison.OrdinalIgnoreCase))
+            .Where(o => !request.PartSeq.HasValue || o.PartSeq == request.PartSeq)
+            .Where(o => IsSameBusinessDay(o.BusinessChargeTime, reverseTime))
+            .ToList();
+
+        var totalOriginalQty = candidates.Sum(o => Math.Abs(o.OccupyQty));
+        if (totalOriginalQty <= 0)
+        {
+            return;
+        }
+
+        foreach (var occupy in candidates)
+        {
+            var ratio = Math.Abs(occupy.OccupyQty) / totalOriginalQty;
+            var releaseQty = reverseQty * ratio;
+            var releaseAmt = reverseAmt * ratio;
+            await _limitRepository.InsertAsync(new LimitOccupy
+            {
+                RequestId = request.OriginalRequestId,
+                TraceId = occupy.TraceId,
+                PatientId = occupy.PatientId,
+                ItemCode = occupy.ItemCode,
+                RuleId = occupy.RuleId,
+                RuleVersionNo = occupy.RuleVersionNo,
+                LimitType = occupy.LimitType,
+                LimitKey = occupy.LimitKey,
+                LimitDimensionCode = occupy.LimitDimensionCode,
+                OccupyQty = -releaseQty,
+                OccupyAmt = -PricingAmountRounder.RoundFinalAmount(releaseAmt),
+                OccupyType = "REVERSE",
+                OriginalOccupyId = occupy.OccupyId,
+                BusinessChargeTime = occupy.BusinessChargeTime,
+                PartSeq = occupy.PartSeq,
+                Status = "CONFIRMED",
+                OccupiedAt = DateTime.Now,
+                ConfirmedAt = DateTime.Now
+            });
+        }
+    }
+
+    private static bool IsSameBusinessDay(DateTime? originalBusinessTime, DateTime reverseTime)
+    {
+        return originalBusinessTime.HasValue &&
+               originalBusinessTime.Value.Date == reverseTime.Date;
+    }
+
+    private async Task ValidateAuthorityPriceAsync(IReadOnlyList<PricingCalculateItemRequest> items)
     {
         // ========== 第一阶段：兼容开关 ==========
         // 开发或联调环境可能暂时没有 HIS 权威物价表。配置关闭时跳过校验，
@@ -419,25 +612,33 @@ public sealed class PricingApiService
 
         // ========== 第二阶段：读取权威单价 ==========
         // 单价来源以计价中心可访问的权威主数据为准，请求中的 UnitPrice 只作为对账校验输入。
-        var authorityPrice = await _priceMasterRepository.GetUnitPriceAsync(request.ItemCode);
-        if (!authorityPrice.HasValue)
+        foreach (var item in items)
         {
-            // 找不到权威单价时不能“按渠道传入价格先算”，否则统一计价中心会变成错误价格的放大器。
-            throw new InvalidOperationException(
-                $"PRICE_MISMATCH: 未找到项目 {request.ItemCode} 的权威单价");
-        }
+            var authorityPrice = await _priceMasterRepository.GetUnitPriceAsync(item.ItemCode);
+            if (!authorityPrice.HasValue)
+            {
+                // 找不到权威单价时不能“按渠道传入价格先算”，否则统一计价中心会变成错误价格的放大器。
+                throw new InvalidOperationException(
+                    $"PRICE_MISMATCH: 未找到项目 {item.ItemCode} 的权威单价");
+            }
 
-        // ========== 第三阶段：按金额精度比较 ==========
-        // Oracle 表和 C# 都以 4 位小数为当前金额精度，因此比较前先统一 round 到 4 位。
-        if (Math.Round(authorityPrice.Value, 4) != Math.Round(request.UnitPrice, 4))
-        {
-            throw new InvalidOperationException(
-                $"PRICE_MISMATCH: 项目 {request.ItemCode} 权威单价={authorityPrice.Value}, 请求单价={request.UnitPrice}");
+            // ========== 第三阶段：按金额精度比较 ==========
+            // Oracle 表和 C# 都以 4 位小数为当前金额精度，因此比较前先统一 round 到 4 位。
+            if (Math.Round(authorityPrice.Value, 4) != Math.Round(item.UnitPrice, 4))
+            {
+                throw new InvalidOperationException(
+                    $"PRICE_MISMATCH: 项目 {item.ItemCode} 权威单价={authorityPrice.Value}, 请求单价={item.UnitPrice}");
+            }
         }
     }
 
     private static PricingContext BuildContext(
-        PricingCalculateRequest request, string callType, bool shouldLockLimits)
+        PricingCalculateRequest request,
+        PricingCalculateItemRequest item,
+        string callType,
+        bool shouldLockLimits,
+        IReadOnlyDictionary<string, decimal>? inRequestOccupiedQtyByLimitDimension = null,
+        IReadOnlyList<LimitOccupy>? inRequestLimitOccupies = null)
     {
         // ========== 第一阶段：把接口 DTO 转换成引擎上下文 ==========
         // 引擎只关心标准化后的业务字段。这里统一 trim 字符串，并把空字符串折叠为 null，
@@ -448,18 +649,26 @@ public sealed class PricingApiService
             ShouldLockLimits = shouldLockLimits,
             PatientId = request.PatientId.Trim(),
             VisitId = NormalizeString(request.VisitId),
-            ItemCode = request.ItemCode.Trim(),
-            ItemName = NormalizeString(request.ItemName),
-            InputQty = request.InputQty,
-            Unit = NormalizeString(request.Unit),
-            UnitPrice = request.UnitPrice,
-            BodyPartCode = NormalizeString(request.BodyPartCode),
+            ItemCode = item.ItemCode.Trim(),
+            ItemName = NormalizeString(item.ItemName),
+            InputQty = item.InputQty,
+            Unit = NormalizeString(item.Unit),
+            UnitPrice = item.UnitPrice,
+            BodyPartCode = NormalizeString(item.BodyPartCode),
             ChargeScene = NormalizeString(request.ChargeScene),
-            BusinessChargeTime = request.BusinessChargeTime,
+            BusinessChargeTime = item.BusinessChargeTime ?? request.BusinessChargeTime,
             SourceSystem = request.SourceSystem.Trim(),
             ChargeNo = NormalizeString(request.ChargeNo),
             BusinessRequestNo = NormalizeString(request.BusinessRequestNo),
-            PricingParts = request.PricingParts?.Select(p => new PricingPartItem
+            InRequestOccupiedQtyByLimitDimension =
+                inRequestOccupiedQtyByLimitDimension?.ToDictionary(
+                    item => item.Key,
+                    item => item.Value,
+                    StringComparer.OrdinalIgnoreCase) ?? new Dictionary<string, decimal>(),
+            InRequestLimitOccupies = inRequestLimitOccupies is null
+                ? Array.Empty<LimitOccupy>()
+                : inRequestLimitOccupies.ToList(),
+            PricingParts = item.PricingParts?.Select(p => new PricingPartItem
             {
                 PartSeq = p.PartSeq,
                 PartCode = NormalizeString(p.PartCode),
@@ -477,7 +686,8 @@ public sealed class PricingApiService
 
     private async Task<ChargeRequestLog> SaveRequestLog(
         PricingCalculateRequest request,
-        PricingResult result,
+        IReadOnlyList<PricingCalculateItemRequest> items,
+        IReadOnlyList<ItemPricingCalculation> calculations,
         string callType,
         string businessStatus,
         string? fingerprint)
@@ -498,15 +708,17 @@ public sealed class PricingApiService
             VisitId = NormalizeString(request.VisitId),
             ChargeScene = NormalizeString(request.ChargeScene),
             ChargeNo = NormalizeString(request.ChargeNo),
-            ChargeDetailNo = NormalizeString(request.ChargeDetailNo),
-            ItemCode = request.ItemCode.Trim(),
-            ItemName = NormalizeString(request.ItemName),
-            InputQty = request.InputQty,
-            InputUnit = NormalizeString(request.Unit),
-            BodyPartCode = NormalizeString(request.BodyPartCode),
-            BusinessChargeTime = request.BusinessChargeTime,
+            ChargeDetailNo = items.Count == 1 ? NormalizeString(items[0].ChargeDetailNo) : null,
+            ItemCode = items.Count == 1 ? items[0].ItemCode.Trim() : null,
+            ItemName = items.Count == 1 ? NormalizeString(items[0].ItemName) : null,
+            InputQty = items.Count == 1 ? items[0].InputQty : null,
+            InputUnit = items.Count == 1 ? NormalizeString(items[0].Unit) : null,
+            BodyPartCode = items.Count == 1 ? NormalizeString(items[0].BodyPartCode) : null,
+            BusinessChargeTime = items.Count == 1
+                ? items[0].BusinessChargeTime ?? request.BusinessChargeTime
+                : request.BusinessChargeTime,
             RequestJson = JsonConvert.SerializeObject(request),
-            ResponseJson = JsonConvert.SerializeObject(result),
+            ResponseJson = JsonConvert.SerializeObject(calculations.Select(c => c.Result).ToList()),
             RequestAt = DateTime.Now,
             ResponseAt = DateTime.Now,
             IsSuccess = "Y"
@@ -527,25 +739,50 @@ public sealed class PricingApiService
         await _requestLogRepository.UpdateAsync(log);
     }
 
-    private async Task SaveTraceSteps(long requestId, PricingResult result)
+    private static void AccumulateInRequestLimits(
+        Dictionary<string, decimal> inRequestOccupiedQtyByLimitDimension,
+        List<LimitOccupy> inRequestLimitOccupies,
+        PricingResult result)
+    {
+        foreach (var occupy in result.LimitOccupies.Where(o =>
+                     !string.IsNullOrWhiteSpace(o.LimitType) &&
+                     !string.IsNullOrWhiteSpace(o.LimitDimensionCode)))
+        {
+            var key = BuildInRequestLimitKey(occupy.LimitType, occupy.LimitDimensionCode);
+            inRequestOccupiedQtyByLimitDimension.TryGetValue(key, out var existingQty);
+            inRequestOccupiedQtyByLimitDimension[key] = existingQty + occupy.OccupyQty;
+            inRequestLimitOccupies.Add(occupy);
+        }
+    }
+
+    private static string BuildInRequestLimitKey(string limitType, string? limitDimensionCode)
+    {
+        return $"{limitType.Trim().ToUpperInvariant()}:{limitDimensionCode?.Trim().ToUpperInvariant()}";
+    }
+
+    private async Task SaveTraceSteps(long requestId, IReadOnlyList<ItemPricingCalculation> calculations)
     {
         // 没有命中特殊规则时可能没有步骤。这里直接返回，避免写空集合导致不必要的数据库调用。
-        if (result.TraceSteps.Count == 0)
+        var steps = calculations
+            .SelectMany(c => c.Result.TraceSteps.Select(s => (c.Item, Step: s)))
+            .ToList();
+        if (steps.Count == 0)
         {
             return;
         }
 
         // 步骤日志只保存 DDL 允许的 StepType。ActionExecutionPipeline 已经把具体动作类型映射为
         // MATCH/FORMULA/LIMIT/DISCOUNT 等稳定类别，避免违反数据库 CHECK 约束。
-        var entities = result.TraceSteps.Select(s => new ChargeTraceStep
+        var stepNo = 1;
+        var entities = steps.Select(s => new ChargeTraceStep
         {
             RequestId = requestId,
-            StepNo = s.StepNo,
-            StepName = s.StepType,
-            StepType = s.StepType,
-            InputSnapshot = s.InputValue?.ToString(),
-            OutputSnapshot = s.OutputValue?.ToString(),
-            StepDesc = s.StepDesc,
+            StepNo = stepNo++,
+            StepName = s.Step.StepType,
+            StepType = s.Step.StepType,
+            InputSnapshot = s.Step.InputValue?.ToString(),
+            OutputSnapshot = s.Step.OutputValue?.ToString(),
+            StepDesc = $"{s.Item.ItemCode}: {s.Step.StepDesc}",
             CreatedAt = DateTime.Now
         }).ToList();
 
@@ -555,6 +792,7 @@ public sealed class PricingApiService
     private async Task SaveDiscountDetail(
         long requestId,
         PricingCalculateRequest request,
+        PricingCalculateItemRequest item,
         PricingResult result,
         string status)
     {
@@ -569,19 +807,20 @@ public sealed class PricingApiService
         {
             RequestId = requestId,
             ChargeNo = NormalizeString(request.ChargeNo),
-            ChargeDetailNo = NormalizeString(request.ChargeDetailNo),
+            ChargeDetailNo = NormalizeString(item.ChargeDetailNo),
             PatientId = request.PatientId,
             VisitId = request.VisitId,
-            ItemCode = request.ItemCode,
-            ItemName = request.ItemName,
+            ItemCode = item.ItemCode,
+            ItemName = item.ItemName,
             RuleId = firstRuleId == 0 ? null : firstRuleId,
-            OriginalQty = request.InputQty,
+            OriginalQty = item.InputQty,
+            ConvertedQty = result.FinalQty,
             FinalQty = result.FinalQty,
             UnitPrice = result.UnitPrice,
-            OriginalAmt = request.UnitPrice * request.InputQty,
-            CalculatedAmt = result.FinalAmount,
-            FinalAmt = result.FinalAmount,
-            DiscountAmt = result.DiscountAmount,
+            OriginalAmt = PricingAmountRounder.RoundFinalAmount(item.UnitPrice * item.InputQty),
+            CalculatedAmt = PricingAmountRounder.RoundFinalAmount(result.FinalAmount),
+            FinalAmt = PricingAmountRounder.RoundFinalAmount(result.FinalAmount),
+            DiscountAmt = PricingAmountRounder.RoundFinalAmount(result.DiscountAmount),
             Status = status,
             OccurredAt = DateTime.Now
         };
@@ -604,18 +843,49 @@ public sealed class PricingApiService
         }
     }
 
-    private static PricingCalculateResponse BuildResponse(long requestId, PricingResult result)
+    private static PricingCalculateResponse BuildResponse(
+        long requestId,
+        IReadOnlyList<ItemPricingCalculation> calculations)
     {
         // 响应 DTO 只返回渠道需要使用或展示的字段；更完整的内部计算状态留在追溯日志和请求快照里。
+        var itemResponses = calculations
+            .Select(c => BuildItemResponse(requestId, c.Item, c.Result))
+            .ToList();
+        var first = itemResponses.FirstOrDefault();
+
         return new PricingCalculateResponse
         {
             RequestId = requestId,
+            Items = itemResponses,
+            IsSpecialItem = itemResponses.Any(i => i.IsSpecialItem),
+            InputQty = itemResponses.Sum(i => i.InputQty),
+            FinalQty = itemResponses.Sum(i => i.FinalQty),
+            UnitPrice = itemResponses.Count == 1 ? first?.UnitPrice ?? 0 : 0,
+            FinalAmount = itemResponses.Sum(i => i.FinalAmount),
+            DiscountAmount = itemResponses.Sum(i => i.DiscountAmount),
+            TraceSteps = itemResponses.Count == 1 ? first?.TraceSteps ?? Array.Empty<PricingTraceStepResponse>() : Array.Empty<PricingTraceStepResponse>(),
+            MatchedRuleIds = itemResponses.SelectMany(i => i.MatchedRuleIds).Distinct().ToList()
+        };
+    }
+
+    private static PricingCalculateItemResponse BuildItemResponse(
+        long requestId,
+        PricingCalculateItemRequest item,
+        PricingResult result)
+    {
+        return new PricingCalculateItemResponse
+        {
+            ItemRequestNo = NormalizeString(item.ItemRequestNo),
+            ChargeDetailNo = NormalizeString(item.ChargeDetailNo),
+            RequestId = requestId,
+            ItemCode = item.ItemCode.Trim(),
+            ItemName = NormalizeString(item.ItemName),
             IsSpecialItem = result.IsSpecialItem,
             InputQty = result.InputQty,
             FinalQty = result.FinalQty,
             UnitPrice = result.UnitPrice,
-            FinalAmount = result.FinalAmount,
-            DiscountAmount = result.DiscountAmount,
+            FinalAmount = PricingAmountRounder.RoundFinalAmount(result.FinalAmount),
+            DiscountAmount = PricingAmountRounder.RoundFinalAmount(result.DiscountAmount),
             TraceSteps = result.TraceSteps.Select(s => new PricingTraceStepResponse
             {
                 StepNo = s.StepNo,
@@ -664,18 +934,27 @@ public sealed class PricingApiService
         // 请求日志、折价明细、限额占用、冲正日志之间不会出现半提交。
         try
         {
-            await _db.Ado.BeginTranAsync();
+            if (_db is not null)
+            {
+                await _db.Ado.BeginTranAsync();
+            }
             var result = await action();
             // ========== 第二阶段：全部成功后提交 ==========
             // 只有所有仓储操作都成功，才允许对外暴露本次状态推进。
-            await _db.Ado.CommitTranAsync();
+            if (_db is not null)
+            {
+                await _db.Ado.CommitTranAsync();
+            }
             return result;
         }
         catch
         {
             // ========== 第三阶段：任何异常都回滚 ==========
             // 资金链路宁可失败返回给渠道重试，也不能留下部分写入的请求或占额。
-            await _db.Ado.RollbackTranAsync();
+            if (_db is not null)
+            {
+                await _db.Ado.RollbackTranAsync();
+            }
             throw;
         }
     }
@@ -689,7 +968,10 @@ public sealed class PricingApiService
         });
     }
 
-    private static string BuildFingerprint(PricingCalculateRequest request, string callType)
+    private static string BuildFingerprint(
+        PricingCalculateRequest request,
+        IReadOnlyList<PricingCalculateItemRequest> items,
+        string callType)
     {
         // ========== 第一阶段：构造规范化业务载荷 ==========
         // 指纹必须覆盖会影响规则匹配和金额的字段。只比较 patientId/itemCode/inputQty 是不够的：
@@ -704,33 +986,47 @@ public sealed class PricingApiService
             encounterNo = NormalizeString(request.EncounterNo),
             chargeScene = NormalizeString(request.ChargeScene),
             chargeNo = NormalizeString(request.ChargeNo),
-            chargeDetailNo = NormalizeString(request.ChargeDetailNo),
-            itemCode = NormalizeString(request.ItemCode),
-            itemName = NormalizeString(request.ItemName),
-            inputQty = Math.Round(request.InputQty, 4),
-            inputUnit = NormalizeString(request.Unit),
-            unitPrice = Math.Round(request.UnitPrice, 4),
             chargeTime = request.BusinessChargeTime,
-            bodyPartCode = NormalizeString(request.BodyPartCode),
-            operationNo = GetExtraParam(request, "operationNo"),
-            pregnancyNo = GetExtraParam(request, "pregnancyNo"),
-            mainChargeDetailNo = GetExtraParam(request, "mainChargeDetailNo"),
+            operationNo = GetExtraParam(request.ExtraParams, "operationNo"),
+            pregnancyNo = GetExtraParam(request.ExtraParams, "pregnancyNo"),
+            mainChargeDetailNo = GetExtraParam(request.ExtraParams, "mainChargeDetailNo"),
             extraParams = NormalizeExtraParams(request.ExtraParams),
-            pricingParts = request.PricingParts?
-                .OrderBy(p => p.PartSeq ?? int.MaxValue)
-                .ThenBy(p => p.PartCode)
-                .Select(p => new
+            items = items
+                .OrderBy(i => i.ChargeDetailNo)
+                .ThenBy(i => i.ItemRequestNo)
+                .ThenBy(i => i.ItemCode)
+                .Select(i => new
                 {
-                    partSeq = p.PartSeq,
-                    partCode = NormalizeString(p.PartCode),
-                    partName = NormalizeString(p.PartName),
-                    bodyPartCode = NormalizeString(p.BodyPartCode),
-                    qty = Math.Round(p.Qty, 4),
-                    area = p.Area.HasValue ? Math.Round(p.Area.Value, 4) : (decimal?)null,
-                    measureType = NormalizeString(p.MeasureType),
-                    measureValue = p.MeasureValue.HasValue ? Math.Round(p.MeasureValue.Value, 4) : (decimal?)null,
-                    measureUnit = NormalizeString(p.MeasureUnit),
-                    lesionCount = p.LesionCount
+                    itemRequestNo = NormalizeString(i.ItemRequestNo),
+                    chargeDetailNo = NormalizeString(i.ChargeDetailNo),
+                    itemCode = NormalizeString(i.ItemCode),
+                    itemName = NormalizeString(i.ItemName),
+                    inputQty = Math.Round(i.InputQty, 4),
+                    inputUnit = NormalizeString(i.Unit),
+                    unitPrice = Math.Round(i.UnitPrice, 4),
+                    chargeTime = i.BusinessChargeTime ?? request.BusinessChargeTime,
+                    bodyPartCode = NormalizeString(i.BodyPartCode),
+                    operationNo = GetExtraParam(i.ExtraParams, "operationNo"),
+                    pregnancyNo = GetExtraParam(i.ExtraParams, "pregnancyNo"),
+                    mainChargeDetailNo = GetExtraParam(i.ExtraParams, "mainChargeDetailNo"),
+                    extraParams = NormalizeExtraParams(i.ExtraParams),
+                    pricingParts = i.PricingParts?
+                        .OrderBy(p => p.PartSeq ?? int.MaxValue)
+                        .ThenBy(p => p.PartCode)
+                        .Select(p => new
+                        {
+                            partSeq = p.PartSeq,
+                            partCode = NormalizeString(p.PartCode),
+                            partName = NormalizeString(p.PartName),
+                            bodyPartCode = NormalizeString(p.BodyPartCode),
+                            qty = Math.Round(p.Qty, 4),
+                            area = p.Area.HasValue ? Math.Round(p.Area.Value, 4) : (decimal?)null,
+                            measureType = NormalizeString(p.MeasureType),
+                            measureValue = p.MeasureValue.HasValue ? Math.Round(p.MeasureValue.Value, 4) : (decimal?)null,
+                            measureUnit = NormalizeString(p.MeasureUnit),
+                            lesionCount = p.LesionCount
+                        })
+                        .ToList()
                 })
                 .ToList()
         };
@@ -766,15 +1062,34 @@ public sealed class PricingApiService
         };
     }
 
-    private static object? GetExtraParam(PricingCalculateRequest request, string key)
+    private static object? GetExtraParam(IReadOnlyDictionary<string, object?>? extraParams, string key)
     {
-        if (request.ExtraParams is null ||
-            !request.ExtraParams.TryGetValue(key, out var value))
+        if (extraParams is null ||
+            !extraParams.TryGetValue(key, out var value))
         {
             return null;
         }
 
         return NormalizeExtraValue(value);
+    }
+
+    private static IReadOnlyList<PricingCalculateItemRequest> GetRequiredItems(
+        PricingCalculateRequest request)
+    {
+        if (request.Items is null || request.Items.Count == 0)
+        {
+            throw new ArgumentException("费用明细不能为空");
+        }
+
+        foreach (var item in request.Items)
+        {
+            if (string.IsNullOrWhiteSpace(item.ItemCode))
+            {
+                throw new ArgumentException("费用明细项目编码不能为空");
+            }
+        }
+
+        return request.Items;
     }
 
     private static string? NormalizeString(string? value)

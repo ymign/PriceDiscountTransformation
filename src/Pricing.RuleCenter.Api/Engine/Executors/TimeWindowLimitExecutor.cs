@@ -77,6 +77,7 @@ public sealed class TimeWindowLimitExecutor : IRuleActionExecutor
         // PENDING 是并发保护占用，必须计入剩余额度；否则两个未 commit 的 confirm 会同时通过。
         var occupiedQty = await _limitRepository.GetOccupiedQtyAsync(
             "TIME_WINDOW", dimensionCode, windowStart, windowEnd, OccupyStatuses);
+        occupiedQty += GetInRequestOccupiedQty(context, dimensionCode, windowStart, windowEnd);
 
         // ========== 第五阶段：按剩余额度截断数量和金额 ==========
         // 当剩余额度小于等于 0 时，本次有效数量为 0，金额也归 0。
@@ -97,7 +98,7 @@ public sealed class TimeWindowLimitExecutor : IRuleActionExecutor
             context.FinalQty = remainingQty;
             context.FinalAmount = beforeQty == 0
                 ? 0
-                : Math.Round(context.FinalAmount * context.FinalQty / beforeQty, 4);
+                : context.FinalAmount * context.FinalQty / beforeQty;
         }
 
         // ========== 第六阶段：追加占额草稿 ==========
@@ -166,6 +167,30 @@ public sealed class TimeWindowLimitExecutor : IRuleActionExecutor
             BusinessChargeTime = context.BusinessChargeTime,
             OccupyType = "CHARGE"
         });
+    }
+
+    private static decimal GetInRequestOccupiedQty(
+        PricingContext context,
+        string dimensionCode,
+        DateTime windowStart,
+        DateTime windowEnd)
+    {
+        var candidates = context.InRequestLimitOccupies
+            .Where(o => string.Equals(o.LimitType, "TIME_WINDOW", StringComparison.OrdinalIgnoreCase))
+            .Where(o => string.Equals(o.LimitDimensionCode, dimensionCode, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (candidates.Count > 0)
+        {
+            return candidates
+                .Where(o => o.BusinessChargeTime >= windowStart && o.BusinessChargeTime <= windowEnd)
+                .Sum(o => o.OccupyQty);
+        }
+
+        var inRequestKey = $"TIME_WINDOW:{dimensionCode}";
+        return context.InRequestOccupiedQtyByLimitDimension.TryGetValue(inRequestKey, out var cachedQty)
+            ? cachedQty
+            : 0m;
     }
 
     /// <summary>

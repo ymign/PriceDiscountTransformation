@@ -30,6 +30,14 @@ public sealed class RulePublishService
     /// </summary>
     private readonly IRuleChangeLogRepository _changeLogRepository;
     /// <summary>
+    /// 规则条件仓储，用于发布前读取目标版本和现有发布版本的条件维度。
+    /// </summary>
+    private readonly IRuleConditionRepository _conditionRepository;
+    /// <summary>
+    /// 规则动作仓储，用于发布前识别公式、额度和换算动作冲突。
+    /// </summary>
+    private readonly IRuleActionRepository _actionRepository;
+    /// <summary>
     /// 服务日志，用于记录状态机入口的关键操作。
     /// </summary>
     private readonly ILogger<RulePublishService> _logger;
@@ -47,12 +55,16 @@ public sealed class RulePublishService
         IRuleVersionRepository versionRepository,
         IRulePublishRepository publishRepository,
         IRuleChangeLogRepository changeLogRepository,
+        IRuleConditionRepository conditionRepository,
+        IRuleActionRepository actionRepository,
         ILogger<RulePublishService> logger)
     {
         _headerRepository = headerRepository;
         _versionRepository = versionRepository;
         _publishRepository = publishRepository;
         _changeLogRepository = changeLogRepository;
+        _conditionRepository = conditionRepository;
+        _actionRepository = actionRepository;
         _logger = logger;
     }
 
@@ -102,6 +114,8 @@ public sealed class RulePublishService
         {
             throw new InvalidOperationException($"只有草稿版本可以发布, 当前状态: {version.VersionStatus}");
         }
+
+        await ValidatePublishConflictsAsync(header, request.VersionNo);
 
         // ========== 第三阶段：禁用旧生效版本 ==========
         // 系统同一条规则只允许一个当前版本。旧版本保留为 DISABLED，便于回滚时找到最近的历史版本。
@@ -288,6 +302,157 @@ public sealed class RulePublishService
 
         _logger.LogInformation("回滚规则 RuleId={RuleId}, 从 V{FromVersion} 到 V{ToVersion}",
             ruleId, oldVersionNo, previousPublished.VersionNo);
+    }
+
+    private async Task ValidatePublishConflictsAsync(RuleHeader targetHeader, int targetVersionNo)
+    {
+        if (string.IsNullOrWhiteSpace(targetHeader.ItemCode))
+        {
+            return;
+        }
+
+        var targetProfile = await BuildRuleProfileAsync(targetHeader, targetVersionNo);
+        var sameItemRules = await _headerRepository.GetByItemCodeAsync(targetHeader.ItemCode);
+        var publishedRules = sameItemRules
+            .Where(r => r.RuleId != targetHeader.RuleId)
+            .Where(r => r.Status == "PUBLISHED" && r.IsEnabled == "Y")
+            .Where(r => IsEffectiveRangeOverlap(targetHeader, r))
+            .ToList();
+
+        foreach (var existingRule in publishedRules)
+        {
+            var existingProfile = await BuildRuleProfileAsync(existingRule, existingRule.CurrentVersion);
+            if (!HasSceneOverlap(targetProfile.ConditionScopes, existingProfile.ConditionScopes))
+            {
+                continue;
+            }
+
+            if (HasForbiddenActionConflict(targetProfile.Actions, existingProfile.Actions, out var actionType))
+            {
+                throw new InvalidOperationException(
+                    $"RULE_CONFLICT: 项目 {targetHeader.ItemCode} 在相同场景和生效期内已存在 {actionType} 规则，" +
+                    $"RuleId={existingRule.RuleId}");
+            }
+
+            if (targetProfile.Actions.Contains("CONVERT_QTY") &&
+                existingProfile.Actions.Contains("CONVERT_QTY") &&
+                HasSceneAndBodyPartOverlap(targetProfile.ConditionScopes, existingProfile.ConditionScopes))
+            {
+                throw new InvalidOperationException(
+                    $"RULE_CONFLICT: 项目 {targetHeader.ItemCode} 的换算规则部位范围重叠，" +
+                    $"RuleId={existingRule.RuleId}");
+            }
+        }
+    }
+
+    private async Task<RuleConflictProfile> BuildRuleProfileAsync(RuleHeader header, int versionNo)
+    {
+        var conditions = await _conditionRepository.GetByRuleAndVersionAsync(header.RuleId, versionNo);
+        var actions = await _actionRepository.GetByRuleAndVersionAsync(header.RuleId, versionNo);
+
+        return new RuleConflictProfile(
+            BuildConditionScopes(conditions),
+            actions
+                .Where(a => a.IsEnabled == "Y")
+                .Select(a => a.ActionType)
+                .Where(a => !string.IsNullOrWhiteSpace(a))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase));
+    }
+
+    private static IReadOnlyList<RuleConditionScope> BuildConditionScopes(
+        IReadOnlyList<RuleCondition> conditions)
+    {
+        var enabled = conditions
+            .Where(c => c.IsEnabled == "Y")
+            .ToList();
+        if (enabled.Count == 0)
+        {
+            return new[] { RuleConditionScope.Wildcard };
+        }
+
+        return enabled
+            .GroupBy(c => string.IsNullOrWhiteSpace(c.ConditionGroup)
+                ? "DEFAULT"
+                : c.ConditionGroup.Trim())
+            .Select(group => new RuleConditionScope(
+                GetConditionValues(group, "CHARGE_SCENE", "CHARGE_SCENE_MATCH"),
+                GetConditionValues(group, "BODY_PART", "BODY_PART_MATCH")))
+            .ToList();
+    }
+
+    private static HashSet<string> GetConditionValues(
+        IEnumerable<RuleCondition> conditions,
+        params string[] conditionTypes)
+    {
+        var conditionTypeSet = conditionTypes.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return conditions
+            .Where(c => conditionTypeSet.Contains(c.ConditionType))
+            .Select(c => c.RightValue?.Trim())
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .Select(v => v!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static bool IsEffectiveRangeOverlap(RuleHeader left, RuleHeader right)
+    {
+        var leftFrom = left.EffectiveFrom ?? DateTime.MinValue;
+        var leftTo = left.EffectiveTo ?? DateTime.MaxValue;
+        var rightFrom = right.EffectiveFrom ?? DateTime.MinValue;
+        var rightTo = right.EffectiveTo ?? DateTime.MaxValue;
+        return leftFrom <= rightTo && rightFrom <= leftTo;
+    }
+
+    private static bool HasSceneOverlap(
+        IReadOnlyList<RuleConditionScope> left,
+        IReadOnlyList<RuleConditionScope> right)
+    {
+        return left.Any(l => right.Any(r => IsDimensionOverlap(l.ChargeScenes, r.ChargeScenes)));
+    }
+
+    private static bool HasSceneAndBodyPartOverlap(
+        IReadOnlyList<RuleConditionScope> left,
+        IReadOnlyList<RuleConditionScope> right)
+    {
+        return left.Any(l => right.Any(r =>
+            IsDimensionOverlap(l.ChargeScenes, r.ChargeScenes) &&
+            IsDimensionOverlap(l.BodyParts, r.BodyParts)));
+    }
+
+    private static bool IsDimensionOverlap(HashSet<string> left, HashSet<string> right)
+    {
+        return left.Count == 0 || right.Count == 0 || left.Overlaps(right);
+    }
+
+    private static bool HasForbiddenActionConflict(
+        HashSet<string> left,
+        HashSet<string> right,
+        out string actionType)
+    {
+        var forbiddenActions = new[]
+        {
+            "FORMULA_CALC",
+            "APPLY_MIN_AMOUNT",
+            "APPLY_MAX_AMOUNT",
+            "APPLY_DAY_LIMIT_QTY",
+            "APPLY_ONCE_LIMIT_QTY",
+            "APPLY_TIME_WINDOW_LIMIT"
+        };
+
+        actionType = forbiddenActions.FirstOrDefault(a => left.Contains(a) && right.Contains(a)) ?? string.Empty;
+        return !string.IsNullOrEmpty(actionType);
+    }
+
+    private sealed record RuleConflictProfile(
+        IReadOnlyList<RuleConditionScope> ConditionScopes,
+        HashSet<string> Actions);
+
+    private sealed record RuleConditionScope(
+        HashSet<string> ChargeScenes,
+        HashSet<string> BodyParts)
+    {
+        public static RuleConditionScope Wildcard { get; } = new(
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase));
     }
 
     /// <summary>

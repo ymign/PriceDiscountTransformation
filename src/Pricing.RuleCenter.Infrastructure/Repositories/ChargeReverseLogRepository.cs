@@ -28,6 +28,18 @@ public sealed class ChargeReverseLogRepository : IChargeReverseLogRepository
     }
 
     /// <summary>
+    /// 按原请求读取已经发生的冲正流水。
+    /// </summary>
+    /// <param name="originalRequestId">原确认请求主键。</param>
+    /// <returns>该原请求下的冲正流水集合。</returns>
+    public async Task<IReadOnlyList<ChargeReverseLog>> GetByOriginalRequestIdAsync(long originalRequestId)
+    {
+        return await _db.Queryable<ChargeReverseLog>()
+            .Where(r => r.OriginalRequestId == originalRequestId)
+            .ToListAsync();
+    }
+
+    /// <summary>
     /// 插入冲正日志。
     /// </summary>
     /// <param name="entity">待写入的冲正日志实体。</param>

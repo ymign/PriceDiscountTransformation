@@ -73,6 +73,7 @@ public sealed class DailyQtyLimitExecutor : IRuleActionExecutor
         // PENDING 必须计入，因为它代表已经返回给渠道、正在等待 HIS 落账的占额。
         var occupiedQty = await _limitRepository.GetOccupiedQtyAsync(
             "DAY_QTY", dimensionCode, dayStart, dayEnd, OccupyStatuses);
+        occupiedQty += GetInRequestOccupiedQty(context, dimensionCode, dayStart, dayEnd);
 
         // ========== 第五阶段：截断数量和金额 ==========
         // 金额按当前金额比例缩放，避免覆盖前置公式动作已经算出的金额。
@@ -91,7 +92,7 @@ public sealed class DailyQtyLimitExecutor : IRuleActionExecutor
             context.FinalQty = remainingQty;
             context.FinalAmount = beforeQty == 0
                 ? 0
-                : Math.Round(context.FinalAmount * context.FinalQty / beforeQty, 4);
+                : context.FinalAmount * context.FinalQty / beforeQty;
         }
 
         // ========== 第六阶段：记录占额草稿 ==========
@@ -126,6 +127,30 @@ public sealed class DailyQtyLimitExecutor : IRuleActionExecutor
             BusinessChargeTime = context.BusinessChargeTime,
             OccupyType = "CHARGE"
         });
+    }
+
+    private static decimal GetInRequestOccupiedQty(
+        PricingContext context,
+        string dimensionCode,
+        DateTime dayStart,
+        DateTime dayEnd)
+    {
+        var candidates = context.InRequestLimitOccupies
+            .Where(o => string.Equals(o.LimitType, "DAY_QTY", StringComparison.OrdinalIgnoreCase))
+            .Where(o => string.Equals(o.LimitDimensionCode, dimensionCode, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (candidates.Count > 0)
+        {
+            return candidates
+                .Where(o => o.BusinessChargeTime >= dayStart && o.BusinessChargeTime <= dayEnd)
+                .Sum(o => o.OccupyQty);
+        }
+
+        var inRequestKey = $"DAY_QTY:{dimensionCode}";
+        return context.InRequestOccupiedQtyByLimitDimension.TryGetValue(inRequestKey, out var cachedQty)
+            ? cachedQty
+            : 0m;
     }
 
     /// <summary>

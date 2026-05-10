@@ -117,6 +117,25 @@ public sealed class PricingContext
     /// 待写入数据库的限额占用草稿。执行器只生成草稿，RequestId 生成后由应用服务统一补齐并落库。
     /// </summary>
     public List<LimitOccupy> PendingLimitOccupies { get; set; } = new();
+
+    /// <summary>
+    /// 同一次收费动作内已经被前序费用明细占用的数量缓存。
+    /// </summary>
+    /// <remarks>
+    /// 一次结算请求可以携带多条收费明细。单次限额的业务口径是“单次收费动作”，不是单条收费明细，
+    /// 因此应用服务在循环计算 items[] 时需要把前面明细已经占用的单次额度传给后续明细。
+    /// </remarks>
+    public IReadOnlyDictionary<string, decimal> InRequestOccupiedQtyByLimitDimension { get; set; } =
+        new Dictionary<string, decimal>();
+
+    /// <summary>
+    /// 同一次收费动作内前序费用明细已经生成的限额占用草稿。
+    /// </summary>
+    /// <remarks>
+    /// TIME_WINDOW 需要按业务收费时间判断前序明细是否落入当前滑动窗口，单纯按维度累计会把窗口外明细也算进去。
+    /// 因此这里保留占额草稿本身，供时间窗执行器按 BusinessChargeTime 做精确过滤。
+    /// </remarks>
+    public IReadOnlyList<LimitOccupy> InRequestLimitOccupies { get; set; } = Array.Empty<LimitOccupy>();
 }
 
 /// <summary>

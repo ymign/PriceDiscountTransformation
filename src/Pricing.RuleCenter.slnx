@@ -2,4 +2,5 @@
   <Project Path="Pricing.RuleCenter.Api/Pricing.RuleCenter.Api.csproj" />
   <Project Path="Pricing.RuleCenter.Core/Pricing.RuleCenter.Core.csproj" />
   <Project Path="Pricing.RuleCenter.Infrastructure/Pricing.RuleCenter.Infrastructure.csproj" />
+  <Project Path="../tests/Pricing.RuleCenter.Tests/Pricing.RuleCenter.Tests.csproj" />
 </Solution>

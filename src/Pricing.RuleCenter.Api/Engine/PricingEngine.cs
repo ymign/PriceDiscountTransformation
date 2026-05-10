@@ -1,5 +1,6 @@
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
+using Pricing.RuleCenter.Core.Services;
 
 namespace Pricing.RuleCenter.Api.Engine;
 
@@ -89,7 +90,8 @@ public sealed class PricingEngine : IPricingEngine
         // ========== 第五阶段：计算折价金额并补齐占额草稿 ==========
         // 占额草稿在执行器中只记录维度，最终占用数量和金额要等动作链全部执行完成后才能确定。
         var originalAmount = context.UnitPrice * context.InputQty;
-        context.DiscountAmount = originalAmount - context.FinalAmount;
+        context.FinalAmount = PricingAmountRounder.RoundFinalAmount(context.FinalAmount);
+        context.DiscountAmount = PricingAmountRounder.RoundFinalAmount(originalAmount - context.FinalAmount);
         foreach (var occupy in context.PendingLimitOccupies)
         {
             occupy.OccupyQty = context.FinalQty;
@@ -123,8 +125,8 @@ public sealed class PricingEngine : IPricingEngine
             InputQty = context.InputQty,
             FinalQty = context.FinalQty,
             UnitPrice = context.UnitPrice,
-            FinalAmount = context.FinalAmount,
-            DiscountAmount = context.DiscountAmount,
+            FinalAmount = PricingAmountRounder.RoundFinalAmount(context.FinalAmount),
+            DiscountAmount = PricingAmountRounder.RoundFinalAmount(context.DiscountAmount),
             TraceSteps = context.TraceSteps.ToList(),
             MatchedRuleIds = context.MatchedRules.Select(r => r.RuleId).ToList(),
             LimitOccupies = context.PendingLimitOccupies

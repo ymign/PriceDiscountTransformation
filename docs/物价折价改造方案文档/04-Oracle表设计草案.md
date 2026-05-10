@@ -642,6 +642,8 @@ WHERE LIMIT_TYPE = 'TIME_WINDOW'
 | `CHARGE_NO` | `VARCHAR2(50)` | 原收费单号 |
 | `REVERSE_NO` | `VARCHAR2(50)` | 冲正单号 |
 | `ITEM_CODE` | `VARCHAR2(50)` | 项目编码 |
+| `CHARGE_DETAIL_NO` | `VARCHAR2(50)` | 被退费或冲正的原收费明细号 |
+| `PART_SEQ` | `NUMBER(10,0)` | 多部位或多片段退费时的片段序号 |
 | `REVERSE_QTY` | `NUMBER(18,4)` | 冲正数量 |
 | `REVERSE_AMT` | `NUMBER(18,4)` | 冲正金额 |
 | `REVERSE_REASON` | `VARCHAR2(1000)` | 冲正原因 |

@@ -47,6 +47,18 @@ public sealed class ChargeReverseLog
     /// </summary>
     public string? ItemCode { get; set; }
 
+    [SugarColumn(ColumnName = "CHARGE_DETAIL_NO", IsNullable = true)]
+    /// <summary>
+    /// 被退费或冲正的原收费明细号。
+    /// </summary>
+    public string? ChargeDetailNo { get; set; }
+
+    [SugarColumn(ColumnName = "PART_SEQ", IsNullable = true)]
+    /// <summary>
+    /// 多部位或多片段退费时的片段序号。
+    /// </summary>
+    public int? PartSeq { get; set; }
+
     [SugarColumn(ColumnName = "REVERSE_QTY", IsNullable = true)]
     /// <summary>
     /// 本次冲正数量。
