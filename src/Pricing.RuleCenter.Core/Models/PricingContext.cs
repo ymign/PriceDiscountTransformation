@@ -54,6 +54,50 @@ public sealed class PricingContext
     /// </summary>
     public string? ChargeScene { get; set; }
     /// <summary>
+    /// 当前项目所属的项目组编码，来源为 PR_ITEM_GROUP.GROUP_CODE。
+    /// 同组互斥、同手术封顶等执行器依赖该字段判断项目归属。
+    /// 为空时表示该项目不属于任何项目组。
+    /// </summary>
+    public string? ItemGroupCode { get; set; }
+    /// <summary>
+    /// 扩展参数字典，用于承载调用方传入的业务上下文（如手术标识、孕次、住院号等）。
+    /// 键名由各执行器自行约定，计价中心不做统一校验。
+    /// 为空时表示本次计价请求没有额外扩展参数。
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? ExtraParams { get; set; }
+    /// <summary>
+    /// 就诊类型编码，用于匹配就诊类型条件（如门诊、住院、急诊）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 来源渠道：HIS/自助机/微信在请求时传入，由渠道侧的就诊记录决定。
+    /// </para>
+    /// <para>
+    /// 典型值：OUTPATIENT（门诊）、INPATIENT（住院）、EMERGENCY（急诊）、
+    /// PHYSICAL（体检）、DAY_SURGERY（日间手术）。
+    /// </para>
+    /// <para>
+    /// 空值表示渠道未传入就诊类型，就诊类型条件评估器应按"不校验"（通过）处理。
+    /// </para>
+    /// </remarks>
+    public string? VisitType { get; set; }
+    /// <summary>
+    /// 患者年龄（岁），用于年龄范围条件匹配（如儿童加收规则）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 来源渠道：HIS 从患者主索引（MPI）获取出生日期后计算得出，或直接传入年龄值。
+    /// </para>
+    /// <para>
+    /// 精度说明：以"岁"为单位的整数年龄。如需更精确的月龄/日龄判断，
+    /// 渠道应自行换算后以小数形式传入（如 0.5 表示 6 个月）。
+    /// </para>
+    /// <para>
+    /// 空值表示渠道未传入年龄信息，年龄条件评估器应按"不校验"（通过）处理。
+    /// </para>
+    /// </remarks>
+    public int? PatientAge { get; set; }
+    /// <summary>
     /// 业务收费发生时间，用于规则生效判断和滑动窗口累计
     /// </summary>
     public DateTime BusinessChargeTime { get; set; }
@@ -117,6 +161,12 @@ public sealed class PricingContext
     /// 待写入数据库的限额占用草稿。执行器只生成草稿，RequestId 生成后由应用服务统一补齐并落库。
     /// </summary>
     public List<LimitOccupy> PendingLimitOccupies { get; set; } = new();
+    /// <summary>
+    /// 子项加收执行器产生的子项目计价结果集合。
+    /// 主项目计价完成后，应用服务需遍历此集合逐个生成子项目收费明细和占额草稿。
+    /// 子项与主项目共享同一 resultGroupNo，保证原子 commit/cancel。
+    /// </summary>
+    public List<ChildPricingResult> ChildPricingResults { get; set; } = new();
 
     /// <summary>
     /// 同一次收费动作内已经被前序费用明细占用的数量缓存。
@@ -222,4 +272,51 @@ public sealed class TraceStep
     /// 扩展参数 JSON，用于承载动作或条件的可变配置
     /// </summary>
     public string? ParamsJson { get; set; }
+}
+
+/// <summary>
+/// 子项加收计价结果，由 AddChildItemExecutor 生成。
+/// </summary>
+/// <remarks>
+/// <para>
+/// 子项是主项目命中规则后自动附加的收费项目。子项与主项目共享同一 resultGroupNo，
+/// 保证 commit/cancel 原子性。子项可以共享主项目的限额（shareParentLimit=true），
+/// 也可以独立占用限额。
+/// </para>
+/// <para>
+/// 应用服务在主项目计价完成后，遍历 PricingContext.ChildPricingResults，
+/// 逐个生成子项目收费明细、占额草稿和追溯步骤。
+/// </para>
+/// </remarks>
+public sealed class ChildPricingResult
+{
+    /// <summary>
+    /// 子项目编码，对应 HIS 物价主数据表 FIN_COM_UNDRUGINFO.ITEM_CODE。
+    /// </summary>
+    public string ItemCode { get; set; } = string.Empty;
+    /// <summary>
+    /// 子项目名称，用于展示和审计。
+    /// </summary>
+    public string? ItemName { get; set; }
+    /// <summary>
+    /// 子项目收费数量。
+    /// </summary>
+    public decimal Qty { get; set; }
+    /// <summary>
+    /// 子项目单价，来源为权威物价主数据。
+    /// </summary>
+    public decimal UnitPrice { get; set; }
+    /// <summary>
+    /// 子项目应收金额 = 单价 × 数量，中间计算保留全精度。
+    /// </summary>
+    public decimal Amount { get; set; }
+    /// <summary>
+    /// 是否与主项目共享限额。true 时子项数量计入主项目的限额维度；
+    /// false 时子项独立占用限额。
+    /// </summary>
+    public bool ShareParentLimit { get; set; }
+    /// <summary>
+    /// 关联的主项目编码，用于追溯和审计。
+    /// </summary>
+    public string ParentItemCode { get; set; } = string.Empty;
 }

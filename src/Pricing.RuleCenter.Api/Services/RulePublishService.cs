@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Caching.Memory;
 using Pricing.RuleCenter.Api.Dto;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
@@ -8,8 +9,14 @@ namespace Pricing.RuleCenter.Api.Services;
 /// 规则发布应用服务，负责发布、停用和回滚规则版本。
 /// </summary>
 /// <remarks>
+/// <para>
 /// 这是规则配置链路中最重要的状态机入口。它负责在规则主档、版本表、发布记录和变更日志之间保持一致：
 /// 发布会把草稿版本变成当前生效版本；停用会让规则整体退出匹配；回滚会把当前版本切回最近一个历史版本。
+/// </para>
+/// <para>
+/// 缓存失效：发布、停用、回滚操作完成后，必须立即清除生效规则缓存，
+/// 确保计价引擎在下一次请求时读到最新规则集。这是资金安全硬约束。
+/// </para>
 /// </remarks>
 public sealed class RulePublishService
 {
@@ -38,9 +45,18 @@ public sealed class RulePublishService
     /// </summary>
     private readonly IRuleActionRepository _actionRepository;
     /// <summary>
+    /// 内存缓存，用于在发布/停用/回滚后立即清除生效规则缓存。
+    /// </summary>
+    private readonly IMemoryCache _cache;
+    /// <summary>
     /// 服务日志，用于记录状态机入口的关键操作。
     /// </summary>
     private readonly ILogger<RulePublishService> _logger;
+
+    /// <summary>
+    /// 生效规则缓存 key 前缀，与 RuleHeaderService 中的定义保持一致。
+    /// </summary>
+    private const string EffectiveCachePrefix = "rules:effective:";
 
     /// <summary>
     /// 初始化规则发布服务。
@@ -49,6 +65,9 @@ public sealed class RulePublishService
     /// <param name="versionRepository">规则版本仓储。</param>
     /// <param name="publishRepository">发布记录仓储。</param>
     /// <param name="changeLogRepository">变更日志仓储。</param>
+    /// <param name="conditionRepository">规则条件仓储。</param>
+    /// <param name="actionRepository">规则动作仓储。</param>
+    /// <param name="cache">内存缓存，用于在状态变更后清除生效规则缓存。</param>
     /// <param name="logger">日志对象。</param>
     public RulePublishService(
         IRuleHeaderRepository headerRepository,
@@ -57,6 +76,7 @@ public sealed class RulePublishService
         IRuleChangeLogRepository changeLogRepository,
         IRuleConditionRepository conditionRepository,
         IRuleActionRepository actionRepository,
+        IMemoryCache cache,
         ILogger<RulePublishService> logger)
     {
         _headerRepository = headerRepository;
@@ -65,6 +85,7 @@ public sealed class RulePublishService
         _changeLogRepository = changeLogRepository;
         _conditionRepository = conditionRepository;
         _actionRepository = actionRepository;
+        _cache = cache;
         _logger = logger;
     }
 
@@ -153,7 +174,7 @@ public sealed class RulePublishService
         });
 
         // ========== 第六阶段：写变更摘要 ==========
-        // 变更日志面向配置人员，语义比发布流水更轻，用于页面展示“谁做了什么”。
+        // 变更日志面向配置人员，语义比发布流水更轻，用于页面展示"谁做了什么"。
         await _changeLogRepository.InsertAsync(new RuleChangeLog
         {
             RuleId = ruleId,
@@ -163,6 +184,10 @@ public sealed class RulePublishService
             ChangedBy = request.PublishedBy,
             ChangedAt = DateTime.Now
         });
+
+        // ========== 第七阶段：清除生效规则缓存 ==========
+        // 发布改变了当前生效版本，必须立即清除缓存，确保计价引擎读到最新规则集。
+        ClearEffectiveCache();
 
         _logger.LogInformation("发布规则 RuleId={RuleId}, VersionNo={VersionNo}", ruleId, request.VersionNo);
     }
@@ -177,7 +202,7 @@ public sealed class RulePublishService
     public async Task DisableAsync(long ruleId, RuleDisableRequest request)
     {
         // ========== 第一阶段：读取并校验主档状态 ==========
-        // 只有已发布规则才有“停用”的业务含义，草稿规则不应通过停用入口改变可编辑状态。
+        // 只有已发布规则才有"停用"的业务含义，草稿规则不应通过停用入口改变可编辑状态。
         var header = await _headerRepository.GetByIdAsync(ruleId)
             ?? throw new KeyNotFoundException($"规则不存在: {ruleId}");
 
@@ -228,6 +253,10 @@ public sealed class RulePublishService
             ChangedAt = DateTime.Now
         });
 
+        // ========== 第五阶段：清除生效规则缓存 ==========
+        // 停用后规则不再参与匹配，必须立即清除缓存。
+        ClearEffectiveCache();
+
         _logger.LogInformation("停用规则 RuleId={RuleId}", ruleId);
     }
 
@@ -251,7 +280,7 @@ public sealed class RulePublishService
         }
 
         // ========== 第二阶段：定位最近的历史版本 ==========
-        // 这里选择小于当前版本号且状态为 DISABLED 的最大版本号，表示“最近一次被替换下来的发布版本”。
+        // 这里选择小于当前版本号且状态为 DISABLED 的最大版本号，表示"最近一次被替换下来的发布版本"。
         var versions = await _versionRepository.GetByRuleIdAsync(ruleId);
         var previousPublished = versions
             .Where(v => v.VersionNo < header.CurrentVersion && v.VersionStatus == "DISABLED")
@@ -299,6 +328,10 @@ public sealed class RulePublishService
             ChangedBy = request.PublishedBy,
             ChangedAt = DateTime.Now
         });
+
+        // ========== 第六阶段：清除生效规则缓存 ==========
+        // 回滚改变了当前生效版本，必须立即清除缓存。
+        ClearEffectiveCache();
 
         _logger.LogInformation("回滚规则 RuleId={RuleId}, 从 V{FromVersion} 到 V{ToVersion}",
             ruleId, oldVersionNo, previousPublished.VersionNo);
@@ -453,6 +486,19 @@ public sealed class RulePublishService
         public static RuleConditionScope Wildcard { get; } = new(
             new HashSet<string>(StringComparer.OrdinalIgnoreCase),
             new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// 清除生效规则缓存。
+    /// </summary>
+    /// <remarks>
+    /// 发布、停用、回滚操作后必须调用，确保计价引擎在下一次请求时读到最新规则集。
+    /// IMemoryCache 不提供按前缀批量删除，因此移除已知 key。
+    /// </remarks>
+    private void ClearEffectiveCache()
+    {
+        _cache.Remove($"{EffectiveCachePrefix}all");
+        _logger.LogDebug("已清除生效规则缓存");
     }
 
     /// <summary>

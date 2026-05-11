@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pricing.RuleCenter.Api.Dto;
 using Pricing.RuleCenter.Api.Services;
@@ -203,6 +204,7 @@ public sealed class RulePublishConflictTests
             new EmptyRuleChangeLogRepository(),
             conditionRepository,
             actionRepository,
+            new MemoryCache(new MemoryCacheOptions()),
             NullLogger<RulePublishService>.Instance);
 
     private sealed class InMemoryRuleHeaderRepository : IRuleHeaderRepository

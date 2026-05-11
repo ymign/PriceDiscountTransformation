@@ -112,6 +112,15 @@ public sealed class RuleHeaderResponse
     public DateTime? EffectiveTo { get; init; }
 
     /// <summary>
+    /// 回滚模式，决定计价服务不可用时的降级策略。
+    /// 常见值：STOP_CHARGE（暂停收费转人工，默认最安全）、
+    /// LEGACY_EQUIVALENT（自动切回旧计价逻辑，需审批）、
+    /// MANUAL_REVIEW（继续使用新服务但标记需人工复核）。
+    /// 为空时等价于 STOP_CHARGE。
+    /// </summary>
+    public string? RollbackMode { get; init; }
+
+    /// <summary>
     /// 规则备注，用于记录业务背景、变更原因、待确认事项等维护信息。
     /// </summary>
     public string? Remark { get; init; }
@@ -216,6 +225,14 @@ public sealed class RuleHeaderCreateRequest
     /// </summary>
     public DateTime? EffectiveTo { get; init; }
 
+    [MaxLength(30)]
+    /// <summary>
+    /// 回滚模式（选填），决定计价服务不可用时的降级策略。
+    /// 可选值：STOP_CHARGE（暂停收费转人工，默认）、LEGACY_EQUIVALENT（自动切回旧逻辑，需审批）、
+    /// MANUAL_REVIEW（继续使用新服务但标记需人工复核）。为空时等价于 STOP_CHARGE。
+    /// </summary>
+    public string? RollbackMode { get; init; }
+
     /// <summary>
     /// 规则备注（选填），用于记录业务背景或维护说明。
     /// </summary>
@@ -293,6 +310,14 @@ public sealed class RuleHeaderUpdateRequest
     /// 规则生效结束时间（选填）。为 null 表示永久生效。
     /// </summary>
     public DateTime? EffectiveTo { get; init; }
+
+    [MaxLength(30)]
+    /// <summary>
+    /// 回滚模式（选填），决定计价服务不可用时的降级策略。
+    /// 可选值：STOP_CHARGE（暂停收费转人工，默认）、LEGACY_EQUIVALENT（自动切回旧逻辑，需审批）、
+    /// MANUAL_REVIEW（继续使用新服务但标记需人工复核）。为空时等价于 STOP_CHARGE。
+    /// </summary>
+    public string? RollbackMode { get; init; }
 
     /// <summary>
     /// 规则备注（选填）。

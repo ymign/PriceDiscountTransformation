@@ -16,6 +16,10 @@ builder.Services.Configure<PricingOptions>(builder.Configuration.GetSection("Pri
 
 builder.Services.AddSqlSugarOracle(pricingOptions);
 
+// 注册内存缓存，用于规则和字典查询结果的缓存。
+// 规则缓存 TTL 5 分钟（发布/停用/回滚时主动清除），字典缓存 TTL 30 分钟（增删改时主动清除）。
+builder.Services.AddMemoryCache();
+
 builder.Services.AddScoped<IDictRepository, DictRepository>();
 builder.Services.AddScoped<IRuleHeaderRepository, RuleHeaderRepository>();
 builder.Services.AddScoped<IRuleVersionRepository, RuleVersionRepository>();
@@ -30,6 +34,8 @@ builder.Services.AddScoped<IChargeDiscountDetailRepository, ChargeDiscountDetail
 builder.Services.AddScoped<IChargeTraceStepRepository, ChargeTraceStepRepository>();
 builder.Services.AddScoped<IChargeReverseLogRepository, ChargeReverseLogRepository>();
 builder.Services.AddScoped<IPriceMasterRepository, PriceMasterRepository>();
+builder.Services.AddScoped<IItemGroupRepository, ItemGroupRepository>();
+builder.Services.AddScoped<IItemGroupDetailRepository, ItemGroupDetailRepository>();
 
 builder.Services.AddScoped<DictService>();
 builder.Services.AddScoped<FormulaDefService>();
@@ -46,6 +52,10 @@ builder.Services.AddScoped<IRuleConditionEvaluator, ItemMatchEvaluator>();
 builder.Services.AddScoped<IRuleConditionEvaluator, ChargeSceneMatchEvaluator>();
 builder.Services.AddScoped<IRuleConditionEvaluator, BodyPartMatchEvaluator>();
 builder.Services.AddScoped<IRuleConditionEvaluator, TimeRangeEvaluator>();
+builder.Services.AddScoped<IRuleConditionEvaluator, PregnancyMatchEvaluator>();
+builder.Services.AddScoped<IRuleConditionEvaluator, VisitTypeMatchEvaluator>();
+builder.Services.AddScoped<IRuleConditionEvaluator, AgeMatchEvaluator>();
+builder.Services.AddScoped<IRuleConditionEvaluator, GroupMatchEvaluator>();
 
 builder.Services.AddScoped<IRuleActionExecutor, AmountFloorExecutor>();
 builder.Services.AddScoped<IRuleActionExecutor, AmountCeilingExecutor>();
@@ -54,6 +64,10 @@ builder.Services.AddScoped<IRuleActionExecutor, TimeWindowLimitExecutor>();
 builder.Services.AddScoped<IRuleActionExecutor, DailyQtyLimitExecutor>();
 builder.Services.AddScoped<IRuleActionExecutor, OnceQtyLimitExecutor>();
 builder.Services.AddScoped<IRuleActionExecutor, ExceedToZeroExecutor>();
+builder.Services.AddScoped<IRuleActionExecutor, UnitConvertExecutor>();
+builder.Services.AddScoped<IRuleActionExecutor, SameGroupMutexExecutor>();
+builder.Services.AddScoped<IRuleActionExecutor, SameOperationCeilingExecutor>();
+builder.Services.AddScoped<IRuleActionExecutor, AddChildItemExecutor>();
 
 builder.Services.AddScoped<ConditionEvaluatorFactory>();
 builder.Services.AddScoped<ActionExecutorFactory>();

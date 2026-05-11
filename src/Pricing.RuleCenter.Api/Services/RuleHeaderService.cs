@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Caching.Memory;
 using Pricing.RuleCenter.Api.Dto;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
@@ -9,7 +10,7 @@ namespace Pricing.RuleCenter.Api.Services;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 职责边界：规则主档描述”这条规则面向什么项目、属于什么类别、当前版本是多少”。
+/// 职责边界：规则主档描述"这条规则面向什么项目、属于什么类别、当前版本是多少"。
 /// 条件和动作属于版本明细（由 RuleConditionService 和 RuleActionService 维护），
 /// 发布状态推进由 RulePublishService 负责。本服务只处理主档信息的增改查，
 /// 避免把版本状态机混入基础维护入口。
@@ -22,6 +23,10 @@ namespace Pricing.RuleCenter.Api.Services;
 /// 生效时间：主档的 EffectiveFrom/EffectiveTo 是规则的全局生效范围，
 /// 版本创建时会继承主档的生效时间，但版本可以单独调整。
 /// </para>
+/// <para>
+/// 缓存策略：生效规则使用 IMemoryCache 缓存，TTL 5 分钟。
+/// 规则发布、停用、回滚时主动清除缓存，确保计价引擎读到最新规则集。
+/// </para>
 /// </remarks>
 public sealed class RuleHeaderService
 {
@@ -31,19 +36,39 @@ public sealed class RuleHeaderService
     private readonly IRuleHeaderRepository _repository;
 
     /// <summary>
+    /// 内存缓存，用于缓存生效规则查询结果，减少数据库访问频率。
+    /// 生效规则变化频率低（仅发布/停用/回滚时变化），适合应用层缓存。
+    /// </summary>
+    private readonly IMemoryCache _cache;
+
+    /// <summary>
     /// 服务日志，用于记录规则主档新增等配置变更。
     /// 主档变更会影响规则匹配结果，保留操作线索便于审计追踪。
     /// </summary>
     private readonly ILogger<RuleHeaderService> _logger;
 
     /// <summary>
+    /// 生效规则缓存的统一前缀，用于批量失效。
+    /// </summary>
+    private const string EffectiveCachePrefix = "rules:effective:";
+
+    /// <summary>
+    /// 生效规则缓存过期时间（5 分钟）。
+    /// 平衡实时性和数据库压力：规则发布/停用/回滚时主动清除，
+    /// 正常情况下 5 分钟 TTL 作为兜底过期保障。
+    /// </summary>
+    private static readonly TimeSpan EffectiveCacheDuration = TimeSpan.FromMinutes(5);
+
+    /// <summary>
     /// 初始化规则主档服务。
     /// </summary>
     /// <param name="repository">规则主档仓储。</param>
+    /// <param name="cache">内存缓存，用于缓存生效规则查询结果。</param>
     /// <param name="logger">日志对象。</param>
-    public RuleHeaderService(IRuleHeaderRepository repository, ILogger<RuleHeaderService> logger)
+    public RuleHeaderService(IRuleHeaderRepository repository, IMemoryCache cache, ILogger<RuleHeaderService> logger)
     {
         _repository = repository;
+        _cache = cache;
         _logger = logger;
     }
 
@@ -91,6 +116,69 @@ public sealed class RuleHeaderService
     }
 
     /// <summary>
+    /// 查询当前时间点所有已发布且在有效期内的规则。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 用于 GET <c>/api/pricing/rules/effective</c> 端点，返回计价引擎当前可参与匹配的规则集合。
+    /// 结果按优先级升序排列，与计价引擎匹配顺序一致。
+    /// </para>
+    /// <para>
+    /// 缓存策略：使用 IMemoryCache 缓存，TTL 5 分钟。
+    /// 缓存 key 格式为 <c>rules:effective:{itemCode}</c>（itemCode 为空时用 "all"）。
+    /// 规则发布、停用、回滚时通过 <see cref="ClearEffectiveCache"/> 主动清除。
+    /// </para>
+    /// </remarks>
+    /// <param name="itemCode">
+    /// 项目编码（选填）。为空时返回所有生效规则；非空时按项目编码进一步过滤。
+    /// </param>
+    /// <returns>当前时间点生效的规则主档列表，按优先级升序排列。</returns>
+    public async Task<IReadOnlyList<RuleHeaderResponse>> GetEffectiveAsync(string? itemCode = null)
+    {
+        // 构造缓存 key：itemCode 为空时用 "all"，避免 null 参与 key 拼接产生歧义。
+        var cacheKey = $"{EffectiveCachePrefix}{(string.IsNullOrWhiteSpace(itemCode) ? "all" : itemCode)}";
+
+        // 尝试从缓存读取；缓存未命中时查询数据库并写入缓存。
+        if (_cache.TryGetValue(cacheKey, out IReadOnlyList<RuleHeaderResponse>? cached) && cached is not null)
+        {
+            return cached;
+        }
+
+        // 使用 DateTime.Now 作为业务时间（规则维护工作台场景），计价引擎场景应传入具体业务时间。
+        var entities = await _repository.GetEffectiveAsync(DateTime.Now);
+
+        // 如果指定了 itemCode，进一步过滤。
+        var filtered = string.IsNullOrWhiteSpace(itemCode)
+            ? entities
+            : entities.Where(r => string.Equals(r.ItemCode, itemCode, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        var result = filtered.Select(MapToResponse).ToList();
+
+        // 写入缓存，TTL 5 分钟。
+        _cache.Set(cacheKey, result, new MemoryCacheEntryOptions
+        {
+            AbsoluteExpirationRelativeToNow = EffectiveCacheDuration
+        });
+
+        return result;
+    }
+
+    /// <summary>
+    /// 清除所有生效规则缓存。
+    /// </summary>
+    /// <remarks>
+    /// 在规则发布、停用、回滚时由 RulePublishService 调用，确保计价引擎读到最新规则集。
+    /// IMemoryCache 不提供按前缀批量删除，因此这里通过移除已知 key 实现。
+    /// 如果后续规则项自增长，可考虑使用 CacheEntryRegistration 或改用 IDistributedCache。
+    /// </remarks>
+    public void ClearEffectiveCache()
+    {
+        // 移除 "all" 缓存项，覆盖无 itemCode 过滤的场景。
+        _cache.Remove($"{EffectiveCachePrefix}all");
+        _logger.LogInformation("已清除生效规则缓存");
+    }
+
+    /// <summary>
     /// 创建规则主档。
     /// </summary>
     /// <param name="request">规则主档新增请求。</param>
@@ -118,6 +206,7 @@ public sealed class RuleHeaderService
             ItemName = request.ItemName,
             GroupCode = request.GroupCode,
             Priority = request.Priority,
+            RollbackMode = request.RollbackMode,
             CurrentVersion = 0,
             Status = "DRAFT",
             IsEnabled = "Y",
@@ -130,7 +219,7 @@ public sealed class RuleHeaderService
         };
 
         // ========== 第三阶段：写入主档并记录日志 ==========
-        // 版本草稿由 RuleVersionService 单独创建，保持“主档”和“版本内容”的职责边界清晰。
+        // 版本草稿由 RuleVersionService 单独创建，保持"主档"和"版本内容"的职责边界清晰。
         var id = await _repository.InsertAsync(entity);
         _logger.LogInformation("新增规则 {RuleCode}, ID={RuleId}", request.RuleCode, id);
         return id;
@@ -160,6 +249,7 @@ public sealed class RuleHeaderService
         entity.Priority = request.Priority;
         entity.EffectiveFrom = request.EffectiveFrom;
         entity.EffectiveTo = request.EffectiveTo;
+        entity.RollbackMode = request.RollbackMode;
         entity.Remark = request.Remark;
         entity.UpdatedBy = request.UpdatedBy;
         entity.UpdatedAt = DateTime.Now;
@@ -194,6 +284,7 @@ public sealed class RuleHeaderService
             IsEnabled = entity.IsEnabled,
             EffectiveFrom = entity.EffectiveFrom,
             EffectiveTo = entity.EffectiveTo,
+            RollbackMode = entity.RollbackMode,
             Remark = entity.Remark,
             CreatedBy = entity.CreatedBy,
             CreatedAt = entity.CreatedAt,

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Caching.Memory;
 using Pricing.RuleCenter.Api.Dto;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
@@ -20,6 +21,10 @@ namespace Pricing.RuleCenter.Api.Services;
 /// 生命周期：字典项采用软删除（IsEnabled="N"），不物理删除，以保留历史规则配置中
 /// 已保存编码的可解释性。前端下拉框只显示 IsEnabled="Y" 的项。
 /// </para>
+/// <para>
+/// 缓存策略：字典查询使用 IMemoryCache 缓存，TTL 30 分钟。
+/// 字典增删改时主动清除缓存，确保前端下拉框读到最新数据。
+/// </para>
 /// </remarks>
 public sealed class DictService
 {
@@ -30,31 +35,68 @@ public sealed class DictService
     private readonly IDictRepository _repository;
 
     /// <summary>
+    /// 内存缓存，用于缓存字典查询结果，减少数据库访问频率。
+    /// 字典数据变化频率极低（仅配置维护时变更），适合较长 TTL 的应用层缓存。
+    /// </summary>
+    private readonly IMemoryCache _cache;
+
+    /// <summary>
     /// 服务日志，用于记录新增和停用等会影响配置展示的操作。
     /// 字典变更会直接影响前端可选项，保留操作线索便于定位"页面选项为什么变化"。
     /// </summary>
     private readonly ILogger<DictService> _logger;
 
     /// <summary>
+    /// 字典缓存 key 前缀。
+    /// </summary>
+    private const string DictCachePrefix = "dicts:";
+
+    /// <summary>
+    /// 字典缓存过期时间（30 分钟）。
+    /// 字典数据变化频率极低，较长 TTL 可以显著减少数据库访问。
+    /// </summary>
+    private static readonly TimeSpan DictCacheDuration = TimeSpan.FromMinutes(30);
+
+    /// <summary>
     /// 初始化字典服务。
     /// </summary>
     /// <param name="repository">字典仓储，用于隔离 PR 字典表的持久化实现。</param>
+    /// <param name="cache">内存缓存，用于缓存字典查询结果。</param>
     /// <param name="logger">日志对象，用于输出配置变更审计线索。</param>
-    public DictService(IDictRepository repository, ILogger<DictService> logger)
+    public DictService(IDictRepository repository, IMemoryCache cache, ILogger<DictService> logger)
     {
         _repository = repository;
+        _cache = cache;
         _logger = logger;
     }
 
     /// <summary>
     /// 按字典类型读取启用中的字典项。
     /// </summary>
+    /// <remarks>
+    /// 缓存策略：使用 IMemoryCache 缓存，key 为 <c>dicts:{dictType}</c>，TTL 30 分钟。
+    /// 字典增删改时通过 <see cref="ClearDictCache"/> 主动清除。
+    /// </remarks>
     /// <param name="dictType">字典类型编码，例如规则分类、动作类型或条件类型。</param>
     /// <returns>指定类型下的字典项集合，通常按仓储层排序规则返回。</returns>
     public async Task<IReadOnlyList<DictResponse>> GetByTypeAsync(string dictType)
     {
+        var cacheKey = $"{DictCachePrefix}{dictType}";
+
+        if (_cache.TryGetValue(cacheKey, out IReadOnlyList<DictResponse>? cached) && cached is not null)
+        {
+            return cached;
+        }
+
         var items = await _repository.GetByTypeAsync(dictType);
-        return items.Select(MapToResponse).ToList();
+        var result = items.Select(MapToResponse).ToList();
+
+        _cache.Set(cacheKey, result, new MemoryCacheEntryOptions
+        {
+            AbsoluteExpirationRelativeToNow = DictCacheDuration
+        });
+
+        return result;
     }
 
     /// <summary>
@@ -71,10 +113,28 @@ public sealed class DictService
     /// <summary>
     /// 读取当前系统已存在的字典类型编码。
     /// </summary>
+    /// <remarks>
+    /// 缓存策略：使用 IMemoryCache 缓存，key 为 <c>dicts:__all_types__</c>，TTL 30 分钟。
+    /// 字典增删改时通过 <see cref="ClearDictCache"/> 主动清除。
+    /// </remarks>
     /// <returns>去重后的字典类型列表，用于配置页快速定位已有分类。</returns>
     public async Task<IReadOnlyList<string>> GetAllTypesAsync()
     {
-        return await _repository.GetAllTypesAsync();
+        var cacheKey = $"{DictCachePrefix}__all_types__";
+
+        if (_cache.TryGetValue(cacheKey, out IReadOnlyList<string>? cached) && cached is not null)
+        {
+            return cached;
+        }
+
+        var result = await _repository.GetAllTypesAsync();
+
+        _cache.Set(cacheKey, result, new MemoryCacheEntryOptions
+        {
+            AbsoluteExpirationRelativeToNow = DictCacheDuration
+        });
+
+        return result;
     }
 
     /// <summary>
@@ -86,7 +146,7 @@ public sealed class DictService
     public async Task<long> CreateAsync(DictCreateRequest request)
     {
         // ========== 第一阶段：做业务唯一性校验 ==========
-        // 字典项的唯一键由“类型 + 编码”组成。先在服务层给出清晰业务错误，
+        // 字典项的唯一键由"类型 + 编码"组成。先在服务层给出清晰业务错误，
         // 而不是依赖数据库唯一索引异常向外泄漏存储细节。
         if (await _repository.ExistsAsync(request.DictType, request.DictCode))
         {
@@ -107,9 +167,10 @@ public sealed class DictService
             Remark = request.Remark
         };
 
-        // ========== 第三阶段：写库并记录操作线索 ==========
-        // 字典变更会影响前端配置可选项，保留日志便于定位“页面选项为什么变化”。
+        // ========== 第三阶段：写库、清缓存并记录操作线索 ==========
+        // 字典变更会影响前端配置可选项，写库后必须清除缓存，否则前端下拉框读到旧数据。
         var id = await _repository.InsertAsync(entity);
+        ClearDictCache(request.DictType);
         _logger.LogInformation("新增字典项 {DictType}/{DictCode}, ID={DictId}",
             request.DictType, request.DictCode, id);
         return id;
@@ -133,6 +194,7 @@ public sealed class DictService
         entity.Remark = request.Remark;
 
         await _repository.UpdateAsync(entity);
+        ClearDictCache(entity.DictType);
     }
 
     /// <summary>
@@ -142,15 +204,32 @@ public sealed class DictService
     /// <exception cref="KeyNotFoundException">字典项不存在时抛出。</exception>
     public async Task DeleteAsync(long dictId)
     {
-        // ========== 第一阶段：确认目标存在 ==========
-        // 即使停用动作最终只是写 IsEnabled，也要先区分“不存在”和“已存在但停用”，便于接口返回明确错误。
-        _ = await _repository.GetByIdAsync(dictId)
+        // ========== 第一阶段：确认目标存在并记录类型 ==========
+        // 即使停用动作最终只是写 IsEnabled，也要先区分"不存在"和"已存在但停用"，便于接口返回明确错误。
+        // 同时记录 DictType 用于后续清除缓存。
+        var entity = await _repository.GetByIdAsync(dictId)
             ?? throw new KeyNotFoundException($"字典项不存在: {dictId}");
 
-        // ========== 第二阶段：软停用 ==========
+        // ========== 第二阶段：软停用并清缓存 ==========
         // 不物理删除字典项，是为了保留历史规则配置中已保存编码的可解释性。
         await _repository.SetEnabledAsync(dictId, "N");
+        ClearDictCache(entity.DictType);
         _logger.LogInformation("停用字典项 {DictId}", dictId);
+    }
+
+    /// <summary>
+    /// 清除指定字典类型及其全类型列表的缓存。
+    /// </summary>
+    /// <remarks>
+    /// 字典增删改时调用，确保前端下拉框读到最新数据。
+    /// 同时清除全类型列表缓存，因为新增/停用字典项可能改变类型列表。
+    /// </remarks>
+    /// <param name="dictType">需要清除缓存的字典类型编码。</param>
+    private void ClearDictCache(string dictType)
+    {
+        _cache.Remove($"{DictCachePrefix}{dictType}");
+        _cache.Remove($"{DictCachePrefix}__all_types__");
+        _logger.LogDebug("已清除字典缓存: {DictType}", dictType);
     }
 
     /// <summary>

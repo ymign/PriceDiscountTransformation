@@ -196,6 +196,30 @@ public sealed class RuleHeader
     public DateTime? EffectiveTo { get; set; }
 
     /// <summary>
+    /// 回滚模式，决定计价服务不可用时的降级策略。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 当计价服务出现故障或超时时，各渠道根据此字段决定降级行为：
+    /// <list type="bullet">
+    /// <item><c>STOP_CHARGE</c> — 暂停收费转人工（默认，最安全）。适用于资金风险最高的项目。</item>
+    /// <item><c>LEGACY_EQUIVALENT</c> — 自动切回旧计价逻辑（需审批）。适用于已验证等价性的项目。</item>
+    /// <item><c>MANUAL_REVIEW</c> — 继续使用新服务但标记需人工复核。适用于金额较小或影响面低的项目。</item>
+    /// </list>
+    /// </para>
+    /// <para>
+    /// 资金安全约束：<c>LEGACY_EQUIVALENT</c> 必须经过审批流程，
+    /// 且需要确认新旧逻辑在所有边界场景下的计算结果一致。
+    /// 其他模式不允许自动回退到旧逻辑，必须转人工、暂停或继续使用新服务。
+    /// </para>
+    /// <para>
+    /// 空值行为：NULL 等价于 <c>STOP_CHARGE</c>（最安全策略）。
+    /// </para>
+    /// </remarks>
+    [SugarColumn(ColumnName = "ROLLBACK_MODE", IsNullable = true)]
+    public string? RollbackMode { get; set; }
+
+    /// <summary>
     /// 规则备注。
     /// </summary>
     /// <remarks>

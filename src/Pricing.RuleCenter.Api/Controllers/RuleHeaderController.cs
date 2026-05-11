@@ -117,6 +117,35 @@ public sealed class RuleHeaderController : ControllerBase
     }
 
     /// <summary>
+    /// 【查询当前生效规则】— 查询当前时间点所有已发布且在有效期内的规则。
+    /// <para>
+    /// HTTP 方法：GET &nbsp;|&nbsp; 路由：<c>/api/pricing/rules/effective?itemCode=xxx</c>
+    /// </para>
+    /// <para>
+    /// 用途：
+    /// <list type="bullet">
+    ///   <item>计价引擎预览：查看当前哪些规则参与匹配</item>
+    ///   <item>规则配置验证：确认规则发布后是否正确出现在生效列表中</item>
+    ///   <item>运维排查：快速定位某项目的生效规则集合</item>
+    /// </list>
+    /// </para>
+    /// <para>
+    /// 缓存说明：结果使用 IMemoryCache 缓存 5 分钟，规则发布/停用/回滚时主动清除。
+    /// </para>
+    /// </summary>
+    /// <param name="itemCode">
+    /// 项目编码（选填查询参数）。为空时返回所有生效规则；非空时按项目编码过滤。
+    /// </param>
+    /// <returns>当前时间点生效的规则主档列表，按优先级升序排列。</returns>
+    [HttpGet("effective")]
+    public async Task<ApiResponse<IReadOnlyList<RuleHeaderResponse>>> GetEffectiveRules(
+        [FromQuery] string? itemCode = null)
+    {
+        var result = await _service.GetEffectiveAsync(itemCode);
+        return ApiResponse<IReadOnlyList<RuleHeaderResponse>>.Ok(result);
+    }
+
+    /// <summary>
     /// 【创建规则主档】— 新建一条规则的基础信息。
     /// <para>
     /// HTTP 方法：POST &nbsp;|&nbsp; 路由：<c>/api/pricing/rules</c>

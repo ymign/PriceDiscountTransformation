@@ -21,6 +21,10 @@ namespace Pricing.RuleCenter.Api.Engine;
 ///   <item><description>BODY_PART — 检查部位匹配</description></item>
 ///   <item><description>CHARGE_SCENE — 收费场景匹配（门诊/住院/急诊）</description></item>
 ///   <item><description>TIME_RANGE — 业务时间范围匹配</description></item>
+///   <item><description>PREGNANCY_MATCH — 同胎次匹配（产科彩超）</description></item>
+///   <item><description>VISIT_TYPE_MATCH — 就诊类型匹配（门诊/住院/急诊）</description></item>
+///   <item><description>AGE_MATCH — 年龄范围匹配（儿童加收）</description></item>
+///   <item><description>GROUP_MATCH — 项目组匹配（按组适用规则）</description></item>
 /// </list>
 /// </para>
 /// <para>

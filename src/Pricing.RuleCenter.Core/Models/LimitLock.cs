@@ -61,4 +61,16 @@ public sealed class LimitLock
     /// </remarks>
     [SugarColumn(ColumnName = "UPDATED_AT")]
     public DateTime UpdatedAt { get; set; }
+
+    /// <summary>
+    /// 锁过期时间。
+    /// </summary>
+    /// <remarks>
+    /// 用于后台清理长时间未释放的锁行。
+    /// 通常设置为锁创建时间加上保护期（如 30 分钟）。
+    /// 后台定时任务通过 CleanupExpiredAsync 清理早于该时间的锁行，
+    /// 防止因异常情况（如应用崩溃、事务超时）导致锁行堆积。
+    /// </remarks>
+    [SugarColumn(ColumnName = "EXPIRE_AT", IsNullable = true)]
+    public DateTime? ExpireAt { get; set; }
 }
