@@ -611,6 +611,12 @@ namespace HIS.Pricing.Client
         /// </summary>
         public string BusinessRequestNo { get; set; }
 
+        /// <summary>
+        /// 收费科室编码（可选）。用于排除特定科室的折价规则（如挂号部 7021）。
+        /// HIS 侧从当前收费上下文中获取科室编码后传入；为空时按"不排除"处理。
+        /// </summary>
+        public string ChargeDeptCode { get; set; }
+
         /// <summary>操作员工号</summary>
         public string OperatorId { get; set; }
 
@@ -675,6 +681,15 @@ namespace HIS.Pricing.Client
 
         /// <summary>明细级扩展参数</summary>
         public Dictionary<string, object> ExtraParams { get; set; }
+
+        /// <summary>
+        /// HIS 旧系统在当前2小时窗口内已收费的数量（方案B兜底查询）。
+        /// 上线过渡期由 HIS 从旧收费明细表查询后传入，新系统将此值纳入窗口累计，
+        /// 防止上线当天出现历史数据断层导致的超限放行。
+        /// 新旧数据对齐后（通常上线1-2天后）可不再查询，传 null 即可。
+        /// 查询方式：调用 PricingHisIntegrationHelper.QueryLegacyOccupiedQty 方法。
+        /// </summary>
+        public decimal? LegacyOccupiedQty { get; set; }
 
         /// <summary>
         /// 部位明细列表。多肿物、多部位、多面积项目必须使用此字段表达，

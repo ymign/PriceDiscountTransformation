@@ -68,6 +68,70 @@ public sealed class DailyAndTimeWindowLimitExecutorTests
         Assert.Equal(20m, context.FinalAmount);
     }
 
+    [Fact]
+    public async Task TimeWindowLimitExecutor_LegacyOccupiedQty_计入窗口累计()
+    {
+        // DB返回1，InRequest返回1，LegacyOccupied=2，合计4，limit=5 → 剩余1，本次4个截断为1
+        var repository = new InMemoryLimitOccupyRepository { OccupiedQty = 1m };
+        var executor = new TimeWindowLimitExecutor(repository);
+        var context = new PricingContext
+        {
+            PatientId = "P001",
+            ItemCode = "ITEM001",
+            InputQty = 4m,
+            FinalQty = 4m,
+            UnitPrice = 10m,
+            FinalAmount = 40m,
+            LegacyOccupiedQty = 2m,
+            BusinessChargeTime = new DateTime(2026, 5, 10, 10, 0, 0),
+            InRequestOccupiedQtyByLimitDimension = new Dictionary<string, decimal>
+            {
+                ["TIME_WINDOW:P001:ITEM001"] = 1m
+            }
+        };
+
+        await executor.ExecuteAsync(new RuleAction
+        {
+            ActionType = "APPLY_TIME_WINDOW_LIMIT",
+            ParamsJson = JsonConvert.SerializeObject(new { WindowMinutes = 120, LimitQty = 5m })
+        }, context);
+
+        // 已占用 = 1(DB) + 1(InRequest) + 2(Legacy) = 4，剩余 = 5-4=1
+        Assert.Equal(1m, context.FinalQty);
+        Assert.Equal(10m, context.FinalAmount);
+    }
+
+    [Fact]
+    public async Task TimeWindowLimitExecutor_LegacyOccupiedQty为零_行为不变()
+    {
+        var repository = new InMemoryLimitOccupyRepository { OccupiedQty = 1m };
+        var executor = new TimeWindowLimitExecutor(repository);
+        var context = new PricingContext
+        {
+            PatientId = "P001",
+            ItemCode = "ITEM001",
+            InputQty = 4m,
+            FinalQty = 4m,
+            UnitPrice = 10m,
+            FinalAmount = 40m,
+            LegacyOccupiedQty = 0m,
+            BusinessChargeTime = new DateTime(2026, 5, 10, 10, 0, 0),
+            InRequestOccupiedQtyByLimitDimension = new Dictionary<string, decimal>
+            {
+                ["TIME_WINDOW:P001:ITEM001"] = 2m
+            }
+        };
+
+        await executor.ExecuteAsync(new RuleAction
+        {
+            ActionType = "APPLY_TIME_WINDOW_LIMIT",
+            ParamsJson = JsonConvert.SerializeObject(new { WindowMinutes = 120, LimitQty = 5m })
+        }, context);
+
+        // 已占用 = 1(DB) + 2(InRequest) + 0(Legacy) = 3，剩余 = 2，本次4个截断为2
+        Assert.Equal(2m, context.FinalQty);
+    }
+
     private sealed class InMemoryLimitOccupyRepository : ILimitOccupyRepository
     {
         public decimal OccupiedQty { get; init; }

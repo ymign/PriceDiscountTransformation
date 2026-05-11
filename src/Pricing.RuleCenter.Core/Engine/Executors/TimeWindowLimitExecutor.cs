@@ -78,6 +78,8 @@ public sealed class TimeWindowLimitExecutor : IRuleActionExecutor
         var occupiedQty = await _limitRepository.GetOccupiedQtyAsync(
             "TIME_WINDOW", dimensionCode, windowStart, windowEnd, OccupyStatuses);
         occupiedQty += GetInRequestOccupiedQty(context, dimensionCode, windowStart, windowEnd);
+        // 方案B兜底：加入 HIS 旧系统已收费量，保证上线过渡期数据不断档
+        occupiedQty += context.LegacyOccupiedQty;
 
         // ========== 第五阶段：按剩余额度截断数量和金额 ==========
         // 当剩余额度小于等于 0 时，本次有效数量为 0，金额也归 0。

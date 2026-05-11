@@ -200,7 +200,17 @@ public sealed class BatchPricingContext
             InBatchOccupiedAmtByOperation[opKey] = existingOpAmt + result.FinalAmount;
         }
 
-        // ========== 阶段五：记录已处理结果 ==========
+        // ========== 阶段五：存储项目最终金额，供子项金额百分比执行器跨项目引用 ==========
+        // key 格式：ITEM_AMT:{itemCode}，通过 InjectBatchContext 注入到后续上下文的
+        // InRequestOccupiedQtyByLimitDimension，ChildItemPercentExecutor 按此键读取父项金额。
+        // 父项必须在子项之前进入批次，由 HIS 调用方保证顺序。
+        if (!string.IsNullOrWhiteSpace(context.ItemCode))
+        {
+            var itemAmtKey = $"ITEM_AMT:{context.ItemCode.Trim().ToUpperInvariant()}";
+            InBatchOccupiedQtyByDimension[itemAmtKey] = result.FinalAmount;
+        }
+
+        // ========== 阶段六：记录已处理结果 ==========
         // 完整结果快照保留，供后续可能的跨项目判断（如同组互斥需要比较优先级）。
         ProcessedResults.Add(result);
     }

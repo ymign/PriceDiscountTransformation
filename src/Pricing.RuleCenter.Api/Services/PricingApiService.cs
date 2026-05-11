@@ -804,6 +804,8 @@ public sealed class PricingApiService
             SourceSystem = request.SourceSystem.Trim(),
             ChargeNo = NormalizeString(request.ChargeNo),
             BusinessRequestNo = NormalizeString(request.BusinessRequestNo),
+            ChargeDeptCode = NormalizeString(request.ChargeDeptCode),
+            LegacyOccupiedQty = item.LegacyOccupiedQty ?? 0m,
             ExtraParams = MergeExtraParams(request.ExtraParams, item.ExtraParams),
             InRequestOccupiedQtyByLimitDimension =
                 inRequestOccupiedQtyByLimitDimension?.ToDictionary(

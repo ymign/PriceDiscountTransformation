@@ -31,6 +31,11 @@ public sealed class PricingCalculateRequest
     /// </summary>
     public string? VisitType { get; init; }
     /// <summary>
+    /// 收费科室编码，用于排除特定科室的折价规则（如挂号部 7021）。
+    /// 为空时科室排除条件按"不排除"处理。
+    /// </summary>
+    public string? ChargeDeptCode { get; init; }
+    /// <summary>
     /// 患者年龄（岁），用于年龄范围条件匹配。
     /// </summary>
     public int? PatientAge { get; init; }
@@ -141,6 +146,11 @@ public sealed class PricingCalculateItemRequest
     /// 单条费用扩展参数。与结算级 ExtraParams 合并后进入规则上下文和幂等指纹。
     /// </summary>
     public Dictionary<string, object?>? ExtraParams { get; init; }
+    /// <summary>
+    /// HIS 旧系统在当前时间窗口内已收费的数量（方案B兜底查询）。
+    /// 上线过渡期由 HIS 从旧表查询后传入；新旧系统数据对齐后可置 null，引擎行为不变。
+    /// </summary>
+    public decimal? LegacyOccupiedQty { get; init; }
     /// <summary>
     /// 多部位或多片段明细，用于更细粒度的部位匹配、面积折算和追踪展示。
     /// </summary>

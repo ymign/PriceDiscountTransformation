@@ -187,6 +187,7 @@ namespace HIS.Pricing.Client
         /// <param name="unit">计量单位</param>
         /// <param name="unitPrice">单价（注意：confirm 时计价中心会读取权威单价校验，不一致返回 PRICE_MISMATCH）</param>
         /// <param name="bodyPartCode">部位编码（可为 null）</param>
+        /// <param name="chargeDeptCode">收费科室编码（可为 null），用于排除7021等科室的折价规则</param>
         /// <returns>构建好的计价请求对象</returns>
         public static PricingCalculateRequest BuildSingleItemRequest(
             string patientId,
@@ -201,7 +202,8 @@ namespace HIS.Pricing.Client
             decimal qty,
             string unit,
             decimal unitPrice,
-            string bodyPartCode)
+            string bodyPartCode,
+            string chargeDeptCode = null)
         {
             PricingCalculateRequest request = new PricingCalculateRequest();
             request.RequestNo = "HIS_" + DateTime.Now.ToString("yyyyMMddHHmmssfff") + "_" + Guid.NewGuid().ToString("N");
@@ -214,6 +216,7 @@ namespace HIS.Pricing.Client
             request.BusinessRequestNo = EnsureBusinessRequestNo(businessRequestNo, chargeNo);
             request.OperatorId = operatorId;
             request.OperatorName = operatorName;
+            request.ChargeDeptCode = chargeDeptCode;
             request.Items = new List<PricingCalculateItemRequest>();
             request.Items.Add(new PricingCalculateItemRequest
             {
@@ -226,6 +229,51 @@ namespace HIS.Pricing.Client
                 BodyPartCode = bodyPartCode
             });
             return request;
+        }
+
+        /// <summary>
+        /// 查询 HIS 旧系统在指定时间窗口内已收费的数量（方案B兜底查询）。
+        /// 上线过渡期调用，确保新系统上线当天不会因历史数据断层而放行超限收费。
+        ///
+        /// 实现说明：
+        /// 此方法需要访问 HIS 旧收费明细表，具体表名和字段请对照旧系统 getRestrictingfee
+        /// 方法的 SQL（配置键：Fee.PactUnitItemRate.RestrictingfeePay2）填写。
+        ///
+        /// 典型实现参考：
+        /// SELECT COUNT(*) FROM FIN_CHARGE_DETAIL
+        /// WHERE PATIENT_ID = :patientId
+        ///   AND ITEM_CODE = :itemCode
+        ///   AND CHARGE_TIME BETWEEN :windowStart AND :windowEnd
+        ///   AND STATUS != 'REFUNDED'  -- 排除已退费记录
+        ///
+        /// 上线稳定后（通常1-2天）可将此方法返回值固定为 0 并移除旧表查询。
+        /// </summary>
+        /// <param name="patientId">患者 ID</param>
+        /// <param name="itemCode">项目编码</param>
+        /// <param name="windowStart">时间窗口开始（业务收费时间 - 2小时）</param>
+        /// <param name="windowEnd">时间窗口结束（业务收费时间）</param>
+        /// <returns>旧系统窗口内已收费数量；查询异常时返回 0（保守策略，不阻断收费）</returns>
+        public static decimal QueryLegacyOccupiedQty(
+            string patientId,
+            string itemCode,
+            DateTime windowStart,
+            DateTime windowEnd)
+        {
+            // TODO: 填写旧收费明细表名和字段名后取消注释
+            // try
+            // {
+            //     // 示例：使用 HIS 现有数据库访问方式查询
+            //     // string sql = "SELECT NVL(SUM(CHARGE_QTY),0) FROM FIN_CHARGE_DETAIL " +
+            //     //              "WHERE PATIENT_ID=:pid AND ITEM_CODE=:icode " +
+            //     //              "AND CHARGE_TIME BETWEEN :wstart AND :wend " +
+            //     //              "AND STATUS != 'REFUNDED'";
+            //     // return HisDbHelper.QueryScalar<decimal>(sql, patientId, itemCode, windowStart, windowEnd);
+            // }
+            // catch
+            // {
+            //     return 0m; // 查询失败时保守返回0，不阻断正常收费
+            // }
+            return 0m; // 过渡期结束后保持此处 return 0m 即完成退出
         }
     }
 

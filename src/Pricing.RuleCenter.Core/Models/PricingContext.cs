@@ -66,6 +66,12 @@ public sealed class PricingContext
     /// </summary>
     public IReadOnlyDictionary<string, string>? ExtraParams { get; set; }
     /// <summary>
+    /// 收费科室编码，用于排除特定科室的折价规则（如挂号部 7021）。
+    /// 为空时表示渠道未传入科室信息，科室排除条件评估器应按"不排除"（通过）处理。
+    /// </summary>
+    public string? ChargeDeptCode { get; set; }
+
+    /// <summary>
     /// 就诊类型编码，用于匹配就诊类型条件（如门诊、住院、急诊）。
     /// </summary>
     /// <remarks>
@@ -201,6 +207,13 @@ public sealed class PricingContext
     /// 因此这里保留占额草稿本身，供时间窗执行器按 BusinessChargeTime 做精确过滤。
     /// </remarks>
     public IReadOnlyList<LimitOccupy> InRequestLimitOccupies { get; set; } = Array.Empty<LimitOccupy>();
+
+    /// <summary>
+    /// HIS 旧系统在当前时间窗口内已收费的数量（方案B兜底查询）。
+    /// 上线过渡期由 HIS 从旧表查询后传入；TimeWindowLimitExecutor 会将此值累加到占用总量，
+    /// 确保新系统上线初期与旧系统数据之间无间隙。新旧数据对齐后置 0 即可，引擎行为不变。
+    /// </summary>
+    public decimal LegacyOccupiedQty { get; set; }
 }
 
 /// <summary>

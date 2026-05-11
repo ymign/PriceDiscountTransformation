@@ -82,3 +82,73 @@ FROM user_constraints
 WHERE table_name LIKE 'PR_%'
   AND constraint_type IN ('P','U','C')
 ORDER BY table_name, constraint_type, constraint_name;
+
+
+-- ============================================================
+-- 以下验证项在执行 04-import-rules.sql 后运行
+-- ============================================================
+
+-- 7. 验证 Restrictingfee 时间窗口限额规则（期望 26 条）
+SELECT COUNT(*) AS restrictingfee_rule_count
+FROM PR_RULE_HEADER
+WHERE RULE_CODE LIKE 'RF_%'
+  AND STATUS = 'PUBLISHED'
+  AND IS_ENABLED = 'Y';
+-- 期望: 26
+
+-- 8. 验证每条 RF_ 规则都有 APPLY_TIME_WINDOW_LIMIT 动作
+SELECT h.RULE_CODE,
+       COUNT(CASE WHEN a.ACTION_TYPE = 'APPLY_TIME_WINDOW_LIMIT' THEN 1 END) AS has_window_limit,
+       COUNT(CASE WHEN a.ACTION_TYPE = 'DISCOUNT_EXCEED_TO_ZERO'  THEN 1 END) AS has_exceed_zero,
+       COUNT(CASE WHEN c.CONDITION_TYPE = 'CHARGE_DEPT_EXCLUDE'   THEN 1 END) AS has_dept_exclude
+FROM PR_RULE_HEADER h
+LEFT JOIN PR_RULE_ACTION    a ON a.RULE_ID = h.RULE_ID AND a.VERSION_NO = h.CURRENT_VERSION
+LEFT JOIN PR_RULE_CONDITION c ON c.RULE_ID = h.RULE_ID AND c.VERSION_NO = h.CURRENT_VERSION
+WHERE h.RULE_CODE LIKE 'RF_%'
+GROUP BY h.RULE_CODE
+ORDER BY h.RULE_CODE;
+-- 期望每行: has_window_limit=1, has_exceed_zero=1, has_dept_exclude=1
+
+-- 9. 验证 RestrictingfeeZT 互斥组（期望 4 组）
+SELECT GROUP_CODE, GROUP_NAME, GROUP_TYPE,
+       (SELECT COUNT(*) FROM PR_ITEM_GROUP_DETAIL d WHERE d.GROUP_ID = g.GROUP_ID) AS item_count
+FROM PR_ITEM_GROUP g
+WHERE GROUP_CODE IN ('ZT01','ZT02','ZT03','ZT04')
+ORDER BY GROUP_CODE;
+-- 期望: ZT01=3项, ZT02=2项, ZT03=2项, ZT04=3项
+
+-- 10. 验证 RestrictingfeeTX1 互斥组（期望 1 组 15 项）
+SELECT GROUP_CODE, GROUP_NAME,
+       (SELECT COUNT(*) FROM PR_ITEM_GROUP_DETAIL d WHERE d.GROUP_ID = g.GROUP_ID) AS item_count
+FROM PR_ITEM_GROUP g
+WHERE GROUP_CODE = 'TX1';
+-- 期望: item_count=15
+
+-- 11. 验证 ZT/TX1 规则均有 SAME_GROUP_MUTEX 动作
+SELECT COUNT(*) AS zt_tx_rule_count
+FROM PR_RULE_HEADER h
+WHERE (h.RULE_CODE LIKE 'ZT_%' OR h.RULE_CODE LIKE 'TX_%')
+  AND STATUS = 'PUBLISHED'
+  AND EXISTS (
+    SELECT 1 FROM PR_RULE_ACTION a
+    WHERE a.RULE_ID = h.RULE_ID
+      AND a.ACTION_TYPE = 'SAME_GROUP_MUTEX'
+  );
+-- 期望: 25 (ZT01:3 + ZT02:2 + ZT03:2 + ZT04:3 + TX1:15)
+
+-- 12. 验证所有导入规则的 ROLLBACK_MODE 均为 LEGACY_EQUIVALENT
+SELECT COUNT(*) AS non_legacy_count
+FROM PR_RULE_HEADER
+WHERE (RULE_CODE LIKE 'RF_%' OR RULE_CODE LIKE 'ZT_%' OR RULE_CODE LIKE 'TX_%')
+  AND (ROLLBACK_MODE IS NULL OR ROLLBACK_MODE != 'LEGACY_EQUIVALENT');
+-- 期望: 0（全部设为 LEGACY_EQUIVALENT）
+
+-- 13. 验证 ZT 每项的 EXCLUSIVE_GROUP 已设置
+SELECT a.EXCLUSIVE_GROUP, COUNT(*) AS cnt
+FROM PR_RULE_ACTION a
+JOIN PR_RULE_HEADER h ON h.RULE_ID = a.RULE_ID
+WHERE (h.RULE_CODE LIKE 'ZT_%' OR h.RULE_CODE LIKE 'TX_%')
+  AND a.ACTION_TYPE = 'SAME_GROUP_MUTEX'
+GROUP BY a.EXCLUSIVE_GROUP
+ORDER BY a.EXCLUSIVE_GROUP;
+-- 期望: ZT01=3, ZT02=2, ZT03=2, ZT04=3, TX1=15

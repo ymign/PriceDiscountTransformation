@@ -40,6 +40,7 @@ builder.Services.AddScoped<IRuleConditionEvaluator, PregnancyMatchEvaluator>();
 builder.Services.AddScoped<IRuleConditionEvaluator, VisitTypeMatchEvaluator>();
 builder.Services.AddScoped<IRuleConditionEvaluator, AgeMatchEvaluator>();
 builder.Services.AddScoped<IRuleConditionEvaluator, GroupMatchEvaluator>();
+builder.Services.AddScoped<IRuleConditionEvaluator, ChargeDeptExcludeEvaluator>();
 
 // 动作执行器负责规则命中后的具体计算动作（金额上下限、数量限制、换算、公式等）。
 // 每个执行器只处理一种动作类型，新增动作类型只需新增执行器，无需修改引擎主流程。
@@ -54,6 +55,9 @@ builder.Services.AddScoped<IRuleActionExecutor, UnitConvertExecutor>();
 builder.Services.AddScoped<IRuleActionExecutor, SameGroupMutexExecutor>();
 builder.Services.AddScoped<IRuleActionExecutor, SameOperationCeilingExecutor>();
 builder.Services.AddScoped<IRuleActionExecutor, AddChildItemExecutor>();
+builder.Services.AddScoped<IRuleActionExecutor, AreaStepIncrementExecutor>();
+builder.Services.AddScoped<IRuleActionExecutor, ConvertQtyByPartExecutor>();
+builder.Services.AddScoped<IRuleActionExecutor, ChildItemPercentExecutor>();
 
 // 引擎核心组件：工厂负责按名称分发执行器，管道负责按优先级串联所有动作执行器。
 builder.Services.AddScoped<ConditionEvaluatorFactory>();
