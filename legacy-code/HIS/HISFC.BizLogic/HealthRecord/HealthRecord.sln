@@ -1,0 +1,26 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 10.00
+# Visual Studio 2008
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HealthRecord", "HealthRecord.csproj", "{EE2A8497-B192-4EF7-A06B-5A544ABAE1DD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Components.HealthRecord", "..\..\HISFC.Components\HealthRecord\Components.HealthRecord.csproj", "{416614EF-6F1B-4671-A82F-6A33C4DA5B62}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{EE2A8497-B192-4EF7-A06B-5A544ABAE1DD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EE2A8497-B192-4EF7-A06B-5A544ABAE1DD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EE2A8497-B192-4EF7-A06B-5A544ABAE1DD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EE2A8497-B192-4EF7-A06B-5A544ABAE1DD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{416614EF-6F1B-4671-A82F-6A33C4DA5B62}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{416614EF-6F1B-4671-A82F-6A33C4DA5B62}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{416614EF-6F1B-4671-A82F-6A33C4DA5B62}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{416614EF-6F1B-4671-A82F-6A33C4DA5B62}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

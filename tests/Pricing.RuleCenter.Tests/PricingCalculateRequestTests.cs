@@ -14,6 +14,8 @@ public sealed class PricingCalculateRequestTests
             BusinessRequestNo = "BIZ-001",
             SourceSystem = "HIS",
             PatientId = "P001",
+            VisitType = "OUTPATIENT",
+            PatientAge = 7,
             ChargeNo = "C001",
             BusinessChargeTime = new DateTime(2026, 5, 10, 9, 30, 0),
             Items = new List<PricingCalculateItemRequest>
@@ -23,6 +25,7 @@ public sealed class PricingCalculateRequestTests
                     ChargeDetailNo = "CD001",
                     ItemCode = "CT001",
                     ItemName = "CT平扫",
+                    ItemGroupCode = "CT_GROUP",
                     InputQty = 2m,
                     Unit = "PART",
                     UnitPrice = 300m
@@ -41,6 +44,9 @@ public sealed class PricingCalculateRequestTests
 
         Assert.Equal(2, request.Items.Count);
         Assert.Equal("CT001", request.Items[0].ItemCode);
+        Assert.Equal("CT_GROUP", request.Items[0].ItemGroupCode);
+        Assert.Equal("OUTPATIENT", request.VisitType);
+        Assert.Equal(7, request.PatientAge);
         Assert.Equal("SKIN001", request.Items[1].ItemCode);
     }
 }

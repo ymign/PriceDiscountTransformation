@@ -27,6 +27,14 @@ public sealed class PricingCalculateRequest
     /// </summary>
     public string? VisitId { get; init; }
     /// <summary>
+    /// 就诊类型编码，用于匹配门诊、住院、急诊等就诊类型条件。
+    /// </summary>
+    public string? VisitType { get; init; }
+    /// <summary>
+    /// 患者年龄（岁），用于年龄范围条件匹配。
+    /// </summary>
+    public int? PatientAge { get; init; }
+    /// <summary>
     /// 门诊号、住院号或就诊流水号，用于与 HIS 业务上下文对齐
     /// </summary>
     public string? EncounterNo { get; init; }
@@ -102,6 +110,10 @@ public sealed class PricingCalculateItemRequest
     /// 项目名称，用于展示、审计和追溯说明。
     /// </summary>
     public string? ItemName { get; init; }
+    /// <summary>
+    /// 项目组编码，用于同组互斥、同手术封顶等组维度规则。
+    /// </summary>
+    public string? ItemGroupCode { get; init; }
 
     [Required(ErrorMessage = "数量不能为空")]
     /// <summary>
@@ -299,6 +311,10 @@ public sealed class PricingCalculateItemResponse
     /// </summary>
     public PricingReplacementItemResponse? ReplacementItem { get; init; }
     /// <summary>
+    /// ADD_CHILD_ITEM 动作生成的普通加收子项集合。
+    /// </summary>
+    public IReadOnlyList<PricingChildItemResponse> ChildItems { get; init; } = Array.Empty<PricingChildItemResponse>();
+    /// <summary>
     /// 本条费用计价追踪步骤，用于接口调用方展示或排查。
     /// </summary>
     public IReadOnlyList<PricingTraceStepResponse> TraceSteps { get; init; } = Array.Empty<PricingTraceStepResponse>();
@@ -333,6 +349,37 @@ public sealed class PricingReplacementItemResponse
     /// 替换金额。
     /// </summary>
     public decimal Amount { get; init; }
+}
+
+/// <summary>
+/// 普通子项加收响应 DTO。
+/// </summary>
+public sealed class PricingChildItemResponse
+{
+    /// <summary>
+    /// 子项编码。
+    /// </summary>
+    public string ItemCode { get; init; } = string.Empty;
+    /// <summary>
+    /// 子项名称。
+    /// </summary>
+    public string? ItemName { get; init; }
+    /// <summary>
+    /// 子项数量。
+    /// </summary>
+    public decimal Qty { get; init; }
+    /// <summary>
+    /// 子项单价。
+    /// </summary>
+    public decimal UnitPrice { get; init; }
+    /// <summary>
+    /// 子项金额。
+    /// </summary>
+    public decimal Amount { get; init; }
+    /// <summary>
+    /// 是否与主项目共享限额。
+    /// </summary>
+    public bool ShareParentLimit { get; init; }
 }
 
 /// <summary>

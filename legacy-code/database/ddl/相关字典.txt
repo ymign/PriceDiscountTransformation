@@ -1,0 +1,5 @@
+select p.* from com_dictionary p where p.type='Restrictingfee';
+select p.* from com_dictionary p where p.type='Astrictpackagefee';
+select p.* from com_dictionary p where p.type='RestrictingfeeZT';
+select p.* from com_dictionary p where p.type='RestrictingfeeCP';
+select p.* from com_dictionary p where p.type='RestrictingfeeTX1';

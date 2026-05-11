@@ -55,7 +55,7 @@ public sealed class RuleHeaderService
     private readonly ILogger<RuleHeaderService> _logger;
 
     /// <summary>
-    /// 生效规则缓存的统一前缀，用于批量失效。
+    /// 生效规则缓存的统一前缀，用于登记和批量失效。
     /// </summary>
     private const string EffectiveCachePrefix = "rules:effective:";
 
@@ -138,7 +138,7 @@ public sealed class RuleHeaderService
     /// </para>
     /// <para>
     /// 缓存策略：使用 IMemoryCache 缓存，TTL 5 分钟。
-    /// 缓存 key 格式为 <c>rules:effective:{itemCode}</c>（itemCode 为空时用 "all"）。
+    /// 缓存 key 格式为 <c>rules:effective:{itemCode}:{timeKey}</c>（itemCode 为空时用 "all"）。
     /// 规则发布、停用、回滚时通过 <see cref="ClearEffectiveCache"/> 主动清除。
     /// </para>
     /// </remarks>
@@ -146,10 +146,16 @@ public sealed class RuleHeaderService
     /// 项目编码（选填）。为空时返回所有生效规则；非空时按项目编码进一步过滤。
     /// </param>
     /// <returns>当前时间点生效的规则主档列表，按优先级升序排列。</returns>
-    public async Task<IReadOnlyList<RuleHeaderResponse>> GetEffectiveAsync(string? itemCode = null)
+    public async Task<IReadOnlyList<RuleHeaderResponse>> GetEffectiveAsync(
+        string? itemCode = null,
+        DateTime? chargeTime = null)
     {
+        var businessTime = chargeTime ?? DateTime.Now;
+
         // 构造缓存 key：itemCode 为空时用 "all"，避免 null 参与 key 拼接产生歧义。
-        var cacheKey = $"{EffectiveCachePrefix}{(string.IsNullOrWhiteSpace(itemCode) ? "all" : itemCode)}";
+        var itemKey = string.IsNullOrWhiteSpace(itemCode) ? "all" : itemCode.Trim().ToUpperInvariant();
+        var timeKey = chargeTime.HasValue ? businessTime.ToString("yyyyMMddHHmmss") : "current";
+        var cacheKey = $"{EffectiveCachePrefix}{itemKey}:{timeKey}";
 
         // 尝试从缓存读取；缓存未命中时查询数据库并写入缓存。
         if (_cache.TryGetValue(cacheKey, out IReadOnlyList<RuleHeaderResponse>? cached) && cached is not null)
@@ -157,8 +163,8 @@ public sealed class RuleHeaderService
             return cached;
         }
 
-        // 使用 DateTime.Now 作为业务时间（规则维护工作台场景），计价引擎场景应传入具体业务时间。
-        var entities = await _repository.GetEffectiveAsync(DateTime.Now);
+        // 使用请求指定的业务时间查询；未指定时才回退当前时间，避免历史回放误用系统当前时间。
+        var entities = await _repository.GetEffectiveAsync(businessTime);
 
         // 如果指定了 itemCode，进一步过滤。
         var filtered = string.IsNullOrWhiteSpace(itemCode)
@@ -172,6 +178,7 @@ public sealed class RuleHeaderService
         {
             AbsoluteExpirationRelativeToNow = EffectiveCacheDuration
         });
+        EffectiveRuleCacheKeys.Track(cacheKey);
 
         return result;
     }
@@ -186,9 +193,8 @@ public sealed class RuleHeaderService
     /// </remarks>
     public void ClearEffectiveCache()
     {
-        // 移除 "all" 缓存项，覆盖无 itemCode 过滤的场景。
-        _cache.Remove($"{EffectiveCachePrefix}all");
-        _logger.LogInformation("已清除生效规则缓存");
+        var removed = EffectiveRuleCacheKeys.Clear(_cache);
+        _logger.LogInformation("已清除生效规则缓存，共清理 {Count} 个缓存键", removed);
     }
 
     /// <summary>

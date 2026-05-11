@@ -127,6 +127,17 @@ public sealed class PricingController : ControllerBase
     }
 
     /// <summary>
+    /// 【批量试算接口】— 与 simulate 使用同一请求结构，要求多条 Items 共享批量上下文。
+    /// </summary>
+    [HttpPost("calculate/batch-simulate")]
+    public async Task<ApiResponse<PricingCalculateResponse>> BatchSimulateAsync(
+        [FromBody] PricingCalculateRequest request)
+    {
+        var result = await _service.SimulateAsync(request);
+        return ApiResponse<PricingCalculateResponse>.Ok(result);
+    }
+
+    /// <summary>
     /// 【确认计价接口】— 正式计价并占用额度，是三阶段确认模型的第一步。
     /// <para>
     /// HTTP 方法：POST &nbsp;|&nbsp; 路由：<c>/api/pricing/calculate/confirm</c>

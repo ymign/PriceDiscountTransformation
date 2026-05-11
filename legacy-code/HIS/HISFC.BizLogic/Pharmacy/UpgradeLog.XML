@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?><?xml-stylesheet type='text/xsl' href='_UpgradeReport_Files/UpgradeReport.xslt'?><UpgradeLog>
+<Properties><Property Name="Solution" Value="Pharmacy">
+</Property><Property Name="解决方案文件" Value="D:\his4.5\HISFC\Src\HISFC.Management\Pharmacy\Pharmacy.sln">
+</Property><Property Name="用户选项文件" Value="D:\his4.5\HISFC\Src\HISFC.Management\Pharmacy\Pharmacy.suo">
+</Property><Property Name="Date" Value="2006年10月31日">
+</Property><Property Name="Time" Value="10:47">
+</Property></Properties><Event ErrorLevel="0" Project="" Source="Pharmacy.sln" Description="文件已成功备份为 D:\his4.5\HISFC\Src\HISFC.Management\Pharmacy\Backup\Pharmacy.sln">
+</Event><Event ErrorLevel="0" Project="" Source="Pharmacy.suo" Description="文件已成功备份为 D:\his4.5\HISFC\Src\HISFC.Management\Pharmacy\Backup\Pharmacy.suo">
+</Event><Event ErrorLevel="0" Project="Pharmacy" Source="Pharmacy.csproj" Description="项目文件已成功备份为 D:\his4.5\HISFC\Src\HISFC.Management\Pharmacy\Backup\Pharmacy.csproj">
+</Event><Event ErrorLevel="0" Project="Pharmacy" Source="Pharmacy.csproj.user" Description="项目用户文件成功备份为 D:\his4.5\HISFC\Src\HISFC.Management\Pharmacy\Backup\Pharmacy.csproj.user">
+</Event><Event ErrorLevel="0" Project="Pharmacy" Source="AssemblyInfo.cs" Description="文件已成功备份为 D:\his4.5\HISFC\Src\HISFC.Management\Pharmacy\Backup\AssemblyInfo.cs">
+</Event><Event ErrorLevel="0" Project="Pharmacy" Source="Constant.cs" Description="文件已成功备份为 D:\his4.5\HISFC\Src\HISFC.Management\Pharmacy\Backup\Constant.cs">
+</Event><Event ErrorLevel="0" Project="Pharmacy" Source="Dictionary.cs" Description="文件已成功备份为 D:\his4.5\HISFC\Src\HISFC.Management\Pharmacy\Backup\Dictionary.cs">
+</Event><Event ErrorLevel="0" Project="Pharmacy" Source="DrugStore.cs" Description="文件已成功备份为 D:\his4.5\HISFC\Src\HISFC.Management\Pharmacy\Backup\DrugStore.cs">
+</Event><Event ErrorLevel="0" Project="Pharmacy" Source="Item.cs" Description="文件已成功备份为 D:\his4.5\HISFC\Src\HISFC.Management\Pharmacy\Backup\Item.cs">
+</Event><Event ErrorLevel="0" Project="Pharmacy" Source="Preparation.cs" Description="文件已成功备份为 D:\his4.5\HISFC\Src\HISFC.Management\Pharmacy\Backup\Preparation.cs">
+</Event><Event ErrorLevel="0" Project="Pharmacy" Source="Report.cs" Description="文件已成功备份为 D:\his4.5\HISFC\Src\HISFC.Management\Pharmacy\Backup\Report.cs">
+</Event><Event ErrorLevel="0" Project="Pharmacy" Source="ModelSupport\default.txaPackage" Description="文件已成功备份为 D:\his4.5\HISFC\Src\HISFC.Management\Pharmacy\Backup\ModelSupport\default.txaPackage">
+</Event><Event ErrorLevel="0" Project="Pharmacy" Source="Pharmacy.csproj" Description="项目已成功转换">
+</Event><Event ErrorLevel="3" Project="Pharmacy" Source="Pharmacy.csproj" Description="Converted">
+</Event><Event ErrorLevel="0" Project="" Source="Pharmacy.sln" Description="成功转换解决方案">
+</Event><Event ErrorLevel="3" Project="" Source="Pharmacy.sln" Description="Converted">
+</Event><Event ErrorLevel="0" Project="Pharmacy" Source="Pharmacy.csproj" Description="扫描完成: 项目文件不需要升级。">
+</Event></UpgradeLog>

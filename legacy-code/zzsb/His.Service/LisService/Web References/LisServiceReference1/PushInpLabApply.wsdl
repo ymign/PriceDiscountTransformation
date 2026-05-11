@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<wsdl:definitions xmlns:tns="http://www.neusoft.com/hsb/PushInpLabApply/" xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:sch="http://www.neusoft.com/hsb/PushInpLabApply/" targetNamespace="http://www.neusoft.com/hsb/PushInpLabApply/" xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+  <wsdl:types>
+    <schema xmlns:event="http://www.neusoft.com/hsb/PushInpLabApply/" attributeFormDefault="qualified" elementFormDefault="qualified" targetNamespace="http://www.neusoft.com/hsb/PushInpLabApply/" xmlns="http://www.w3.org/2001/XMLSchema">
+      <element name="PushInpLabApplyRequest">
+        <complexType>
+          <sequence>
+            <element name="message">
+              <complexType>
+                <sequence>
+                  <element minOccurs="1" maxOccurs="1" name="LISApply">
+                    <complexType>
+                      <sequence>
+                        <element minOccurs="1" maxOccurs="1" name="PATIENTINFO">
+                          <complexType>
+                            <sequence>
+                              <element name="PTNT_ID" type="string" />
+                              <element name="VISIT_ID" type="string" />
+                              <element name="EMPI" type="string" />
+                              <element name="ID_CARD" type="string" />
+                              <element name="IC_CARD" type="string" />
+                              <element name="CTAT_ADDR" type="string" />
+                              <element name="PHONE_NUM" type="string" />
+                              <element name="PTNT_NO" type="string" />
+                              <element name="PTNT_NO_TYPE" type="string" />
+                              <element name="PTNT_NAME" type="string" />
+                              <element name="PTNT_SEX" type="string" />
+                              <element name="PTNT_AGE" type="string" />
+                              <element name="PTNT_AGE_UNIT" type="string" />
+                              <element name="ADMISSE_DATE" type="string" />
+                              <element name="PTNT_BIRTH" type="string" />
+                              <element name="PTNT_BED_NO" type="string" />
+                              <element name="DIAG_INFO" type="string" />
+                            </sequence>
+                          </complexType>
+                        </element>
+                        <element minOccurs="1" maxOccurs="unbounded" name="APPLYINFO">
+                          <complexType>
+                            <sequence>
+                              <element name="APLY_ID" type="string" />
+                              <element name="APLY_SRC" type="string" />
+                              <element name="APLY_FLOW_NUM" type="string" />
+                              <element name="APLY_CREATE_DATE" type="string" />
+                              <element name="EMCY_MRK" type="string" />
+                              <element name="APLY_DATE" type="string" />
+                              <element name="DEPT_KEY" type="string" />
+                              <element name="DEPT_NAME" type="string" />
+                              <element name="DOC_KEY" type="string" />
+                              <element name="DOC_NAME" type="string" />
+                              <element name="APLY_ITM_KEY" type="string" />
+                              <element name="APLY_ITM_NAME" type="string" />
+                              <element name="SMPL_KEY" type="string" />
+                              <element name="SMPL_NAME" type="string" />
+                              <element name="BODY_PART" type="string" />
+                              <element name="REMARK" type="string" />
+                              <element name="EXEC_STATUS" type="string" />
+                            </sequence>
+                          </complexType>
+                        </element>
+                      </sequence>
+                    </complexType>
+                  </element>
+                </sequence>
+              </complexType>
+            </element>
+          </sequence>
+        </complexType>
+      </element>
+      <element name="PushInpLabApplyResponse">
+        <complexType>
+          <sequence>
+            <element name="return" type="string" />
+          </sequence>
+        </complexType>
+      </element>
+      <element name="RequestHeader">
+        <complexType>
+          <sequence>
+            <element name="Token" type="string" />
+            <element name="SystemCode" type="string" />
+            <element name="ChannelMark" type="string" />
+            <element name="ConverterMark" type="string" />
+          </sequence>
+        </complexType>
+      </element>
+      <element name="ResponseHeader">
+        <complexType>
+          <sequence>
+            <element name="Token" type="string" />
+            <element name="InternalToken" type="string" />
+          </sequence>
+        </complexType>
+      </element>
+    </schema>
+  </wsdl:types>
+  <wsdl:message name="PushInpLabApplyResponse">
+    <wsdl:part name="PushInpLabApplyResponse" element="sch:PushInpLabApplyResponse" />
+  </wsdl:message>
+  <wsdl:message name="PushInpLabApplyRequest">
+    <wsdl:part name="PushInpLabApplyRequest" element="sch:PushInpLabApplyRequest" />
+  </wsdl:message>
+  <wsdl:message name="ResponseHeader">
+    <wsdl:part name="ResponseHeader" element="sch:ResponseHeader" />
+  </wsdl:message>
+  <wsdl:message name="RequestHeader">
+    <wsdl:part name="RequestHeader" element="sch:RequestHeader" />
+  </wsdl:message>
+  <wsdl:portType name="PushInpLabApply">
+    <wsdl:operation name="PushInpLabApply">
+      <wsdl:input name="PushInpLabApplyRequest" message="sch:PushInpLabApplyRequest" />
+      <wsdl:output name="PushInpLabApplyResponse" message="sch:PushInpLabApplyResponse" />
+    </wsdl:operation>
+  </wsdl:portType>
+  <wsdl:binding name="PushInpLabApplySoap11" type="sch:PushInpLabApply">
+    <soap:binding transport="http://schemas.xmlsoap.org/soap/http" />
+    <wsdl:operation name="PushInpLabApply">
+      <soap:operation soapAction="" />
+      <wsdl:input name="PushInpLabApplyRequest">
+        <soap:body use="literal" />
+        <soap:header message="sch:RequestHeader" part="RequestHeader" use="literal" />
+      </wsdl:input>
+      <wsdl:output name="PushInpLabApplyResponse">
+        <soap:body use="literal" />
+        <soap:header message="sch:ResponseHeader" part="ResponseHeader" use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+  </wsdl:binding>
+  <wsdl:service name="PushInpLabApplyService">
+    <wsdl:port name="PushInpLabApplySoap11" binding="sch:PushInpLabApplySoap11">
+      <soap:address location="http://172.16.61.105:83/HIP/ws/PushInpLabApplyService" />
+    </wsdl:port>
+  </wsdl:service>
+</wsdl:definitions>

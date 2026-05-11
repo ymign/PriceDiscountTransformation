@@ -70,11 +70,6 @@ public sealed class RulePublishService
     private readonly SemaphoreSlim _cacheLock = new(1, 1);
 
     /// <summary>
-    /// 生效规则缓存 key 前缀，与 RuleHeaderService 中的定义保持一致。
-    /// </summary>
-    private const string EffectiveCachePrefix = "rules:effective:";
-
-    /// <summary>
     /// 字典类型编码：发布互斥动作类型。
     /// </summary>
     private const string MutuallyExclusiveActionTypeDictType = "MUTUALLY_EXCLUSIVE_ACTION_TYPE";
@@ -659,9 +654,9 @@ public sealed class RulePublishService
     /// </remarks>
     private void ClearEffectiveCache()
     {
-        _cache.Remove($"{EffectiveCachePrefix}all");
+        var removed = EffectiveRuleCacheKeys.Clear(_cache);
         _mutuallyExclusiveActionsCache = null;
-        _logger.LogDebug("已清除生效规则缓存和互斥动作类型缓存");
+        _logger.LogDebug("已清除生效规则缓存和互斥动作类型缓存，共清理 {Count} 个生效规则缓存键", removed);
     }
 
     /// <summary>

@@ -1,0 +1,325 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="3.5" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProductVersion>9.0.21022</ProductVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{BA0003CA-3164-4F5D-9110-F53CC4BA7989}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>His.Business</RootNamespace>
+    <AssemblyName>His.Business</AssemblyName>
+    <TargetFrameworkVersion>v3.5</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>..\His.Service\bin\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="EMPIService, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL" />
+    <Reference Include="FrameWork, Version=3.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\DataBaseHelp\dll\FrameWork.dll</HintPath>
+    </Reference>
+    <Reference Include="GDSI, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL" />
+    <Reference Include="HISFC.Models, Version=2.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\His.Service\HISFC.Models.dll</HintPath>
+    </Reference>
+    <Reference Include="Nesoft.EMPI, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\His.Service\bin\Nesoft.EMPI.dll</HintPath>
+    </Reference>
+    <Reference Include="Newtonsoft.Json, Version=11.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\His.Service\bin\Newtonsoft.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="Shadow.Util.Data, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core">
+      <RequiredTargetFramework>3.5</RequiredTargetFramework>
+    </Reference>
+    <Reference Include="System.Data.OracleClient" />
+    <Reference Include="System.EnterpriseServices" />
+    <Reference Include="System.Web.Services" />
+    <Reference Include="System.Xml.Linq">
+      <RequiredTargetFramework>3.5</RequiredTargetFramework>
+    </Reference>
+    <Reference Include="System.Data.DataSetExtensions">
+      <RequiredTargetFramework>3.5</RequiredTargetFramework>
+    </Reference>
+    <Reference Include="System.Data" />
+    <Reference Include="System.Xml" />
+    <Reference Include="ZDWY.SpecialRule, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\ZDWY.SpecialRule\ZDWY.SpecialRule.Price\bin\Debug\ZDWY.SpecialRule.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Bmode\Bmode.cs" />
+    <Compile Include="BUltrasonic\BUltrasonic.cs" />
+    <Compile Include="CSSD\DisinfectionpOutInfo.cs" />
+    <Compile Include="EMPI\EMPI.cs" />
+    <Compile Include="EMPI\GetPatientEMPI.cs" />
+    <Compile Include="Endoscope\Endoscope.cs" />
+    <Compile Include="Helper\Function.cs" />
+    <Compile Include="LIS\InPatientApply.cs" />
+    <Compile Include="LIS\OutPatientApply.cs" />
+    <Compile Include="LIS\Patientzy.cs" />
+    <Compile Include="Pathologic\Pathologic.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Properties\Settings.Designer.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <DependentUpon>Settings.settings</DependentUpon>
+    </Compile>
+    <Compile Include="Recipe\RecipeInfo.cs" />
+    <Compile Include="Sql\Sql.cs" />
+    <Compile Include="Test\TestTrans.cs" />
+    <Compile Include="Web References\OutpatientWebService\Reference.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>Reference.map</DependentUpon>
+    </Compile>
+    <Compile Include="WeiXin\Function.cs" />
+    <Compile Include="WeiXin\InpatientFee.cs" />
+    <Compile Include="WeiXin\Register.cs" />
+    <Compile Include="WeiXin\Manager.cs" />
+    <Compile Include="wirelessAnalgesic\wirelessAnalgesic.cs" />
+    <Compile Include="YYSS\Function.cs" />
+    <Compile Include="YYSS\InPatientOrder.cs" />
+    <Compile Include="YYSS\InPatientYYSS.cs" />
+    <Compile Include="YYSS\OutPatientApply.cs" />
+    <Compile Include="YYSS\OutPatientOrder.cs" />
+    <Compile Include="ZWTJ\Test.cs" />
+    <Compile Include="ZZSB\Booking.cs" />
+    <Compile Include="ZZSB\Common\XmlHelper.cs" />
+    <Compile Include="ZZSB\Function.cs" />
+    <Compile Include="ZZSB\HisDBHelp.cs" />
+    <Compile Include="ZZSB\Inpatient.cs" />
+    <Compile Include="ZZSB\InPatientType.cs" />
+    <Compile Include="ZZSB\Medical\MedicalDB.cs" />
+    <Compile Include="ZZSB\Medical\OutPatientService.cs" />
+    <Compile Include="ZZSB\OutPatientReg.cs" />
+    <Compile Include="ZZSB\Patientopb.cs" />
+    <Compile Include="ZZSB\NewCardToPatientForSRM.cs" />
+    <Compile Include="ZZSB\QueryData.cs" />
+    <Compile Include="ZZSB\RegisterManager.cs" />
+    <Compile Include="ZZSB\ZFPTService.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DataBaseHelp\DataBaseHelp.csproj">
+      <Project>{BEBD2831-65DA-4F67-BDA1-4D545FF73BF5}</Project>
+      <Name>DataBaseHelp</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\His.Models\His.Models.csproj">
+      <Project>{EF4EB7FC-A330-4840-9D7F-E7763414C921}</Project>
+      <Name>His.Models</Name>
+      <Private>False</Private>
+    </ProjectReference>
+    <ProjectReference Include="..\His.Util\His.Util.csproj">
+      <Project>{DD410CF3-0753-4A06-AC9A-31C40F82059A}</Project>
+      <Name>His.Util</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\LisService\LisService.csproj">
+      <Project>{985D98CE-3748-4EC8-8B60-3BC0752FED30}</Project>
+      <Name>LisService</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <WCFMetadata Include="Service References\" />
+  </ItemGroup>
+  <ItemGroup>
+    <WebReferences Include="Web References\" />
+  </ItemGroup>
+  <ItemGroup>
+    <WebReferenceUrl Include="http://172.16.111.93:8017/Outpatient.asmx">
+      <UrlBehavior>Dynamic</UrlBehavior>
+      <RelPath>Web References\OutpatientWebService\</RelPath>
+      <UpdateFromURL>http://172.16.111.93:8017/Outpatient.asmx</UpdateFromURL>
+      <ServiceLocationURL>
+      </ServiceLocationURL>
+      <CachedDynamicPropName>
+      </CachedDynamicPropName>
+      <CachedAppSettingsObjectName>Settings</CachedAppSettingsObjectName>
+      <CachedSettingsPropName>His_Business_OutpatientWebService_Outpatient</CachedSettingsPropName>
+    </WebReferenceUrl>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Web References\OutpatientWebService\Outpatient.wsdl" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="app.config" />
+    <None Include="Properties\Settings.settings">
+      <Generator>SettingsSingleFileGenerator</Generator>
+      <LastGenOutput>Settings.Designer.cs</LastGenOutput>
+    </None>
+    <None Include="Web References\OutpatientWebService\BedDeleteResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\BedModifyResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\BedQueryResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\BedUploadResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\CancelFeeDetailUploadResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\CancelPersonOpSpRecordResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\CancelPersonRecordResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\CancleTransferHospitalRecordResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\ClinicBalanceResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\ClinicCancelBalanceResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\ClinicCancelRegisterResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\ClinicFeeDetailUploadResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\ClinicMedicalInfoUploadResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\ClinicPreBalanceResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\ClinicRegisterResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\DeptDeleteResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\DeptModifyResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\DeptQueryResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\DeptUploadResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\DetailBillCheckResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\DictMatchQueryResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\DictMatchUploadResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\DictModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\DictQueryResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\DiseasesQueryResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\DoctorDeleteResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\DoctorModifyResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\DoctorQueryResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\DoctorUploadResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\FileDownloadResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\FileUploadResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\FixedPointQueryResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\FixedPointResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\InvoiceResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\Outpatient.disco" />
+    <None Include="Web References\OutpatientWebService\PersonDetailResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\PersonOpSpRecordResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\PersonRecordResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\PersonResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\QueryFeeDetailResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\QueryFixMedinsResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\QuerySettlInformationResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\Reference.map">
+      <Generator>MSDiscoCodeGenerator</Generator>
+      <LastGenOutput>Reference.cs</LastGenOutput>
+    </None>
+    <None Include="Web References\OutpatientWebService\TotalBillCheckResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\TransBackResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\TransferHospitalRecordResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\TreatmentCheckResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+    <None Include="Web References\OutpatientWebService\ViolationDoctorCheckResponseModel.datasource">
+      <DependentUpon>Reference.map</DependentUpon>
+    </None>
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+</Project>

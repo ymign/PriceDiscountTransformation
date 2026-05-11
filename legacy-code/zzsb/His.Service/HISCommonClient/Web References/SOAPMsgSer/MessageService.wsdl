@@ -1,0 +1,707 @@
+<?xml version="1.0" encoding="utf-8"?>
+<wsdl:definitions xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:tm="http://microsoft.com/wsdl/mime/textMatching/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:mime="http://schemas.xmlsoap.org/wsdl/mime/" xmlns:tns="http://tempuri.org/" xmlns:s="http://www.w3.org/2001/XMLSchema" xmlns:soap12="http://schemas.xmlsoap.org/wsdl/soap12/" xmlns:http="http://schemas.xmlsoap.org/wsdl/http/" targetNamespace="http://tempuri.org/" xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+  <wsdl:types>
+    <s:schema elementFormDefault="qualified" targetNamespace="http://tempuri.org/">
+      <s:element name="SendMessage">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="userid" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="deptcode" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="tos" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="deptcodes" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="title" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="message" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="msgtype" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="fixedTime" type="s:string" />
+            <s:element minOccurs="1" maxOccurs="1" name="sendToMobile" type="s:boolean" />
+            <s:element minOccurs="0" maxOccurs="1" name="businessmessageid" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="businessmessagecontent" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="SendMessageResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="SendMessageResult" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="SendMessageToDept">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="userid" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="deptcode" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="dept" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="title" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="message" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="msgtype" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="fixedTime" type="s:string" />
+            <s:element minOccurs="1" maxOccurs="1" name="sendToMobile" type="s:boolean" />
+            <s:element minOccurs="0" maxOccurs="1" name="businessmessageid" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="businessmessagecontent" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="SendMessageToDeptResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="SendMessageToDeptResult" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="ReceiveMessage">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="userid" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="deptcode" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="ReceiveMessageResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="ReceiveMessageResult" type="tns:ArrayOfMsgInfo" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:complexType name="ArrayOfMsgInfo">
+        <s:sequence>
+          <s:element minOccurs="0" maxOccurs="unbounded" name="MsgInfo" nillable="true" type="tns:MsgInfo" />
+        </s:sequence>
+      </s:complexType>
+      <s:complexType name="MsgInfo">
+        <s:sequence>
+          <s:element minOccurs="1" maxOccurs="1" name="MessageId" type="s:long" />
+          <s:element minOccurs="0" maxOccurs="1" name="BusinessMessageId" type="s:string" />
+          <s:element minOccurs="0" maxOccurs="1" name="BusinessMessageContent" type="s:string" />
+          <s:element minOccurs="0" maxOccurs="1" name="DepartMessageid" type="s:string" />
+          <s:element minOccurs="1" maxOccurs="1" name="DepartSend" type="s:boolean" />
+          <s:element minOccurs="0" maxOccurs="1" name="UserId" type="s:string" />
+          <s:element minOccurs="0" maxOccurs="1" name="UserName" type="s:string" />
+          <s:element minOccurs="0" maxOccurs="1" name="Department" type="s:string" />
+          <s:element minOccurs="0" maxOccurs="1" name="DeptCode" type="s:string" />
+          <s:element minOccurs="0" maxOccurs="1" name="UserIdTo" type="s:string" />
+          <s:element minOccurs="0" maxOccurs="1" name="UserNameTo" type="s:string" />
+          <s:element minOccurs="0" maxOccurs="1" name="DepartmentTo" type="s:string" />
+          <s:element minOccurs="0" maxOccurs="1" name="DeptToCode" type="s:string" />
+          <s:element minOccurs="1" maxOccurs="1" name="SendTime" type="s:dateTime" />
+          <s:element minOccurs="0" maxOccurs="1" name="MessageTitle" type="s:string" />
+          <s:element minOccurs="0" maxOccurs="1" name="MessageContent" type="s:string" />
+          <s:element minOccurs="0" maxOccurs="1" name="MessageType" type="s:string" />
+          <s:element minOccurs="1" maxOccurs="1" name="HasRead" type="s:boolean" />
+          <s:element minOccurs="1" maxOccurs="1" name="ReadTime" type="s:dateTime" />
+          <s:element minOccurs="1" maxOccurs="1" name="HasTimeOutAlert" type="s:boolean" />
+          <s:element minOccurs="1" maxOccurs="1" name="TimeoutMessageid" nillable="true" type="s:long" />
+        </s:sequence>
+      </s:complexType>
+      <s:element name="HasUnreadMessage">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="userid" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="deptcode" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="HasUnreadMessageResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="HasUnreadMessageResult" type="s:boolean" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="ReceiveReadedMessage">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="userid" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="deptcode" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="fromids" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="dateStart" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="dateEnd" type="s:string" />
+            <s:element minOccurs="1" maxOccurs="1" name="from" type="s:int" />
+            <s:element minOccurs="1" maxOccurs="1" name="end" type="s:int" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="ReceiveReadedMessageResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="ReceiveReadedMessageResult" type="tns:PageMsgInfo" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:complexType name="PageMsgInfo">
+        <s:sequence>
+          <s:element minOccurs="0" maxOccurs="1" name="MsgInfos" type="tns:ArrayOfMsgInfo" />
+          <s:element minOccurs="1" maxOccurs="1" name="MsgCount" type="s:int" />
+        </s:sequence>
+      </s:complexType>
+      <s:element name="ReceiveSendedMessage">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="userid" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="deptcode" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="toids" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="dateStart" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="dateEnd" type="s:string" />
+            <s:element minOccurs="1" maxOccurs="1" name="from" type="s:int" />
+            <s:element minOccurs="1" maxOccurs="1" name="end" type="s:int" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="ReceiveSendedMessageResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="ReceiveSendedMessageResult" type="tns:PageMsgInfo" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="ReceiveAllMessage">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="fromids" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="toids" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="dateStart" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="dateEnd" type="s:string" />
+            <s:element minOccurs="1" maxOccurs="1" name="from" type="s:int" />
+            <s:element minOccurs="1" maxOccurs="1" name="end" type="s:int" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="ReceiveAllMessageResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="ReceiveAllMessageResult" type="tns:PageMsgInfo" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetAllMessageByDept">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="deptCode" type="s:string" />
+            <s:element minOccurs="1" maxOccurs="1" name="readflag" type="s:int" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetAllMessageByDeptResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="GetAllMessageByDeptResult" type="tns:ArrayOfMsgInfo" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="SetMessageReaded">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="msgid" type="s:long" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="SetMessageReadedResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="SetMessageReadedResult" type="s:boolean" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="Login">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="userid" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="deptcode" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="password" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="LoginResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="LoginResult" type="tns:Doctor" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:complexType name="Doctor">
+        <s:sequence>
+          <s:element minOccurs="0" maxOccurs="1" name="UserId" type="s:string" />
+          <s:element minOccurs="0" maxOccurs="1" name="Password" type="s:string" />
+          <s:element minOccurs="0" maxOccurs="1" name="UserName" type="s:string" />
+          <s:element minOccurs="0" maxOccurs="1" name="Sex" type="s:string" />
+          <s:element minOccurs="0" maxOccurs="1" name="Mobile" type="s:string" />
+          <s:element minOccurs="0" maxOccurs="1" name="Deptcode" type="s:string" />
+          <s:element minOccurs="0" maxOccurs="1" name="Department" type="s:string" />
+          <s:element minOccurs="1" maxOccurs="1" name="IsAdmin" type="s:boolean" />
+        </s:sequence>
+      </s:complexType>
+      <s:element name="GetDoctor">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="userid" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="deptcode" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetDoctorResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="GetDoctorResult" type="tns:Doctor" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetDoctorList">
+        <s:complexType />
+      </s:element>
+      <s:element name="GetDoctorListResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="GetDoctorListResult" type="tns:ArrayOfDoctor" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:complexType name="ArrayOfDoctor">
+        <s:sequence>
+          <s:element minOccurs="0" maxOccurs="unbounded" name="Doctor" nillable="true" type="tns:Doctor" />
+        </s:sequence>
+      </s:complexType>
+      <s:element name="GetDeptDoctorList">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="dept" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetDeptDoctorListResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="GetDeptDoctorListResult" type="tns:ArrayOfDoctor" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="RegisterUser">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="userId" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="password" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="username" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="sex" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="mobile" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="department" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="RegisterUserResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="RegisterUserResult" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+    </s:schema>
+  </wsdl:types>
+  <wsdl:message name="SendMessageSoapIn">
+    <wsdl:part name="parameters" element="tns:SendMessage" />
+  </wsdl:message>
+  <wsdl:message name="SendMessageSoapOut">
+    <wsdl:part name="parameters" element="tns:SendMessageResponse" />
+  </wsdl:message>
+  <wsdl:message name="SendMessageToDeptSoapIn">
+    <wsdl:part name="parameters" element="tns:SendMessageToDept" />
+  </wsdl:message>
+  <wsdl:message name="SendMessageToDeptSoapOut">
+    <wsdl:part name="parameters" element="tns:SendMessageToDeptResponse" />
+  </wsdl:message>
+  <wsdl:message name="ReceiveMessageSoapIn">
+    <wsdl:part name="parameters" element="tns:ReceiveMessage" />
+  </wsdl:message>
+  <wsdl:message name="ReceiveMessageSoapOut">
+    <wsdl:part name="parameters" element="tns:ReceiveMessageResponse" />
+  </wsdl:message>
+  <wsdl:message name="HasUnreadMessageSoapIn">
+    <wsdl:part name="parameters" element="tns:HasUnreadMessage" />
+  </wsdl:message>
+  <wsdl:message name="HasUnreadMessageSoapOut">
+    <wsdl:part name="parameters" element="tns:HasUnreadMessageResponse" />
+  </wsdl:message>
+  <wsdl:message name="ReceiveReadedMessageSoapIn">
+    <wsdl:part name="parameters" element="tns:ReceiveReadedMessage" />
+  </wsdl:message>
+  <wsdl:message name="ReceiveReadedMessageSoapOut">
+    <wsdl:part name="parameters" element="tns:ReceiveReadedMessageResponse" />
+  </wsdl:message>
+  <wsdl:message name="ReceiveSendedMessageSoapIn">
+    <wsdl:part name="parameters" element="tns:ReceiveSendedMessage" />
+  </wsdl:message>
+  <wsdl:message name="ReceiveSendedMessageSoapOut">
+    <wsdl:part name="parameters" element="tns:ReceiveSendedMessageResponse" />
+  </wsdl:message>
+  <wsdl:message name="ReceiveAllMessageSoapIn">
+    <wsdl:part name="parameters" element="tns:ReceiveAllMessage" />
+  </wsdl:message>
+  <wsdl:message name="ReceiveAllMessageSoapOut">
+    <wsdl:part name="parameters" element="tns:ReceiveAllMessageResponse" />
+  </wsdl:message>
+  <wsdl:message name="GetAllMessageByDeptSoapIn">
+    <wsdl:part name="parameters" element="tns:GetAllMessageByDept" />
+  </wsdl:message>
+  <wsdl:message name="GetAllMessageByDeptSoapOut">
+    <wsdl:part name="parameters" element="tns:GetAllMessageByDeptResponse" />
+  </wsdl:message>
+  <wsdl:message name="SetMessageReadedSoapIn">
+    <wsdl:part name="parameters" element="tns:SetMessageReaded" />
+  </wsdl:message>
+  <wsdl:message name="SetMessageReadedSoapOut">
+    <wsdl:part name="parameters" element="tns:SetMessageReadedResponse" />
+  </wsdl:message>
+  <wsdl:message name="LoginSoapIn">
+    <wsdl:part name="parameters" element="tns:Login" />
+  </wsdl:message>
+  <wsdl:message name="LoginSoapOut">
+    <wsdl:part name="parameters" element="tns:LoginResponse" />
+  </wsdl:message>
+  <wsdl:message name="GetDoctorSoapIn">
+    <wsdl:part name="parameters" element="tns:GetDoctor" />
+  </wsdl:message>
+  <wsdl:message name="GetDoctorSoapOut">
+    <wsdl:part name="parameters" element="tns:GetDoctorResponse" />
+  </wsdl:message>
+  <wsdl:message name="GetDoctorListSoapIn">
+    <wsdl:part name="parameters" element="tns:GetDoctorList" />
+  </wsdl:message>
+  <wsdl:message name="GetDoctorListSoapOut">
+    <wsdl:part name="parameters" element="tns:GetDoctorListResponse" />
+  </wsdl:message>
+  <wsdl:message name="GetDeptDoctorListSoapIn">
+    <wsdl:part name="parameters" element="tns:GetDeptDoctorList" />
+  </wsdl:message>
+  <wsdl:message name="GetDeptDoctorListSoapOut">
+    <wsdl:part name="parameters" element="tns:GetDeptDoctorListResponse" />
+  </wsdl:message>
+  <wsdl:message name="RegisterUserSoapIn">
+    <wsdl:part name="parameters" element="tns:RegisterUser" />
+  </wsdl:message>
+  <wsdl:message name="RegisterUserSoapOut">
+    <wsdl:part name="parameters" element="tns:RegisterUserResponse" />
+  </wsdl:message>
+  <wsdl:portType name="MessageServiceSoap">
+    <wsdl:operation name="SendMessage">
+      <wsdl:input message="tns:SendMessageSoapIn" />
+      <wsdl:output message="tns:SendMessageSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="SendMessageToDept">
+      <wsdl:input message="tns:SendMessageToDeptSoapIn" />
+      <wsdl:output message="tns:SendMessageToDeptSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="ReceiveMessage">
+      <wsdl:input message="tns:ReceiveMessageSoapIn" />
+      <wsdl:output message="tns:ReceiveMessageSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="HasUnreadMessage">
+      <wsdl:input message="tns:HasUnreadMessageSoapIn" />
+      <wsdl:output message="tns:HasUnreadMessageSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="ReceiveReadedMessage">
+      <wsdl:input message="tns:ReceiveReadedMessageSoapIn" />
+      <wsdl:output message="tns:ReceiveReadedMessageSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="ReceiveSendedMessage">
+      <wsdl:input message="tns:ReceiveSendedMessageSoapIn" />
+      <wsdl:output message="tns:ReceiveSendedMessageSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="ReceiveAllMessage">
+      <wsdl:input message="tns:ReceiveAllMessageSoapIn" />
+      <wsdl:output message="tns:ReceiveAllMessageSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetAllMessageByDept">
+      <wsdl:input message="tns:GetAllMessageByDeptSoapIn" />
+      <wsdl:output message="tns:GetAllMessageByDeptSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="SetMessageReaded">
+      <wsdl:input message="tns:SetMessageReadedSoapIn" />
+      <wsdl:output message="tns:SetMessageReadedSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="Login">
+      <wsdl:input message="tns:LoginSoapIn" />
+      <wsdl:output message="tns:LoginSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetDoctor">
+      <wsdl:input message="tns:GetDoctorSoapIn" />
+      <wsdl:output message="tns:GetDoctorSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetDoctorList">
+      <wsdl:input message="tns:GetDoctorListSoapIn" />
+      <wsdl:output message="tns:GetDoctorListSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetDeptDoctorList">
+      <wsdl:input message="tns:GetDeptDoctorListSoapIn" />
+      <wsdl:output message="tns:GetDeptDoctorListSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="RegisterUser">
+      <wsdl:input message="tns:RegisterUserSoapIn" />
+      <wsdl:output message="tns:RegisterUserSoapOut" />
+    </wsdl:operation>
+  </wsdl:portType>
+  <wsdl:binding name="MessageServiceSoap" type="tns:MessageServiceSoap">
+    <soap:binding transport="http://schemas.xmlsoap.org/soap/http" />
+    <wsdl:operation name="SendMessage">
+      <soap:operation soapAction="http://tempuri.org/SendMessage" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="SendMessageToDept">
+      <soap:operation soapAction="http://tempuri.org/SendMessageToDept" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="ReceiveMessage">
+      <soap:operation soapAction="http://tempuri.org/ReceiveMessage" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="HasUnreadMessage">
+      <soap:operation soapAction="http://tempuri.org/HasUnreadMessage" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="ReceiveReadedMessage">
+      <soap:operation soapAction="http://tempuri.org/ReceiveReadedMessage" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="ReceiveSendedMessage">
+      <soap:operation soapAction="http://tempuri.org/ReceiveSendedMessage" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="ReceiveAllMessage">
+      <soap:operation soapAction="http://tempuri.org/ReceiveAllMessage" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetAllMessageByDept">
+      <soap:operation soapAction="http://tempuri.org/GetAllMessageByDept" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="SetMessageReaded">
+      <soap:operation soapAction="http://tempuri.org/SetMessageReaded" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="Login">
+      <soap:operation soapAction="http://tempuri.org/Login" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetDoctor">
+      <soap:operation soapAction="http://tempuri.org/GetDoctor" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetDoctorList">
+      <soap:operation soapAction="http://tempuri.org/GetDoctorList" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetDeptDoctorList">
+      <soap:operation soapAction="http://tempuri.org/GetDeptDoctorList" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="RegisterUser">
+      <soap:operation soapAction="http://tempuri.org/RegisterUser" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+  </wsdl:binding>
+  <wsdl:binding name="MessageServiceSoap12" type="tns:MessageServiceSoap">
+    <soap12:binding transport="http://schemas.xmlsoap.org/soap/http" />
+    <wsdl:operation name="SendMessage">
+      <soap12:operation soapAction="http://tempuri.org/SendMessage" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="SendMessageToDept">
+      <soap12:operation soapAction="http://tempuri.org/SendMessageToDept" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="ReceiveMessage">
+      <soap12:operation soapAction="http://tempuri.org/ReceiveMessage" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="HasUnreadMessage">
+      <soap12:operation soapAction="http://tempuri.org/HasUnreadMessage" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="ReceiveReadedMessage">
+      <soap12:operation soapAction="http://tempuri.org/ReceiveReadedMessage" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="ReceiveSendedMessage">
+      <soap12:operation soapAction="http://tempuri.org/ReceiveSendedMessage" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="ReceiveAllMessage">
+      <soap12:operation soapAction="http://tempuri.org/ReceiveAllMessage" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetAllMessageByDept">
+      <soap12:operation soapAction="http://tempuri.org/GetAllMessageByDept" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="SetMessageReaded">
+      <soap12:operation soapAction="http://tempuri.org/SetMessageReaded" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="Login">
+      <soap12:operation soapAction="http://tempuri.org/Login" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetDoctor">
+      <soap12:operation soapAction="http://tempuri.org/GetDoctor" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetDoctorList">
+      <soap12:operation soapAction="http://tempuri.org/GetDoctorList" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetDeptDoctorList">
+      <soap12:operation soapAction="http://tempuri.org/GetDeptDoctorList" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="RegisterUser">
+      <soap12:operation soapAction="http://tempuri.org/RegisterUser" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+  </wsdl:binding>
+  <wsdl:service name="MessageService">
+    <wsdl:port name="MessageServiceSoap" binding="tns:MessageServiceSoap">
+      <soap:address location="http://172.16.61.106:8380/Service/MessageService.asmx" />
+    </wsdl:port>
+    <wsdl:port name="MessageServiceSoap12" binding="tns:MessageServiceSoap12">
+      <soap12:address location="http://172.16.61.106:8380/Service/MessageService.asmx" />
+    </wsdl:port>
+  </wsdl:service>
+</wsdl:definitions>

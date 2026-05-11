@@ -34,6 +34,8 @@ public sealed class PricingApiServiceTests
             RequestNo = "REQ-001",
             SourceSystem = "HIS",
             PatientId = "P001",
+            VisitType = "OUTPATIENT",
+            PatientAge = 32,
             ChargeNo = "C001",
             BusinessChargeTime = new DateTime(2026, 5, 10, 9, 30, 0),
             ExtraParams = new Dictionary<string, object?>
@@ -47,6 +49,7 @@ public sealed class PricingApiServiceTests
                     ChargeDetailNo = "CD001",
                     ItemCode = "CT001",
                     ItemName = "CT平扫",
+                    ItemGroupCode = "CT_GROUP",
                     InputQty = 2m,
                     Unit = "PART",
                     UnitPrice = 300m,
@@ -75,6 +78,9 @@ public sealed class PricingApiServiceTests
             {
                 Assert.Equal("CT001", first.ItemCode);
                 Assert.Equal("CD001", response.Items[0].ChargeDetailNo);
+                Assert.Equal("CT_GROUP", first.ItemGroupCode);
+                Assert.Equal("OUTPATIENT", first.VisitType);
+                Assert.Equal(32, first.PatientAge);
                 Assert.Equal(2m, first.InputQty);
                 Assert.Equal("OP001", first.ExtraParams?["operationNo"]);
                 Assert.Equal("PREG001", first.ExtraParams?["pregnancyNo"]);
@@ -201,6 +207,64 @@ public sealed class PricingApiServiceTests
         Assert.Equal(mainDetail.ResultGroupNo, replacementDetail.ResultGroupNo);
     }
 
+    [Fact]
+    public async Task ConfirmAsync_ReturnsAndPersistsChildItems()
+    {
+        var discountRepository = new CapturingChargeDiscountDetailRepository();
+        var service = new PricingApiService(
+            new ChildItemPricingEngine(),
+            new EmptyRuleHeaderRepository(),
+            new InMemoryChargeRequestLogRepository(),
+            discountRepository,
+            new EmptyChargeTraceStepRepository(),
+            new EmptyLimitOccupyRepository(),
+            new EmptyChargeReverseLogRepository(),
+            new EmptyPriceMasterRepository(),
+            db: null!,
+            Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
+            NullLogger<PricingApiService>.Instance);
+
+        var request = new PricingCalculateRequest
+        {
+            RequestNo = "REQ-004",
+            BusinessRequestNo = "BR-004",
+            SourceSystem = "HIS",
+            PatientId = "P001",
+            ChargeNo = "C004",
+            BusinessChargeTime = new DateTime(2026, 5, 10, 9, 30, 0),
+            Items = new List<PricingCalculateItemRequest>
+            {
+                new()
+                {
+                    ChargeDetailNo = "CD004",
+                    ItemCode = "ITEM_MAIN",
+                    ItemName = "主项目",
+                    InputQty = 2m,
+                    UnitPrice = 100m
+                }
+            }
+        };
+
+        var response = await service.ConfirmAsync(request);
+
+        var itemResponse = Assert.Single(response.Items);
+        var childItem = Assert.Single(itemResponse.ChildItems);
+        Assert.Equal("ITEM_CHILD", childItem.ItemCode);
+        Assert.Equal(1m, childItem.Qty);
+        Assert.Equal(30m, childItem.Amount);
+        Assert.Equal(230m, itemResponse.FinalAmount);
+        Assert.Equal(230m, response.FinalAmount);
+
+        Assert.Equal(2, discountRepository.Inserted.Count);
+        var mainDetail = discountRepository.Inserted.Single(d => d.ParentDiscountId is null);
+        var childDetail = discountRepository.Inserted.Single(d => d.ParentDiscountId == mainDetail.DiscountId);
+        Assert.Equal("ITEM_MAIN", mainDetail.ItemCode);
+        Assert.Equal("ITEM_CHILD", childDetail.ItemCode);
+        Assert.Equal(30m, childDetail.FinalAmt);
+        Assert.Equal(mainDetail.ResultGroupNo, childDetail.ResultGroupNo);
+        Assert.StartsWith("CHILD:", mainDetail.ResultGroupNo);
+    }
+
     private sealed class CapturingPricingEngine : IPricingEngine
     {
         public List<PricingContext> Contexts { get; } = new();
@@ -278,6 +342,37 @@ public sealed class PricingApiServiceTests
                     Qty = context.InputQty,
                     UnitPrice = 5m,
                     Amount = 20m
+                }
+            });
+        }
+    }
+
+    private sealed class ChildItemPricingEngine : IPricingEngine
+    {
+        public Task<PricingResult> CalculateAsync(PricingContext context, BatchPricingContext? batchContext = null)
+        {
+            return Task.FromResult(new PricingResult
+            {
+                IsSpecialItem = true,
+                InputQty = context.InputQty,
+                ConvertedQty = context.InputQty,
+                FinalQty = context.InputQty,
+                UnitPrice = context.UnitPrice,
+                FinalAmount = context.InputQty * context.UnitPrice,
+                DiscountAmount = 0m,
+                MatchedRuleIds = new[] { 102L },
+                ChildPricingResults = new[]
+                {
+                    new ChildPricingResult
+                    {
+                        ItemCode = "ITEM_CHILD",
+                        ItemName = "加收子项",
+                        Qty = 1m,
+                        UnitPrice = 30m,
+                        Amount = 30m,
+                        ShareParentLimit = true,
+                        ParentItemCode = context.ItemCode
+                    }
                 }
             });
         }

@@ -1,0 +1,138 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="3.5" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProductVersion>9.0.21022</ProductVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{EF4EB7FC-A330-4840-9D7F-E7763414C921}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>His.Models</RootNamespace>
+    <AssemblyName>His.Models</AssemblyName>
+    <TargetFrameworkVersion>v3.5</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>..\His.Service\bin\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="FrameWork, Version=3.0.0.0, Culture=neutral, processorArchitecture=x86" />
+    <Reference Include="HISFC.Models, Version=2.0.0.0, Culture=neutral, processorArchitecture=MSIL" />
+    <Reference Include="System" />
+    <Reference Include="System.Core">
+      <RequiredTargetFramework>3.5</RequiredTargetFramework>
+    </Reference>
+    <Reference Include="System.Xml.Linq">
+      <RequiredTargetFramework>3.5</RequiredTargetFramework>
+    </Reference>
+    <Reference Include="System.Data.DataSetExtensions">
+      <RequiredTargetFramework>3.5</RequiredTargetFramework>
+    </Reference>
+    <Reference Include="System.Data" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Base\Request.cs" />
+    <Compile Include="Base\Response.cs" />
+    <Compile Include="Bmode\BmodeStatus.cs" />
+    <Compile Include="Bmode\DataSource.cs" />
+    <Compile Include="BUltrasonic\ApplyBill.cs" />
+    <Compile Include="BUltrasonic\DataSource.cs" />
+    <Compile Include="BUltrasonic\RequestModel.cs" />
+    <Compile Include="Common\HisLogType.cs" />
+    <Compile Include="Common\ComObject.cs" />
+    <Compile Include="CSSD\InDisinfectionInfo.cs" />
+    <Compile Include="Endoscope\ApplyBill.cs" />
+    <Compile Include="Endoscope\ApplyChargeInfo.cs" />
+    <Compile Include="Endoscope\DataSource.cs" />
+    <Compile Include="Endoscope\FeeStatusRequestInfo.cs" />
+    <Compile Include="Endoscope\PatientInfo.cs" />
+    <Compile Include="Endoscope\RequestObj.cs" />
+    <Compile Include="LIS\InPatient.cs" />
+    <Compile Include="LIS\InPatientApply.cs" />
+    <Compile Include="LIS\OutPatientApply.cs" />
+    <Compile Include="Pathologic\ApplyBill.cs" />
+    <Compile Include="Pathologic\ApplyRequestInfo.cs" />
+    <Compile Include="Pathologic\ApplyChargeInfo.cs" />
+    <Compile Include="Pathologic\ResponseObj.cs" />
+    <Compile Include="Pathologic\PatientInfo.cs" />
+    <Compile Include="Pathologic\RequestObj.cs" />
+    <Compile Include="Pathologic\SampleReceivedRequestInfo.cs" />
+    <Compile Include="Pha\Recipe.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="wirelessAnalgesic\PatientInfo.cs" />
+    <Compile Include="YYSS\InPatientApply.cs" />
+    <Compile Include="YYSS\InPatientInfo.cs" />
+    <Compile Include="YYSS\PatientOrder.cs" />
+    <Compile Include="YYSS\OrderType.cs" />
+    <Compile Include="ZWTJ\OutPatientReg.cs" />
+    <Compile Include="ZWTJ\OutGetPEPatFee.cs" />
+    <Compile Include="ZWTJ\OutPeProjectDict.cs" />
+    <Compile Include="ZZSB\BookInfo.cs" />
+    <Compile Include="ZZSB\BooKInFoList.cs" />
+    <Compile Include="ZZSB\BookReponse.cs" />
+    <Compile Include="ZZSB\BookReq.cs" />
+    <Compile Include="ZZSB\ComPatient.cs" />
+    <Compile Include="ZZSB\FinTransRecord.cs" />
+    <Compile Include="ZZSB\inDoctorSchedule.cs" />
+    <Compile Include="ZZSB\InPatientInfo.cs" />
+    <Compile Include="ZZSB\ItemInfoList.cs" />
+    <Compile Include="ZZSB\ItemTypeList.cs" />
+    <Compile Include="ZZSB\MedicalModel\CancelRegModel.cs" />
+    <Compile Include="ZZSB\MedicalModel\MedicalBase.cs" />
+    <Compile Include="ZZSB\MedicalModel\MedicalRegister.cs" />
+    <Compile Include="ZZSB\MedicalModel\MedicalSchema.cs" />
+    <Compile Include="ZZSB\OutPatientType.cs" />
+    <Compile Include="ZZSB\Pact.cs" />
+    <Compile Include="ZZSB\PactInfo.cs" />
+    <Compile Include="ZZSB\Patientopr.cs" />
+    <Compile Include="ZZSB\InRegisterDept.cs" />
+    <Compile Include="ZZSB\OutPatientReg.cs" />
+    <Compile Include="ZZSB\InTestNetwork.cs" />
+    <Compile Include="ZZSB\InTestNetworktwo.cs" />
+    <Compile Include="ZZSB\InTestNetworkthr.cs" />
+    <Compile Include="ZZSB\InTestNetworkfor.cs" />
+    <Compile Include="ZZSB\InTestNetworkSr.cs" />
+    <Compile Include="ZZSB\InVisitRecordForSRM.cs" />
+    <Compile Include="ZZSB\InGetPrescriptionAndChargeDetailsForSRM.cs" />
+    <Compile Include="ZZSB\InGetGuideListInfoForSRM.cs" />
+    <Compile Include="ZZSB\InQueryPriceDetailForSRM.cs" />
+    <Compile Include="ZZSB\InQueryFeeRecordForSRM.cs" />
+    <Compile Include="ZZSB\InQueryFetchMedicineQueueForSRM.cs" />
+    <Compile Include="ZZSB\InQueryExaminationQueueForSRM.cs" />
+    <Compile Include="ZZSB\InQueryInPatientQlistForSRM.cs" />
+    <Compile Include="ZZSB\InQueryOutPatientListForSRM.cs" />
+    <Compile Include="ZZSB\InJudgeIDCardHasFileSRM.cs" />
+    <Compile Include="ZZSB\OutNewCardToPatientForSRM.cs" />
+    <Compile Include="ZZSB\PayPlatform\InvoiceBinding.cs" />
+    <Compile Include="ZZSB\PayPlatform\Response.cs" />
+    <Compile Include="ZZSB\ReturnTheStoppedRegRequestModel.cs" />
+    <Compile Include="ZZSB\TradeRecords.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="EMPI\" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+</Project>

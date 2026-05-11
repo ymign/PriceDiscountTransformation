@@ -797,6 +797,9 @@ public sealed class PricingApiService
             UnitPrice = item.UnitPrice,
             BodyPartCode = NormalizeString(item.BodyPartCode),
             ChargeScene = NormalizeString(request.ChargeScene),
+            ItemGroupCode = NormalizeString(item.ItemGroupCode),
+            VisitType = NormalizeString(request.VisitType),
+            PatientAge = request.PatientAge,
             BusinessChargeTime = item.BusinessChargeTime ?? request.BusinessChargeTime,
             SourceSystem = request.SourceSystem.Trim(),
             ChargeNo = NormalizeString(request.ChargeNo),
@@ -979,9 +982,10 @@ public sealed class PricingApiService
         // 完整动作链仍通过步骤日志和请求响应快照追溯。
         var firstRuleId = result.MatchedRuleIds.FirstOrDefault();
         var now = DateTime.Now;
-        var resultGroupNo = result.ReplaceChildResult is null
+        var hasChildItems = result.ChildPricingResults.Count > 0;
+        var resultGroupNo = result.ReplaceChildResult is null && !hasChildItems
             ? null
-            : BuildResultGroupNo(requestId, item);
+            : BuildResultGroupNo(requestId, item, result.ReplaceChildResult is not null ? "REPLACE" : "CHILD");
 
         // ========== 第二阶段：保存待确认或最终折价明细 ==========
         // confirm 阶段写 PENDING，commit 后再统一改 CONFIRMED。这样未落账的结果不会进入正式报表。
@@ -1024,6 +1028,16 @@ public sealed class PricingApiService
 
         if (result.ReplaceChildResult is null)
         {
+            await SaveChildDiscountDetails(
+                requestId,
+                request,
+                item,
+                result,
+                resultGroupNo,
+                mainDiscountId,
+                firstRuleId,
+                status,
+                now);
             return;
         }
 
@@ -1055,6 +1069,61 @@ public sealed class PricingApiService
         };
 
         await _discountRepository.InsertAsync(replacementDetail);
+
+        await SaveChildDiscountDetails(
+            requestId,
+            request,
+            item,
+            result,
+            resultGroupNo,
+            mainDiscountId,
+            firstRuleId,
+            status,
+            now);
+    }
+
+    private async Task SaveChildDiscountDetails(
+        long requestId,
+        PricingCalculateRequest request,
+        PricingCalculateItemRequest item,
+        PricingResult result,
+        string? resultGroupNo,
+        long mainDiscountId,
+        long firstRuleId,
+        string status,
+        DateTime now)
+    {
+        foreach (var child in result.ChildPricingResults)
+        {
+            var childAmount = PricingAmountRounder.RoundFinalAmount(child.Amount);
+            var childDetail = new ChargeDiscountDetail
+            {
+                RequestId = requestId,
+                ChargeNo = NormalizeString(request.ChargeNo),
+                ChargeDetailNo = NormalizeString(item.ChargeDetailNo),
+                PatientId = request.PatientId,
+                VisitId = request.VisitId,
+                ItemCode = child.ItemCode,
+                ItemName = child.ItemName,
+                RuleId = firstRuleId == 0 ? null : firstRuleId,
+                ResultGroupNo = resultGroupNo,
+                ParentDiscountId = mainDiscountId,
+                ConvertedQty = child.Qty,
+                FinalQty = child.Qty,
+                UnitPrice = child.UnitPrice,
+                OriginalAmt = 0m,
+                CalculatedAmt = childAmount,
+                FinalAmt = childAmount,
+                DiscountAmt = -childAmount,
+                DiscountType = "ADD_CHILD_ITEM",
+                ReasonCode = "ADD_CHILD_ITEM",
+                ReasonDesc = BuildChildReasonDesc(item, child),
+                Status = status,
+                OccurredAt = now
+            };
+
+            await _discountRepository.InsertAsync(childDetail);
+        }
     }
 
     private async Task SaveLimitOccupies(long requestId, PricingResult result)
@@ -1102,13 +1171,13 @@ public sealed class PricingApiService
         };
     }
 
-    private static string BuildResultGroupNo(long requestId, PricingCalculateItemRequest item)
+    private static string BuildResultGroupNo(long requestId, PricingCalculateItemRequest item, string groupType)
     {
         var chargeDetailNo = NormalizeString(item.ChargeDetailNo) ?? "NO_DETAIL";
         var itemRequestNo = NormalizeString(item.ItemRequestNo) ?? "NO_ITEM_REQUEST";
         var rawKey = $"{item.ItemCode.Trim()}:{chargeDetailNo}:{itemRequestNo}".ToUpperInvariant();
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(rawKey)))[..12];
-        return $"REPLACE:{requestId}:{hash}";
+        return $"{groupType}:{requestId}:{hash}";
     }
 
     private static string BuildReasonDesc(PricingResult result)
@@ -1130,6 +1199,14 @@ public sealed class PricingApiService
                $"{replacement.ItemName}，数量 {replacement.Qty}，金额 {replacement.Amount}";
     }
 
+    private static string BuildChildReasonDesc(
+        PricingCalculateItemRequest item,
+        ChildPricingResult child)
+    {
+        return $"主项目 {item.ItemCode} 自动加收子项目 {child.ItemCode} " +
+               $"{child.ItemName}，数量 {child.Qty}，金额 {child.Amount}";
+    }
+
     private static PricingCalculateItemResponse BuildItemResponse(
         long requestId,
         PricingCalculateItemRequest item,
@@ -1147,8 +1224,10 @@ public sealed class PricingApiService
             FinalQty = result.FinalQty,
             ConvertedQty = result.ConvertedQty,
             UnitPrice = result.UnitPrice,
-            FinalAmount = PricingAmountRounder.RoundFinalAmount(result.FinalAmount),
-            DiscountAmount = PricingAmountRounder.RoundFinalAmount(result.DiscountAmount),
+            FinalAmount = PricingAmountRounder.RoundFinalAmount(
+                result.FinalAmount + result.ChildPricingResults.Sum(c => c.Amount)),
+            DiscountAmount = PricingAmountRounder.RoundFinalAmount(
+                result.DiscountAmount - result.ChildPricingResults.Sum(c => c.Amount)),
             ExceedQty = result.ExceedQty,
             ReplacementItem = result.ReplaceChildResult is null
                 ? null
@@ -1160,6 +1239,15 @@ public sealed class PricingApiService
                     UnitPrice = result.ReplaceChildResult.UnitPrice,
                     Amount = PricingAmountRounder.RoundFinalAmount(result.ReplaceChildResult.Amount)
                 },
+            ChildItems = result.ChildPricingResults.Select(c => new PricingChildItemResponse
+            {
+                ItemCode = c.ItemCode,
+                ItemName = NormalizeString(c.ItemName),
+                Qty = c.Qty,
+                UnitPrice = c.UnitPrice,
+                Amount = PricingAmountRounder.RoundFinalAmount(c.Amount),
+                ShareParentLimit = c.ShareParentLimit
+            }).ToList(),
             TraceSteps = result.TraceSteps.Select(s => new PricingTraceStepResponse
             {
                 StepNo = s.StepNo,
@@ -1292,6 +1380,8 @@ public sealed class PricingApiService
             callType,
             patientId = NormalizeString(request.PatientId),
             visitId = NormalizeString(request.VisitId),
+            visitType = NormalizeString(request.VisitType),
+            patientAge = request.PatientAge,
             encounterNo = NormalizeString(request.EncounterNo),
             chargeScene = NormalizeString(request.ChargeScene),
             chargeNo = NormalizeString(request.ChargeNo),
@@ -1310,6 +1400,7 @@ public sealed class PricingApiService
                     chargeDetailNo = NormalizeString(i.ChargeDetailNo),
                     itemCode = NormalizeString(i.ItemCode),
                     itemName = NormalizeString(i.ItemName),
+                    itemGroupCode = NormalizeString(i.ItemGroupCode),
                     inputQty = Math.Round(i.InputQty, 4),
                     inputUnit = NormalizeString(i.Unit),
                     unitPrice = Math.Round(i.UnitPrice, 4),

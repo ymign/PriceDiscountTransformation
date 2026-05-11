@@ -1,7 +1,45 @@
 ~$*
 *.tmp
 .vs/
-bin/
-obj/
+[Bb]in/
+[Oo]bj/
 *.user
 *.suo
+*.userosscache
+*.sln.docstates
+
+# Build outputs and debug symbols
+*.dll
+*.exe
+*.pdb
+*.ilk
+*.idb
+*.tlog
+*.resources
+*.cache
+*.nupkg
+*.CopyComplete
+*.force
+*.licenses
+*.r[0-9]*
+
+# Local logs, backups, and temporary files
+*.log
+*.bak
+*.orig
+*.rej
+
+# Legacy Visual SourceSafe metadata
+*.scc
+*.vspscc
+vssver*.scc
+
+# Legacy generated cache files
+legacy-code/**/sciCache
+legacy-code/**/Log/
+legacy-code/**/server/
+legacy-code/**/*.zip
+legacy-code/**/Insurance.config
+legacy-code/**/Appcs.config
+legacy-code/WeChat/FS.ZDWY.Internet.WebService/App.config
+legacy-code/zzsb/His.Service/His.Service/SqlMap.config

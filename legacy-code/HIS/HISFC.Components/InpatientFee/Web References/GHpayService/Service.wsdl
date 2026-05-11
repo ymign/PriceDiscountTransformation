@@ -1,0 +1,390 @@
+<?xml version="1.0" encoding="utf-8"?>
+<wsdl:definitions xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:tm="http://microsoft.com/wsdl/mime/textMatching/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:mime="http://schemas.xmlsoap.org/wsdl/mime/" xmlns:tns="http://tempuri.org/" xmlns:s="http://www.w3.org/2001/XMLSchema" xmlns:soap12="http://schemas.xmlsoap.org/wsdl/soap12/" xmlns:http="http://schemas.xmlsoap.org/wsdl/http/" targetNamespace="http://tempuri.org/" xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+  <wsdl:types>
+    <s:schema elementFormDefault="qualified" targetNamespace="http://tempuri.org/">
+      <s:element name="Getpay">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="setQrCode" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="setOutTradeNo" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="setOrderAmt" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetpayResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="GetpayResult" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="PayStatus">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="setOutTradeNo" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="PayStatusResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="PayStatusResult" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetRefund">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="setOutTradeNo" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="setRejectNo" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="setRejectAmt" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="setOperId" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetRefundResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="GetRefundResult" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="Returnstat">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="setOutTradeNo" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="setRejectNo" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="ReturnstatResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="ReturnstatResult" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="string" nillable="true" type="s:string" />
+    </s:schema>
+  </wsdl:types>
+  <wsdl:message name="GetpaySoapIn">
+    <wsdl:part name="parameters" element="tns:Getpay" />
+  </wsdl:message>
+  <wsdl:message name="GetpaySoapOut">
+    <wsdl:part name="parameters" element="tns:GetpayResponse" />
+  </wsdl:message>
+  <wsdl:message name="PayStatusSoapIn">
+    <wsdl:part name="parameters" element="tns:PayStatus" />
+  </wsdl:message>
+  <wsdl:message name="PayStatusSoapOut">
+    <wsdl:part name="parameters" element="tns:PayStatusResponse" />
+  </wsdl:message>
+  <wsdl:message name="GetRefundSoapIn">
+    <wsdl:part name="parameters" element="tns:GetRefund" />
+  </wsdl:message>
+  <wsdl:message name="GetRefundSoapOut">
+    <wsdl:part name="parameters" element="tns:GetRefundResponse" />
+  </wsdl:message>
+  <wsdl:message name="ReturnstatSoapIn">
+    <wsdl:part name="parameters" element="tns:Returnstat" />
+  </wsdl:message>
+  <wsdl:message name="ReturnstatSoapOut">
+    <wsdl:part name="parameters" element="tns:ReturnstatResponse" />
+  </wsdl:message>
+  <wsdl:message name="GetpayHttpGetIn">
+    <wsdl:part name="setQrCode" type="s:string" />
+    <wsdl:part name="setOutTradeNo" type="s:string" />
+    <wsdl:part name="setOrderAmt" type="s:string" />
+  </wsdl:message>
+  <wsdl:message name="GetpayHttpGetOut">
+    <wsdl:part name="Body" element="tns:string" />
+  </wsdl:message>
+  <wsdl:message name="PayStatusHttpGetIn">
+    <wsdl:part name="setOutTradeNo" type="s:string" />
+  </wsdl:message>
+  <wsdl:message name="PayStatusHttpGetOut">
+    <wsdl:part name="Body" element="tns:string" />
+  </wsdl:message>
+  <wsdl:message name="GetRefundHttpGetIn">
+    <wsdl:part name="setOutTradeNo" type="s:string" />
+    <wsdl:part name="setRejectNo" type="s:string" />
+    <wsdl:part name="setRejectAmt" type="s:string" />
+    <wsdl:part name="setOperId" type="s:string" />
+  </wsdl:message>
+  <wsdl:message name="GetRefundHttpGetOut">
+    <wsdl:part name="Body" element="tns:string" />
+  </wsdl:message>
+  <wsdl:message name="ReturnstatHttpGetIn">
+    <wsdl:part name="setOutTradeNo" type="s:string" />
+    <wsdl:part name="setRejectNo" type="s:string" />
+  </wsdl:message>
+  <wsdl:message name="ReturnstatHttpGetOut">
+    <wsdl:part name="Body" element="tns:string" />
+  </wsdl:message>
+  <wsdl:message name="GetpayHttpPostIn">
+    <wsdl:part name="setQrCode" type="s:string" />
+    <wsdl:part name="setOutTradeNo" type="s:string" />
+    <wsdl:part name="setOrderAmt" type="s:string" />
+  </wsdl:message>
+  <wsdl:message name="GetpayHttpPostOut">
+    <wsdl:part name="Body" element="tns:string" />
+  </wsdl:message>
+  <wsdl:message name="PayStatusHttpPostIn">
+    <wsdl:part name="setOutTradeNo" type="s:string" />
+  </wsdl:message>
+  <wsdl:message name="PayStatusHttpPostOut">
+    <wsdl:part name="Body" element="tns:string" />
+  </wsdl:message>
+  <wsdl:message name="GetRefundHttpPostIn">
+    <wsdl:part name="setOutTradeNo" type="s:string" />
+    <wsdl:part name="setRejectNo" type="s:string" />
+    <wsdl:part name="setRejectAmt" type="s:string" />
+    <wsdl:part name="setOperId" type="s:string" />
+  </wsdl:message>
+  <wsdl:message name="GetRefundHttpPostOut">
+    <wsdl:part name="Body" element="tns:string" />
+  </wsdl:message>
+  <wsdl:message name="ReturnstatHttpPostIn">
+    <wsdl:part name="setOutTradeNo" type="s:string" />
+    <wsdl:part name="setRejectNo" type="s:string" />
+  </wsdl:message>
+  <wsdl:message name="ReturnstatHttpPostOut">
+    <wsdl:part name="Body" element="tns:string" />
+  </wsdl:message>
+  <wsdl:portType name="ServiceSoap">
+    <wsdl:operation name="Getpay">
+      <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">二维码被扫支付接口</wsdl:documentation>
+      <wsdl:input message="tns:GetpaySoapIn" />
+      <wsdl:output message="tns:GetpaySoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="PayStatus">
+      <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">支付状态查询</wsdl:documentation>
+      <wsdl:input message="tns:PayStatusSoapIn" />
+      <wsdl:output message="tns:PayStatusSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetRefund">
+      <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">二维码支付退款接口</wsdl:documentation>
+      <wsdl:input message="tns:GetRefundSoapIn" />
+      <wsdl:output message="tns:GetRefundSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="Returnstat">
+      <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">退款状态查询</wsdl:documentation>
+      <wsdl:input message="tns:ReturnstatSoapIn" />
+      <wsdl:output message="tns:ReturnstatSoapOut" />
+    </wsdl:operation>
+  </wsdl:portType>
+  <wsdl:portType name="ServiceHttpGet">
+    <wsdl:operation name="Getpay">
+      <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">二维码被扫支付接口</wsdl:documentation>
+      <wsdl:input message="tns:GetpayHttpGetIn" />
+      <wsdl:output message="tns:GetpayHttpGetOut" />
+    </wsdl:operation>
+    <wsdl:operation name="PayStatus">
+      <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">支付状态查询</wsdl:documentation>
+      <wsdl:input message="tns:PayStatusHttpGetIn" />
+      <wsdl:output message="tns:PayStatusHttpGetOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetRefund">
+      <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">二维码支付退款接口</wsdl:documentation>
+      <wsdl:input message="tns:GetRefundHttpGetIn" />
+      <wsdl:output message="tns:GetRefundHttpGetOut" />
+    </wsdl:operation>
+    <wsdl:operation name="Returnstat">
+      <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">退款状态查询</wsdl:documentation>
+      <wsdl:input message="tns:ReturnstatHttpGetIn" />
+      <wsdl:output message="tns:ReturnstatHttpGetOut" />
+    </wsdl:operation>
+  </wsdl:portType>
+  <wsdl:portType name="ServiceHttpPost">
+    <wsdl:operation name="Getpay">
+      <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">二维码被扫支付接口</wsdl:documentation>
+      <wsdl:input message="tns:GetpayHttpPostIn" />
+      <wsdl:output message="tns:GetpayHttpPostOut" />
+    </wsdl:operation>
+    <wsdl:operation name="PayStatus">
+      <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">支付状态查询</wsdl:documentation>
+      <wsdl:input message="tns:PayStatusHttpPostIn" />
+      <wsdl:output message="tns:PayStatusHttpPostOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetRefund">
+      <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">二维码支付退款接口</wsdl:documentation>
+      <wsdl:input message="tns:GetRefundHttpPostIn" />
+      <wsdl:output message="tns:GetRefundHttpPostOut" />
+    </wsdl:operation>
+    <wsdl:operation name="Returnstat">
+      <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">退款状态查询</wsdl:documentation>
+      <wsdl:input message="tns:ReturnstatHttpPostIn" />
+      <wsdl:output message="tns:ReturnstatHttpPostOut" />
+    </wsdl:operation>
+  </wsdl:portType>
+  <wsdl:binding name="ServiceSoap" type="tns:ServiceSoap">
+    <soap:binding transport="http://schemas.xmlsoap.org/soap/http" />
+    <wsdl:operation name="Getpay">
+      <soap:operation soapAction="http://tempuri.org/Getpay" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="PayStatus">
+      <soap:operation soapAction="http://tempuri.org/PayStatus" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetRefund">
+      <soap:operation soapAction="http://tempuri.org/GetRefund" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="Returnstat">
+      <soap:operation soapAction="http://tempuri.org/Returnstat" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+  </wsdl:binding>
+  <wsdl:binding name="ServiceSoap12" type="tns:ServiceSoap">
+    <soap12:binding transport="http://schemas.xmlsoap.org/soap/http" />
+    <wsdl:operation name="Getpay">
+      <soap12:operation soapAction="http://tempuri.org/Getpay" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="PayStatus">
+      <soap12:operation soapAction="http://tempuri.org/PayStatus" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetRefund">
+      <soap12:operation soapAction="http://tempuri.org/GetRefund" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="Returnstat">
+      <soap12:operation soapAction="http://tempuri.org/Returnstat" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+  </wsdl:binding>
+  <wsdl:binding name="ServiceHttpGet" type="tns:ServiceHttpGet">
+    <http:binding verb="GET" />
+    <wsdl:operation name="Getpay">
+      <http:operation location="/Getpay" />
+      <wsdl:input>
+        <http:urlEncoded />
+      </wsdl:input>
+      <wsdl:output>
+        <mime:mimeXml part="Body" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="PayStatus">
+      <http:operation location="/PayStatus" />
+      <wsdl:input>
+        <http:urlEncoded />
+      </wsdl:input>
+      <wsdl:output>
+        <mime:mimeXml part="Body" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetRefund">
+      <http:operation location="/GetRefund" />
+      <wsdl:input>
+        <http:urlEncoded />
+      </wsdl:input>
+      <wsdl:output>
+        <mime:mimeXml part="Body" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="Returnstat">
+      <http:operation location="/Returnstat" />
+      <wsdl:input>
+        <http:urlEncoded />
+      </wsdl:input>
+      <wsdl:output>
+        <mime:mimeXml part="Body" />
+      </wsdl:output>
+    </wsdl:operation>
+  </wsdl:binding>
+  <wsdl:binding name="ServiceHttpPost" type="tns:ServiceHttpPost">
+    <http:binding verb="POST" />
+    <wsdl:operation name="Getpay">
+      <http:operation location="/Getpay" />
+      <wsdl:input>
+        <mime:content type="application/x-www-form-urlencoded" />
+      </wsdl:input>
+      <wsdl:output>
+        <mime:mimeXml part="Body" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="PayStatus">
+      <http:operation location="/PayStatus" />
+      <wsdl:input>
+        <mime:content type="application/x-www-form-urlencoded" />
+      </wsdl:input>
+      <wsdl:output>
+        <mime:mimeXml part="Body" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetRefund">
+      <http:operation location="/GetRefund" />
+      <wsdl:input>
+        <mime:content type="application/x-www-form-urlencoded" />
+      </wsdl:input>
+      <wsdl:output>
+        <mime:mimeXml part="Body" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="Returnstat">
+      <http:operation location="/Returnstat" />
+      <wsdl:input>
+        <mime:content type="application/x-www-form-urlencoded" />
+      </wsdl:input>
+      <wsdl:output>
+        <mime:mimeXml part="Body" />
+      </wsdl:output>
+    </wsdl:operation>
+  </wsdl:binding>
+  <wsdl:service name="Service">
+    <wsdl:port name="ServiceSoap" binding="tns:ServiceSoap">
+      <soap:address location="http://172.16.64.68:8050/Service.asmx" />
+    </wsdl:port>
+    <wsdl:port name="ServiceSoap12" binding="tns:ServiceSoap12">
+      <soap12:address location="http://172.16.64.68:8050/Service.asmx" />
+    </wsdl:port>
+    <wsdl:port name="ServiceHttpGet" binding="tns:ServiceHttpGet">
+      <http:address location="http://172.16.64.68:8050/Service.asmx" />
+    </wsdl:port>
+    <wsdl:port name="ServiceHttpPost" binding="tns:ServiceHttpPost">
+      <http:address location="http://172.16.64.68:8050/Service.asmx" />
+    </wsdl:port>
+  </wsdl:service>
+</wsdl:definitions>

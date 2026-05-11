@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<wsdl:definitions xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:tm="http://microsoft.com/wsdl/mime/textMatching/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:mime="http://schemas.xmlsoap.org/wsdl/mime/" xmlns:tns="http://tempuri.org/" xmlns:s="http://www.w3.org/2001/XMLSchema" xmlns:soap12="http://schemas.xmlsoap.org/wsdl/soap12/" xmlns:http="http://schemas.xmlsoap.org/wsdl/http/" targetNamespace="http://tempuri.org/" xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+  <wsdl:types>
+    <s:schema elementFormDefault="qualified" targetNamespace="http://tempuri.org/">
+      <s:element name="PushLisInpatientApplyByInpatientNoList">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="inpatientNoList" type="tns:ArrayOfString" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:complexType name="ArrayOfString">
+        <s:sequence>
+          <s:element minOccurs="0" maxOccurs="unbounded" name="string" nillable="true" type="s:string" />
+        </s:sequence>
+      </s:complexType>
+      <s:element name="PushLisInpatientApplyByInpatientNoListResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="PushLisInpatientApplyByInpatientNoListResult" type="s:int" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="PushPatientEMPIInfo">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="patientNo" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="patientType" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="PushPatientEMPIInfoResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="PushPatientEMPIInfoResult" type="s:int" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+    </s:schema>
+  </wsdl:types>
+  <wsdl:message name="PushLisInpatientApplyByInpatientNoListSoapIn">
+    <wsdl:part name="parameters" element="tns:PushLisInpatientApplyByInpatientNoList" />
+  </wsdl:message>
+  <wsdl:message name="PushLisInpatientApplyByInpatientNoListSoapOut">
+    <wsdl:part name="parameters" element="tns:PushLisInpatientApplyByInpatientNoListResponse" />
+  </wsdl:message>
+  <wsdl:message name="PushPatientEMPIInfoSoapIn">
+    <wsdl:part name="parameters" element="tns:PushPatientEMPIInfo" />
+  </wsdl:message>
+  <wsdl:message name="PushPatientEMPIInfoSoapOut">
+    <wsdl:part name="parameters" element="tns:PushPatientEMPIInfoResponse" />
+  </wsdl:message>
+  <wsdl:portType name="CommonServiceForHISSoap">
+    <wsdl:operation name="PushLisInpatientApplyByInpatientNoList">
+      <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">HIS调用，通过住院患者流水号列表调用Web服务，推送住院患者检验申请单</wsdl:documentation>
+      <wsdl:input message="tns:PushLisInpatientApplyByInpatientNoListSoapIn" />
+      <wsdl:output message="tns:PushLisInpatientApplyByInpatientNoListSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="PushPatientEMPIInfo">
+      <wsdl:documentation xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">HIS调用，推送患者信息，并获取插入EMPI号</wsdl:documentation>
+      <wsdl:input message="tns:PushPatientEMPIInfoSoapIn" />
+      <wsdl:output message="tns:PushPatientEMPIInfoSoapOut" />
+    </wsdl:operation>
+  </wsdl:portType>
+  <wsdl:binding name="CommonServiceForHISSoap" type="tns:CommonServiceForHISSoap">
+    <soap:binding transport="http://schemas.xmlsoap.org/soap/http" />
+    <wsdl:operation name="PushLisInpatientApplyByInpatientNoList">
+      <soap:operation soapAction="http://tempuri.org/PushLisInpatientApplyByInpatientNoList" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="PushPatientEMPIInfo">
+      <soap:operation soapAction="http://tempuri.org/PushPatientEMPIInfo" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+  </wsdl:binding>
+  <wsdl:binding name="CommonServiceForHISSoap12" type="tns:CommonServiceForHISSoap">
+    <soap12:binding transport="http://schemas.xmlsoap.org/soap/http" />
+    <wsdl:operation name="PushLisInpatientApplyByInpatientNoList">
+      <soap12:operation soapAction="http://tempuri.org/PushLisInpatientApplyByInpatientNoList" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="PushPatientEMPIInfo">
+      <soap12:operation soapAction="http://tempuri.org/PushPatientEMPIInfo" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+  </wsdl:binding>
+  <wsdl:service name="CommonServiceForHIS">
+    <wsdl:port name="CommonServiceForHISSoap" binding="tns:CommonServiceForHISSoap">
+      <soap:address location="http://172.16.61.119:8080/HisService/CommonServiceForHIS.asmx" />
+    </wsdl:port>
+    <wsdl:port name="CommonServiceForHISSoap12" binding="tns:CommonServiceForHISSoap12">
+      <soap12:address location="http://172.16.61.119:8080/HisService/CommonServiceForHIS.asmx" />
+    </wsdl:port>
+  </wsdl:service>
+</wsdl:definitions>

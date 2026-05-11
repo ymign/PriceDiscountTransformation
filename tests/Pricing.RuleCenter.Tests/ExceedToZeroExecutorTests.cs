@@ -164,6 +164,74 @@ public sealed class ExceedToZeroExecutorTests
         Assert.Equal(20m, result.FinalAmount);
     }
 
+    [Fact]
+    public async Task PricingEngine_CopiesChildPricingResultsToResult()
+    {
+        var rule = new RuleHeader
+        {
+            RuleId = 102,
+            ItemCode = "ITEM001",
+            Status = "PUBLISHED",
+            IsEnabled = "Y",
+            CurrentVersion = 1
+        };
+        var actions = new[]
+        {
+            new RuleAction
+            {
+                RuleId = 102,
+                VersionNo = 1,
+                ActionType = "ADD_CHILD_ITEM",
+                SortNo = 10,
+                ParamsJson = JsonConvert.SerializeObject(new
+                {
+                    childItems = new[]
+                    {
+                        new
+                        {
+                            itemCode = "ITEM_CHILD",
+                            itemName = "加收子项",
+                            qty = 1m,
+                            unitPriceKey = "config",
+                            unitPrice = 30m
+                        }
+                    }
+                })
+            }
+        };
+        var ruleMatchService = new RuleMatchService(
+            new FixedRuleHeaderRepository(rule),
+            new EmptyRuleConditionRepository(),
+            new FixedRuleActionRepository(actions),
+            new ConditionEvaluatorFactory(Array.Empty<IRuleConditionEvaluator>()),
+            new EmptyDictRepository(),
+            NullLogger<RuleMatchService>.Instance);
+        var pipeline = new ActionExecutionPipeline(
+            new ActionExecutorFactory(new IRuleActionExecutor[]
+            {
+                new AddChildItemExecutor()
+            }),
+            NullLogger<ActionExecutionPipeline>.Instance);
+        var engine = new PricingEngine(
+            ruleMatchService,
+            pipeline,
+            NullLogger<PricingEngine>.Instance);
+
+        var result = await engine.CalculateAsync(new PricingContext
+        {
+            PatientId = "P001",
+            ItemCode = "ITEM001",
+            InputQty = 2m,
+            UnitPrice = 100m,
+            BusinessChargeTime = new DateTime(2026, 5, 10, 10, 0, 0)
+        });
+
+        var child = Assert.Single(result.ChildPricingResults);
+        Assert.Equal("ITEM_CHILD", child.ItemCode);
+        Assert.Equal(30m, child.Amount);
+        Assert.Equal(200m, result.FinalAmount);
+    }
+
     private sealed class FullLimitExecutor : IRuleActionExecutor
     {
         public string ActionType => "APPLY_ONCE_LIMIT_QTY";

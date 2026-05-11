@@ -223,6 +223,7 @@ public sealed class PricingEngine : IPricingEngine
             DiscountAmount = PricingAmountRounder.RoundFinalAmount(context.DiscountAmount),
             ExceedQty = context.ExceedQty,
             ReplaceChildResult = context.ReplaceChildResult,
+            ChildPricingResults = context.ChildPricingResults.ToList(),
             TraceSteps = context.TraceSteps.ToList(),
             MatchedRuleIds = context.MatchedRules.Select(r => r.RuleId).ToList(),
             LimitOccupies = context.PendingLimitOccupies

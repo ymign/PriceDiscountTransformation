@@ -1,0 +1,481 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="3.5" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProductVersion>9.0.21022</ProductVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{68FF276F-C5B6-4D4C-9A22-46AB8B556794}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>Neusoft.SOC.Local.OutpatientFee.ZhuHai</RootNamespace>
+    <AssemblyName>SOC.Local.OutpatientFee.ZhuHai</AssemblyName>
+    <TargetFrameworkVersion>v3.5</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <SccProjectName>
+    </SccProjectName>
+    <SccLocalPath>
+    </SccLocalPath>
+    <SccAuxPath>
+    </SccAuxPath>
+    <SccProvider>
+    </SccProvider>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>..\..\..\..\lib\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="BarcodeLib, Version=1.0.0.10, Culture=neutral, processorArchitecture=MSIL" />
+    <Reference Include="FarPoint.CalcEngine, Version=3.0.2008.2005, Culture=neutral, PublicKeyToken=327c3516b1b18457, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\..\lib\FarPoint.CalcEngine.dll</HintPath>
+    </Reference>
+    <Reference Include="FarPoint.Excel, Version=3.0.2008.2005, Culture=neutral, PublicKeyToken=327c3516b1b18457, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\..\lib\FarPoint.Excel.dll</HintPath>
+    </Reference>
+    <Reference Include="FarPoint.PluginCalendar.WinForms, Version=3.0.2004.2005, Culture=neutral, PublicKeyToken=327c3516b1b18457, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\..\lib\FarPoint.PluginCalendar.WinForms.dll</HintPath>
+    </Reference>
+    <Reference Include="FarPoint.SpreadWrapper, Version=3.0.2004.2005, Culture=neutral, PublicKeyToken=327c3516b1b18457, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\..\lib\FarPoint.SpreadWrapper.dll</HintPath>
+    </Reference>
+    <Reference Include="FarPoint.Win, Version=3.0.2004.2005, Culture=neutral, PublicKeyToken=327c3516b1b18457, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\..\lib\FarPoint.Win.dll</HintPath>
+    </Reference>
+    <Reference Include="FarPoint.Win.Ink, Version=3.0.2000.2005, Culture=neutral, PublicKeyToken=327c3516b1b18457, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\..\lib\FarPoint.Win.Ink.dll</HintPath>
+    </Reference>
+    <Reference Include="FarPoint.Win.Spread, Version=3.0.2004.2005, Culture=neutral, PublicKeyToken=327c3516b1b18457, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\..\lib\FarPoint.Win.Spread.dll</HintPath>
+    </Reference>
+    <Reference Include="FarPoint.Win.Spread.Design, Version=3.0.2004.2005, Culture=neutral, PublicKeyToken=327c3516b1b18457, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\..\lib\FarPoint.Win.Spread.Design.dll</HintPath>
+    </Reference>
+    <Reference Include="FrameWork, Version=3.0.0.0, Culture=neutral, processorArchitecture=MSIL" />
+    <Reference Include="FrameWork.WinForms, Version=3.0.0.0, Culture=neutral, processorArchitecture=MSIL" />
+    <Reference Include="HISFC.BizLogic.Fee, Version=2.0.0.0, Culture=neutral, processorArchitecture=MSIL" />
+    <Reference Include="HISFC.BizLogic.HealthRecord, Version=2.0.0.0, Culture=neutral, processorArchitecture=MSIL" />
+    <Reference Include="HISFC.BizLogic.Manager, Version=2.0.0.0, Culture=neutral, processorArchitecture=MSIL" />
+    <Reference Include="HISFC.BizLogic.Registration, Version=2.0.0.0, Culture=neutral, processorArchitecture=MSIL" />
+    <Reference Include="HISFC.BizProcess.Integrate, Version=2.0.0.0, Culture=neutral, processorArchitecture=MSIL" />
+    <Reference Include="HISFC.BizProcess.Interface, Version=2.0.0.0, Culture=neutral, processorArchitecture=MSIL" />
+    <Reference Include="HISFC.Components.Common, Version=2.0.0.0, Culture=neutral, processorArchitecture=MSIL" />
+    <Reference Include="HISFC.Models, Version=2.0.0.0, Culture=neutral, processorArchitecture=MSIL" />
+    <Reference Include="Microsoft.VisualBasic" />
+    <Reference Include="Newtonsoft.Json, Version=11.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\..\lib\Newtonsoft.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="SOC.HISFC.BizProcess.Cache, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL" />
+    <Reference Include="SOC.HISFC.BizProcess.CommonInterface, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL" />
+    <Reference Include="SOC.HISFC.BizProcess.MessagePatternInterface, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL" />
+    <Reference Include="SOC.HISFC.Fee.BizLogic, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL" />
+    <Reference Include="SOC.HISFC.Fee.Models, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL" />
+    <Reference Include="SOC.Local.RADT.ZhuHai, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL" />
+    <Reference Include="SOC.Public, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL" />
+    <Reference Include="SOC.Windows.Forms, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL" />
+    <Reference Include="System" />
+    <Reference Include="System.Core">
+      <RequiredTargetFramework>3.5</RequiredTargetFramework>
+    </Reference>
+    <Reference Include="System.EnterpriseServices" />
+    <Reference Include="System.Runtime.Serialization">
+      <RequiredTargetFramework>3.0</RequiredTargetFramework>
+    </Reference>
+    <Reference Include="System.ServiceModel">
+      <RequiredTargetFramework>3.0</RequiredTargetFramework>
+    </Reference>
+    <Reference Include="System.Web.Services" />
+    <Reference Include="System.Xml.Linq">
+      <RequiredTargetFramework>3.5</RequiredTargetFramework>
+    </Reference>
+    <Reference Include="System.Data.DataSetExtensions">
+      <RequiredTargetFramework>3.5</RequiredTargetFramework>
+    </Reference>
+    <Reference Include="System.Data" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Xml" />
+    <Reference Include="ZDWY.SpecialRule, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Properties\Settings.Designer.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <DependentUpon>Settings.settings</DependentUpon>
+    </Compile>
+    <Compile Include="Service References\PushMsgService\Reference.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>Reference.svcmap</DependentUpon>
+    </Compile>
+    <Compile Include="Web References\GHpayService\Reference.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>Reference.map</DependentUpon>
+    </Compile>
+    <Compile Include="Zdwy\Charge\tvPatientTree.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Zdwy\Charge\tvPatientTree.Designer.cs">
+      <DependentUpon>tvPatientTree.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Zdwy\CtMrFeeRule.cs" />
+    <Compile Include="Zdwy\IBankTrans\BankTrans.cs" />
+    <Compile Include="Zdwy\IChooseItemForOutpatient\ucChooseItemForOutPatient.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Zdwy\IChooseItemForOutpatient\ucChooseItemForOutPatient.Designer.cs">
+      <DependentUpon>ucChooseItemForOutPatient.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Zdwy\IGetItemPrice\ItemPrice.cs" />
+    <Compile Include="Zdwy\IInvoicePrint\ucInvoicePrint.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Zdwy\IInvoicePrint\ucInvoicePrint.designer.cs">
+      <DependentUpon>ucInvoicePrint.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Zdwy\ILisCalculateTube\AddFeeItem.cs" />
+    <Compile Include="Zdwy\IMultiScreen\frmMiltScreen.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Zdwy\IMultiScreen\frmMiltScreen.Designer.cs">
+      <DependentUpon>frmMiltScreen.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Zdwy\InterfaceManager.cs" />
+    <Compile Include="Zdwy\IOrder\Function.cs" />
+    <Compile Include="Zdwy\IOrder\MakeGFReportData.cs" />
+    <Compile Include="Zdwy\IOrder\Manager.cs" />
+    <Compile Include="Zdwy\IOrder\PubReport.cs" />
+    <Compile Include="Zdwy\IOutPatientFeeRoundOff\RoundOffFee.cs" />
+    <Compile Include="Zdwy\Function.cs" />
+    <Compile Include="Zdwy\IOutpatientGuide\frmPopPubCostBill.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientGuide\frmPopPubCostBill.Designer.cs">
+      <DependentUpon>frmPopPubCostBill.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientGuide\OutpatientGuide.cs" />
+    <Compile Include="Zdwy\IOutpatientGuide\ucFeeDetail.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientGuide\ucFeeDetail.Designer.cs">
+      <DependentUpon>ucFeeDetail.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientGuide\ucFeeDetailGuide.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientGuide\ucFeeDetailGuide.Designer.cs">
+      <DependentUpon>ucFeeDetailGuide.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientGuide\ucMZGuidePrint.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientGuide\ucMZGuidePrint.Designer.cs">
+      <DependentUpon>ucMZGuidePrint.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientGuide\ucPubCostBill.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientGuide\ucPubCostBill.Designer.cs">
+      <DependentUpon>ucPubCostBill.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Zdwy\ILisCalculateTube\DiagPubFee.cs" />
+    <Compile Include="Zdwy\IOutpatientGuide\ucMZGuideElecBillPrint.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientGuide\ucMZGuideElecBillPrint.Designer.cs">
+      <DependentUpon>ucMZGuideElecBillPrint.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientGuide\ucGhDetail.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientGuide\ucGhDetail.Designer.cs">
+      <DependentUpon>ucGhDetail.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientInfomation\frmQueryRegByName.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientInfomation\frmQueryRegByName.Designer.cs">
+      <DependentUpon>frmQueryRegByName.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientInfomation\ucPatientInfo.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientInfomation\ucPatientInfo.Designer.cs">
+      <DependentUpon>ucPatientInfo.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientItemInputAndDisplay\frmChoosePatientInfo.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientItemInputAndDisplay\ucDisplay.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientItemInputAndDisplay\ucDisplay.Designer.cs">
+      <DependentUpon>ucDisplay.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientItemInputAndDisplay\ucInjec.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientItemInputAndDisplay\ucInjec.Designer.cs">
+      <DependentUpon>ucInjec.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientItemInputAndDisplay\ucInputDays.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientItemInputAndDisplay\ucInputDays.Designer.cs">
+      <DependentUpon>ucInputDays.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientItemInputAndDisplay\ucInputTimes.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientItemInputAndDisplay\ucInputTimes.Designer.cs">
+      <DependentUpon>ucInputTimes.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientItemInputAndDisplay\ucInvoiceSelect.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientItemInputAndDisplay\ucInvoiceSelect.Designer.cs">
+      <DependentUpon>ucInvoiceSelect.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientItemInputAndDisplay\ucPopSelected.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientItemInputAndDisplay\ucPopSelected.Designer.cs">
+      <DependentUpon>ucPopSelected.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientItemInputAndDisplay\ucRecipeSelect.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientItemInputAndDisplay\ucRecipeSelect.designer.cs">
+      <DependentUpon>ucRecipeSelect.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientPopupFee\frmDealBalance.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientPopupFee\frmDealBalance.Designer.cs">
+      <DependentUpon>frmDealBalance.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientPopupFee\frmDealBalanceOld.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientPopupFee\frmDealBalanceOld.Designer.cs">
+      <DependentUpon>frmDealBalanceOld.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientPopupFee\FunctionZHPOS.cs" />
+    <Compile Include="Zdwy\IOutpatientPopupFee\ucInvoicePreviewSplit.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientPopupFee\ucInvoicePreviewSplit.Designer.cs">
+      <DependentUpon>ucInvoicePreviewSplit.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientPopupFee\ucSplitInvoice.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientPopupFee\ucSplitInvoice.Designer.cs">
+      <DependentUpon>ucSplitInvoice.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientPopupFee\ucSplitUnit.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Zdwy\IOutpatientPopupFee\ucSplitUnit.Designer.cs">
+      <DependentUpon>ucSplitUnit.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Zdwy\ISplitInvoice\SplitInvoiceClass.cs" />
+    <Compile Include="Zdwy\ITruncFee\ITruncFeeImplement.cs" />
+    <Compile Include="Zdwy\PreCharge\tvPatientTree.cs">
+      <SubType>Component</SubType>
+    </Compile>
+    <Compile Include="Zdwy\PreCharge\tvPatientTree.Designer.cs">
+      <DependentUpon>tvPatientTree.cs</DependentUpon>
+    </Compile>
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Service Include="{94E38DFF-614B-4cbd-B67C-F211BB35CE8B}" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Zdwy\IChooseItemForOutpatient\ucChooseItemForOutPatient.resx">
+      <DependentUpon>ucChooseItemForOutPatient.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Zdwy\IInvoicePrint\ucInvoicePrint.resx">
+      <DependentUpon>ucInvoicePrint.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Zdwy\IMultiScreen\frmMiltScreen.resx">
+      <DependentUpon>frmMiltScreen.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Zdwy\IOutpatientGuide\frmPopPubCostBill.resx">
+      <DependentUpon>frmPopPubCostBill.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Zdwy\IOutpatientGuide\ucFeeDetail.resx">
+      <DependentUpon>ucFeeDetail.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Zdwy\IOutpatientGuide\ucFeeDetailGuide.resx">
+      <DependentUpon>ucFeeDetailGuide.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Zdwy\IOutpatientGuide\ucMZGuidePrint.resx">
+      <DependentUpon>ucMZGuidePrint.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Zdwy\IOutpatientGuide\ucPubCostBill.resx">
+      <DependentUpon>ucPubCostBill.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Zdwy\IOutpatientGuide\ucMZGuideElecBillPrint.resx">
+      <DependentUpon>ucMZGuideElecBillPrint.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Zdwy\IOutpatientGuide\ucGhDetail.resx">
+      <DependentUpon>ucGhDetail.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Zdwy\IOutpatientInfomation\frmQueryRegByName.resx">
+      <DependentUpon>frmQueryRegByName.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Zdwy\IOutpatientInfomation\ucPatientInfo.resx">
+      <DependentUpon>ucPatientInfo.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Zdwy\IOutpatientItemInputAndDisplay\frmChoosePatientInfo.resx">
+      <DependentUpon>frmChoosePatientInfo.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Zdwy\IOutpatientItemInputAndDisplay\ucDisplay.resx">
+      <DependentUpon>ucDisplay.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Zdwy\IOutpatientItemInputAndDisplay\ucInjec.resx">
+      <DependentUpon>ucInjec.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Zdwy\IOutpatientItemInputAndDisplay\ucInputDays.resx">
+      <DependentUpon>ucInputDays.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Zdwy\IOutpatientItemInputAndDisplay\ucInputTimes.resx">
+      <DependentUpon>ucInputTimes.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Zdwy\IOutpatientItemInputAndDisplay\ucInvoiceSelect.resx">
+      <DependentUpon>ucInvoiceSelect.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Zdwy\IOutpatientItemInputAndDisplay\ucPopSelected.resx">
+      <DependentUpon>ucPopSelected.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Zdwy\IOutpatientItemInputAndDisplay\ucRecipeSelect.resx">
+      <DependentUpon>ucRecipeSelect.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Zdwy\IOutpatientPopupFee\frmDealBalance.resx">
+      <DependentUpon>frmDealBalance.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Zdwy\IOutpatientPopupFee\frmDealBalanceOld.resx">
+      <DependentUpon>frmDealBalanceOld.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Zdwy\IOutpatientPopupFee\ucInvoicePreviewSplit.resx">
+      <DependentUpon>ucInvoicePreviewSplit.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Zdwy\IOutpatientPopupFee\ucSplitInvoice.resx">
+      <DependentUpon>ucSplitInvoice.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Zdwy\IOutpatientPopupFee\ucSplitUnit.resx">
+      <DependentUpon>ucSplitUnit.cs</DependentUpon>
+      <SubType>Designer</SubType>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <WCFMetadata Include="Service References\" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="app.config" />
+    <None Include="Service References\PushMsgService\PushMsgService.wsdl" />
+    <None Include="Service References\PushMsgService\PushMsgService.xsd" />
+    <None Include="Service References\PushMsgService\PushMsgService1.xsd" />
+    <None Include="Service References\PushMsgService\PushMsgService2.xsd" />
+  </ItemGroup>
+  <ItemGroup>
+    <WCFMetadataStorage Include="Service References\PushMsgService\" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Service References\PushMsgService\PushMsgService.disco" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Service References\PushMsgService\configuration.svcinfo" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Service References\PushMsgService\Reference.svcmap">
+      <Generator>WCF Proxy Generator</Generator>
+      <LastGenOutput>Reference.cs</LastGenOutput>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Properties\Settings.settings">
+      <Generator>SettingsSingleFileGenerator</Generator>
+      <LastGenOutput>Settings.Designer.cs</LastGenOutput>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <WebReferences Include="Web References\" />
+  </ItemGroup>
+  <ItemGroup>
+    <WebReferenceUrl Include="http://172.16.64.68:8050/">
+      <UrlBehavior>Dynamic</UrlBehavior>
+      <RelPath>Web References\GHpayService\</RelPath>
+      <UpdateFromURL>http://172.16.64.68:8050/</UpdateFromURL>
+      <ServiceLocationURL>
+      </ServiceLocationURL>
+      <CachedDynamicPropName>
+      </CachedDynamicPropName>
+      <CachedAppSettingsObjectName>Settings</CachedAppSettingsObjectName>
+      <CachedSettingsPropName>SOC_Local_OutpatientFee_ZhuHai_GHpayService_Service</CachedSettingsPropName>
+    </WebReferenceUrl>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Web References\GHpayService\Reference.map">
+      <Generator>MSDiscoCodeGenerator</Generator>
+      <LastGenOutput>Reference.cs</LastGenOutput>
+    </None>
+    <None Include="Web References\GHpayService\Service.disco" />
+    <None Include="Web References\GHpayService\Service.wsdl" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+</Project>

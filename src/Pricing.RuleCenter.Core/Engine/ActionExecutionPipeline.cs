@@ -198,10 +198,10 @@ public sealed class ActionExecutionPipeline
             // 限额类：金额上下限、日限额、时间窗限额、单次限额、同组互斥
             "APPLY_MIN_AMOUNT" or "APPLY_MAX_AMOUNT" or "APPLY_DAY_LIMIT_QTY"
                 or "APPLY_TIME_WINDOW_LIMIT" or "APPLY_ONCE_LIMIT_QTY"
-                or "SAME_GROUP_MUTEX" => "LIMIT",
+                or "SAME_GROUP_MUTEX" or "SAME_OPERATION_CEILING" => "LIMIT",
 
-            // 折价类：超额归零
-            "DISCOUNT_EXCEED_TO_ZERO" => "DISCOUNT",
+            // 折价类：超额归零、子项加收
+            "DISCOUNT_EXCEED_TO_ZERO" or "ADD_CHILD_ITEM" => "DISCOUNT",
 
             // 兜底：未知动作类型映射为 VALIDATE，便于追溯时识别未分类动作
             _ => "VALIDATE"

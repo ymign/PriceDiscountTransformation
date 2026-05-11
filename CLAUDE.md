@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-这是一个**物价折价改造项目**的设计与规划仓库。目标是将医院信息系统（HIS）中硬编码的物价/折价规则，改造为可配置、可维护的统一计价规则中心，服务于所有渠道（HIS、自助机、微信）。
+这是一个**物价折价改造项目**的规则中心工程。目标是将医院信息系统（HIS）中硬编码的物价/折价规则，改造为可配置、可维护的统一计价规则中心，服务于所有渠道（HIS、自助机、微信）。
 
-项目当前处于**设计阶段**，暂无源代码。仓库包含需求文档、架构设计、数据库表设计草案、接口规范和任务拆解。
+项目当前已经包含 .NET 6 源码、xUnit 测试、HIS 客户端示例、Oracle SQL 初始化脚本和设计文档。
 
 ## 技术栈
 
@@ -26,14 +26,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 2. **统一计价引擎** — 规则匹配、双单位换算、公式执行、金额/数量上下限、折价计算
 3. **折价追溯中心** — 规则变更审计、计价请求日志、计算步骤日志、折价结果明细
 
-### 计划项目结构
+### 项目结构
 
 ```
 Pricing.RuleCenter.Api           — HTTP接口层
-Pricing.RuleCenter.Application   — 用例、事务、编排
-Pricing.RuleCenter.Domain        — 规则匹配、公式计算、折价决策
-Pricing.RuleCenter.Infrastructure— SqlSugarCore、Oracle、日志、缓存
-Pricing.RuleCenter.Contracts     — 请求/响应DTO、枚举、接口契约
+Pricing.RuleCenter.Core          — 规则匹配、动作执行、领域模型与接口契约
+Pricing.RuleCenter.Infrastructure— SqlSugarCore、Oracle、仓储、缓存基础设施
+tests/Pricing.RuleCenter.Tests   — xUnit 自动化测试
+his-client                       — HIS 端集成示例
+sql                              — Oracle 11g 初始化与验证脚本
 ```
 
 ### 核心设计模式

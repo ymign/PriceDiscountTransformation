@@ -136,12 +136,16 @@ public sealed class RuleHeaderController : ControllerBase
     /// <param name="itemCode">
     /// 项目编码（选填查询参数）。为空时返回所有生效规则；非空时按项目编码过滤。
     /// </param>
+    /// <param name="chargeTime">
+    /// 业务收费发生时间（选填查询参数）。为空时使用当前时间。
+    /// </param>
     /// <returns>当前时间点生效的规则主档列表，按优先级升序排列。</returns>
     [HttpGet("effective")]
     public async Task<ApiResponse<IReadOnlyList<RuleHeaderResponse>>> GetEffectiveRules(
-        [FromQuery] string? itemCode = null)
+        [FromQuery] string? itemCode = null,
+        [FromQuery] DateTime? chargeTime = null)
     {
-        var result = await _service.GetEffectiveAsync(itemCode);
+        var result = await _service.GetEffectiveAsync(itemCode, chargeTime);
         return ApiResponse<IReadOnlyList<RuleHeaderResponse>>.Ok(result);
     }
 

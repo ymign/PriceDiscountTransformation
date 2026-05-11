@@ -104,6 +104,11 @@ public sealed class PricingResult
     public ReplaceChildResult? ReplaceChildResult { get; set; }
 
     /// <summary>
+    /// ADD_CHILD_ITEM 动作生成的普通子项目计价结果集合。
+    /// </summary>
+    public IReadOnlyList<ChildPricingResult> ChildPricingResults { get; set; } = Array.Empty<ChildPricingResult>();
+
+    /// <summary>
     /// 本次计价的追踪步骤集合。
     /// </summary>
     /// <remarks>

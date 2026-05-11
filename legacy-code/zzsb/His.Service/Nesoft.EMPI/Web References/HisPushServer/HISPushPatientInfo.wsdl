@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="utf-8"?>
+<wsdl:definitions xmlns:tns="http://www.neusoft.com/hsb/HISPushPatientInfo/" xmlns:soap12="http://schemas.xmlsoap.org/wsdl/soap12/" xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:sch="http://www.neusoft.com/hsb/HISPushPatientInfo/" targetNamespace="http://www.neusoft.com/hsb/HISPushPatientInfo/" xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+  <wsdl:types>
+    <schema xmlns:event="http://www.neusoft.com/hsb/HISPushPatientInfo/" attributeFormDefault="qualified" elementFormDefault="qualified" targetNamespace="http://www.neusoft.com/hsb/HISPushPatientInfo/" xmlns="http://www.w3.org/2001/XMLSchema">
+      <element name="HISPushPatientInfoRequest">
+        <complexType>
+          <sequence>
+            <element name="message">
+              <complexType>
+                <sequence>
+                  <element name="NAME" type="string" />
+                  <element name="IDNO" type="string" />
+                  <element name="SEX" type="string" />
+                  <element name="BIRTHDAY" type="string" />
+                  <element name="CNY" type="string" />
+                  <element name="CNYNAME" type="string" />
+                  <element name="ACT" type="string" />
+                  <element name="ADDR" type="string" />
+                  <element name="ZPCODE" type="string" />
+                  <element name="ABOBLD" type="string" />
+                  <element name="RHBLD" type="string" />
+                  <element name="NTN" type="string" />
+                  <element name="BCP" type="string" />
+                  <element name="CTOR" type="string" />
+                  <element name="CTORTEL" type="string" />
+                  <element name="CTORLTN" type="string" />
+                  <element name="HMTEL" type="string" />
+                  <element name="MOBILE" type="string" />
+                  <element name="EML" type="string" />
+                  <element name="CPY" type="string" />
+                  <element name="CPYTEL" type="string" />
+                  <element name="MRG" type="string" />
+                  <element name="PFSN" type="string" />
+                  <element name="MEMO" type="string" />
+                  <element name="CARDNO" type="string" />
+                  <element name="CARDTYPE" type="string" />
+                  <element name="PATIENTTYPE" type="string" />
+                  <element name="EMPINO" type="string" />
+                  <element name="OPERCODE" type="string" />
+                  <element name="OPERNAME" type="string" />
+                  <element name="DEVOTE" type="string" />
+                  <element name="NOTE1" type="string" />
+                  <element name="NOTE2" type="string" />
+                  <element name="NOTE3" type="string" />
+                </sequence>
+              </complexType>
+            </element>
+          </sequence>
+        </complexType>
+      </element>
+      <element name="HISPushPatientInfoResponse">
+        <complexType>
+          <sequence>
+            <element name="HISPushPatientInfoResult" type="string" />
+          </sequence>
+        </complexType>
+      </element>
+      <element name="RequestHeader">
+        <complexType>
+          <sequence>
+            <element name="Token" type="string" />
+            <element name="SystemCode" type="string" />
+            <element name="ChannelMark" type="string" />
+            <element name="ConverterMark" type="string" />
+          </sequence>
+        </complexType>
+      </element>
+      <element name="ResponseHeader">
+        <complexType>
+          <sequence>
+            <element name="Token" type="string" />
+            <element name="InternalToken" type="string" />
+          </sequence>
+        </complexType>
+      </element>
+    </schema>
+  </wsdl:types>
+  <wsdl:message name="HISPushPatientInfoResponse">
+    <wsdl:part name="HISPushPatientInfoResponse" element="sch:HISPushPatientInfoResponse" />
+  </wsdl:message>
+  <wsdl:message name="HISPushPatientInfoRequest">
+    <wsdl:part name="HISPushPatientInfoRequest" element="sch:HISPushPatientInfoRequest" />
+  </wsdl:message>
+  <wsdl:message name="ResponseHeader">
+    <wsdl:part name="ResponseHeader" element="sch:ResponseHeader" />
+  </wsdl:message>
+  <wsdl:message name="RequestHeader">
+    <wsdl:part name="RequestHeader" element="sch:RequestHeader" />
+  </wsdl:message>
+  <wsdl:portType name="HISPushPatientInfo">
+    <wsdl:operation name="HISPushPatientInfo">
+      <wsdl:input name="HISPushPatientInfoRequest" message="sch:HISPushPatientInfoRequest" />
+      <wsdl:output name="HISPushPatientInfoResponse" message="sch:HISPushPatientInfoResponse" />
+    </wsdl:operation>
+  </wsdl:portType>
+  <wsdl:binding name="HISPushPatientInfoSoap12" type="sch:HISPushPatientInfo">
+    <soap12:binding transport="http://schemas.xmlsoap.org/soap/http" />
+    <wsdl:operation name="HISPushPatientInfo">
+      <soap12:operation soapAction="" />
+      <wsdl:input name="HISPushPatientInfoRequest">
+        <soap12:body use="literal" />
+        <soap:header message="sch:RequestHeader" part="RequestHeader" use="literal" />
+      </wsdl:input>
+      <wsdl:output name="HISPushPatientInfoResponse">
+        <soap12:body use="literal" />
+        <soap:header message="sch:ResponseHeader" part="ResponseHeader" use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+  </wsdl:binding>
+  <wsdl:binding name="HISPushPatientInfoSoap11" type="sch:HISPushPatientInfo">
+    <soap:binding transport="http://schemas.xmlsoap.org/soap/http" />
+    <wsdl:operation name="HISPushPatientInfo">
+      <soap:operation soapAction="" />
+      <wsdl:input name="HISPushPatientInfoRequest">
+        <soap:body use="literal" />
+        <soap:header message="sch:RequestHeader" part="RequestHeader" use="literal" />
+      </wsdl:input>
+      <wsdl:output name="HISPushPatientInfoResponse">
+        <soap:body use="literal" />
+        <soap:header message="sch:ResponseHeader" part="ResponseHeader" use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+  </wsdl:binding>
+  <wsdl:service name="HISPushPatientInfoService">
+    <wsdl:port name="HISPushPatientInfoSoap12" binding="sch:HISPushPatientInfoSoap12">
+      <soap12:address location="http://172.16.61.105:8081/HIP/ws/HISPushPatientInfoService" />
+    </wsdl:port>
+    <wsdl:port name="HISPushPatientInfoSoap11" binding="sch:HISPushPatientInfoSoap11">
+      <soap:address location="http://172.16.61.105:8081/HIP/ws/HISPushPatientInfoService" />
+    </wsdl:port>
+  </wsdl:service>
+</wsdl:definitions>

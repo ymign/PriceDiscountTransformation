@@ -1,0 +1,189 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{659FC401-CB96-468F-ABCD-6DB38C6111D3}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>FS.ZDWY.Internet.BP</RootNamespace>
+    <AssemblyName>FS.ZDWY.Internet.BP</AssemblyName>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <Deterministic>true</Deterministic>
+    <TargetFrameworkProfile />
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>..\lib\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup>
+    <StartupObject />
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="FrameWork, Version=3.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\lib\FrameWork.dll</HintPath>
+    </Reference>
+    <Reference Include="FrameWork.WinForms, Version=3.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\lib\FrameWork.WinForms.dll</HintPath>
+    </Reference>
+    <Reference Include="FS.ZDWY.Internet.BL, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\lib\FS.ZDWY.Internet.BL.dll</HintPath>
+    </Reference>
+    <Reference Include="FS.ZDWY.Internet.Models, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\lib\FS.ZDWY.Internet.Models.dll</HintPath>
+    </Reference>
+    <Reference Include="GDSI, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\lib\GDSI.dll</HintPath>
+    </Reference>
+    <Reference Include="HISFC.BizLogic.Fee, Version=2.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\lib\HISFC.BizLogic.Fee.dll</HintPath>
+    </Reference>
+    <Reference Include="HISFC.BizLogic.Manager, Version=2.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\FS.ZDWY.Internet.WebService\bin\HISFC.BizLogic.Manager.dll</HintPath>
+    </Reference>
+    <Reference Include="HISFC.BizLogic.MedicalTechnology, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\lib\HISFC.BizLogic.MedicalTechnology.dll</HintPath>
+    </Reference>
+    <Reference Include="HISFC.BizLogic.Order, Version=2.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\lib\HISFC.BizLogic.Order.dll</HintPath>
+    </Reference>
+    <Reference Include="HISFC.BizLogic.RADT, Version=2.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>bin\Debug\HISFC.BizLogic.RADT.dll</HintPath>
+    </Reference>
+    <Reference Include="HISFC.BizLogic.Registration, Version=2.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\lib\HISFC.BizLogic.Registration.dll</HintPath>
+    </Reference>
+    <Reference Include="HISFC.BizProcess.Integrate, Version=2.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\lib\HISFC.BizProcess.Integrate.dll</HintPath>
+    </Reference>
+    <Reference Include="HISFC.BizProcess.Interface, Version=2.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\lib\HISFC.BizProcess.Interface.dll</HintPath>
+    </Reference>
+    <Reference Include="HISFC.Models, Version=2.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\lib\HISFC.Models.dll</HintPath>
+    </Reference>
+    <Reference Include="LogHelper, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\lib\LogHelper.dll</HintPath>
+    </Reference>
+    <Reference Include="Microsoft.QualityTools.Testing.Fakes, Version=11.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL" />
+    <Reference Include="Nesoft.EMPI">
+      <HintPath>..\FS.ZDWY.Internet.WebService\bin\Nesoft.EMPI.dll</HintPath>
+    </Reference>
+    <Reference Include="packagService, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\lib\packagService.dll</HintPath>
+    </Reference>
+    <Reference Include="SOC.HISFC.BizProcess.CommonInterface">
+      <HintPath>..\FS.ZDWY.Internet.WebService\bin\SOC.HISFC.BizProcess.CommonInterface.dll</HintPath>
+    </Reference>
+    <Reference Include="SOC.HISFC.RADT.BizLogic, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\FS.ZDWY.Internet.WebService\bin\SOC.HISFC.RADT.BizLogic.dll</HintPath>
+    </Reference>
+    <Reference Include="SOC.Local.OutpatientFee.ZhuHai, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\lib\SOC.Local.OutpatientFee.ZhuHai.dll</HintPath>
+    </Reference>
+    <Reference Include="SOC.Local.RADT.ZhuHai">
+      <HintPath>..\FS.ZDWY.Internet.WebService\bin\SOC.Local.RADT.ZhuHai.dll</HintPath>
+    </Reference>
+    <Reference Include="SqlSugar, Version=5.0.0.10, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\lib\SqlSugar.dll</HintPath>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Web.Services" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Common\BP_DepartmentEntity.cs" />
+    <Compile Include="Common\DoctorManager.cs" />
+    <Compile Include="Common\Function.cs" />
+    <Compile Include="Common\NConvert.cs" />
+    <Compile Include="Common\Xml.cs" />
+    <Compile Include="InPatient\CostManager.cs" />
+    <Compile Include="InPatient\InMainInfoManager.cs" />
+    <Compile Include="InPatient\InRegister.cs" />
+    <Compile Include="InPatient\PrepayManager.cs" />
+    <Compile Include="InPatient\QueryManager.cs" />
+    <Compile Include="InPatient\RegisterInfo.cs" />
+    <Compile Include="OutPatient\ModelConverter.cs" />
+    <Compile Include="OutPatient\NeusoftBussiness.cs" />
+    <Compile Include="OutPatient\OrderManager.cs" />
+    <Compile Include="OutPatient\PatientInfoManager.cs" />
+    <Compile Include="OutPatient\PerSonRecordManager.cs" />
+    <Compile Include="OutPatient\QueryManager.cs" />
+    <Compile Include="OutPatient\RegisterInfoManager.cs" />
+    <Compile Include="OutPatient\Register\Manager.cs" />
+    <Compile Include="OutPatient\Register\Sql.cs" />
+    <Compile Include="OutPatient\SchedulingManager.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="QuitFee\QuitFee.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="QuitFee\QuitFee.Designer.cs">
+      <DependentUpon>QuitFee.cs</DependentUpon>
+    </Compile>
+    <Compile Include="QuitFee\QuitFeeService.cs" />
+    <Compile Include="QuitFee\QuitRegFeeService.cs" />
+    <Compile Include="SI\AbstractService.cs" />
+    <Compile Include="SI\OutPatient\Balance.cs" />
+    <Compile Include="SI\OutPatient\CancelFee.cs" />
+    <Compile Include="SI\OutPatient\CancelRegister.cs" />
+    <Compile Include="SI\OutPatient\GetCancelFeeInfo.cs" />
+    <Compile Include="SI\OutPatient\GetFeeInfo.cs" />
+    <Compile Include="SI\OutPatient\GetPatientInfo.cs" />
+    <Compile Include="SI\OutPatient\Register.cs" />
+    <Compile Include="SI\OutPatient\RegisterHcare.cs" />
+    <Compile Include="SI\OutRerister.cs" />
+    <Compile Include="SI\ReadSIConfig.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="QuitFee\QuitFee.resx">
+      <DependentUpon>QuitFee.cs</DependentUpon>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="obj\" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>

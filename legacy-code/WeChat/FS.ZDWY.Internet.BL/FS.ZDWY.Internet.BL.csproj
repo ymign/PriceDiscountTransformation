@@ -1,0 +1,81 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{C9B3F25D-3131-4688-A934-6A55137D154C}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>FS.ZDWY.Internet.BL</RootNamespace>
+    <AssemblyName>FS.ZDWY.Internet.BL</AssemblyName>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <Deterministic>true</Deterministic>
+    <TargetFrameworkProfile />
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>..\lib\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="FS.ZDWY.Internet.Models, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\lib\FS.ZDWY.Internet.Models.dll</HintPath>
+    </Reference>
+    <Reference Include="SqlSugar, Version=5.0.0.10, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\lib\SqlSugar.dll</HintPath>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="FinComUndrugInfoLogic.cs" />
+    <Compile Include="InPatient\FinTransRecordLogic.cs" />
+    <Compile Include="InPatient\InPatientRegistLogic.cs" />
+    <Compile Include="InPatient\IprPrepayinInfoLogic.cs" />
+    <Compile Include="MetCasDiagnoseLogic.cs" />
+    <Compile Include="OutPatient\AccountCard.cs" />
+    <Compile Include="Department\DepartmentEntityLogic.cs" />
+    <Compile Include="Doctor\DoctorLogic.cs" />
+    <Compile Include="InPatient\InMainInfoLogic.cs" />
+    <Compile Include="InPatient\InPrepayLogic.cs" />
+    <Compile Include="InPatient\InPrepayLogLogic.cs" />
+    <Compile Include="OutPatient\BookingLogic.cs" />
+    <Compile Include="OutPatient\EmployeeLogic.cs" />
+    <Compile Include="OutPatient\FinOpbFeeDetailLogic.cs" />
+    <Compile Include="OutPatient\OrderLogic.cs" />
+    <Compile Include="OutPatient\PatientInfoLogic.cs" />
+    <Compile Include="OutPatient\PlatformBillLogic.cs" />
+    <Compile Include="OutPatient\PlatformBillRefundLogic.cs" />
+    <Compile Include="OutPatient\PlatformOrderLogic.cs" />
+    <Compile Include="OutPatient\RegFeeOnPactLogic.cs" />
+    <Compile Include="OutPatient\RegisterInfoLogic.cs" />
+    <Compile Include="OutPatient\RegisterPayInfoLogic.cs" />
+    <Compile Include="OutPatient\SchedulingLogic.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup />
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>

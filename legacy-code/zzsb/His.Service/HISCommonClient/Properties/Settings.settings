@@ -1,0 +1,12 @@
+﻿<?xml version='1.0' encoding='utf-8'?>
+<SettingsFile xmlns="http://schemas.microsoft.com/VisualStudio/2004/01/settings" CurrentProfile="(Default)" GeneratedClassNamespace="HISCommonClient.Properties" GeneratedClassName="Settings">
+  <Profiles />
+  <Settings>
+    <Setting Name="HISCommonClient_WebReference1_CommonServiceForHIS" Type="(Web Service URL)" Scope="Application">
+      <Value Profile="(Default)">http://172.16.61.119:8080/HisService/CommonServiceForHIS.asmx</Value>
+    </Setting>
+    <Setting Name="HISCommonClient_SOAPMsgSer_MessageService" Type="(Web Service URL)" Scope="Application">
+      <Value Profile="(Default)">http://172.16.61.106:8380/Service/MessageService.asmx</Value>
+    </Setting>
+  </Settings>
+</SettingsFile>

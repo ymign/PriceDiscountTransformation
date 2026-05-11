@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<definitions xmlns:tns="http://cdr.empi.neusoft.com/" xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:wsu="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd" xmlns:xsd="http://www.w3.org/2001/XMLSchema" name="EMPI" targetNamespace="http://cdr.empi.neusoft.com/" xmlns="http://schemas.xmlsoap.org/wsdl/">
+  <types />
+  <message name="getPatientInfoByEmpi">
+    <part name="empi" type="xsd:string" />
+  </message>
+  <message name="getPatientInfoByEmpiResponse">
+    <part name="return" type="xsd:string" />
+  </message>
+  <message name="regEmpi">
+    <part name="patientInfo" type="xsd:string" />
+  </message>
+  <message name="regEmpiResponse">
+    <part name="return" type="xsd:string" />
+  </message>
+  <message name="delPatientInfo">
+    <part name="patientInfo" type="xsd:string" />
+  </message>
+  <message name="delPatientInfoResponse">
+    <part name="return" type="xsd:string" />
+  </message>
+  <message name="getPatientInfoByLocalIndex">
+    <part name="localindex" type="xsd:string" />
+  </message>
+  <message name="getPatientInfoByLocalIndexResponse">
+    <part name="return" type="xsd:string" />
+  </message>
+  <message name="getIndexByLocalIndex">
+    <part name="localindex" type="xsd:string" />
+  </message>
+  <message name="getIndexByLocalIndexResponse">
+    <part name="return" type="xsd:string" />
+  </message>
+  <portType name="EmpiWebService">
+    <operation name="getPatientInfoByEmpi">
+      <input message="tns:getPatientInfoByEmpi" />
+      <output message="tns:getPatientInfoByEmpiResponse" />
+    </operation>
+    <operation name="regEmpi">
+      <input message="tns:regEmpi" />
+      <output message="tns:regEmpiResponse" />
+    </operation>
+    <operation name="delPatientInfo">
+      <input message="tns:delPatientInfo" />
+      <output message="tns:delPatientInfoResponse" />
+    </operation>
+    <operation name="getPatientInfoByLocalIndex">
+      <input message="tns:getPatientInfoByLocalIndex" />
+      <output message="tns:getPatientInfoByLocalIndexResponse" />
+    </operation>
+    <operation name="getIndexByLocalIndex">
+      <input message="tns:getIndexByLocalIndex" />
+      <output message="tns:getIndexByLocalIndexResponse" />
+    </operation>
+  </portType>
+  <binding name="EMPIBinding" type="tns:EmpiWebService">
+    <soap:binding transport="http://schemas.xmlsoap.org/soap/http" style="rpc" />
+    <operation name="getPatientInfoByEmpi">
+      <soap:operation soapAction="" />
+      <input>
+        <soap:body use="literal" namespace="http://cdr.empi.neusoft.com/" />
+      </input>
+      <output>
+        <soap:body use="literal" namespace="http://cdr.empi.neusoft.com/" />
+      </output>
+    </operation>
+    <operation name="regEmpi">
+      <soap:operation soapAction="" />
+      <input>
+        <soap:body use="literal" namespace="http://cdr.empi.neusoft.com/" />
+      </input>
+      <output>
+        <soap:body use="literal" namespace="http://cdr.empi.neusoft.com/" />
+      </output>
+    </operation>
+    <operation name="delPatientInfo">
+      <soap:operation soapAction="" />
+      <input>
+        <soap:body use="literal" namespace="http://cdr.empi.neusoft.com/" />
+      </input>
+      <output>
+        <soap:body use="literal" namespace="http://cdr.empi.neusoft.com/" />
+      </output>
+    </operation>
+    <operation name="getPatientInfoByLocalIndex">
+      <soap:operation soapAction="" />
+      <input>
+        <soap:body use="literal" namespace="http://cdr.empi.neusoft.com/" />
+      </input>
+      <output>
+        <soap:body use="literal" namespace="http://cdr.empi.neusoft.com/" />
+      </output>
+    </operation>
+    <operation name="getIndexByLocalIndex">
+      <soap:operation soapAction="" />
+      <input>
+        <soap:body use="literal" namespace="http://cdr.empi.neusoft.com/" />
+      </input>
+      <output>
+        <soap:body use="literal" namespace="http://cdr.empi.neusoft.com/" />
+      </output>
+    </operation>
+  </binding>
+  <service name="EMPI">
+    <port name="EMPI" binding="tns:EMPIBinding">
+      <soap:address location="http://172.16.61.105:85/empi/EMPI" />
+    </port>
+  </service>
+</definitions>

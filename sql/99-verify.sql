@@ -9,7 +9,7 @@ FROM user_tables
 WHERE table_name LIKE 'PR_%'
 ORDER BY table_name;
 
--- 预期 16 张表:
+-- 预期 19 张表:
 -- PR_CHARGE_DISCOUNT_DETAIL
 -- PR_CHARGE_REQUEST_LOG
 -- PR_CHARGE_REVERSE_LOG
@@ -21,10 +21,13 @@ ORDER BY table_name;
 -- PR_LIMIT_LOCK
 -- PR_LIMIT_OCCUPY
 -- PR_RULE_ACTION
+-- PR_RULE_APPROVAL
 -- PR_RULE_CHANGE_LOG
 -- PR_RULE_CONDITION
 -- PR_RULE_HEADER
 -- PR_RULE_PUBLISH
+-- PR_RULE_TEST_CASE
+-- PR_RULE_TEST_RUN
 -- PR_RULE_VERSION
 
 
@@ -34,7 +37,7 @@ FROM user_sequences
 WHERE sequence_name LIKE 'SEQ_PR_%'
 ORDER BY sequence_name;
 
--- 预期 15 个序列
+-- 预期 18 个序列
 
 
 -- 3. 检查索引
@@ -51,11 +54,13 @@ GROUP BY dict_type
 ORDER BY dict_type;
 
 -- 预期:
--- ACTION_TYPE      11
+-- ACTION_TYPE      12
+-- ACTION_TYPE_ORDER 11
 -- BODY_PART         4
--- CHARGE_SCENE      5
+-- CHARGE_SCENE      4
 -- CONDITION_TYPE   10
 -- FORMULA_TYPE      6
+-- MUTUALLY_EXCLUSIVE_ACTION_TYPE 6
 -- OPERATOR_TYPE     8
 -- PRICING_UNIT      6
 -- RULE_CATEGORY     4
