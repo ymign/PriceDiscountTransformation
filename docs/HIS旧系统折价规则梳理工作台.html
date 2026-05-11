@@ -1,0 +1,3003 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HIS 旧系统折价规则梳理工作台</title>
+  <style>
+    :root {
+      --bg: #0b0d10;
+      --panel: #12151a;
+      --panel-2: #171b21;
+      --panel-3: #1d222a;
+      --line: #2a3038;
+      --text: #eef2f7;
+      --muted: #aeb8c6;
+      --soft: #778393;
+      --cyan: #36d9ff;
+      --lime: #8cf56f;
+      --amber: #ffd166;
+      --coral: #ff6b6b;
+      --violet: #b895ff;
+      --ok: #55d68b;
+      --warn: #ffd166;
+      --bad: #ff7373;
+      --info: #55c7ff;
+      --shadow: 0 18px 44px rgba(0, 0, 0, .36);
+      --radius: 8px;
+      --mono: Consolas, "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
+      --sans: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      color: var(--text);
+      background:
+        linear-gradient(180deg, rgba(54, 217, 255, .05), transparent 320px),
+        linear-gradient(90deg, rgba(255, 209, 102, .04), transparent 42%),
+        var(--bg);
+      font-family: var(--sans);
+      font-size: 15px;
+      line-height: 1.62;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image: repeating-linear-gradient(
+        0deg,
+        rgba(255, 255, 255, .018) 0,
+        rgba(255, 255, 255, .018) 1px,
+        transparent 1px,
+        transparent 5px
+      );
+      opacity: .45;
+      z-index: 0;
+    }
+
+    a {
+      color: var(--cyan);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    .shell {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 310px minmax(0, 1fr);
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+      background: rgba(13, 16, 20, .92);
+      border-right: 1px solid var(--line);
+      padding: 18px;
+      backdrop-filter: blur(12px);
+    }
+
+    .brand {
+      padding: 10px 0 18px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 16px;
+    }
+
+    .brand-kicker,
+    .label,
+    .tag,
+    .metric-label,
+    .eyebrow,
+    .table-label {
+      font-family: var(--mono);
+    }
+
+    .brand-kicker {
+      color: var(--cyan);
+      font-size: 12px;
+    }
+
+    .brand h1 {
+      margin: 6px 0 8px;
+      font-size: 24px;
+      line-height: 1.2;
+    }
+
+    .brand p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .searchbox {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .field,
+    .select {
+      width: 100%;
+      height: 38px;
+      color: var(--text);
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 0 11px;
+      outline: none;
+    }
+
+    .field:focus,
+    .select:focus,
+    textarea:focus {
+      border-color: var(--cyan);
+      box-shadow: 0 0 0 3px rgba(54, 217, 255, .12);
+    }
+
+    .filter-group {
+      margin: 18px 0;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .label {
+      color: var(--soft);
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+
+    .chip-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .chip {
+      min-height: 32px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--panel);
+      color: var(--muted);
+      padding: 5px 10px;
+      cursor: pointer;
+      transition: border-color .18s ease, color .18s ease, background .18s ease, transform .18s ease;
+    }
+
+    .chip:hover {
+      transform: translateY(-1px);
+      border-color: var(--cyan);
+      color: var(--text);
+    }
+
+    .chip.active {
+      color: #081015;
+      background: var(--cyan);
+      border-color: var(--cyan);
+    }
+
+    .nav {
+      display: grid;
+      gap: 8px;
+      margin: 16px 0;
+    }
+
+    .nav a {
+      color: var(--muted);
+      border: 1px solid transparent;
+      border-radius: var(--radius);
+      padding: 8px 10px;
+      transition: background .18s ease, color .18s ease, border-color .18s ease;
+    }
+
+    .nav a:hover {
+      color: var(--text);
+      background: var(--panel);
+      border-color: var(--line);
+      text-decoration: none;
+    }
+
+    .side-note {
+      padding: 12px;
+      border: 1px solid rgba(255, 209, 102, .24);
+      border-left: 4px solid var(--amber);
+      border-radius: var(--radius);
+      background: rgba(255, 209, 102, .06);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .main {
+      min-width: 0;
+      padding: 22px;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 4;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      min-height: 64px;
+      padding: 10px 0 16px;
+      background: linear-gradient(180deg, rgba(11, 13, 16, .98) 0%, rgba(11, 13, 16, .86) 78%, transparent 100%);
+      backdrop-filter: blur(12px);
+    }
+
+    .topbar-title {
+      min-width: 0;
+    }
+
+    .topbar h2 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.2;
+    }
+
+    .topbar p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    .btn {
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      color: var(--text);
+      padding: 7px 12px;
+      cursor: pointer;
+      transition: transform .18s ease, border-color .18s ease, background .18s ease;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+      border-color: var(--cyan);
+      background: #172129;
+    }
+
+    .btn.primary {
+      background: var(--cyan);
+      border-color: var(--cyan);
+      color: #061014;
+      font-weight: 700;
+    }
+
+    .section {
+      margin: 0 0 22px;
+      padding: 20px;
+      background: rgba(18, 21, 26, .88);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: flex-start;
+      margin-bottom: 16px;
+    }
+
+    .section h2,
+    .section h3 {
+      margin: 0;
+      line-height: 1.22;
+    }
+
+    .section h2 {
+      font-size: 22px;
+    }
+
+    .section h3 {
+      font-size: 18px;
+    }
+
+    .section-desc {
+      max-width: 920px;
+      margin: 7px 0 0;
+      color: var(--muted);
+    }
+
+    .eyebrow {
+      color: var(--cyan);
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(130px, 1fr));
+      gap: 12px;
+      margin: 0 0 16px;
+    }
+
+    .metric {
+      min-height: 96px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      padding: 14px;
+      transition: transform .18s ease, border-color .18s ease;
+    }
+
+    .metric:hover {
+      transform: translateY(-2px);
+      border-color: var(--cyan);
+    }
+
+    .metric-value {
+      font-family: var(--mono);
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+
+    .metric-label {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 12px;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      padding: 14px;
+      transition: transform .18s ease, border-color .18s ease, background .18s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(54, 217, 255, .65);
+      background: #151a21;
+    }
+
+    .card h3 {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+      font-size: 17px;
+    }
+
+    .card p {
+      margin: 8px 0 0;
+      color: var(--muted);
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      padding: 3px 8px;
+      font-size: 12px;
+      color: var(--muted);
+      background: rgba(255, 255, 255, .03);
+      white-space: nowrap;
+    }
+
+    .tag.ok {
+      color: #092015;
+      background: var(--ok);
+      border-color: var(--ok);
+    }
+
+    .tag.warn {
+      color: #241900;
+      background: var(--warn);
+      border-color: var(--warn);
+    }
+
+    .tag.bad {
+      color: #290606;
+      background: var(--bad);
+      border-color: var(--bad);
+    }
+
+    .tag.info {
+      color: #06141d;
+      background: var(--info);
+      border-color: var(--info);
+    }
+
+    .flow-tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+
+    .flow-panel {
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(280px, .95fr);
+      gap: 14px;
+      align-items: start;
+    }
+
+    .chain-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .chain-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 320px;
+      gap: 14px;
+      align-items: start;
+    }
+
+    .chain-meta {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .chain-meta-item {
+      min-height: 72px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      padding: 10px 12px;
+    }
+
+    .chain-meta-label {
+      display: block;
+      color: var(--soft);
+      font-family: var(--mono);
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+
+    .chain-meta-value {
+      color: var(--text);
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+
+    .chain-board {
+      position: relative;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 12px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #0d1014;
+      overflow: visible;
+    }
+
+    .chain-node {
+      position: relative;
+      min-height: 118px;
+      border: 1px solid var(--line);
+      border-top: 4px solid var(--cyan);
+      border-radius: var(--radius);
+      background: var(--panel-2);
+      padding: 12px;
+      cursor: help;
+      outline: none;
+      transition: transform .18s ease, border-color .18s ease, background .18s ease, box-shadow .18s ease;
+    }
+
+    .chain-node:hover,
+    .chain-node:focus,
+    .chain-node.active {
+      z-index: 8;
+      transform: translateY(-3px);
+      border-color: var(--cyan);
+      background: #172029;
+      box-shadow: 0 18px 44px rgba(54, 217, 255, .12);
+    }
+
+    .chain-node:nth-child(3n + 2) {
+      border-top-color: var(--amber);
+    }
+
+    .chain-node:nth-child(3n + 3) {
+      border-top-color: var(--lime);
+    }
+
+    .chain-node-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .chain-node-title {
+      font-weight: 700;
+      line-height: 1.35;
+    }
+
+    .chain-node-meta {
+      display: block;
+      margin-top: 7px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .chain-node-role {
+      min-height: 44px;
+      margin: 8px 0 0;
+      color: var(--muted);
+    }
+
+    .node-hint {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      margin-top: 9px;
+      color: var(--soft);
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .chain-arrow {
+      position: absolute;
+      top: 50%;
+      right: -12px;
+      width: 12px;
+      height: 1px;
+      background: var(--line);
+    }
+
+    .chain-arrow::after {
+      content: "";
+      position: absolute;
+      right: -1px;
+      top: -4px;
+      border-left: 6px solid var(--line);
+      border-top: 4px solid transparent;
+      border-bottom: 4px solid transparent;
+    }
+
+    .node-popover {
+      position: absolute;
+      left: 10px;
+      right: 10px;
+      top: calc(100% + 8px);
+      display: none;
+      min-width: min(520px, 82vw);
+      border: 1px solid rgba(54, 217, 255, .42);
+      border-radius: var(--radius);
+      background: #080b0f;
+      padding: 12px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, .58);
+    }
+
+    .chain-node:hover .node-popover,
+    .chain-node:focus .node-popover {
+      display: block;
+    }
+
+    .popover-row {
+      display: grid;
+      grid-template-columns: 74px minmax(0, 1fr);
+      gap: 8px;
+      margin: 5px 0;
+      font-size: 13px;
+    }
+
+    .popover-row b {
+      color: var(--soft);
+      font-family: var(--mono);
+      font-weight: 400;
+    }
+
+    .popover-code {
+      margin-top: 10px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #0c1117;
+      color: #d7e7f4;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+
+    .chain-side {
+      display: grid;
+      gap: 12px;
+    }
+
+    .chain-detail {
+      position: sticky;
+      top: 82px;
+    }
+
+    .detail-grid {
+      display: grid;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .detail-row {
+      display: grid;
+      grid-template-columns: 58px minmax(0, 1fr);
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .detail-row b {
+      color: var(--soft);
+      font-family: var(--mono);
+      font-weight: 400;
+    }
+
+    .detail-code {
+      margin-top: 12px;
+      max-height: 360px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #090d12;
+      padding: 11px;
+      color: #d8e4ef;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+    }
+
+    .chain-legend {
+      display: grid;
+      gap: 8px;
+    }
+
+    .flow-line {
+      display: grid;
+      gap: 9px;
+    }
+
+    .step {
+      position: relative;
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr);
+      gap: 10px;
+      align-items: start;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel-2);
+      padding: 12px;
+    }
+
+    .step-no {
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      color: #071216;
+      background: var(--cyan);
+      border-radius: 50%;
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    .step strong {
+      display: block;
+      margin-bottom: 3px;
+    }
+
+    .step small {
+      color: var(--muted);
+      font-family: var(--mono);
+    }
+
+    .codebox {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #090b0e;
+      padding: 14px;
+      overflow: auto;
+      font-family: var(--mono);
+      color: #d8e4ef;
+      white-space: pre;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 900px;
+    }
+
+    th,
+    td {
+      padding: 11px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      color: var(--text);
+      background: #15191f;
+      font-size: 13px;
+      font-family: var(--mono);
+    }
+
+    td {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    tr:hover td {
+      background: rgba(54, 217, 255, .05);
+      color: var(--text);
+    }
+
+    .path {
+      color: var(--cyan);
+      font-family: var(--mono);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+
+    .method {
+      color: var(--amber);
+      font-family: var(--mono);
+      white-space: nowrap;
+    }
+
+    .cols {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .logic-card {
+      border-top: 4px solid var(--cyan);
+    }
+
+    .logic-card:nth-child(2) {
+      border-top-color: var(--amber);
+    }
+
+    .logic-card:nth-child(3) {
+      border-top-color: var(--lime);
+    }
+
+    .checklist {
+      display: grid;
+      gap: 10px;
+    }
+
+    .check-item {
+      display: grid;
+      grid-template-columns: 24px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: start;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      padding: 11px;
+    }
+
+    .check-item input {
+      margin-top: 5px;
+      accent-color: var(--cyan);
+    }
+
+    .check-item.done {
+      opacity: .65;
+    }
+
+    .check-item.done strong {
+      text-decoration: line-through;
+    }
+
+    .risk {
+      border-left: 4px solid var(--coral);
+    }
+
+    .risk.p1 {
+      border-left-color: var(--amber);
+    }
+
+    .risk.p2 {
+      border-left-color: var(--info);
+    }
+
+    .note-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 320px;
+      gap: 12px;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 170px;
+      resize: vertical;
+      color: var(--text);
+      background: #0d1014;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 12px;
+    }
+
+    .mini-list {
+      margin: 10px 0 0;
+      padding-left: 18px;
+      color: var(--muted);
+    }
+
+    .mini-list li {
+      margin: 6px 0;
+    }
+
+    .empty {
+      padding: 18px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    @media (max-width: 1080px) {
+      .shell {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        position: static;
+        height: auto;
+      }
+
+      .metrics,
+      .flow-panel,
+      .chain-layout,
+      .chain-meta,
+      .split,
+      .cols,
+      .note-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .chain-detail {
+        position: static;
+      }
+
+      .topbar {
+        position: static;
+        align-items: flex-start;
+        flex-direction: column;
+      }
+    }
+
+    @media (max-width: 620px) {
+      .main,
+      .sidebar {
+        padding: 14px;
+      }
+
+      .section {
+        padding: 14px;
+      }
+
+      .metrics {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .section-header {
+        flex-direction: column;
+      }
+    }
+
+    @media print {
+      body {
+        background: white;
+        color: #111;
+      }
+
+      body::before,
+      .sidebar,
+      .topbar,
+      .actions,
+      .flow-tabs,
+      .chain-toolbar,
+      textarea,
+      .btn {
+        display: none !important;
+      }
+
+      .shell {
+        display: block;
+      }
+
+      .main {
+        padding: 0;
+      }
+
+      .section,
+      .card,
+      .table-wrap,
+      .step {
+        box-shadow: none;
+        background: white;
+        color: #111;
+        border-color: #ccc;
+      }
+
+      td,
+      th,
+      .section-desc,
+      .card p,
+      .mini-list,
+      .path {
+        color: #111;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-kicker">legacy-code / pricing rules</div>
+        <h1>HIS 折价规则梳理工作台</h1>
+        <p>按调用链、源码证据、规则算法、迁移风险来核对同事代码。</p>
+      </div>
+
+      <div class="searchbox">
+        <label class="label" for="searchInput">全文检索</label>
+        <input id="searchInput" class="field" type="search" placeholder="输入方法、文件、规则、渠道">
+        <select id="moduleSelect" class="select" aria-label="模块筛选">
+          <option value="all">全部模块</option>
+          <option value="门诊">门诊</option>
+          <option value="住院">住院</option>
+          <option value="自助机">自助机</option>
+          <option value="微信">微信</option>
+          <option value="his-client">his-client</option>
+          <option value="规则配置">规则配置</option>
+        </select>
+      </div>
+
+      <div class="filter-group">
+        <div class="label">证据类型</div>
+        <div class="chip-list" id="evidenceChips">
+          <button class="chip active" data-type="all">全部</button>
+          <button class="chip" data-type="入口">入口</button>
+          <button class="chip" data-type="规则查询">规则查询</button>
+          <button class="chip" data-type="算法">算法</button>
+          <button class="chip" data-type="落账">落账</button>
+          <button class="chip" data-type="差异">差异</button>
+        </div>
+      </div>
+
+      <nav class="nav" aria-label="页面导航">
+        <a href="#overview">总览判断</a>
+        <a href="#flows">调用流程</a>
+        <a href="#chains">入口函数链路图</a>
+        <a href="#logic">折价规则算法</a>
+        <a href="#evidence">源码证据矩阵</a>
+        <a href="#mapping">迁移映射</a>
+        <a href="#risks">风险与待确认</a>
+        <a href="#review">代码梳理清单</a>
+        <a href="#notes">现场记录</a>
+      </nav>
+
+      <div class="side-note">
+        基线文档：<br>
+        <span class="path">docs/五院当前折价逻辑代码位置-校正版.md</span><br><br>
+        本页面把分散结论合并为可交互核对表，方便逐个入口查代码。
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-title">
+          <h2>旧 HIS 折价规则与业务流程梳理</h2>
+          <p>当前重点：人工 HIS 会折价，自助机和微信旧源码未执行特殊折价；上线统一计价前必须按渠道确认。</p>
+        </div>
+        <div class="actions">
+          <button class="btn" id="resetFilters">重置筛选</button>
+          <button class="btn" id="expandAll">展开全部流程</button>
+          <button class="btn primary" onclick="window.print()">打印/另存为 PDF</button>
+        </div>
+      </header>
+
+      <section class="section" id="overview">
+        <div class="section-header">
+          <div>
+            <div class="eyebrow">01 / OVERVIEW</div>
+            <h2>总览判断</h2>
+            <p class="section-desc">先确认各渠道是否执行折价，再下钻到具体方法和规则。这里的判断只基于当前仓库 `legacy-code` 已收录源码。</p>
+          </div>
+          <span class="tag info">源码复核版</span>
+        </div>
+
+        <div class="metrics">
+          <div class="metric">
+            <div class="metric-value">2</div>
+            <div class="metric-label">核心折价类型：数量限制、比例折价</div>
+          </div>
+          <div class="metric">
+            <div class="metric-value">5</div>
+            <div class="metric-label">重点渠道：门诊、住院、自助机、微信、his-client</div>
+          </div>
+          <div class="metric">
+            <div class="metric-value">4</div>
+            <div class="metric-label">必须补齐：SQL、渠道策略、7021、组套传参</div>
+          </div>
+          <div class="metric">
+            <div class="metric-value">0</div>
+            <div class="metric-label">旧 FIN_DISCOUNT_FEE 最低限价字段</div>
+          </div>
+        </div>
+
+        <div class="grid" id="channelCards"></div>
+      </section>
+
+      <section class="section" id="flows">
+        <div class="section-header">
+          <div>
+            <div class="eyebrow">02 / CALL FLOW</div>
+            <h2>调用流程</h2>
+            <p class="section-desc">选择一个渠道，查看从入口到规则查询、金额修改、落账或返回的完整链路。</p>
+          </div>
+          <span class="tag">按渠道核对</span>
+        </div>
+        <div class="flow-tabs" id="flowTabs"></div>
+        <div class="flow-panel">
+          <div id="flowSteps" class="flow-line"></div>
+          <div>
+            <div class="card">
+              <h3>链路结论 <span class="tag info" id="flowStatus">READY</span></h3>
+              <p id="flowSummary"></p>
+              <ul class="mini-list" id="flowPoints"></ul>
+            </div>
+            <div class="card" style="margin-top:12px;">
+              <h3>核心伪代码</h3>
+              <div class="codebox" id="flowPseudo"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="chains">
+        <div class="section-header">
+          <div>
+            <div class="eyebrow">03 / ENTRY GRAPH</div>
+            <h2>入口函数链路图</h2>
+            <p class="section-desc">按具体入口展开函数调用链。把鼠标移动到任意函数节点上，可以看到文件路径、行号、职责和核心代码片段。</p>
+          </div>
+          <span class="tag warn">悬停看源码位置</span>
+        </div>
+
+        <div class="chain-toolbar" id="chainTabs"></div>
+        <div class="chain-meta" id="chainMeta"></div>
+        <div class="chain-layout">
+          <div class="chain-board" id="chainBoard"></div>
+          <aside class="chain-side">
+            <div class="card">
+              <h3>入口说明 <span class="tag info" id="chainStatus">READY</span></h3>
+              <p id="chainSummary"></p>
+              <ul class="mini-list" id="chainChecks"></ul>
+            </div>
+            <div class="card">
+              <h3>读代码顺序</h3>
+              <div class="chain-legend" id="chainReadOrder"></div>
+            </div>
+            <div class="card chain-detail">
+              <h3>当前函数详情 <span class="tag" id="chainDetailStep">悬停/点击</span></h3>
+              <div id="chainDetail"></div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="section" id="logic">
+        <div class="section-header">
+          <div>
+            <div class="eyebrow">04 / RULE LOGIC</div>
+            <h2>折价规则算法</h2>
+            <p class="section-desc">把硬编码逻辑拆成可迁移的规则语义，逐项对应新规则中心的条件和动作。</p>
+          </div>
+        </div>
+
+        <div class="cols">
+          <article class="card logic-card">
+            <h3>数量限制折价 <span class="tag">Restrictingfee</span></h3>
+            <p>命中项目常数后，查询患者历史收费次数，计算剩余额度。额度不足时只把超出部分归零，不拒单。</p>
+            <div class="codebox">feetype = getRestrictingfee(cardNo, itemCode)
+Limitsum = LimitNumber - feetype - currentBatchQty
+
+if Limitsum &lt;= 0:
+  finalQty = 0
+  amount = 0
+elif Limitsum &lt; qty:
+  finalQty = Limitsum
+  amount = unitPrice * Limitsum
+else:
+  finalQty = qty
+  amount = unitPrice * qty</div>
+            <ul class="mini-list">
+              <li>门诊：`ConvertRestrictingfee`。</li>
+              <li>住院：`ConvertRestrictingfeeZY`。</li>
+              <li>组套：`ConvertRestrictingfeeCharge` 展开子项后累计。</li>
+            </ul>
+          </article>
+
+          <article class="card logic-card">
+            <h3>比例折价 <span class="tag">FIN_DISCOUNT_FEE</span></h3>
+            <p>第 1 个全价，第 2 个及以后按 `discount_rate` 比例收费；`topprice` 是最高价。</p>
+            <div class="codebox">amount = unitPrice
+       + (unitPrice * discountRate) * (qty - 1)
+
+if TOPPRICE &gt; 0 and amount &gt; TOPPRICE:
+  amount = TOPPRICE
+
+FT.TotCost = amount
+FT.OwnCost = amount</div>
+            <ul class="mini-list">
+              <li>`discount_type == "2"` 时执行。</li>
+              <li>旧表没有最低限价字段。</li>
+              <li>迁移为公式动作 + 金额上限动作。</li>
+            </ul>
+          </article>
+
+          <article class="card logic-card">
+            <h3>分组与特殊常数 <span class="tag">COM_DICTIONARY</span></h3>
+            <p>旧系统通过多个常数类型扩展互斥、床旁、胎心和组套豁免行为。</p>
+            <div class="codebox">Astrictpackagefee  -> 组套豁免
+RestrictingfeeZT  -> 分组互斥
+RestrictingfeeCP  -> 床旁项目限制
+RestrictingfeeTX1 -> 胎心项目限制</div>
+            <ul class="mini-list">
+              <li>`RestrictingfeeZT` 需要确认组号来源。</li>
+              <li>`Astrictpackagefee` 迁移时不要误建折价规则。</li>
+              <li>同批次互斥要用批量上下文处理。</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="evidence">
+        <div class="section-header">
+          <div>
+            <div class="eyebrow">05 / SOURCE MATRIX</div>
+            <h2>源码证据矩阵</h2>
+            <p class="section-desc">用左侧筛选和搜索框快速定位代码位置。行号是当前仓库源码中的检索位置，后续如果源码更新需要重新核对。</p>
+          </div>
+          <span class="tag" id="evidenceCount">0 条</span>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>模块</th>
+                <th>证据类型</th>
+                <th>文件</th>
+                <th>方法/行号</th>
+                <th>作用</th>
+                <th>核对重点</th>
+              </tr>
+            </thead>
+            <tbody id="evidenceBody"></tbody>
+          </table>
+          <div id="evidenceEmpty" class="empty hidden">没有匹配的源码证据。</div>
+        </div>
+      </section>
+
+      <section class="section" id="mapping">
+        <div class="section-header">
+          <div>
+            <div class="eyebrow">06 / MIGRATION MAP</div>
+            <h2>旧逻辑到规则中心映射</h2>
+            <p class="section-desc">把旧表、旧方法和新规则中心的条件/动作对应起来，便于规则迁移和联调验收。</p>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>旧系统对象</th>
+                <th>旧逻辑语义</th>
+                <th>新系统建议</th>
+                <th>注意事项</th>
+              </tr>
+            </thead>
+            <tbody id="mappingBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="section" id="risks">
+        <div class="section-header">
+          <div>
+            <div class="eyebrow">07 / RISKS</div>
+            <h2>风险与待确认</h2>
+            <p class="section-desc">这些点如果没有确认，迁移后价格行为可能和旧系统不一致。</p>
+          </div>
+        </div>
+
+        <div class="grid" id="riskCards"></div>
+      </section>
+
+      <section class="section" id="review">
+        <div class="section-header">
+          <div>
+            <div class="eyebrow">08 / REVIEW CHECKLIST</div>
+            <h2>代码梳理清单</h2>
+            <p class="section-desc">按这个清单逐项勾选，浏览器会在本机记住勾选状态。</p>
+          </div>
+          <button class="btn" id="clearChecks">清空勾选</button>
+        </div>
+
+        <div class="checklist" id="reviewChecklist"></div>
+      </section>
+
+      <section class="section" id="notes">
+        <div class="section-header">
+          <div>
+            <div class="eyebrow">09 / NOTES</div>
+            <h2>现场记录</h2>
+            <p class="section-desc">用于记录你阅读同事代码时的新发现。内容保存在当前浏览器本地，不写回仓库文件。</p>
+          </div>
+          <button class="btn" id="clearNotes">清空记录</button>
+        </div>
+
+        <div class="note-grid">
+          <textarea id="notesBox" placeholder="记录：实际 SQL、未收录方法、业务确认人、规则样例、与同事文档不一致的地方。"></textarea>
+          <div class="card">
+            <h3>建议记录格式</h3>
+            <ul class="mini-list">
+              <li>时间：2026-05-11</li>
+              <li>入口：模块 + 方法 + 行号</li>
+              <li>规则：数据表/常数 + 参数</li>
+              <li>结论：旧行为、新行为、是否一致</li>
+              <li>待确认：确认人、口径、截止时间</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const channels = [
+      {
+        name: "人工门诊",
+        status: "执行折价",
+        tone: "ok",
+        summary: "窗口和特殊规则 DLL 均可执行数量限制与比例折价。组套存在拆明细后汇总回主项的路径。",
+        files: "ucDisplay.cs / CTMRFeeRule.cs / Restrictingfee.cs"
+      },
+      {
+        name: "住院终端",
+        status: "最终落账执行",
+        tone: "ok",
+        summary: "终端 Save 组装费用后进入 feeManager.FeeItem，FeeManager 内执行数量限制和比例折价。",
+        files: "ucInpatientConfirm.cs / Fee.cs / Restrictingfee.cs"
+      },
+      {
+        name: "住院医技界面",
+        status: "界面侧比例预览",
+        tone: "warn",
+        summary: "当前界面文件确认到 SetDiscountfee 展示金额；数量限制主要在最终 FeeManager 正向收费时执行。",
+        files: "ucInpatientCharge.cs / ucInpatientCharge_new.cs"
+      },
+      {
+        name: "自助机",
+        status: "旧源码不折价",
+        tone: "bad",
+        summary: "调用 GetFeeItemListnew，但限制收费段整段注释，未见比例折价调用。",
+        files: "Patientopb.cs / CTMRFeeRule.cs"
+      },
+      {
+        name: "微信",
+        status: "未见折价调用",
+        tone: "bad",
+        summary: "只看到组套展开和普通 MakeInvoice，未见 ZDWY.SpecialRule、SetRestrictingfee、SetDiscountfee。",
+        files: "RegisterInfoManager.cs / OrderManager.cs / NeusoftBussiness.cs"
+      },
+      {
+        name: "his-client 新接入",
+        status: "三阶段确认",
+        tone: "info",
+        summary: "新流程为 special-flag、simulate、confirm、HIS 落账、commit/cancel、reverse。",
+        files: "PricingHisIntegrationHelper.cs / FrmPricingPopup.cs / PricingApiClient.cs"
+      }
+    ];
+
+    const flows = [
+      {
+        id: "outpatient",
+        name: "人工门诊",
+        status: "执行折价",
+        summary: "门诊收费先展开组套和去重，再按项目查询数量限制和比例折价，最后替换费用明细。",
+        points: [
+          "数量限制条件包含科室 7021 排除。",
+          "数量限制先于比例折价执行。",
+          "组套显示/划价路径可能走 ConvertRestrictingfeeCharge。"
+        ],
+        steps: [
+          ["ucDisplay.GetFeeItemList / CTMRFeeRule.GetFeeItemList", "收集收费明细，补全医生科室，识别组套。"],
+          ["ConvertGroupToDetail / ConvertDRGroupToDetail / ConvertCTGroupToDetail", "复合项目拆分为明细，DR/CT 按 ItemZT 去重。"],
+          ["SetRestrictingfee", "读取是否限制收费项目和 LimitNumber。"],
+          ["SetDiscountfee", "读取 discount_rate、topprice、discount_type。"],
+          ["ConvertRestrictingfee", "按历史收费次数和本次批内数量截断或归零。"],
+          ["ConvertDiscountfee", "按第 1 个全价、第 2 个后比例折价，并应用最高限价。"]
+        ],
+        pseudo: `for each feeItem in feeItemLists reversed:
+  returnRows = SetRestrictingfee(itemCode, ref LimitNumber)
+  discountType = SetDiscountfee(itemCode, ref rate, ref topprice)
+
+  if returnRows > 0 and deptId != "7021":
+    ConvertRestrictingfee(cardNo, feeItem, LimitNumber)
+
+  if discountType == "2":
+    ConvertDiscountfee(feeItem, rate, topprice)`
+      },
+      {
+        id: "inpatient",
+        name: "住院终端/落账",
+        status: "最终落账执行",
+        summary: "终端确认 Save 不直接折价，而是把费用交给 FeeManager。FeeManager 正向收费时统一执行折价。",
+        points: [
+          "Save 负责事务、医嘱转费用、组套展开、调用 feeManager.FeeItem。",
+          "ConvertRestrictingfeeZY 与门诊数量逻辑基本一致。",
+          "ConvertDiscountfeeZY 与门诊比例逻辑一致。"
+        ],
+        steps: [
+          ["ucInpatientConfirm.Save", "校验患者和费用，开启事务，组装费用列表。"],
+          ["GetFeeOrder / GetNewFeeItemList / ChangeOrderToFeeItemList", "把医嘱和确认项目转成住院 FeeItemList。"],
+          ["feeManager.FeeItem(patient, ref feeItemLists)", "进入住院费用业务层。"],
+          ["Fee.FeeManager", "仅正向收费分支执行折价处理。"],
+          ["SetRestrictingfee / ConvertRestrictingfeeZY", "按住院患者 ID 查询历史次数并限制数量。"],
+          ["SetDiscountfee / ConvertDiscountfeeZY", "比例折价与最高限价。"],
+          ["写入费用明细并 Commit", "成功后更新可退数量、扩展标记等。"]
+        ],
+        pseudo: `FeeItem(patient, ref feeItemLists)
+  -> FeeManager(patient, ref feeItemLists, ChargeTypes.Fee, Positive)
+
+if transType == Positive:
+  for each inpatientFeeItem:
+    if SetRestrictingfee(itemCode) > 0:
+      ConvertRestrictingfeeZY(patient.ID, item)
+    if SetDiscountfee(itemCode) == "2":
+      ConvertDiscountfeeZY(item)`
+      },
+      {
+        id: "selfservice",
+        name: "自助机",
+        status: "旧源码不折价",
+        summary: "自助机获取费用后调用 GetFeeItemListnew。该方法保留组套汇总，但折价段被注释。",
+        points: [
+          "旧行为与人工 HIS 不一致。",
+          "迁移统一计价后若自助机执行规则，会产生价格差异。",
+          "必须由收费处/业务负责人确认自助机新策略。"
+        ],
+        steps: [
+          ["Patientopb.GetGetPrescriptionAndChargeDetailsForSRM", "解析自助机传入 XML。"],
+          ["GetPrescriptionAndChargeDetailsForSRMData", "查询待缴费用明细。"],
+          ["new CTMRFeeRule()", "创建旧特殊规则对象。"],
+          ["CTMRFeeRule.GetFeeItemListnew", "自助机专用分支。"],
+          ["组套明细金额汇总回主项", "不返回拆分明细。"],
+          ["限制收费代码注释", "SetRestrictingfee 和 ConvertRestrictingfeeCharge 整段未执行。"]
+        ],
+        pseudo: `actualAll = CTMRFeeRule.GetFeeItemListnew(patientId, feeItems)
+
+// GetFeeItemListnew 内：
+if groupItem:
+  detail = ConvertGroupToDetail(...)
+  main.TotCost = sum(detail.TotCost)
+  feeItemLists.Add(main)
+
+// 限制收费循环已注释
+// 未见 SetDiscountfee / ConvertDiscountfee`
+      },
+      {
+        id: "wechat",
+        name: "微信",
+        status: "未见折价调用",
+        summary: "微信端当前只看到组套展开和普通发票生成，没有看到特殊折价调用。",
+        points: [
+          "RegisterInfoManager.GetFeeItemList 会做组套展开。",
+          "OrderManager.GetFeeItemList 也仅做普通组套处理。",
+          "MakeInvoice 生成普通发票和明细，不承载特殊折价。"
+        ],
+        steps: [
+          ["RegisterInfoManager / OrderManager", "微信挂号、缴费或订单入口。"],
+          ["GetFeeItemList", "非药品复合项目拆组套。"],
+          ["ConvertGroupToDetail", "按组套明细形成普通 FeeItemList。"],
+          ["NeusoftBussiness.MakeInvoice", "拆分发票、生成发票主表和明细。"],
+          ["未见特殊规则调用", "当前仓库源码未检索到 SetRestrictingfee、SetDiscountfee、ZDWY.SpecialRule。"]
+        ],
+        pseudo: `comFeeItemLists = GetFeeItemList(items, reg, ref errMsg)
+balances = NeusoftBussiness.MakeInvoice(feeIntegrate, reg, comFeeItemLists, ...)
+
+// 当前源码检索结果：
+// no SetRestrictingfee
+// no SetDiscountfee
+// no ZDWY.SpecialRule`
+      },
+      {
+        id: "newclient",
+        name: "his-client 新流程",
+        status: "三阶段确认",
+        summary: "新客户端样例把旧硬编码折价迁移为规则中心调用，并要求 HIS 落账成功/失败后通知 commit/cancel。",
+        points: [
+          "special-flag 不可用时阻断收费，不回退普通计价。",
+          "simulate 不占额，confirm 占额。",
+          "落账成功 commit，失败或取消 cancel。"
+        ],
+        steps: [
+          ["CheckSpecialPricingRequired", "调用 special-flag 判断是否特殊项目。"],
+          ["FrmPricingPopup.RunSimulate", "弹窗自动试算，展示金额和 TraceSteps。"],
+          ["FrmPricingPopup.BtnConfirmClick", "调用 confirm 占用额度。"],
+          ["HIS 本地落账", "按返回 Items 回填最终数量和金额。"],
+          ["CommitAfterHisSuccess", "落账成功后提交。"],
+          ["CancelAfterHisFailure", "落账失败后释放额度。"],
+          ["Reverse", "退费/冲销时释放或审计额度。"]
+        ],
+        pseudo: `decision = helper.CheckSpecialPricingRequired(itemCode)
+if decision.ServiceUnavailable: block
+if decision.ShouldOpenPopup:
+  popup.Simulate(request)
+  result = popup.Confirm(request)
+  if HIS落账成功:
+    helper.CommitAfterHisSuccess(result.RequestId, chargeNo)
+  else:
+    helper.CancelAfterHisFailure(result.RequestId)`
+      }
+    ];
+
+    const chainDiagrams = [
+      {
+        id: "opd-setitem",
+        name: "门诊划价 SetItem",
+        status: "项目录入入口",
+        summary: "门诊窗口录入项目、模板带入、组套带入时会先进入 SetItem，把项目写入界面表格。真正执行折价的是后续 GetFeeItemList / GetFeeItemListForCharge / SetChargeInfo 链路。",
+        entry: "ucDisplay.SetItem(itemCode, drugFlag, exeDeptCode, row, amount, saleprice, unitFlag)",
+        outcome: "形成界面费用行，收费保存或划价显示时再从表格取 FeeItemList 进入折价逻辑。",
+        source: "legacy-code/HIS/SOC.Local.OutpatientFee.ZhuHai/Zdwy/IOutpatientItemInputAndDisplay/ucDisplay.cs",
+        checks: [
+          "SetItem 是录入入口，不是最终折价执行点。",
+          "从 SetItem 往后要继续跟 GetFeeItemList 和 SetChargeInfo。",
+          "模板、套餐、手工输入都可能调用 SetItem，不能只看一个按钮事件。"
+        ],
+        nodes: [
+          {
+            title: "项目录入函数",
+            file: "legacy-code/HIS/SOC.Local.OutpatientFee.ZhuHai/Zdwy/IOutpatientItemInputAndDisplay/ucDisplay.cs",
+            method: "SetItem",
+            line: "line 3051",
+            role: "把输入项目、执行科室、数量、价格等写入门诊收费界面行。",
+            code: `private void SetItem(
+  string itemCode, string drugFlag, string exeDeptCode,
+  int row, decimal amount, decimal saleprice, string unitFlag
+)`
+          },
+          {
+            title: "手工/扫码入口调用",
+            file: "ucDisplay.cs",
+            method: "SetItem 调用点",
+            line: "line 6720 / 6750 / 6759 / 6767",
+            role: "项目编码确认后调用 SetItem，生成收费行。",
+            code: `SetItem(
+  itemCode, drugFlag, exeDeptCode,
+  this.fpSpread1_Sheet1.ActiveRowIndex,
+  1, price, "0"
+);`
+          },
+          {
+            title: "组套/模板带入",
+            file: "ucDisplay.cs",
+            method: "SetItem(detail.itemCode...)",
+            line: "line 3280 / 6737 / 9289",
+            role: "组套或模板展开后，逐个子项或主项写入界面。",
+            code: `this.SetItem(
+  detail.itemCode,
+  drugflag,
+  detail.deptCode,
+  actIndex,
+  detail.qty * times,
+  0,
+  detail.unitFlag
+);`
+          },
+          {
+            title: "收费保存取明细",
+            file: "ucDisplay.cs",
+            method: "GetFeeItemList / GetFeeItemListForCharge",
+            line: "line 4395 / 4409",
+            role: "保存或划价时从界面行重新取 FeeItemList，这是进入折价的前置动作。",
+            code: `ArrayList alFee = this.GetFeeItemList();
+ArrayList alCharge = this.GetFeeItemListForCharge();`
+          },
+          {
+            title: "进入折价判断",
+            file: "ucDisplay.cs",
+            method: "SetRestrictingfee / SetDiscountfee",
+            line: "line 7725-7732",
+            role: "对取出的明细逐条查数量限制和比例折价，并调用 Convert* 修改金额。",
+            code: `returnRows = this.undrugManager.SetRestrictingfee(s.Item.ID, ref LimitNumber);
+Discount_type = this.undrugManager.SetDiscountfee(s.Item.ID, ref DISCOUNT_RATE, ref TOPPRICE);
+if (returnRows > 0 && this.rInfo.DoctorInfo.Templet.Dept.ID != "7021")
+  this.setRestrictingfee.ConvertRestrictingfee(...);
+if (Discount_type == "2")
+  this.setRestrictingfee.ConvertDiscountfee(...);`
+          }
+        ]
+      },
+      {
+        id: "opd-window",
+        name: "门诊人工收费",
+        status: "人工窗口入口",
+        summary: "从门诊收费窗口进入，先从界面表格收集 FeeItemList，再展开组套、去重，最后对每条明细执行数量限制和比例折价。",
+        entry: "ucDisplay 收费保存动作 -> GetFeeItemList()",
+        outcome: "返回已替换/追加后的门诊 FeeItemList，供后续收费保存使用。",
+        source: "ucDisplay.cs + Restrictingfee.cs",
+        checks: [
+          "先核对保存按钮或收费动作是否调用 GetFeeItemList。",
+          "重点看 7021 科室排除是否只在数量限制处生效。",
+          "同一明细被替换时，会先从原列表删除再追加折价后明细。"
+        ],
+        nodes: [
+          {
+            title: "收费窗口保存/取明细",
+            file: "legacy-code/HIS/SOC.Local.OutpatientFee.ZhuHai/Zdwy/IOutpatientItemInputAndDisplay/ucDisplay.cs",
+            method: "窗口收费流程 -> GetFeeItemList",
+            line: "line 4395 / 7595",
+            role: "从 FarPoint 表格中取出当前需要收费的项目列表。",
+            code: `ArrayList alFee = this.GetFeeItemList();
+
+public ArrayList GetFeeItemList()
+{
+  // 遍历 fpSpread1_Sheet1.Rows[i].Tag
+}`
+          },
+          {
+            title: "组套展开/DR CT 去重",
+            file: "ucDisplay.cs",
+            method: "ConvertGroupToDetail / ConvertDRGroupToDetail / ConvertCTGroupToDetail",
+            line: "GetFeeItemList 内部",
+            role: "如果是组套，展开成子项；DR/CT 按 ItemZT 做去重。",
+            code: `if (f.IsGroup)
+{
+  if (this.IsUseNewUndrugZT && hsItemZT.ContainsKey(f.Item.ID))
+    alDetail = ConvertDRGroupToDetail(...) / ConvertCTGroupToDetail(...);
+  else
+    alDetail = ConvertGroupToDetail(f);
+}`
+          },
+          {
+            title: "查询数量限制规则",
+            file: "ucDisplay.cs",
+            method: "undrugManager.SetRestrictingfee",
+            line: "line 7725",
+            role: "判断当前项目是否为 Restrictingfee 限制收费项目，并取最大限制数量。",
+            code: `returnRows = this.undrugManager.SetRestrictingfee(
+  s.Item.ID,
+  ref LimitNumber
+);`
+          },
+          {
+            title: "查询比例折价规则",
+            file: "ucDisplay.cs",
+            method: "undrugManager.SetDiscountfee",
+            line: "line 7726",
+            role: "读取 FIN_DISCOUNT_FEE 中的折价比例、最高价和折价类型。",
+            code: `Discount_type = this.undrugManager.SetDiscountfee(
+  s.Item.ID,
+  ref DISCOUNT_RATE,
+  ref TOPPRICE
+);`
+          },
+          {
+            title: "执行数量限制",
+            file: "ucDisplay.cs / Restrictingfee.cs",
+            method: "ConvertRestrictingfee",
+            line: "ucDisplay.cs:7729 / Restrictingfee.cs:158",
+            role: "如果命中数量限制且科室不是 7021，按历史次数截断数量或归零。",
+            code: `if (returnRows > 0 && this.rInfo.DoctorInfo.Templet.Dept.ID != "7021")
+{
+  this.setRestrictingfee.ConvertRestrictingfee(
+    PatientInfo.PID.CardNO, s, ... , LimitNumber
+  );
+}`
+          },
+          {
+            title: "执行比例折价",
+            file: "ucDisplay.cs / Restrictingfee.cs",
+            method: "ConvertDiscountfee",
+            line: "ucDisplay.cs:7732 / Restrictingfee.cs:744",
+            role: "discount_type 为 2 时，按第 1 个全价、后续比例折价，并应用 TOPPRICE。",
+            code: `if (Discount_type == "2")
+{
+  this.setRestrictingfee.ConvertDiscountfee(
+    s, DISCOUNT_RATE, TOPPRICE, ...
+  );
+}`
+          },
+          {
+            title: "替换费用明细",
+            file: "ucDisplay.cs",
+            method: "GetFeeItemList 尾部",
+            line: "line 7735 之后",
+            role: "删除原列表中被处理的明细，追加折价后的明细返回给收费流程。",
+            code: `if (hsREOnlyOneItem.ContainsKey(s.Item.ID + number))
+  feeItemLists.RemoveAt(i);
+
+foreach (FeeItemList ds in hsREOnlylistItem)
+  feeItemLists.Add(ds);`
+          }
+        ]
+      },
+      {
+        id: "opd-package",
+        name: "门诊组套/划价显示",
+        status: "组套主项回填",
+        summary: "门诊组套显示或划价路径会把组套主项拆成子项逐条限制，再把子项折后金额汇总回主项。",
+        entry: "ucDisplay.SetChargeInfo / GetFeeItemListForCharge",
+        outcome: "组套子项折后金额汇总回主项 TotCost / OwnCost。",
+        source: "ucDisplay.cs + Restrictingfee.cs",
+        checks: [
+          "重点核对主项是否仍保存，还是实际保存拆分明细。",
+          "确认组套子项价格取自 QueryItemListForValid 和 GetPrice。",
+          "迁移时决定 HIS 传主项还是展开后的子项。"
+        ],
+        nodes: [
+          {
+            title: "门诊划价/显示入口",
+            file: "legacy-code/HIS/SOC.Local.OutpatientFee.ZhuHai/Zdwy/IOutpatientItemInputAndDisplay/ucDisplay.cs",
+            method: "SetChargeInfo 附近逻辑",
+            line: "line 2135-2143 / 4057-4070",
+            role: "界面显示或划价时，对 alChargeInfo 中的项目重新计算金额。",
+            code: `returnRows = this.undrugManager.SetRestrictingfee(s.Item.ID, ref LimitNumber);
+Discount_type = this.undrugManager.SetDiscountfee(s.Item.ID, ref DISCOUNT_RATE, ref TOPPRICE);`
+          },
+          {
+            title: "进入组套限制折价",
+            file: "ucDisplay.cs",
+            method: "setRestrictingfee.ConvertRestrictingfeeCharge",
+            line: "line 2139 / 4061",
+            role: "命中数量限制后，不直接按主项计算，而进入组套专用方法。",
+            code: `this.setRestrictingfee.ConvertRestrictingfeeCharge(
+  PatientInfo.PID.CardNO, s, ...,
+  LimitNumber, ref hsZTNOREOnlyOneItem,
+  this.dsItem, this.rInfo
+);`
+          },
+          {
+            title: "查询组套子项",
+            file: "legacy-code/HIS/ZDWY.SpecialRule/ZDWY.SpecialRule.Price/Restrictingfee.cs",
+            method: "ConvertRestrictingfeeCharge",
+            line: "line 296 / 344 附近",
+            role: "重新查询项目、判断复合项目，展开组套明细。",
+            code: `outpatientManager.QueryItemListForValid("8004", f.Item.ID, ref dtItemSerch);
+alDetail = ConvertGroupToDetail1(f);`
+          },
+          {
+            title: "逐子项查历史次数",
+            file: "Restrictingfee.cs",
+            method: "getRestrictingfee / getRestrictingfeeZT",
+            line: "line 357 / 360",
+            role: "对子项编码查历史收费次数；分组项目按组号查。",
+            code: `feetype = this.db.getRestrictingfee(CARD_NO, undrugCombo.ID, ref feecode);
+if (hsZTItem.ContainsKey(f.Item.ID))
+  feetype = this.db.getRestrictingfeeZT(CARD_NO, undrugCombo.ID, GroupNumber, ref feecode);`
+          },
+          {
+            title: "逐子项查限制规则",
+            file: "Restrictingfee.cs",
+            method: "db.SetRestrictingfee",
+            line: "line 362",
+            role: "每个子项独立判断是否限制收费，并读取 LimitNumber。",
+            code: `returnRows = this.db.SetRestrictingfee(
+  undrugCombo.ID,
+  ref LimitNumber
+);`
+          },
+          {
+            title: "累计子项折后金额",
+            file: "Restrictingfee.cs",
+            method: "ConvertRestrictingfeeCharge",
+            line: "line 370-430 附近",
+            role: "按剩余额度把每个子项金额计入 sumPricecot。",
+            code: `if (Limitsum <= 0)
+  sumPricecot += Price * undrugCombo.Qty - Price * undrugCombo.Qty;
+else if ((Limitsum - undrugCombo.Qty) <= 0)
+  sumPricecot += Price * Limitsum;
+else
+  sumPricecot += Price * undrugCombo.Qty;`
+          },
+          {
+            title: "回填主项金额",
+            file: "Restrictingfee.cs",
+            method: "ConvertRestrictingfeeCharge",
+            line: "line 450 附近",
+            role: "把所有子项累计金额回写到主项 TotCost 和 OwnCost。",
+            code: `f.FT.TotCost = sumPricecot;
+f.FT.OwnCost = sumPricecot;
+hsREOnlyOneItem.Add(f.Item.ID + number, f);
+hsREOnlylistItem.Add(f);`
+          }
+        ]
+      },
+      {
+        id: "special-dll",
+        name: "ZDWY.SpecialRule 门诊",
+        status: "DLL 统一入口",
+        summary: "部分入口直接调用 ZDWY.SpecialRule.Price.CTMRFeeRule.GetFeeItemList，内部完成患者信息、组套展开、规则查询和折价处理。",
+        entry: "new CTMRFeeRule().GetFeeItemList(clincCode, feeArryList)",
+        outcome: "返回特殊规则 DLL 处理后的门诊费用明细。",
+        source: "CTMRFeeRule.cs + CTMRFeeRuleDB.cs + Restrictingfee.cs",
+        checks: [
+          "如果同事代码只调用 DLL，需要从 CTMRFeeRule.cs 开始跟。",
+          "GetFeeItemList 与 GetFeeItemListnew 行为不同。",
+          "GetFeeItemListExcludingEmergencyDiscountZZSB 也要留意是否被实际调用。"
+        ],
+        nodes: [
+          {
+            title: "外部调用 CTMRFeeRule",
+            file: "业务入口代码",
+            method: "new ZDWY.SpecialRule.Price.CTMRFeeRule().GetFeeItemList",
+            line: "按调用方定位",
+            role: "把 clincCode 和原始费用明细传给特殊规则 DLL。",
+            code: `ZDWY.SpecialRule.Price.CTMRFeeRule rule = new CTMRFeeRule();
+ArrayList actual = rule.GetFeeItemList(clincCode, feeArryList);`
+          },
+          {
+            title: "查询挂号与合同单位",
+            file: "legacy-code/HIS/ZDWY.SpecialRule/ZDWY.SpecialRule.Price/CTMRFeeRule.cs",
+            method: "GetFeeItemList",
+            line: "line 53-75",
+            role: "根据 clincCode 获取 rInfo，并加载合同单位、项目列表。",
+            code: `this.rInfo = this.db.GetByClinic(clincCode);
+this.rInfo.Pact = this.db.GetPactUnitInfoByPactCode(this.rInfo.Pact.ID);
+this.db.QueryItemList(deptCode, ItemKind.All, ref dsItem);`
+          },
+          {
+            title: "补全医生科室",
+            file: "CTMRFeeRule.cs",
+            method: "GetEmployeeInfoForEmplCode",
+            line: "line 75-95",
+            role: "如果费用明细缺少 DoctDeptInfo，就通过医生工号查科室。",
+            code: `if (!string.IsNullOrEmpty(f.RecipeOper.ID) && string.IsNullOrEmpty(f.DoctDeptInfo.ID))
+{
+  var emplInfo = this.db.GetEmployeeInfoForEmplCode(f.RecipeOper.ID);
+  f.DoctDeptInfo.ID = emplInfo.DEPT_CODE;
+}`
+          },
+          {
+            title: "组套展开与去重",
+            file: "CTMRFeeRule.cs",
+            method: "ConvertDRGroupToDetail / ConvertCTGroupToDetail / ConvertGroupToDetail",
+            line: "line 96-160",
+            role: "展开非药品组套，DR/CT 按规则去重。",
+            code: `if (f.Item.ItemType == EnumItemType.UnDrug && IsUseCtOrMRfeeRule && this.db.IsZTUndrugInfo(f.Item.ID))
+{
+  alDetail = ConvertDRGroupToDetail(...) / ConvertCTGroupToDetail(...);
+}`
+          },
+          {
+            title: "规则查询",
+            file: "CTMRFeeRule.cs",
+            method: "db.SetRestrictingfee / db.SetDiscountfee",
+            line: "line 173-174",
+            role: "逐明细查询数量限制规则和比例折价规则。",
+            code: `returnRows = this.db.SetRestrictingfee(s.Item.ID, ref LimitNumber);
+Discount_type = this.db.SetDiscountfee(s.Item.ID, ref DISCOUNT_RATE, ref TOPPRICE);`
+          },
+          {
+            title: "折价执行",
+            file: "CTMRFeeRule.cs",
+            method: "ConvertRestrictingfee / ConvertDiscountfee",
+            line: "line 177 / 181",
+            role: "数量限制有 7021 排除；比例折价按 discount_type 判断。",
+            code: `if (returnRows > 0 && this.rInfo.DoctorInfo.Templet.Dept.ID != "7021")
+  ConvertRestrictingfee(...);
+if (Discount_type == "2")
+  ConvertDiscountfee(...);`
+          }
+        ]
+      },
+      {
+        id: "rule-db-chain",
+        name: "公共规则查询 DB",
+        status: "规则与历史次数",
+        summary: "所有旧折价执行最终都依赖 CTMRFeeRuleDB：先查项目是否命中 Restrictingfee / FIN_DISCOUNT_FEE，再在 Convert* 中查询患者历史收费次数。",
+        entry: "CTMRFeeRuleDB.SetRestrictingfee / SetDiscountfee / getRestrictingfee",
+        outcome: "返回 LimitNumber、discount_rate、topprice、discount_type、历史已收费次数。",
+        source: "legacy-code/HIS/ZDWY.SpecialRule/ZDWY.SpecialRule.Price/DB/CTMRFeeRuleDB.cs",
+        checks: [
+          "完整 SQL 不在当前源码里，需要从 HIS SQL 配置导出。",
+          "getRestrictingfee 返回整数次数，不是 bool。",
+          "RestrictingfeeZT 是分组次数查询，需要确认 GroupNumber 来源。"
+        ],
+        nodes: [
+          {
+            title: "查询数量限制配置",
+            file: "legacy-code/HIS/ZDWY.SpecialRule/ZDWY.SpecialRule.Price/DB/CTMRFeeRuleDB.cs",
+            method: "SetRestrictingfee",
+            line: "line 1527",
+            role: "按 itemcode 查询是否配置 Restrictingfee，并把最大限制数量写入 LimitNumber。",
+            code: `public int SetRestrictingfee(string itemcode, ref decimal LimitNumber)
+{
+  // 通过 SQL 索引读取 Restrictingfee 常数配置
+  // 命中时返回行数，并输出最大限制数量
+}`
+          },
+          {
+            title: "查询比例折价配置",
+            file: "CTMRFeeRuleDB.cs",
+            method: "SetDiscountfee",
+            line: "line 1565",
+            role: "按 itemcode 查询 FIN_DISCOUNT_FEE，返回 discount_type，并输出 DISCOUNT_RATE 和 TOPPRICE。",
+            code: `public string SetDiscountfee(
+  string itemcode,
+  ref decimal DISCOUNT_RATE,
+  ref int TOPPRICE
+)
+{
+  // 读取 discount_rate、topprice、discount_type
+}`
+          },
+          {
+            title: "查询历史收费次数",
+            file: "CTMRFeeRuleDB.cs",
+            method: "getRestrictingfee",
+            line: "line 1599",
+            role: "按 CARD_NO + itemCode 查询历史收费次数，SQL 内部包含 2 小时窗口等过滤。",
+            code: `public int getRestrictingfee(
+  string CARD_NO,
+  string itemCode,
+  ref string Feecode
+)
+{
+  // 返回已收费次数，不是是否存在的布尔值
+}`
+          },
+          {
+            title: "查询分组历史次数",
+            file: "CTMRFeeRuleDB.cs",
+            method: "getRestrictingfeeZT",
+            line: "line 1621",
+            role: "按 CARD_NO + itemCode + GroupNumber 查询同组项目历史收费次数。",
+            code: `public int getRestrictingfeeZT(
+  string CARD_NO,
+  string itemCode,
+  string GroupNumber,
+  ref string Feecode
+)
+{
+  // 对 RestrictingfeeZT 分组项目使用
+}`
+          },
+          {
+            title: "折价函数消费查询结果",
+            file: "legacy-code/HIS/ZDWY.SpecialRule/ZDWY.SpecialRule.Price/Restrictingfee.cs",
+            method: "ConvertRestrictingfee / ConvertRestrictingfeeCharge / ConvertRestrictingfeeZY",
+            line: "line 190 / 357 / 639",
+            role: "用历史次数和 LimitNumber 计算剩余额度，决定全额、部分收费或 0 元。",
+            code: `feetype = this.db.getRestrictingfee(CARD_NO, itemCode, ref feecode);
+if (hsZTItem.ContainsKey(itemCode))
+  feetype = this.db.getRestrictingfeeZT(CARD_NO, itemCode, GroupNumber, ref feecode);
+
+Limitsum = LimitNumber - feetype - currentBatchQty;`
+          }
+        ]
+      },
+      {
+        id: "terminal-save",
+        name: "住院终端确认",
+        status: "Save 到 FeeItem",
+        summary: "终端确认入口负责校验、组装费用、展开组套和事务控制；真正折价在 feeManager.FeeItem 内。",
+        entry: "ucInpatientConfirm.Save()",
+        outcome: "调用 feeManager.FeeItem 正向落账，随后更新确认数量并提交事务。",
+        source: "ucInpatientConfirm.cs + Fee.cs",
+        checks: [
+          "不要在 Save 中找 ConvertRestrictingfeeZY，它在 Fee.cs 中。",
+          "关注 alOrder 与 alFeeItemList 两条落账路径。",
+          "确认失败时 feeManager.Rollback 是否覆盖所有分支。"
+        ],
+        nodes: [
+          {
+            title: "终端确认保存入口",
+            file: "legacy-code/HIS/HISFC.Components/Terminal/Confirm/ucInpatientConfirm.cs",
+            method: "Save",
+            line: "line 1772",
+            role: "住院终端确认保存主入口。",
+            code: `private int Save()
+{
+  if (!ValidState()) return -1;
+  Neusoft.FrameWork.Management.PublicTrans.BeginTransaction();
+}`
+          },
+          {
+            title: "获取待收费医嘱",
+            file: "ucInpatientConfirm.cs",
+            method: "GetFeeOrder / GetNewFeeItemList / ChangeOrderToFeeItemList",
+            line: "line 1810-1840 附近",
+            role: "从界面选择、医嘱和确认记录组装住院收费明细。",
+            code: `alOrder = this.GetFeeOrder();
+alFeeItemList = this.GetNewFeeItemList();
+alFeeItemList = this.ChangeOrderToFeeItemList(alFeeItemList);`
+          },
+          {
+            title: "住院组套展开",
+            file: "ucInpatientConfirm.cs",
+            method: "GetDRItems / GetCTItems / QueryUndrugPackageDetailByCode",
+            line: "line 1842-1940 附近",
+            role: "对复合非药品医嘱展开子项，并处理 DR/CT 去重。",
+            code: `if (ug.UnitFlag == "1")
+{
+  al = GetDRItems(...) / GetCTItems(...)
+  // 或 QueryUndrugPackageDetailByCode
+}`
+          },
+          {
+            title: "调用住院费用落账",
+            file: "ucInpatientConfirm.cs",
+            method: "feeManager.FeeItem",
+            line: "line 2008 / 2139",
+            role: "把组装好的住院费用明细交给业务层落账。",
+            code: `iReturn = this.feeManager.FeeItem(this.myPatient, ref alOrder);
+// 或
+iReturn = this.feeManager.FeeItem(this.myPatient, ref alFeeItemList);`
+          },
+          {
+            title: "更新可退数量",
+            file: "ucInpatientConfirm.cs",
+            method: "UpdateConfirmNumForUndrug / UpdateExtFlagForUndrug",
+            line: "line 2023-2038 / 2156-2172",
+            role: "落账成功后更新确认数量和扩展标记。",
+            code: `this.feeManager.UpdateConfirmNumForUndrug(...);
+this.feeManager.UpdateExtFlagForUndrug(..., "150", ...);`
+          },
+          {
+            title: "提交事务",
+            file: "ucInpatientConfirm.cs",
+            method: "feeManager.Commit",
+            line: "line 2453",
+            role: "所有费用、医嘱、药品信息处理成功后提交。",
+            code: `feeManager.Commit();
+MessageBox.Show(this, "确认成功！", "提示>>", MessageBoxButtons.OK);`
+          }
+        ]
+      },
+      {
+        id: "inpatient-fee-manager",
+        name: "住院 FeeManager 折价",
+        status: "折价真正位置",
+        summary: "住院正向收费进入 FeeManager 后，才逐条执行数量限制和比例折价。",
+        entry: "Fee.FeeItem(patient, ref feeItemLists) -> FeeManager(..., TransTypes.Positive)",
+        outcome: "替换住院收费明细后继续落账，负向退费分支不走这段正向折价循环。",
+        source: "legacy-code/HIS/HISFC.BizProcess/Integrate/Fee/Fee.cs",
+        checks: [
+          "这是住院最终金额落账前的核心折价位置。",
+          "只在 TransTypes.Positive 分支执行。",
+          "如果界面预览金额不一致，要看是否未提前试算数量限制。"
+        ],
+        nodes: [
+          {
+            title: "住院收费入口",
+            file: "legacy-code/HIS/HISFC.BizProcess/Integrate/Fee/Fee.cs",
+            method: "FeeItem(patient, ref ArrayList)",
+            line: "line 2757",
+            role: "住院项目收费业务入口。",
+            code: `public int FeeItem(PatientInfo patient, ref ArrayList feeItemLists)
+{
+  return this.FeeManager(patient, ref feeItemLists, ChargeTypes.Fee, TransTypes.Positive);
+}`
+          },
+          {
+            title: "进入正向收费分支",
+            file: "Fee.cs",
+            method: "FeeManager",
+            line: "line 1415 附近",
+            role: "只有正向收费才执行折价循环。",
+            code: `if (transType == TransTypes.Positive)
+{
+  for (int i = feeItemLists.Count - 1; i >= 0; i--)
+  {
+    ...
+  }
+}`
+          },
+          {
+            title: "数量规则查询",
+            file: "Fee.cs",
+            method: "itemManager.SetRestrictingfee",
+            line: "line 1426",
+            role: "判断住院明细项目是否命中数量限制。",
+            code: `returnRows = this.itemManager.SetRestrictingfee(
+  s.Item.ID,
+  ref LimitNumber
+);`
+          },
+          {
+            title: "比例规则查询",
+            file: "Fee.cs",
+            method: "itemManager.SetDiscountfee",
+            line: "line 1427",
+            role: "判断住院明细项目是否命中比例折价。",
+            code: `Discount_type = this.itemManager.SetDiscountfee(
+  s.Item.ID,
+  ref DISCOUNT_RATE,
+  ref TOPPRICE
+);`
+          },
+          {
+            title: "住院数量折价",
+            file: "Fee.cs / Restrictingfee.cs",
+            method: "ConvertRestrictingfeeZY",
+            line: "Fee.cs:1430 / Restrictingfee.cs:608",
+            role: "按患者住院号和项目查询历史次数，截断或归零。",
+            code: `if (returnRows > 0)
+{
+  this.setRestrictingfee.ConvertRestrictingfeeZY(
+    patient.ID, s, ... , LimitNumber
+  );
+}`
+          },
+          {
+            title: "住院比例折价",
+            file: "Fee.cs / Restrictingfee.cs",
+            method: "ConvertDiscountfeeZY",
+            line: "Fee.cs:1434 / Restrictingfee.cs:767",
+            role: "住院比例折价和最高限价。",
+            code: `if (Discount_type == "2")
+{
+  this.setRestrictingfee.ConvertDiscountfeeZY(
+    s, DISCOUNT_RATE, TOPPRICE, ...
+  );
+}`
+          },
+          {
+            title: "替换明细继续落账",
+            file: "Fee.cs",
+            method: "FeeManager 后续写费用",
+            line: "line 1438 之后",
+            role: "删除原明细、追加折价明细，然后继续库存、费用明细、医嘱更新。",
+            code: `if (hsREOnlyOneItem.ContainsKey(s.Item.ID + number))
+  feeItemLists.RemoveAt(i);
+
+foreach (FeeItemList ds in hsREOnlylistItem)
+  feeItemLists.Add(ds);`
+          }
+        ]
+      },
+      {
+        id: "inpatient-return",
+        name: "住院退费确认",
+        status: "负向退费入口",
+        summary: "住院退费界面先查询可退申请或可退项目，确认后组装负向费用列表并调用 feeIntegrate.QuitItem。当前仓库源码未在 ucConfirmQuitFee 中检索到 SetDiscountfee / ConvertDiscountfee 调用。",
+        entry: "ucConfirmQuitFee.RetrieveReturnApply -> GetConfirmItem/GetRetrunApplyItem -> feeIntegrate.QuitItem",
+        outcome: "生成负向退费明细，进入 FeeManager 的 TransTypes.Negative 分支；用于核对退费是否应从历史累计中排除。",
+        source: "legacy-code/HIS/HISFC.Components/InpatientFee/Fee/ucConfirmQuitFee.cs + Fee.cs",
+        checks: [
+          "退费入口要和正向收费入口分开看，负向分支不应重新做数量折价。",
+          "当前源码里退费金额主要按原退费申请/原明细数量金额组织。",
+          "如同事文档认为退费重新执行比例折价，需要补线上 DLL 或具体代码证据。"
+        ],
+        nodes: [
+          {
+            title: "查询退费申请",
+            file: "legacy-code/HIS/HISFC.Components/InpatientFee/Fee/ucConfirmQuitFee.cs",
+            method: "RetrieveReturnApply",
+            line: "line 587",
+            role: "按患者和药品/非药品标识查询已申请退费记录，并填充退费界面。",
+            code: `private void RetrieveReturnApply(bool isPharmarcy)
+{
+  ArrayList returnApplys =
+    this.returnApplyManager.QueryReturnApplys(this.patientInfo.ID, false, isPharmarcy);
+}`
+          },
+          {
+            title: "写入退费界面",
+            file: "ucConfirmQuitFee.cs",
+            method: "fpQuit_SheetDrug / fpQuit_SheetUndrug",
+            line: "line 622-738",
+            role: "把退费项目名称、价格、数量、金额和确认状态写入退费 Spread。",
+            code: `this.fpQuit_SheetUndrug.SetValue(index, (int)UndrugColumns.Price, retrunApply.Item.Price);
+this.fpQuit_SheetUndrug.SetValue(index, (int)UndrugColumns.Qty, retrunApply.Item.Qty);
+this.fpQuit_SheetUndrug.SetValue(index, (int)UndrugColumns.Cost,
+  FormatNumber(retrunApply.Item.Price * retrunApply.Item.Qty / retrunApply.Item.PackQty, 2));`
+          },
+          {
+            title: "确认退费项目",
+            file: "ucConfirmQuitFee.cs",
+            method: "GetConfirmItem",
+            line: "line 1481-1510",
+            role: "从界面勾选行取 FeeItemList，并按退费数量重算 TotCost/OwnCost。",
+            code: `FeeItemList feeItemList = this.fpQuit.Sheets[j].Rows[i].Tag as FeeItemList;
+feeItemList.FT.TotCost = feeItemList.Item.Price * feeItemList.Item.Qty / feeItemList.Item.PackQty;
+feeItemList.FT.OwnCost = feeItemList.FT.TotCost;
+feeItemLists.Add(feeItemList);`
+          },
+          {
+            title: "确认退费申请明细",
+            file: "ucConfirmQuitFee.cs",
+            method: "GetRetrunApplyItem",
+            line: "line 1519-1580",
+            role: "对 ReturnApply 类型行补原收费明细、医嘱流水和组套信息，准备负向退费。",
+            code: `FeeItemList feeTemp =
+  this.inpatientManager.GetItemListByRecipeNO(
+    feeItemList.RecipeNO,
+    feeItemList.SequenceNO,
+    feeItemList.Item.ItemType
+  );
+feeItemList.Order.ID = feeTemp.Order.ID;
+feeItemList.ExecOrder.ID = feeTemp.ExecOrder.ID;`
+          },
+          {
+            title: "调用退费落账",
+            file: "ucConfirmQuitFee.cs",
+            method: "feeIntegrate.QuitItem",
+            line: "line 1434",
+            role: "把组装后的负向费用列表交给住院费用集成层。",
+            code: `if (this.feeIntegrate.QuitItem(this.patientInfo, ref alQuitFeeItemList) == -1)
+{
+  MessageBox.Show(this.feeIntegrate.Err);
+  return -1;
+}`
+          },
+          {
+            title: "进入负向 FeeManager",
+            file: "legacy-code/HIS/HISFC.BizProcess/Integrate/Fee/Fee.cs",
+            method: "FeeManager(..., TransTypes.Negative)",
+            line: "line 1476 / 2783 / 2794",
+            role: "负向退费分支与正向收费分支分开，当前折价循环只确认在 Positive 分支执行。",
+            code: `if (transType == TransTypes.Negative)
+{
+  // 负向费用处理
+}
+
+return this.FeeManager(patient, ref feeItemLists, ChargeTypes.Fee, TransTypes.Negative);`
+          }
+        ]
+      },
+      {
+        id: "inpatient-tech",
+        name: "住院医技界面预览",
+        status: "比例金额展示",
+        summary: "住院医技界面文件中确认到 SetDiscountfee 用于界面 TotCost 展示；数量限制主要在最终 FeeManager 落账时执行。",
+        entry: "ucInpatientCharge / ucInpatientCharge_new 的 SetItemProperty / SetItem",
+        outcome: "界面展示 TotCost，最终收费仍需进 FeeManager。",
+        source: "ucInpatientCharge.cs + ucInpatientCharge_new.cs",
+        checks: [
+          "这条链路是界面金额预览，不等同最终落账。",
+          "如果发现保存前金额和保存后金额不一致，优先核对数量限制是否只在 FeeManager 执行。",
+          "老版和新版 ucInpatientCharge 都有 SetDiscountfee 调用。"
+        ],
+        nodes: [
+          {
+            title: "医技项目属性设置",
+            file: "legacy-code/HIS/HISFC.Components/Common/Controls/ucInpatientCharge_new.cs",
+            method: "SetItemProperty / SetItem 相关逻辑",
+            line: "line 3065",
+            role: "界面输入数量或项目变化时计算 TotCost。",
+            code: `Discount_type = this.itemManager.SetDiscountfee(
+  item.ID,
+  ref DISCOUNT_RATE,
+  ref TOPPRICE
+);`
+          },
+          {
+            title: "按比例计算展示金额",
+            file: "ucInpatientCharge_new.cs",
+            method: "界面金额计算",
+            line: "line 3067-3078",
+            role: "如果 discount_type 为 2，按比例公式计算界面金额。",
+            code: `decimal totPrice = FormatNumber(
+  Convert.ToDecimal((item.Price * DISCOUNT_RATE) * (qty - 1)) + item.Price,
+  2
+);`
+          },
+          {
+            title: "应用最高限价",
+            file: "ucInpatientCharge_new.cs",
+            method: "TOPPRICE 判断",
+            line: "line 3070-3075",
+            role: "界面侧如果超过 TOPPRICE，展示 TOPPRICE。",
+            code: `if (TOPPRICE > 0)
+{
+  if (totPrice > TOPPRICE)
+    totPrice = TOPPRICE;
+}`
+          },
+          {
+            title: "回填界面 TotCost",
+            file: "ucInpatientCharge_new.cs",
+            method: "fpDetail_Sheet.SetValue",
+            line: "line 3076-3083",
+            role: "把计算结果显示到界面表格。",
+            code: `this.fpDetail_Sheet.SetValue(
+  row,
+  (int)Columns.TotCost,
+  totPrice,
+  false
+);`
+          },
+          {
+            title: "最终仍进 FeeManager",
+            file: "legacy-code/HIS/HISFC.BizProcess/Integrate/Fee/Fee.cs",
+            method: "FeeItem -> FeeManager",
+            line: "line 2757 / 1426",
+            role: "最终落账时仍会进入 FeeManager 的折价循环。",
+            code: `return this.FeeManager(patient, ref feeItemLists, ChargeTypes.Fee, TransTypes.Positive);`
+          }
+        ]
+      },
+      {
+        id: "selfservice-entry",
+        name: "自助机",
+        status: "GetFeeItemListnew",
+        summary: "自助机入口解析 XML 并查询待缴明细后，调用 CTMRFeeRule.GetFeeItemListnew；该分支不执行旧特殊折价。",
+        entry: "Patientopb.GetGetPrescriptionAndChargeDetailsForSRM(xml)",
+        outcome: "GetFeeItemListnew 只做组套金额汇总，折价代码已注释。",
+        source: "Patientopb.cs + CTMRFeeRule.cs",
+        checks: [
+          "确认自助机旧行为就是不折价。",
+          "迁移规则中心时不要默认把自助机纳入人工 HIS 规则。",
+          "如果业务要统一折价，需要明确这是行为变更。"
+        ],
+        nodes: [
+          {
+            title: "自助机接口入口",
+            file: "legacy-code/zzsb/His.Service/His.Business/ZZSB/Patientopb.cs",
+            method: "GetGetPrescriptionAndChargeDetailsForSRM",
+            line: "line 6646",
+            role: "自助机请求待缴费明细的服务入口。",
+            code: `public string GetGetPrescriptionAndChargeDetailsForSRM(string xml)
+{
+  InGetPrescriptionAndChargeDetailsForSRM opa = new ...;
+}`
+          },
+          {
+            title: "解析 XML",
+            file: "Patientopb.cs",
+            method: "GetPrescriptionAndChargeDetailsForSRMModel",
+            line: "line 6656-6657",
+            role: "从 XML 中解析患者和请求参数。",
+            code: `returnStr = this.GetPrescriptionAndChargeDetailsForSRMModel(xml, ref opa);
+if (!string.IsNullOrEmpty(returnStr))
+  return returnStr;`
+          },
+          {
+            title: "查询待缴费用",
+            file: "Patientopb.cs",
+            method: "GetPrescriptionAndChargeDetailsForSRMData",
+            line: "line 6662",
+            role: "查询该患者当前可在自助机缴费的费用明细。",
+            code: `System.Collections.ArrayList al =
+  this.GetPrescriptionAndChargeDetailsForSRMData(opa);`
+          },
+          {
+            title: "创建特殊规则对象",
+            file: "Patientopb.cs",
+            method: "new CTMRFeeRule",
+            line: "line 6681",
+            role: "虽然创建了特殊规则对象，但后续调用的是自助机分支。",
+            code: `ZDWY.SpecialRule.Price.CTMRFeeRule CTMRFeeRule =
+  new ZDWY.SpecialRule.Price.CTMRFeeRule();`
+          },
+          {
+            title: "调用自助机分支",
+            file: "Patientopb.cs / CTMRFeeRule.cs",
+            method: "GetFeeItemListnew",
+            line: "Patientopb.cs:6684 / CTMRFeeRule.cs:371",
+            role: "自助机不是调用 GetFeeItemList，而是 GetFeeItemListnew。",
+            code: `var actualAll = CTMRFeeRule.GetFeeItemListnew(
+  opa.PATIENTID,
+  al
+);`
+          },
+          {
+            title: "组套金额汇总",
+            file: "CTMRFeeRule.cs",
+            method: "GetFeeItemListnew",
+            line: "line 430-455 附近",
+            role: "自助机把组套明细金额汇总回主项，只返回主项。",
+            code: `foreach (FeeItemList s in alDetail)
+{
+  sumOwnCost += s.FT.OwnCost;
+  sumTotCost += s.FT.TotCost;
+}
+f.FT.OwnCost = sumOwnCost;
+f.FT.TotCost = sumTotCost;`
+          },
+          {
+            title: "折价代码注释",
+            file: "CTMRFeeRule.cs",
+            method: "GetFeeItemListnew 尾部",
+            line: "line 478-481",
+            role: "数量限制折价循环被注释，未执行 ConvertRestrictingfeeCharge。",
+            code: `// returnRows = this.db.SetRestrictingfee(...);
+// if (returnRows > 0)
+// {
+//   this.setRestrictingfee.ConvertRestrictingfeeCharge(...);
+// }`
+          }
+        ]
+      },
+      {
+        id: "wechat-entry",
+        name: "微信",
+        status: "普通组套+发票",
+        summary: "微信端从 RegisterInfoManager 或 OrderManager 获取费用，做普通组套展开，然后进入 NeusoftBussiness.MakeInvoice。当前未见特殊折价调用。",
+        entry: "RegisterInfoManager 业务缴费流程 -> GetFeeItemList -> NeusoftBussiness.MakeInvoice",
+        outcome: "普通收费明细和发票数据；当前源码未见特殊折价。",
+        source: "legacy-code/WeChat/FS.ZDWY.Internet.BP/OutPatient/RegisterInfoManager.cs",
+        checks: [
+          "确认线上是否另有 OutpatientFeeSpecialRule DLL 未收录。",
+          "当前仓库源码没有 SetRestrictingfee 和 SetDiscountfee 调用。",
+          "迁移统一计价时需要业务确认微信是否纳入折价。"
+        ],
+        nodes: [
+          {
+            title: "微信业务入口",
+            file: "legacy-code/WeChat/FS.ZDWY.Internet.BP/OutPatient/RegisterInfoManager.cs",
+            method: "业务缴费流程",
+            line: "line 3984 附近",
+            role: "微信挂号/缴费生成发票前，会先获取费用明细。",
+            code: `comFeeItemLists = this.GetFeeItemList(al, reg, ref errMsg);
+ArrayList balancesAndBalanceLists =
+  NeusoftBussiness.MakeInvoice(...);`
+          },
+          {
+            title: "获取费用明细",
+            file: "RegisterInfoManager.cs",
+            method: "GetFeeItemList",
+            line: "line 4656",
+            role: "微信端费用列表处理入口。",
+            code: `public ArrayList GetFeeItemList(
+  ArrayList al,
+  Register reg,
+  ref string errMsg,
+  bool needRecipeItem = false
+)`
+          },
+          {
+            title: "判断非药品组套",
+            file: "RegisterInfoManager.cs",
+            method: "undrugManager.GetUndrugByCode",
+            line: "line 4670-4690 附近",
+            role: "如果是非药品复合项目，进入组套展开。",
+            code: `Undrug undrugItem = undrugManager.GetUndrugByCode(f.Item.ID);
+if (undrugItem != null && undrugItem.UnitFlag == "1")
+{
+  ...
+}`
+          },
+          {
+            title: "组套展开",
+            file: "RegisterInfoManager.cs",
+            method: "ConvertGroupToDetail / ConvertDRGroupToDetail / ConvertCTGroupToDetail",
+            line: "line 4690-4705",
+            role: "按普通组套或 DR/CT 逻辑展开明细。",
+            code: `if (hsItemZT.ContainsKey(f.Item.ID))
+  alDetail = ConvertDRGroupToDetail(...) / ConvertCTGroupToDetail(...);
+else
+  alDetail = this.ConvertGroupToDetail(f, reg, ref errMsg);`
+          },
+          {
+            title: "普通发票生成",
+            file: "legacy-code/WeChat/FS.ZDWY.Internet.BP/OutPatient/NeusoftBussiness.cs",
+            method: "MakeInvoice",
+            line: "line 484 / 620",
+            role: "按普通收费明细拆发票和生成发票主表明细。",
+            code: `public static ArrayList MakeInvoice(...)
+{
+  returnValue = MakeInvoiceAndDetail(...);
+}`
+          },
+          {
+            title: "未见特殊折价",
+            file: "WeChat 源码检索结果",
+            method: "SetRestrictingfee / SetDiscountfee / ZDWY.SpecialRule",
+            line: "当前仓库未命中",
+            role: "当前仓库源码没有旧特殊折价调用。",
+            code: `rg "SetRestrictingfee|SetDiscountfee|ZDWY.SpecialRule" legacy-code/WeChat
+// 未发现有效调用`
+          }
+        ]
+      },
+      {
+        id: "wechat-order",
+        name: "微信订单侧",
+        status: "OrderManager 普通计价",
+        summary: "微信订单侧还有一条 OrderManager.GetFeeItemList 链路，同样只看到普通组套展开和 MakeInvoice，未看到 ZDWY.SpecialRule 或 SetDiscountfee。",
+        entry: "OrderManager 订单缴费流程 -> GetFeeItemList",
+        outcome: "订单侧生成普通费用列表后进入 NeusoftBussiness.MakeInvoice。",
+        source: "legacy-code/WeChat/FS.ZDWY.Internet.BP/OutPatient/OrderManager.cs",
+        checks: [
+          "RegisterInfoManager 和 OrderManager 要分别确认，不能只查一个文件。",
+          "OrderManager.GetFeeItemList 只检索到 ConvertGroupToDetail。",
+          "如果业务确认微信要折价，这是相对当前仓库源码的行为变更。"
+        ],
+        nodes: [
+          {
+            title: "订单缴费获取费用",
+            file: "legacy-code/WeChat/FS.ZDWY.Internet.BP/OutPatient/OrderManager.cs",
+            method: "业务缴费流程",
+            line: "line 2803 / 4438",
+            role: "订单侧业务流程调用 GetFeeItemList 生成待收费明细。",
+            code: `comFeeItemLists = this.GetFeeItemList(al, reg, ref errMsg);`
+          },
+          {
+            title: "订单费用入口",
+            file: "OrderManager.cs",
+            method: "GetFeeItemList",
+            line: "line 3282",
+            role: "订单侧费用明细处理入口。",
+            code: `public ArrayList GetFeeItemList(
+  ArrayList al,
+  Register reg,
+  ref string errMsg
+)`
+          },
+          {
+            title: "普通组套展开",
+            file: "OrderManager.cs",
+            method: "ConvertGroupToDetail",
+            line: "line 3299 / 3339",
+            role: "如果是复合项目，展开普通组套明细。",
+            code: `ArrayList alDetail = this.ConvertGroupToDetail(f, reg, ref errMsg);`
+          },
+          {
+            title: "生成发票",
+            file: "legacy-code/WeChat/FS.ZDWY.Internet.BP/OutPatient/NeusoftBussiness.cs",
+            method: "MakeInvoice",
+            line: "line 3056 调用 / line 484 实现",
+            role: "订单侧同样进入普通发票生成逻辑。",
+            code: `ArrayList balancesAndBalanceLists =
+  NeusoftBussiness.MakeInvoice(this.feeIntegrate, reg, comFeeItemLists, invoiceNO, realInvoiceNO, ref errMsg);`
+          },
+          {
+            title: "未见折价调用",
+            file: "WeChat/OutPatient 源码检索结果",
+            method: "SetRestrictingfee / SetDiscountfee / ZDWY.SpecialRule",
+            line: "当前仓库未命中",
+            role: "订单侧未见旧特殊折价入口。",
+            code: `rg "SetRestrictingfee|SetDiscountfee|ZDWY.SpecialRule" legacy-code/WeChat/FS.ZDWY.Internet.BP/OutPatient
+// 未发现有效调用`
+          }
+        ]
+      },
+      {
+        id: "new-client-entry",
+        name: "新 his-client",
+        status: "规则中心接入",
+        summary: "新客户端样例提供迁移后的收费前弹窗、试算、确认占额、HIS 落账后 commit/cancel 的完整流程。",
+        entry: "PricingHisIntegrationHelper.CheckSpecialPricingRequired / FrmPricingPopup",
+        outcome: "simulate 不占额，confirm 占额，HIS 落账后 commit/cancel，退费 reverse。",
+        source: "his-client/*.cs",
+        checks: [
+          "这不是旧生产逻辑，是迁移目标流程。",
+          "confirm 超时重试必须复用 BusinessRequestNo。",
+          "服务不可用时特殊项目不能按普通价格继续收费。"
+        ],
+        nodes: [
+          {
+            title: "收费前特殊标识查询",
+            file: "his-client/PricingHisIntegrationHelper.cs",
+            method: "CheckSpecialPricingRequired",
+            line: "line 65",
+            role: "收费录入时按 itemCode 查询是否特殊项目。",
+            code: `ApiResponse<SpecialFlagResponse> response =
+  _client.GetSpecialFlag(itemCode);`
+          },
+          {
+            title: "构建计价请求",
+            file: "his-client/PricingHisIntegrationHelper.cs",
+            method: "BuildSingleItemRequest",
+            line: "line 160 附近",
+            role: "组装患者、场景、业务号、项目、数量、单价和部位。",
+            code: `request.BusinessRequestNo = EnsureBusinessRequestNo(...);
+request.Items.Add(new PricingCalculateItemRequest
+{
+  ItemCode = itemCode,
+  InputQty = qty,
+  UnitPrice = unitPrice
+});`
+          },
+          {
+            title: "弹窗试算",
+            file: "his-client/FrmPricingPopup.cs",
+            method: "RunSimulate",
+            line: "line 286-295",
+            role: "弹窗打开后自动 simulate，不占额度。",
+            code: `ApiResponse<PricingCalculateResponse> response =
+  _client.Simulate(_request);
+BindResult(response.Data);`
+          },
+          {
+            title: "确认占额",
+            file: "his-client/FrmPricingPopup.cs",
+            method: "BtnConfirmClick",
+            line: "line 255",
+            role: "收费员确认后调用 confirm，占用额度并返回 RequestId。",
+            code: `EnsureBusinessRequestNo();
+ApiResponse<PricingCalculateResponse> response =
+  _client.Confirm(_request);
+ConfirmedRequestId = response.Data.RequestId;`
+          },
+          {
+            title: "HIS 本地落账",
+            file: "HIS 收费保存代码",
+            method: "调用方回填 result.Response.Items",
+            line: "需按实际入口接入",
+            role: "按计价中心返回的最终数量、金额、折价金额回填 HIS 费用明细。",
+            code: `// HIS 按 result.Response.Items 回填最终数量、金额、折价金额和追溯号
+// 本地落账成功后必须 commit`
+          },
+          {
+            title: "落账成功 commit",
+            file: "his-client/PricingHisIntegrationHelper.cs",
+            method: "CommitAfterHisSuccess",
+            line: "line 120",
+            role: "HIS 落账成功后通知规则中心正式消费额度。",
+            code: `return _client.Commit(new PricingCommitRequest
+{
+  RequestId = requestId,
+  ChargeNo = chargeNo
+});`
+          },
+          {
+            title: "落账失败 cancel",
+            file: "his-client/PricingHisIntegrationHelper.cs",
+            method: "CancelAfterHisFailure",
+            line: "line 136",
+            role: "HIS 落账失败、支付失败或操作员取消后释放占额。",
+            code: `return _client.Cancel(new PricingCancelRequest
+{
+  RequestId = requestId
+});`
+          },
+          {
+            title: "退费 reverse",
+            file: "his-client/PricingApiClient.cs",
+            method: "Reverse",
+            line: "line 130",
+            role: "HIS 退费/冲销时调用 reverse 释放或记录额度。",
+            code: `public ApiResponse Reverse(PricingReverseRequest request)
+{
+  return PostNoData("/api/pricing/calculate/reverse", request);
+}`
+          }
+        ]
+      }
+    ];
+
+    const evidence = [
+      ["门诊", "入口", "legacy-code/HIS/ZDWY.SpecialRule/ZDWY.SpecialRule.Price/CTMRFeeRule.cs", "GetFeeItemList / line 53", "特殊规则 DLL 门诊价格明细入口。", "核对是否所有人工门诊入口都走此方法。"],
+      ["门诊", "规则查询", "CTMRFeeRule.cs", "line 173-174", "逐明细调用 SetRestrictingfee 和 SetDiscountfee。", "确认数量限制先于比例折价。"],
+      ["门诊", "算法", "CTMRFeeRule.cs", "line 177 / 181", "调用 ConvertRestrictingfee 和 ConvertDiscountfee。", "确认 7021 科室排除是否只用于数量限制。"],
+      ["门诊", "入口", "legacy-code/HIS/SOC.Local.OutpatientFee.ZhuHai/Zdwy/IOutpatientItemInputAndDisplay/ucDisplay.cs", "SetItem / line 3051", "门诊项目录入、模板带入和组套带入入口。", "SetItem 本身不完成折价，要继续跟 GetFeeItemList。"],
+      ["门诊", "入口", "legacy-code/HIS/SOC.Local.OutpatientFee.ZhuHai/Zdwy/IOutpatientItemInputAndDisplay/ucDisplay.cs", "GetFeeItemList / line 7595", "人工门诊窗口取收费明细。", "不要只看特殊规则 DLL，窗口内也直接调用折价方法。"],
+      ["门诊", "算法", "ucDisplay.cs", "line 7725-7732", "窗口明细折价：SetRestrictingfee、SetDiscountfee、ConvertRestrictingfee、ConvertDiscountfee。", "核对保存前是否重复计算。"],
+      ["门诊", "算法", "ucDisplay.cs", "line 2139 / 4061", "组套显示/划价时调用 ConvertRestrictingfeeCharge。", "确认主项金额是否由子项累计回填。"],
+      ["住院", "入口", "legacy-code/HIS/HISFC.Components/Terminal/Confirm/ucInpatientConfirm.cs", "Save / line 1772", "住院终端确认保存入口。", "Save 不是折价实现点，而是落账调用点。"],
+      ["住院", "落账", "ucInpatientConfirm.cs", "line 2008 / 2139 / 2453", "调用 feeManager.FeeItem 并提交事务。", "核对落账失败时是否有回滚。"],
+      ["住院", "入口", "legacy-code/HIS/HISFC.BizProcess/Integrate/Fee/Fee.cs", "FeeItem / line 2757", "住院费用业务层入口。", "所有最终收费都应进入 FeeManager。"],
+      ["住院", "算法", "Fee.cs", "line 1426-1434", "FeeManager 正向收费中执行数量限制和比例折价。", "确认退费负向分支是否跳过折价。"],
+      ["住院", "算法", "legacy-code/HIS/HISFC.Components/Common/Controls/ucInpatientCharge_new.cs", "line 3065 / 3240", "住院医技界面金额展示调用 SetDiscountfee。", "当前界面文件未检索到 SetRestrictingfee。"],
+      ["住院", "入口", "legacy-code/HIS/HISFC.Components/InpatientFee/Fee/ucConfirmQuitFee.cs", "RetrieveReturnApply / line 587", "住院退费确认界面查询退费申请。", "当前仓库未在该文件检索到 SetDiscountfee/ConvertDiscountfee。"],
+      ["住院", "落账", "ucConfirmQuitFee.cs", "feeIntegrate.QuitItem / line 1434", "住院退费确认后调用负向退费落账。", "核对退费是否进入 TransTypes.Negative 分支。"],
+      ["规则配置", "算法", "legacy-code/HIS/ZDWY.SpecialRule/ZDWY.SpecialRule.Price/Restrictingfee.cs", "ConvertRestrictingfee / line 158", "门诊明细数量限制折价。", "核对 Memo=P/N 标记和数量截断。"],
+      ["规则配置", "算法", "Restrictingfee.cs", "ConvertRestrictingfeeCharge / line 296", "组套主项展开子项后逐项限制，再汇总金额。", "迁移时确认 HIS 传主项还是传明细。"],
+      ["规则配置", "算法", "Restrictingfee.cs", "ConvertRestrictingfeeZY / line 608", "住院数量限制折价。", "逻辑与门诊对象不同但算法相近。"],
+      ["规则配置", "算法", "Restrictingfee.cs", "ConvertDiscountfee / line 744", "门诊比例折价和最高限价。", "公式：第 1 个全价，后续按比例。"],
+      ["规则配置", "算法", "Restrictingfee.cs", "ConvertDiscountfeeZY / line 767", "住院比例折价和最高限价。", "确认 TOPPRICE 是最高价。"],
+      ["规则配置", "规则查询", "legacy-code/HIS/ZDWY.SpecialRule/ZDWY.SpecialRule.Price/DB/CTMRFeeRuleDB.cs", "SetRestrictingfee / line 1527", "通过 SQL 索引读取 Restrictingfee 规则。", "完整 SQL 未收录，需要补。"],
+      ["规则配置", "规则查询", "CTMRFeeRuleDB.cs", "SetDiscountfee / line 1565", "通过 SQL 索引读取 FIN_DISCOUNT_FEE。", "确认 valid_state 和 discount_type 过滤口径。"],
+      ["规则配置", "规则查询", "CTMRFeeRuleDB.cs", "getRestrictingfee / line 1599", "读取患者历史收费次数。", "必须补 RestrictingfeePay2 完整 SQL。"],
+      ["规则配置", "规则查询", "CTMRFeeRuleDB.cs", "getRestrictingfeeZT / line 1621", "读取分组项目历史收费次数。", "必须补 RestrictingfeePayZT 完整 SQL。"],
+      ["自助机", "入口", "legacy-code/zzsb/His.Service/His.Business/ZZSB/Patientopb.cs", "GetGetPrescriptionAndChargeDetailsForSRM / line 6646", "自助机获取待缴费用入口。", "解析 XML 后查待缴明细。"],
+      ["自助机", "差异", "Patientopb.cs", "line 6681-6684", "调用 CTMRFeeRule.GetFeeItemListnew。", "不是 GetFeeItemList。"],
+      ["自助机", "差异", "CTMRFeeRule.cs", "GetFeeItemListnew / line 371; 注释 line 478-481", "自助机分支保留组套汇总，折价段注释。", "迁移统一计价前必须业务确认。"],
+      ["微信", "入口", "legacy-code/WeChat/FS.ZDWY.Internet.BP/OutPatient/RegisterInfoManager.cs", "GetFeeItemList / line 4656", "微信获取费用并展开组套。", "未见折价调用。"],
+      ["微信", "入口", "legacy-code/WeChat/FS.ZDWY.Internet.BP/OutPatient/OrderManager.cs", "GetFeeItemList / line 3282", "微信订单侧获取费用。", "只看到 ConvertGroupToDetail。"],
+      ["微信", "落账", "legacy-code/WeChat/FS.ZDWY.Internet.BP/OutPatient/NeusoftBussiness.cs", "MakeInvoice / line 484 / 620", "普通发票生成。", "不承载特殊折价。"],
+      ["his-client", "入口", "his-client/PricingHisIntegrationHelper.cs", "CheckSpecialPricingRequired / line 65", "新流程特殊标识查询。", "服务不可用时阻断，不回退普通计价。"],
+      ["his-client", "算法", "his-client/FrmPricingPopup.cs", "RunSimulate / line 286-295", "弹窗自动试算，不占额度。", "试算失败必须禁止普通收费。"],
+      ["his-client", "落账", "his-client/FrmPricingPopup.cs", "BtnConfirmClick / line 255", "确认计价，占用额度。", "confirm 重试必须复用 BusinessRequestNo。"],
+      ["his-client", "落账", "his-client/PricingHisIntegrationHelper.cs", "Commit/Cancel / line 120 / 136", "HIS 落账成功 commit，失败 cancel。", "落账失败不 cancel 会占额不释放。"],
+      ["his-client", "落账", "his-client/PricingApiClient.cs", "Reverse / line 130", "退费/冲销调用规则中心 reverse。", "ReverseNo 必须稳定，避免重复释放额度。"]
+    ];
+
+    const mappings = [
+      ["Restrictingfee 常数", "项目是否数量限制、最大数量 LimitNumber", "PR_RULE_CONDITION 项目匹配 + TimeWindowLimitExecutor", "上线前补旧历史占额或兜底查询。"],
+      ["getRestrictingfee", "查患者历史收费次数", "PR_LIMIT_OCCUPY 占额查询", "完整 SQL 未收录，窗口口径待确认。"],
+      ["RestrictingfeeZT", "分组互斥、按组号查询历史次数", "PR_ITEM_GROUP + SameGroupMutexExecutor", "组号字段来源要确认。"],
+      ["RestrictingfeeCP", "床旁项目限制/互斥", "按项目组或场景建立时间窗规则", "需要确认床旁场景在 HIS 请求里的字段。"],
+      ["RestrictingfeeTX1", "胎心类项目限制", "同组互斥或时间窗限制", "建议并入项目组配置。"],
+      ["Astrictpackagefee", "组套内豁免项目", "规则排除条件或不建规则", "迁移时不要误把豁免子项纳入折价。"],
+      ["FIN_DISCOUNT_FEE.discount_rate", "第 2 个及以后按比例收费", "IncrementPercentExecutor 参数", "第 1 个全价的公式不能写成整单百分比。"],
+      ["FIN_DISCOUNT_FEE.topprice", "最高限价", "AmountCeilingExecutor 参数", "旧表无最低限价。"],
+      ["ConvertRestrictingfeeCharge", "组套拆子项后逐项计价再汇总", "HIS 端展开明细后批量 confirm", "若传组套主项，规则中心需实现展开适配层。"],
+      ["7021 科室排除", "挂号部不执行数量折价", "规则条件 ChargeDeptCode != 7021", "只在旧源码中确认到 7021，其他科室排除未确认。"],
+      ["自助机 GetFeeItemListnew", "旧源码不执行特殊折价", "按 SourceSystem 做规则条件或业务放开", "迁移后默认折价会改变旧价格。"],
+      ["微信 GetFeeItemList", "旧源码未见特殊折价", "按 SourceSystem 做规则条件或业务放开", "需要补真实线上 DLL 或确认现状。"]
+    ];
+
+    const risks = [
+      ["P0", "RestrictingfeePay2 / RestrictingfeePayZT 完整 SQL 未收录", "无法精确确认 2 小时窗口、退费排除、门诊住院累计范围。", "从 HIS SQL 配置导出完整 SQL。"],
+      ["P0", "自助机迁移策略未确认", "旧源码不折价，新规则中心统一接入后可能开始折价。", "确认自助机是否执行规则；必要时 SourceSystem 排除。"],
+      ["P0", "微信迁移策略未确认", "旧源码未见折价，新规则中心统一接入后可能改变价格。", "确认微信是否执行规则；补真实线上代码。"],
+      ["P1", "7021 科室排除可能遗漏", "旧系统数量限制明确排除 7021，迁移漏掉会影响挂号部相关收费。", "规则条件或引擎条件中加入 ChargeDeptCode。"],
+      ["P1", "旧表无最低限价", "若迁移时生成 AmountFloor，会凭空改变历史规则。", "只迁移 topprice 为最高限价。"],
+      ["P1", "组套传参边界不清", "旧系统能内部展开组套；新系统若只收到主项会缺少子项限制依据。", "联调前明确 HIS 传展开明细还是主项。"],
+      ["P1", "住院医技预览与落账可能不一致", "界面侧确认到比例预览，数量限制在最终 FeeManager 执行。", "若业务要求保存前预览一致，需要 UI 侧调用 simulate。"],
+      ["P2", "RestrictingfeeZT 组号映射", "旧代码从常数 Memo/mark 取组号，新规则中心要转换成 item group。", "补样例数据并做同组互斥测试。"]
+    ];
+
+    const checklist = [
+      "先打开入口函数链路图，从 SetItem、GetFeeItemList、SetChargeInfo 三条门诊入口分别跟一遍。",
+      "从人工门诊入口开始，确认当前收费保存到底调用 ucDisplay.GetFeeItemList 还是 CTMRFeeRule.GetFeeItemList。",
+      "核对所有 SetRestrictingfee 调用点，记录是否带 7021 科室排除。",
+      "核对所有 SetDiscountfee 调用点，确认 TOPPRICE 是否只作为最高限价。",
+      "打开 Restrictingfee.cs，逐行核对 ConvertRestrictingfee 的三分支：全超限、部分超限、未超限。",
+      "打开 ConvertRestrictingfeeCharge，确认组套主项如何拆子项、如何回填 TotCost/OwnCost。",
+      "打开 Fee.cs 的 FeeManager 正向收费分支，确认住院最终落账前的折价执行顺序。",
+      "打开 ucInpatientConfirm.Save，确认终端确认只是组装费用并调用 feeManager.FeeItem。",
+      "打开 ucConfirmQuitFee.RetrieveReturnApply 和 feeIntegrate.QuitItem，确认退费是否重新计算折价或仅按原费用负向处理。",
+      "打开自助机 Patientopb.cs，确认调用的是 GetFeeItemListnew，不是 GetFeeItemList。",
+      "打开 CTMRFeeRule.GetFeeItemListnew，确认限制收费循环是否仍保持注释。",
+      "打开微信 RegisterInfoManager / OrderManager / NeusoftBussiness，确认是否存在任何折价调用。",
+      "从内网导出 Fee.PactUnitItemRate.RestrictingfeePay2 完整 SQL。",
+      "从内网导出 Fee.PactUnitItemRate.RestrictingfeePayZT 完整 SQL。",
+      "导出 FIN_DISCOUNT_FEE 样例，确认 discount_type、valid_state、topprice 的真实数据。",
+      "导出 Restrictingfee、RestrictingfeeZT、Astrictpackagefee、RestrictingfeeCP、RestrictingfeeTX1 样例。",
+      "和业务确认自助机/微信迁移后是否执行特殊折价。",
+      "决定组套项目调用规则中心时传主项还是展开明细。",
+      "按同一患者、同一项目、同一 2 小时窗口做旧系统和新规则中心结果对比。",
+      "补充上线当天历史占额迁移或旧表兜底查询方案。"
+    ];
+
+    let activeEvidenceType = "all";
+    let activeFlowId = "outpatient";
+    let activeChainId = "opd-setitem";
+
+    function tagClass(tone) {
+      return tone ? `tag ${tone}` : "tag";
+    }
+
+    function renderChannels() {
+      const wrap = document.getElementById("channelCards");
+      wrap.innerHTML = channels.map(item => `
+        <article class="card" data-search="${escapeAttr(item.name + item.status + item.summary + item.files)}">
+          <h3>${item.name}<span class="${tagClass(item.tone)}">${item.status}</span></h3>
+          <p>${item.summary}</p>
+          <p class="path">${item.files}</p>
+        </article>
+      `).join("");
+    }
+
+    function renderFlowTabs() {
+      const tabs = document.getElementById("flowTabs");
+      tabs.innerHTML = flows.map(flow => `
+        <button class="chip ${flow.id === activeFlowId ? "active" : ""}" data-flow="${flow.id}">${flow.name}</button>
+      `).join("");
+      tabs.querySelectorAll("button").forEach(btn => {
+        btn.addEventListener("click", () => {
+          activeFlowId = btn.dataset.flow;
+          renderFlowTabs();
+          renderFlow();
+        });
+      });
+    }
+
+    function renderFlow() {
+      const flow = flows.find(item => item.id === activeFlowId) || flows[0];
+      document.getElementById("flowStatus").textContent = flow.status;
+      document.getElementById("flowSummary").textContent = flow.summary;
+      document.getElementById("flowPoints").innerHTML = flow.points.map(point => `<li>${point}</li>`).join("");
+      document.getElementById("flowPseudo").textContent = flow.pseudo;
+      document.getElementById("flowSteps").innerHTML = flow.steps.map((step, index) => `
+        <div class="step">
+          <div class="step-no">${index + 1}</div>
+          <div>
+            <strong>${step[0]}</strong>
+            <small>${step[1]}</small>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    function renderChainTabs() {
+      const tabs = document.getElementById("chainTabs");
+      tabs.innerHTML = chainDiagrams.map(chain => `
+        <button class="chip ${chain.id === activeChainId ? "active" : ""}" data-chain="${chain.id}">${chain.name}</button>
+      `).join("");
+      tabs.querySelectorAll("button").forEach(btn => {
+        btn.addEventListener("click", () => {
+          activeChainId = btn.dataset.chain;
+          renderChainTabs();
+          renderChainDiagram();
+        });
+      });
+    }
+
+    function renderChainDiagram() {
+      const chain = chainDiagrams.find(item => item.id === activeChainId) || chainDiagrams[0];
+      document.getElementById("chainStatus").textContent = chain.status;
+      document.getElementById("chainSummary").textContent = chain.summary;
+      document.getElementById("chainChecks").innerHTML = chain.checks.map(item => `<li>${escapeHtml(item)}</li>`).join("");
+      renderChainMeta(chain);
+      document.getElementById("chainReadOrder").innerHTML = chain.nodes.map((node, index) => `
+        <div class="tag">${String(index + 1).padStart(2, "0")} ${escapeHtml(node.title)}</div>
+      `).join("");
+      document.getElementById("chainBoard").innerHTML = chain.nodes.map((node, index) => `
+        <article class="chain-node ${index === 0 ? "active" : ""}" tabindex="0" data-node-index="${index}">
+          <div class="chain-node-head">
+            <div>
+              <div class="chain-node-title">${escapeHtml(node.title)}</div>
+              <span class="chain-node-meta">${escapeHtml(node.method)}</span>
+            </div>
+            <span class="tag">${String(index + 1).padStart(2, "0")}</span>
+          </div>
+          <p class="chain-node-role">${escapeHtml(node.role)}</p>
+          <span class="chain-node-meta">${escapeHtml(node.line)}</span>
+          <span class="node-hint">hover / click details</span>
+          ${index < chain.nodes.length - 1 ? '<span class="chain-arrow"></span>' : ''}
+          <div class="node-popover">
+            <div class="popover-row"><b>文件</b><span class="path">${escapeHtml(node.file)}</span></div>
+            <div class="popover-row"><b>函数</b><span class="method">${escapeHtml(node.method)}</span></div>
+            <div class="popover-row"><b>位置</b><span>${escapeHtml(node.line)}</span></div>
+            <div class="popover-row"><b>职责</b><span>${escapeHtml(node.role)}</span></div>
+            <div class="popover-code">${escapeHtml(node.code)}</div>
+          </div>
+        </article>
+      `).join("");
+      bindChainNodes(chain);
+      renderChainDetail(chain, 0);
+    }
+
+    function renderChainMeta(chain) {
+      const meta = [
+        ["入口", chain.entry || chain.name],
+        ["输出", chain.outcome || chain.status],
+        ["核对源", chain.source || "当前仓库 legacy-code / his-client 源码"]
+      ];
+      document.getElementById("chainMeta").innerHTML = meta.map(item => `
+        <div class="chain-meta-item">
+          <span class="chain-meta-label">${escapeHtml(item[0])}</span>
+          <span class="chain-meta-value">${escapeHtml(item[1])}</span>
+        </div>
+      `).join("");
+    }
+
+    function bindChainNodes(chain) {
+      document.querySelectorAll("#chainBoard .chain-node").forEach(nodeEl => {
+        const index = Number(nodeEl.dataset.nodeIndex);
+        const activate = () => renderChainDetail(chain, index);
+        nodeEl.addEventListener("mouseenter", activate);
+        nodeEl.addEventListener("focus", activate);
+        nodeEl.addEventListener("click", activate);
+      });
+    }
+
+    function renderChainDetail(chain, index) {
+      const node = chain.nodes[index] || chain.nodes[0];
+      document.querySelectorAll("#chainBoard .chain-node").forEach(item => {
+        item.classList.toggle("active", Number(item.dataset.nodeIndex) === index);
+      });
+      document.getElementById("chainDetailStep").textContent = `${String(index + 1).padStart(2, "0")} / ${chain.nodes.length}`;
+      document.getElementById("chainDetail").innerHTML = `
+        <div class="detail-grid">
+          <div class="detail-row"><b>标题</b><span>${escapeHtml(node.title)}</span></div>
+          <div class="detail-row"><b>文件</b><span class="path">${escapeHtml(node.file)}</span></div>
+          <div class="detail-row"><b>函数</b><span class="method">${escapeHtml(node.method)}</span></div>
+          <div class="detail-row"><b>位置</b><span>${escapeHtml(node.line)}</span></div>
+          <div class="detail-row"><b>职责</b><span>${escapeHtml(node.role)}</span></div>
+        </div>
+        <div class="detail-code">${escapeHtml(node.code)}</div>
+      `;
+    }
+
+    function renderEvidence() {
+      const query = document.getElementById("searchInput").value.trim().toLowerCase();
+      const module = document.getElementById("moduleSelect").value;
+      const rows = evidence.filter(row => {
+        const haystack = row.join(" ").toLowerCase();
+        const matchesQuery = !query || haystack.includes(query);
+        const matchesModule = module === "all" || row[0] === module;
+        const matchesType = activeEvidenceType === "all" || row[1] === activeEvidenceType;
+        return matchesQuery && matchesModule && matchesType;
+      });
+
+      document.getElementById("evidenceCount").textContent = `${rows.length} 条`;
+      document.getElementById("evidenceBody").innerHTML = rows.map(row => `
+        <tr>
+          <td><span class="tag">${row[0]}</span></td>
+          <td><span class="tag info">${row[1]}</span></td>
+          <td class="path">${row[2]}</td>
+          <td class="method">${row[3]}</td>
+          <td>${row[4]}</td>
+          <td>${row[5]}</td>
+        </tr>
+      `).join("");
+      document.getElementById("evidenceEmpty").classList.toggle("hidden", rows.length > 0);
+    }
+
+    function renderMappings() {
+      document.getElementById("mappingBody").innerHTML = mappings.map(row => `
+        <tr>
+          <td class="method">${row[0]}</td>
+          <td>${row[1]}</td>
+          <td>${row[2]}</td>
+          <td>${row[3]}</td>
+        </tr>
+      `).join("");
+    }
+
+    function renderRisks() {
+      document.getElementById("riskCards").innerHTML = risks.map(risk => {
+        const levelClass = risk[0].toLowerCase();
+        return `
+          <article class="card risk ${levelClass}">
+            <h3>${risk[1]}<span class="tag ${risk[0] === "P0" ? "bad" : risk[0] === "P1" ? "warn" : "info"}">${risk[0]}</span></h3>
+            <p>${risk[2]}</p>
+            <p><strong>处理：</strong>${risk[3]}</p>
+          </article>
+        `;
+      }).join("");
+    }
+
+    function renderChecklist() {
+      const saved = JSON.parse(localStorage.getItem("pricingReviewChecks") || "{}");
+      document.getElementById("reviewChecklist").innerHTML = checklist.map((text, index) => {
+        const checked = Boolean(saved[index]);
+        return `
+          <label class="check-item ${checked ? "done" : ""}">
+            <input type="checkbox" data-check="${index}" ${checked ? "checked" : ""}>
+            <span><strong>${text}</strong></span>
+            <span class="tag">${String(index + 1).padStart(2, "0")}</span>
+          </label>
+        `;
+      }).join("");
+      document.querySelectorAll("[data-check]").forEach(input => {
+        input.addEventListener("change", () => {
+          const state = JSON.parse(localStorage.getItem("pricingReviewChecks") || "{}");
+          state[input.dataset.check] = input.checked;
+          localStorage.setItem("pricingReviewChecks", JSON.stringify(state));
+          input.closest(".check-item").classList.toggle("done", input.checked);
+        });
+      });
+    }
+
+    function escapeAttr(value) {
+      return String(value).replace(/"/g, "&quot;");
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function setupEvents() {
+      document.getElementById("searchInput").addEventListener("input", renderEvidence);
+      document.getElementById("moduleSelect").addEventListener("change", renderEvidence);
+      document.getElementById("resetFilters").addEventListener("click", () => {
+        document.getElementById("searchInput").value = "";
+        document.getElementById("moduleSelect").value = "all";
+        activeEvidenceType = "all";
+        document.querySelectorAll("#evidenceChips .chip").forEach(chip => {
+          chip.classList.toggle("active", chip.dataset.type === "all");
+        });
+        renderEvidence();
+      });
+      document.querySelectorAll("#evidenceChips .chip").forEach(chip => {
+        chip.addEventListener("click", () => {
+          activeEvidenceType = chip.dataset.type;
+          document.querySelectorAll("#evidenceChips .chip").forEach(item => item.classList.remove("active"));
+          chip.classList.add("active");
+          renderEvidence();
+        });
+      });
+      document.getElementById("expandAll").addEventListener("click", () => {
+        const simpleFlows = flows.map(flow => `${flow.name}\n${flow.steps.map((s, i) => `  ${i + 1}. ${s[0]} - ${s[1]}`).join("\n")}`).join("\n\n");
+        const detailedChains = chainDiagrams.map(chain => `${chain.name}：${chain.summary}\n${chain.nodes.map((node, i) => `  ${i + 1}. ${node.title} | ${node.method} | ${node.line}\n     ${node.file}`).join("\n")}`).join("\n\n");
+        const all = `【简版流程】\n${simpleFlows}\n\n【入口函数链路图】\n${detailedChains}`;
+        document.getElementById("notesBox").value = all;
+        localStorage.setItem("pricingReviewNotes", all);
+        location.hash = "#notes";
+      });
+      document.getElementById("clearChecks").addEventListener("click", () => {
+        localStorage.removeItem("pricingReviewChecks");
+        renderChecklist();
+      });
+      document.getElementById("clearNotes").addEventListener("click", () => {
+        localStorage.removeItem("pricingReviewNotes");
+        document.getElementById("notesBox").value = "";
+      });
+      const notes = document.getElementById("notesBox");
+      notes.value = localStorage.getItem("pricingReviewNotes") || "";
+      notes.addEventListener("input", () => localStorage.setItem("pricingReviewNotes", notes.value));
+    }
+
+    renderChannels();
+    renderFlowTabs();
+    renderFlow();
+    renderChainTabs();
+    renderChainDiagram();
+    renderEvidence();
+    renderMappings();
+    renderRisks();
+    renderChecklist();
+    setupEvents();
+  </script>
+</body>
+</html>

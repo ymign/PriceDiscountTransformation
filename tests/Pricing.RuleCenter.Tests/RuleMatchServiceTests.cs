@@ -54,19 +54,177 @@ public sealed class RuleMatchServiceTests
             second => Assert.Equal("FORMULA_CALC", second.ActionType));
     }
 
+    [Fact]
+    public async Task MatchAsync_DefaultOrderPlacesSameOperationBeforeChildAndExceed()
+    {
+        var rule = new RuleHeader
+        {
+            RuleId = 1,
+            ItemCode = "ITEM001",
+            Status = "PUBLISHED",
+            IsEnabled = "Y",
+            CurrentVersion = 1
+        };
+        var actions = new[]
+        {
+            new RuleAction { RuleId = 1, VersionNo = 1, ActionType = "ADD_CHILD_ITEM", SortNo = 10, IsEnabled = "Y" },
+            new RuleAction { RuleId = 1, VersionNo = 1, ActionType = "SAME_OPERATION_CEILING", SortNo = 10, IsEnabled = "Y" },
+            new RuleAction { RuleId = 1, VersionNo = 1, ActionType = "DISCOUNT_EXCEED_TO_ZERO", SortNo = 10, IsEnabled = "Y" }
+        };
+        var service = new RuleMatchService(
+            new FixedRuleHeaderRepository(rule),
+            new EmptyRuleConditionRepository(),
+            new FixedRuleActionRepository(actions),
+            new ConditionEvaluatorFactory(Array.Empty<IRuleConditionEvaluator>()),
+            new FixedDictRepository(Array.Empty<Dict>()),
+            NullLogger<RuleMatchService>.Instance);
+
+        var (_, orderedActions) = await service.MatchAsync(new PricingContext
+        {
+            ItemCode = "ITEM001",
+            BusinessChargeTime = new DateTime(2026, 5, 10, 10, 0, 0)
+        });
+
+        Assert.Collection(
+            orderedActions,
+            first => Assert.Equal("SAME_OPERATION_CEILING", first.ActionType),
+            second => Assert.Equal("ADD_CHILD_ITEM", second.ActionType),
+            third => Assert.Equal("DISCOUNT_EXCEED_TO_ZERO", third.ActionType));
+    }
+
+    [Fact]
+    public async Task MatchAsync_ExecutesOnlyHighestPriorityActionInExclusiveGroup()
+    {
+        var highPriorityRule = new RuleHeader
+        {
+            RuleId = 1,
+            ItemCode = "ITEM001",
+            Status = "PUBLISHED",
+            IsEnabled = "Y",
+            CurrentVersion = 1,
+            Priority = 1
+        };
+        var lowPriorityRule = new RuleHeader
+        {
+            RuleId = 2,
+            ItemCode = "ITEM001",
+            Status = "PUBLISHED",
+            IsEnabled = "Y",
+            CurrentVersion = 1,
+            Priority = 9
+        };
+        var actionsByRule = new Dictionary<long, IReadOnlyList<RuleAction>>
+        {
+            [1] = new[]
+            {
+                new RuleAction
+                {
+                    RuleId = 1,
+                    VersionNo = 1,
+                    ActionId = 10,
+                    ActionType = "FORMULA_CALC",
+                    ExclusiveGroup = "FORMULA",
+                    SortNo = 10,
+                    IsEnabled = "Y"
+                }
+            },
+            [2] = new[]
+            {
+                new RuleAction
+                {
+                    RuleId = 2,
+                    VersionNo = 1,
+                    ActionId = 20,
+                    ActionType = "FORMULA_CALC",
+                    ExclusiveGroup = "FORMULA",
+                    SortNo = 1,
+                    IsEnabled = "Y"
+                }
+            }
+        };
+        var service = new RuleMatchService(
+            new FixedRuleHeaderRepository(highPriorityRule, lowPriorityRule),
+            new EmptyRuleConditionRepository(),
+            new FixedRuleActionRepository(actionsByRule),
+            new ConditionEvaluatorFactory(Array.Empty<IRuleConditionEvaluator>()),
+            new FixedDictRepository(Array.Empty<Dict>()),
+            NullLogger<RuleMatchService>.Instance);
+
+        var (_, orderedActions) = await service.MatchAsync(new PricingContext
+        {
+            ItemCode = "ITEM001",
+            BusinessChargeTime = new DateTime(2026, 5, 10, 10, 0, 0)
+        });
+
+        var action = Assert.Single(orderedActions);
+        Assert.Equal(1, action.RuleId);
+    }
+
+    [Fact]
+    public async Task MatchAsync_OrdersSameActionTypeByRulePriorityBeforeSortNo()
+    {
+        var highPriorityRule = new RuleHeader
+        {
+            RuleId = 1,
+            ItemCode = "ITEM001",
+            Status = "PUBLISHED",
+            IsEnabled = "Y",
+            CurrentVersion = 1,
+            Priority = 1
+        };
+        var lowPriorityRule = new RuleHeader
+        {
+            RuleId = 2,
+            ItemCode = "ITEM001",
+            Status = "PUBLISHED",
+            IsEnabled = "Y",
+            CurrentVersion = 1,
+            Priority = 9
+        };
+        var actionsByRule = new Dictionary<long, IReadOnlyList<RuleAction>>
+        {
+            [1] = new[]
+            {
+                new RuleAction { RuleId = 1, VersionNo = 1, ActionType = "APPLY_MAX_AMOUNT", SortNo = 99, IsEnabled = "Y" }
+            },
+            [2] = new[]
+            {
+                new RuleAction { RuleId = 2, VersionNo = 1, ActionType = "APPLY_MAX_AMOUNT", SortNo = 1, IsEnabled = "Y" }
+            }
+        };
+        var service = new RuleMatchService(
+            new FixedRuleHeaderRepository(highPriorityRule, lowPriorityRule),
+            new EmptyRuleConditionRepository(),
+            new FixedRuleActionRepository(actionsByRule),
+            new ConditionEvaluatorFactory(Array.Empty<IRuleConditionEvaluator>()),
+            new FixedDictRepository(Array.Empty<Dict>()),
+            NullLogger<RuleMatchService>.Instance);
+
+        var (_, orderedActions) = await service.MatchAsync(new PricingContext
+        {
+            ItemCode = "ITEM001",
+            BusinessChargeTime = new DateTime(2026, 5, 10, 10, 0, 0)
+        });
+
+        Assert.Collection(
+            orderedActions,
+            first => Assert.Equal(1, first.RuleId),
+            second => Assert.Equal(2, second.RuleId));
+    }
+
     private sealed class FixedRuleHeaderRepository : IRuleHeaderRepository
     {
-        private readonly RuleHeader _rule;
+        private readonly IReadOnlyList<RuleHeader> _rules;
 
-        public FixedRuleHeaderRepository(RuleHeader rule)
+        public FixedRuleHeaderRepository(params RuleHeader[] rules)
         {
-            _rule = rule;
+            _rules = rules;
         }
 
         public Task<RuleHeader?> GetByIdAsync(long ruleId) => Task.FromResult<RuleHeader?>(null);
         public Task<RuleHeader?> GetByCodeAsync(string ruleCode) => Task.FromResult<RuleHeader?>(null);
         public Task<IReadOnlyList<RuleHeader>> GetByItemCodeAsync(string itemCode) =>
-            Task.FromResult((IReadOnlyList<RuleHeader>)new[] { _rule });
+            Task.FromResult((IReadOnlyList<RuleHeader>)_rules.Where(r => r.ItemCode == itemCode).ToList());
         public Task<(IReadOnlyList<RuleHeader> Items, int Total)> GetPagedAsync(
             string? itemCode, string? status, string? category, int pageIndex, int pageSize) =>
             Task.FromResult(((IReadOnlyList<RuleHeader>)Array.Empty<RuleHeader>(), 0));
@@ -87,15 +245,25 @@ public sealed class RuleMatchServiceTests
 
     private sealed class FixedRuleActionRepository : IRuleActionRepository
     {
-        private readonly IReadOnlyList<RuleAction> _actions;
+        private readonly IReadOnlyDictionary<long, IReadOnlyList<RuleAction>> _actionsByRule;
 
         public FixedRuleActionRepository(IReadOnlyList<RuleAction> actions)
         {
-            _actions = actions;
+            _actionsByRule = new Dictionary<long, IReadOnlyList<RuleAction>>
+            {
+                [actions.FirstOrDefault()?.RuleId ?? 0] = actions
+            };
+        }
+
+        public FixedRuleActionRepository(IReadOnlyDictionary<long, IReadOnlyList<RuleAction>> actionsByRule)
+        {
+            _actionsByRule = actionsByRule;
         }
 
         public Task<IReadOnlyList<RuleAction>> GetByRuleAndVersionAsync(long ruleId, int versionNo) =>
-            Task.FromResult(_actions);
+            Task.FromResult(_actionsByRule.TryGetValue(ruleId, out var actions)
+                ? actions
+                : Array.Empty<RuleAction>());
         public Task InsertBatchAsync(IReadOnlyList<RuleAction> entities) => Task.CompletedTask;
         public Task DeleteByRuleAndVersionAsync(long ruleId, int versionNo) => Task.CompletedTask;
     }

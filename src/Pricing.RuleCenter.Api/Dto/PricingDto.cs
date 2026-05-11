@@ -80,7 +80,7 @@ public sealed class PricingCalculateRequest
     /// </summary>
     public string? OperatorName { get; init; }
     /// <summary>
-    /// 调用方扩展参数。规则中心不会把它作为核心幂等字段，除非后续显式纳入指纹规则。
+    /// 调用方扩展参数。confirm 幂等指纹会纳入该字段，影响规则匹配或金额的参数必须稳定传入。
     /// </summary>
     public Dictionary<string, object?>? ExtraParams { get; init; }
     [Required(ErrorMessage = "费用明细不能为空")]
@@ -249,6 +249,14 @@ public sealed class PricingCalculateResponse
     /// 折价金额，通常等于原始金额减最终金额。
     /// </summary>
     public decimal DiscountAmount { get; init; }
+    /// <summary>
+    /// confirm 结果有效期。为空表示本次响应不是正式确认占用结果。
+    /// </summary>
+    public DateTime? ExpireAt { get; init; }
+    /// <summary>
+    /// confirm 结果剩余有效秒数。为空表示本次响应不是正式确认占用结果。
+    /// </summary>
+    public int? ExpireSeconds { get; init; }
     /// <summary>
     /// 本次计价追踪步骤，用于接口调用方展示或排查。
     /// </summary>
@@ -438,6 +446,49 @@ public sealed class PricingCommitRequest
     /// 收费单号，用于与 HIS 落账结果关联
     /// </summary>
     public string? ChargeNo { get; init; }
+
+    /// <summary>
+    /// HIS 实际落账明细。commit 时必须按收费明细号、项目编码、片段序号回传实际落账数量和金额。
+    /// 规则中心会与 confirm 阶段保存的折价明细逐项比对，防止 HIS 侧落账金额与计价结果不一致。
+    /// </summary>
+    public IReadOnlyList<PricingCommitActualItemRequest>? ActualItems { get; init; }
+
+    /// <summary>
+    /// HIS 实际落账总金额。为空时只校验 ActualItems 明细合计；传入时会同时校验总金额。
+    /// </summary>
+    public decimal? ActualTotalAmount { get; init; }
+}
+
+/// <summary>
+/// commit 阶段 HIS 实际落账明细 DTO。
+/// </summary>
+public sealed class PricingCommitActualItemRequest
+{
+    /// <summary>
+    /// HIS 实际落账后的收费明细号，必须与 confirm 返回/保存的折价明细一致。
+    /// </summary>
+    public string? ChargeDetailNo { get; init; }
+
+    [Required(ErrorMessage = "实际落账项目编码不能为空")]
+    /// <summary>
+    /// HIS 实际落账项目编码。
+    /// </summary>
+    public string ItemCode { get; init; } = string.Empty;
+
+    /// <summary>
+    /// 多部位或多片段明细序号。
+    /// </summary>
+    public int? PartSeq { get; init; }
+
+    /// <summary>
+    /// HIS 实际落账数量。
+    /// </summary>
+    public decimal FinalQty { get; init; }
+
+    /// <summary>
+    /// HIS 实际落账金额，最终金额保留 2 位小数。
+    /// </summary>
+    public decimal FinalAmount { get; init; }
 }
 
 /// <summary>

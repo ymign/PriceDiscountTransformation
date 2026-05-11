@@ -1,6 +1,7 @@
 using Newtonsoft.Json;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
+using Pricing.RuleCenter.Core.Services;
 
 namespace Pricing.RuleCenter.Core.Engine.Executors;
 
@@ -37,6 +38,16 @@ namespace Pricing.RuleCenter.Core.Engine.Executors;
 /// </remarks>
 public sealed class SameOperationCeilingExecutor : IRuleActionExecutor
 {
+    private const string LimitType = "SAME_OPERATION";
+    private static readonly string[] OccupyStatuses = { "PENDING", "CONFIRMED" };
+
+    private readonly ILimitOccupyRepository _limitRepository;
+
+    public SameOperationCeilingExecutor(ILimitOccupyRepository limitRepository)
+    {
+        _limitRepository = limitRepository;
+    }
+
     /// <summary>
     /// 获取动作类型编码，对应规则动作中的同手术封顶动作。
     /// </summary>
@@ -62,31 +73,22 @@ public sealed class SameOperationCeilingExecutor : IRuleActionExecutor
     /// </list>
     /// </param>
     /// <returns>已完成的异步任务（封顶判断为纯内存操作，无 IO）。</returns>
-    public Task ExecuteAsync(RuleAction action, PricingContext context)
+    public async Task ExecuteAsync(RuleAction action, PricingContext context)
     {
         // ========== 第一阶段：解析封顶参数 ==========
         var param = DeserializeParams(action.ParamsJson);
         if (param is null)
         {
-            return Task.CompletedTask;
+            return;
         }
 
         var ceilingPerItem = param.CeilingPerItem;
         var ceilingPerOperation = param.CeilingPerOperation;
         var operationIdKey = !string.IsNullOrEmpty(param.OperationIdKey)
             ? param.OperationIdKey
-            : "operationId";
+            : "operationNo";
 
-        // ========== 第二阶段：获取手术标识 ==========
-        // 手术标识来源为调用方通过 ExtraParams 传入的 operationId。
-        // 为空时无法执行同手术累计，静默跳过——该场景可能不需要手术封顶。
-        var operationId = GetExtraParam(context, operationIdKey);
-        if (string.IsNullOrEmpty(operationId))
-        {
-            return Task.CompletedTask;
-        }
-
-        // ========== 第三阶段：检查单条金额上限 ==========
+        // ========== 第二阶段：检查单条金额上限 ==========
         // ceilingPerItem 限制单条项目的最高金额。
         // NULL 表示不校验（不截断），0 表示限制为零（免费）。
         if (ceilingPerItem.HasValue && context.FinalAmount > ceilingPerItem.Value)
@@ -105,23 +107,48 @@ public sealed class SameOperationCeilingExecutor : IRuleActionExecutor
             });
         }
 
-        // ========== 第四阶段：检查同手术同组累计金额上限 ==========
+        // ========== 第三阶段：检查同手术同组累计金额上限 ==========
         // ceilingPerOperation 限制同一手术下同项目组的累计金额。
         // NULL 表示不校验，0 表示限制为零（该手术下该组不收费）。
         if (!ceilingPerOperation.HasValue)
         {
-            return Task.CompletedTask;
+            return;
         }
 
-        // 通过 InRequestOccupiedQtyByLimitDimension 获取同手术同组的历史累计金额。
-        // 维度键格式：OP_CEILING:{operationId}:{groupCode}
-        var groupCode = context.ItemGroupCode ?? "DEFAULT";
-        var opCeilingKey = $"OP_CEILING:{operationId}:{groupCode}".ToUpperInvariant();
-        var historicalAmount = 0m;
-        if (context.InRequestOccupiedQtyByLimitDimension.TryGetValue(opCeilingKey, out var cachedAmount))
+        // ========== 第四阶段：获取手术标识并加锁 ==========
+        // 手术标识来源优先使用规则配置的 operationIdKey，未配置时使用 HIS 推荐字段 operationNo。
+        var operationId = GetExtraParam(context, operationIdKey);
+        if (string.IsNullOrEmpty(operationId) && !string.Equals(operationIdKey, "operationNo", StringComparison.OrdinalIgnoreCase))
         {
-            historicalAmount = cachedAmount;
+            operationId = GetExtraParam(context, "operationNo");
         }
+
+        if (string.IsNullOrEmpty(operationId) && !string.Equals(operationIdKey, "operationId", StringComparison.OrdinalIgnoreCase))
+        {
+            operationId = GetExtraParam(context, "operationId");
+        }
+
+        if (string.IsNullOrEmpty(operationId))
+        {
+            throw new InvalidOperationException("SAME_OPERATION_REQUIRED: 同手术封顶规则要求请求携带 operationNo");
+        }
+
+        var groupCode = context.ItemGroupCode ?? context.ItemCode;
+        var limitKey = LimitKeyGenerator.SameOperationKey(operationId, groupCode);
+        var dimensionCode = $"{operationId}:{groupCode}".ToUpperInvariant();
+
+        if (context.ShouldLockLimits)
+        {
+            await _limitRepository.EnsureAndLockAsync(new[] { limitKey });
+        }
+
+        var historicalAmount = 0m;
+        foreach (var status in OccupyStatuses)
+        {
+            historicalAmount += await _limitRepository.GetOccupiedAmtAsync(limitKey, status);
+        }
+
+        historicalAmount += GetInRequestOccupiedAmount(context, dimensionCode);
 
         var remainingAmount = ceilingPerOperation.Value - historicalAmount;
 
@@ -146,7 +173,8 @@ public sealed class SameOperationCeilingExecutor : IRuleActionExecutor
                 ParamsJson = action.ParamsJson
             });
 
-            return Task.CompletedTask;
+            AddOccupyDraft(context, limitKey, dimensionCode);
+            return;
         }
 
         if (context.FinalAmount > remainingAmount)
@@ -167,7 +195,46 @@ public sealed class SameOperationCeilingExecutor : IRuleActionExecutor
             });
         }
 
-        return Task.CompletedTask;
+        AddOccupyDraft(context, limitKey, dimensionCode);
+    }
+
+    private static decimal GetInRequestOccupiedAmount(PricingContext context, string dimensionCode)
+    {
+        var candidates = context.InRequestLimitOccupies
+            .Where(o => string.Equals(o.LimitType, LimitType, StringComparison.OrdinalIgnoreCase))
+            .Where(o => string.Equals(o.LimitDimensionCode, dimensionCode, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (candidates.Count > 0)
+        {
+            return candidates.Sum(o => o.OccupyAmt);
+        }
+
+        var opCeilingKey = $"OP_CEILING:{dimensionCode}".ToUpperInvariant();
+        return context.InRequestOccupiedQtyByLimitDimension.TryGetValue(opCeilingKey, out var cachedAmount)
+            ? cachedAmount
+            : 0m;
+    }
+
+    private static void AddOccupyDraft(PricingContext context, string limitKey, string dimensionCode)
+    {
+        if (context.PendingLimitOccupies.Any(o =>
+                string.Equals(o.LimitType, LimitType, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(o.LimitDimensionCode, dimensionCode, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        context.PendingLimitOccupies.Add(new LimitOccupy
+        {
+            PatientId = context.PatientId,
+            ItemCode = context.ItemCode,
+            LimitType = LimitType,
+            LimitKey = limitKey,
+            LimitDimensionCode = dimensionCode,
+            BusinessChargeTime = context.BusinessChargeTime,
+            OccupyType = "CHARGE"
+        });
     }
 
     /// <summary>

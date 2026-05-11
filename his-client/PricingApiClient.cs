@@ -872,6 +872,35 @@ namespace HIS.Pricing.Client
 
         /// <summary>HIS 落账后的收费单号，用于关联 HIS 侧的收费记录</summary>
         public string ChargeNo { get; set; }
+
+        /// <summary>
+        /// HIS 实际落账明细。生产调用必须回传，计价中心会与 confirm 结果逐项比对。
+        /// </summary>
+        public List<PricingCommitActualItemRequest> ActualItems { get; set; }
+
+        /// <summary>HIS 实际落账总金额；可为空，传入时会参与总金额校验。</summary>
+        public decimal? ActualTotalAmount { get; set; }
+    }
+
+    /// <summary>
+    /// commit 阶段 HIS 实际落账明细。
+    /// </summary>
+    public sealed class PricingCommitActualItemRequest
+    {
+        /// <summary>HIS 实际落账后的收费明细号</summary>
+        public string ChargeDetailNo { get; set; }
+
+        /// <summary>HIS 实际落账项目编码</summary>
+        public string ItemCode { get; set; }
+
+        /// <summary>多部位或多片段明细序号</summary>
+        public int? PartSeq { get; set; }
+
+        /// <summary>HIS 实际落账数量</summary>
+        public decimal FinalQty { get; set; }
+
+        /// <summary>HIS 实际落账金额</summary>
+        public decimal FinalAmount { get; set; }
     }
 
     /// <summary>

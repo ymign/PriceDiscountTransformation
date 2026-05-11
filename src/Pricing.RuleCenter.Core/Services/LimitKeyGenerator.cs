@@ -121,19 +121,19 @@ public static class LimitKeyGenerator
     /// 生成同手术限额键。
     /// </summary>
     /// <remarks>
-    /// 【格式】<c>OP:{operationId}:{groupCode}</c>
+    /// 【格式】<c>SO:{operationId}:{groupCode}</c>
     /// 【用途】控制同一手术中同组项目的累计收费数量或金额，实现"同手术封顶"逻辑。
     /// 【业务场景】同一手术中某些项目属于互斥组或有封顶限制，通过 operationId 关联到具体手术。
     /// 【注意】operationId 的来源（HIS 手术申请号或医嘱号）需与 HIS 侧确认。
     /// 【示例】operationId="OP20260510001", groupCode="GRP_SKIN_MULTI"
-    /// → <c>OP:OP20260510001:GRP_SKIN_MULTI</c>
+    /// → <c>SO:OP20260510001:GRP_SKIN_MULTI</c>
     /// </remarks>
     /// <param name="operationId">手术唯一标识，通常来自 HIS 手术申请号。</param>
     /// <param name="groupCode">项目组编码，对应 PR_ITEM_GROUP.GROUP_CODE。</param>
     /// <returns>同手术限额键字符串。</returns>
     public static string SameOperationKey(string operationId, string groupCode)
     {
-        return $"OP:{operationId}:{groupCode}";
+        return $"SO:{operationId}:{groupCode}".ToUpperInvariant();
     }
 
     /// <summary>

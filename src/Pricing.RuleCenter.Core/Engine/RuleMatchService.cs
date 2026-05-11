@@ -97,8 +97,9 @@ public sealed class RuleMatchService
         ["APPLY_TIME_WINDOW_LIMIT"] = 5,
         ["APPLY_ONCE_LIMIT_QTY"] = 6,
         ["SAME_GROUP_MUTEX"] = 7,
-        ["ADD_CHILD_ITEM"] = 8,
-        ["DISCOUNT_EXCEED_TO_ZERO"] = 9
+        ["SAME_OPERATION_CEILING"] = 8,
+        ["ADD_CHILD_ITEM"] = 9,
+        ["DISCOUNT_EXCEED_TO_ZERO"] = 10
     };
 
     /// <summary>
@@ -212,6 +213,8 @@ public sealed class RuleMatchService
                 rule.RuleId, rule.CurrentVersion);
             allActions.AddRange(actions.Where(a => a.IsEnabled == "Y"));
         }
+        var ruleOrder = BuildRuleOrder(matchedRules);
+        var executableActions = ApplyExclusiveGroups(allActions, ruleOrder);
 
         // ========== 第六阶段：按全局动作顺序整理动作链 ==========
         // 多规则叠加时，如果只按每条规则的 SortNo 执行，可能出现先限额后公式的错误顺序。
@@ -221,13 +224,73 @@ public sealed class RuleMatchService
         // 动作执行顺序从 PR_DICT 字典表读取（DICT_TYPE = "ACTION_TYPE_ORDER"），
         // 首次调用时加载并缓存，后续使用缓存值。规则发布/停用/回滚时会清除缓存。
         await EnsureActionTypeOrderLoadedAsync();
-        var ordered = OrderActions(allActions);
+        var ordered = OrderActions(executableActions, ruleOrder);
 
         _logger.LogInformation(
             "规则匹配 ItemCode={ItemCode}, 命中 {RuleCount} 条规则, {ActionCount} 个动作",
             context.ItemCode, matchedRules.Count, ordered.Count);
 
         return (matchedRules, ordered);
+    }
+
+    /// <summary>
+    /// 应用规则动作互斥组，只保留同一 ExclusiveGroup 中规则优先级最高、动作排序最靠前的一条动作。
+    /// </summary>
+    /// <param name="actions">已命中规则收集到的动作集合。</param>
+    /// <param name="ruleOrder">命中规则优先级顺序索引。</param>
+    /// <returns>互斥组过滤后的动作集合。</returns>
+    /// <remarks>
+    /// 同一项目允许按不同部位命中不同换算动作，但同一互斥组内不能重复执行多套换算、公式或封顶动作。
+    /// 规则发布校验会阻断明显冲突；运行期仍按优先级做一次保守收敛，避免历史脏配置导致重复计价。
+    /// </remarks>
+    private static List<RuleAction> ApplyExclusiveGroups(
+        IReadOnlyList<RuleAction> actions,
+        IReadOnlyDictionary<long, int> ruleOrder)
+    {
+        if (actions.Count == 0)
+        {
+            return new List<RuleAction>();
+        }
+
+        var result = new List<RuleAction>();
+        var exclusiveGroups = new Dictionary<string, List<RuleAction>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var action in actions)
+        {
+            if (string.IsNullOrWhiteSpace(action.ExclusiveGroup))
+            {
+                result.Add(action);
+                continue;
+            }
+
+            var groupKey = action.ExclusiveGroup.Trim();
+            if (!exclusiveGroups.TryGetValue(groupKey, out var groupActions))
+            {
+                groupActions = new List<RuleAction>();
+                exclusiveGroups[groupKey] = groupActions;
+            }
+
+            groupActions.Add(action);
+        }
+
+        foreach (var group in exclusiveGroups.Values)
+        {
+            var selected = group
+                .OrderBy(action => ruleOrder.TryGetValue(action.RuleId, out var order) ? order : int.MaxValue)
+                .ThenBy(action => action.SortNo)
+                .ThenBy(action => action.ActionId)
+                .First();
+            result.Add(selected);
+        }
+
+        return result;
+    }
+
+    private static IReadOnlyDictionary<long, int> BuildRuleOrder(IReadOnlyList<RuleHeader> matchedRules)
+    {
+        return matchedRules
+            .Select((rule, index) => new { rule.RuleId, Order = index })
+            .ToDictionary(item => item.RuleId, item => item.Order);
     }
 
     /// <summary>
@@ -323,12 +386,15 @@ public sealed class RuleMatchService
     /// 动作执行顺序从缓存字典中读取，缓存来源为 PR_DICT 表的 ACTION_TYPE_ORDER 类型。
     /// 字典未加载时使用默认顺序，确保向后兼容。
     /// </remarks>
-    private IReadOnlyList<RuleAction> OrderActions(List<RuleAction> actions)
+    private IReadOnlyList<RuleAction> OrderActions(
+        List<RuleAction> actions,
+        IReadOnlyDictionary<long, int> ruleOrder)
     {
         // 先按全局动作类别排序，再按规则配置的 SortNo 排序。
         // SortNo 只在同类动作内部生效，避免跨类别动作破坏资金计算顺序。
         return actions
             .OrderBy(a => GetActionTypeSortOrder(a.ActionType))
+            .ThenBy(a => ruleOrder.TryGetValue(a.RuleId, out var order) ? order : int.MaxValue)
             .ThenBy(a => a.SortNo)
             .ToList();
     }

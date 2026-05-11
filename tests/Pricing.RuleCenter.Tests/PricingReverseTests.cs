@@ -72,7 +72,16 @@ public sealed class PricingReverseTests
         Assert.Equal("CONFIRMED", negativeOccupy.Status);
         Assert.Equal(new DateTime(2026, 5, 10, 9, 30, 0), negativeOccupy.BusinessChargeTime);
         Assert.Equal("CONFIRMED", requestRepository.Log.BusinessStatus);
-        Assert.Equal("CD001", Assert.Single(reverseRepository.Inserted).ChargeDetailNo);
+
+        var reverseRequestLog = Assert.Single(requestRepository.Inserted);
+        Assert.Equal("REVERSE", reverseRequestLog.CallType);
+        Assert.Equal("REVERSED", reverseRequestLog.BusinessStatus);
+        Assert.Equal("R001", reverseRequestLog.BusinessRequestNo);
+        Assert.Equal(2m, reverseRequestLog.InputQty);
+
+        var reverseLog = Assert.Single(reverseRepository.Inserted);
+        Assert.Equal("CD001", reverseLog.ChargeDetailNo);
+        Assert.Equal(reverseRequestLog.RequestId, reverseLog.ReverseRequestId);
     }
 
     [Fact]
@@ -230,6 +239,115 @@ public sealed class PricingReverseTests
         Assert.Equal(new DateTime(2026, 5, 11, 8, 30, 0), negativeOccupy.BusinessChargeTime);
     }
 
+    [Fact]
+    public async Task ReverseAsync_ReusesSameReverseNoIdempotently()
+    {
+        var requestRepository = new ReverseRequestLogRepository();
+        var discountRepository = new ReverseDiscountDetailRepository();
+        var limitRepository = new ReverseLimitOccupyRepository();
+        var reverseRepository = new ReverseLogRepository();
+        var service = CreateService(requestRepository, discountRepository, limitRepository, reverseRepository);
+
+        requestRepository.Log = new ChargeRequestLog
+        {
+            RequestId = 500,
+            BusinessStatus = "CONFIRMED",
+            SourceSystem = "HIS",
+            ChargeNo = "C005"
+        };
+        discountRepository.Details.Add(new ChargeDiscountDetail
+        {
+            RequestId = 500,
+            ChargeDetailNo = "CD001",
+            ItemCode = "ITEM001",
+            FinalQty = 5m,
+            FinalAmt = 50m,
+            Status = "CONFIRMED"
+        });
+        limitRepository.Occupies.Add(new LimitOccupy
+        {
+            OccupyId = 5,
+            RequestId = 500,
+            PatientId = "P001",
+            ItemCode = "ITEM001",
+            LimitType = "DAY_QTY",
+            LimitKey = "DQ:P001:ITEM001:20260510",
+            LimitDimensionCode = "P001:ITEM001:20260510",
+            OccupyQty = 5m,
+            OccupyAmt = 50m,
+            Status = "CONFIRMED",
+            OccupyType = "CHARGE",
+            BusinessChargeTime = new DateTime(2026, 5, 10, 9, 30, 0)
+        });
+
+        var reverseRequest = new PricingReverseRequest
+        {
+            OriginalRequestId = 500,
+            ReverseNo = "R005",
+            ChargeDetailNo = "CD001",
+            ItemCode = "ITEM001",
+            ReverseQty = 2m,
+            ReverseTime = new DateTime(2026, 5, 10, 11, 0, 0)
+        };
+
+        await service.ReverseAsync(reverseRequest);
+        await service.ReverseAsync(reverseRequest);
+
+        Assert.Single(reverseRepository.Inserted);
+        Assert.Single(requestRepository.Inserted);
+        Assert.Single(limitRepository.Inserted);
+    }
+
+    [Fact]
+    public async Task ReverseAsync_RejectsSameReverseNoWithDifferentParams()
+    {
+        var requestRepository = new ReverseRequestLogRepository();
+        var discountRepository = new ReverseDiscountDetailRepository();
+        var limitRepository = new ReverseLimitOccupyRepository();
+        var reverseRepository = new ReverseLogRepository();
+        var service = CreateService(requestRepository, discountRepository, limitRepository, reverseRepository);
+
+        requestRepository.Log = new ChargeRequestLog
+        {
+            RequestId = 600,
+            BusinessStatus = "CONFIRMED",
+            SourceSystem = "HIS",
+            ChargeNo = "C006"
+        };
+        discountRepository.Details.Add(new ChargeDiscountDetail
+        {
+            RequestId = 600,
+            ChargeDetailNo = "CD001",
+            ItemCode = "ITEM001",
+            FinalQty = 5m,
+            FinalAmt = 50m,
+            Status = "CONFIRMED"
+        });
+
+        await service.ReverseAsync(new PricingReverseRequest
+        {
+            OriginalRequestId = 600,
+            ReverseNo = "R006",
+            ChargeDetailNo = "CD001",
+            ItemCode = "ITEM001",
+            ReverseQty = 2m,
+            ReverseTime = new DateTime(2026, 5, 10, 11, 0, 0)
+        });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.ReverseAsync(new PricingReverseRequest
+            {
+                OriginalRequestId = 600,
+                ReverseNo = "R006",
+                ChargeDetailNo = "CD001",
+                ItemCode = "ITEM001",
+                ReverseQty = 3m,
+                ReverseTime = new DateTime(2026, 5, 10, 11, 1, 0)
+            }));
+
+        Assert.Contains("IDEMPOTENT_CONFLICT", ex.Message);
+    }
+
     private static PricingApiService CreateService(
         IChargeRequestLogRepository requestRepository,
         IChargeDiscountDetailRepository discountRepository,
@@ -250,14 +368,41 @@ public sealed class PricingReverseTests
 
     private sealed class ReverseRequestLogRepository : IChargeRequestLogRepository
     {
+        private long _nextId = 9000;
+
         public ChargeRequestLog Log { get; set; } = new();
-        public Task<ChargeRequestLog?> GetByIdAsync(long requestId) => Task.FromResult<ChargeRequestLog?>(Log.RequestId == requestId ? Log : null);
+        public List<ChargeRequestLog> Inserted { get; } = new();
+
+        public Task<ChargeRequestLog?> GetByIdAsync(long requestId) =>
+            Task.FromResult<ChargeRequestLog?>(
+                Log.RequestId == requestId
+                    ? Log
+                    : Inserted.FirstOrDefault(log => log.RequestId == requestId));
+
         public Task<ChargeRequestLog?> GetByBusinessKeyAsync(string sourceSystem, string businessRequestNo, string callType) => Task.FromResult<ChargeRequestLog?>(null);
         public Task<ChargeRequestLog?> GetByFingerprintAsync(string fingerprint) => Task.FromResult<ChargeRequestLog?>(null);
-        public Task<long> InsertAsync(ChargeRequestLog entity) => Task.FromResult(0L);
+        public Task<long> InsertAsync(ChargeRequestLog entity)
+        {
+            entity.RequestId = ++_nextId;
+            Inserted.Add(entity);
+            return Task.FromResult(entity.RequestId);
+        }
+
         public Task UpdateAsync(ChargeRequestLog entity)
         {
-            Log = entity;
+            if (Log.RequestId == entity.RequestId)
+            {
+                Log = entity;
+            }
+            else
+            {
+                var index = Inserted.FindIndex(log => log.RequestId == entity.RequestId);
+                if (index >= 0)
+                {
+                    Inserted[index] = entity;
+                }
+            }
+
             return Task.CompletedTask;
         }
 

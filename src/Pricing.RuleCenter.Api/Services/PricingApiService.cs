@@ -114,6 +114,15 @@ public sealed class PricingApiService
         PricingCalculateItemRequest Item,
         PricingResult Result);
 
+    private sealed record CommitDetailKey(
+        string ChargeDetailNo,
+        string ItemCode,
+        int? PartSeq);
+
+    private sealed record CommitDetailTotals(
+        decimal Qty,
+        decimal Amount);
+
     /// <summary>
     /// 执行试算计价。
     /// </summary>
@@ -245,6 +254,27 @@ public sealed class PricingApiService
         // 如果其中任一张表失败，不能留下半条资金链路。
         return await ExecuteInTransactionAsync(async () =>
         {
+            await _limitRepository.EnsureAndLockAsync(new[]
+            {
+                BuildIdempotencyLockKey(request.SourceSystem, request.BusinessRequestNo!, "CONFIRM")
+            });
+
+            var existingInTransaction = await _requestLogRepository.GetByBusinessKeyAsync(
+                request.SourceSystem, request.BusinessRequestNo!, "CONFIRM");
+            if (existingInTransaction is not null)
+            {
+                if (!string.Equals(existingInTransaction.RequestFingerprint, fingerprint, StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException(
+                        $"IDEMPOTENT_CONFLICT: BusinessRequestNo={request.BusinessRequestNo} 已存在，但本次参数与首次请求不一致");
+                }
+
+                _logger.LogInformation(
+                    "CONFIRM 事务内幂等命中 SourceSystem={SourceSystem}, BusinessRequestNo={BusinessRequestNo}, RequestId={RequestId}",
+                    request.SourceSystem, request.BusinessRequestNo, existingInTransaction.RequestId);
+                return await BuildIdempotentResponse(existingInTransaction);
+            }
+
             // shouldLockLimits=true 表示限额执行器会在计算窗口累计前锁定 PR_LIMIT_LOCK，
             // 以防两个渠道同时确认同一患者同一项目时一起看到"还剩额度"。
             // 批量场景下创建 BatchPricingContext，确保同批内限额累计和互斥判断正确。
@@ -281,7 +311,10 @@ public sealed class PricingApiService
             }
 
             // 最后保存响应快照。幂等重试优先读取这个快照，保证返回内容和首次 confirm 完全一致。
-            var response = BuildResponse(requestLog.RequestId, calculations);
+            var response = BuildResponse(
+                requestLog.RequestId,
+                calculations,
+                requestLog.RequestAt.AddMinutes(_options.ConfirmExpireMinutes));
             await SaveResponseJson(requestLog, response);
 
             // ========== 第五阶段：记录 confirm 成功日志 ==========
@@ -325,8 +358,24 @@ public sealed class PricingApiService
         // 如果任何一步失败，整体回滚，避免报表看到"请求已确认但占额仍待确认"的断裂状态。
         await ExecuteInTransactionAsync(async () =>
         {
+            await _limitRepository.EnsureAndLockAsync(new[] { BuildRequestLockKey(request.RequestId) });
+
             var log = await _requestLogRepository.GetByIdAsync(request.RequestId)
                 ?? throw new KeyNotFoundException($"请求不存在: {request.RequestId}");
+
+            if (log.BusinessStatus == "CONFIRMED" || log.BusinessStatus == "COMMITTED")
+            {
+                if ((request.ActualItems?.Count ?? 0) > 0 || request.ActualTotalAmount.HasValue)
+                {
+                    var confirmedDetails = await _discountRepository.GetByRequestIdAsync(request.RequestId);
+                    ValidateCommitActuals(request, confirmedDetails, requireActualItems: false);
+                }
+
+                _logger.LogInformation(
+                    "COMMIT 幂等命中 RequestId={RequestId}, 当前状态={Status}",
+                    request.RequestId, log.BusinessStatus);
+                return;
+            }
 
             // 只允许待确认保护状态 commit。已经取消、过期或确认的记录再 commit，
             // 通常代表渠道回调乱序或重复回调，必须暴露给调用方处理。
@@ -348,6 +397,11 @@ public sealed class PricingApiService
                     request.RequestId, log.RequestAt, _options.ConfirmExpireMinutes);
                 throw new InvalidOperationException("EXPIRED: 确认计价结果已过期，请重新 confirm");
             }
+
+            // commit 是 HIS 真正落账后的资金状态推进。推进前必须把 HIS 实际落账明细
+            // 与 confirm 保存的折价明细逐项比对，避免 HIS 少收、多收或数量不一致后仍进入 CONFIRMED。
+            var details = await _discountRepository.GetByRequestIdAsync(request.RequestId);
+            ValidateCommitActuals(request, details, requireActualItems: true);
 
             // 请求日志进入 CONFIRMED，表示 HIS 已经完成本地落账。
             log.BusinessStatus = "CONFIRMED";
@@ -393,8 +447,18 @@ public sealed class PricingApiService
         // 否则会出现额度释放了但明细还在 PENDING，或明细取消了但额度仍占着的资金口径断裂。
         await ExecuteInTransactionAsync(async () =>
         {
+            await _limitRepository.EnsureAndLockAsync(new[] { BuildRequestLockKey(request.RequestId) });
+
             var log = await _requestLogRepository.GetByIdAsync(request.RequestId)
                 ?? throw new KeyNotFoundException($"请求不存在: {request.RequestId}");
+
+            if (log.BusinessStatus == "CANCELLED" || log.BusinessStatus == "EXPIRED")
+            {
+                _logger.LogInformation(
+                    "CANCEL 幂等命中 RequestId={RequestId}, 当前状态={Status}",
+                    request.RequestId, log.BusinessStatus);
+                return;
+            }
 
             // 只有待落账的 confirm 可以取消。已 CONFIRMED 的记录代表 HIS 已经收费，
             // 应走 reverse，而不是 cancel。
@@ -450,8 +514,36 @@ public sealed class PricingApiService
         // 冲正会同时影响请求状态、折价明细、限额占用和冲正日志。任何一环失败都不能部分提交。
         await ExecuteInTransactionAsync(async () =>
         {
+            if (string.IsNullOrWhiteSpace(request.ReverseNo))
+            {
+                throw new ArgumentException("REVERSE 必须传入稳定的 ReverseNo");
+            }
+
+            await _limitRepository.EnsureAndLockAsync(new[]
+            {
+                BuildRequestLockKey(request.OriginalRequestId),
+                BuildReverseLockKey(request.OriginalRequestId, request.ReverseNo)
+            });
+
             var log = await _requestLogRepository.GetByIdAsync(request.OriginalRequestId)
                 ?? throw new KeyNotFoundException($"原请求不存在: {request.OriginalRequestId}");
+
+            var reverseLogs = await _reverseLogRepository.GetByOriginalRequestIdAsync(request.OriginalRequestId);
+            var sameReverseNo = reverseLogs.FirstOrDefault(r =>
+                string.Equals(r.ReverseNo, request.ReverseNo, StringComparison.OrdinalIgnoreCase));
+            if (sameReverseNo is not null)
+            {
+                if (!IsSameReverseRequest(sameReverseNo, request))
+                {
+                    throw new InvalidOperationException(
+                        $"IDEMPOTENT_CONFLICT: ReverseNo={request.ReverseNo} 已存在，但本次冲正参数与首次请求不一致");
+                }
+
+                _logger.LogInformation(
+                    "REVERSE 幂等命中 OriginalRequestId={OriginalRequestId}, ReverseNo={ReverseNo}",
+                    request.OriginalRequestId, request.ReverseNo);
+                return;
+            }
 
             // 只有已落账确认的记录才能 reverse。CONFIRM_PENDING 应该 cancel；
             // CANCELLED/EXPIRED 没有形成正式收费，不应该再冲正。
@@ -514,14 +606,12 @@ public sealed class PricingApiService
                 var groupOriginalQty = group.Sum(d => d.FinalQty ?? 0);
                 var groupOriginalAmt = group.Sum(d => d.FinalAmt ?? 0);
 
-                // 查询该组的历史已退数量和金额
-                var groupReverseLogs = await _reverseLogRepository.GetByOriginalRequestIdAsync(request.OriginalRequestId);
-                var groupHistoricalQty = groupReverseLogs
+                var groupHistoricalQty = reverseLogs
                     .Where(r => group.Any(d =>
                         string.Equals(d.ItemCode, r.ItemCode, StringComparison.OrdinalIgnoreCase) &&
                         d.ChargeDetailNo == r.ChargeDetailNo))
                     .Sum(r => r.ReverseQty ?? 0);
-                var groupHistoricalAmt = groupReverseLogs
+                var groupHistoricalAmt = reverseLogs
                     .Where(r => group.Any(d =>
                         string.Equals(d.ItemCode, r.ItemCode, StringComparison.OrdinalIgnoreCase) &&
                         d.ChargeDetailNo == r.ChargeDetailNo))
@@ -560,6 +650,13 @@ public sealed class PricingApiService
 
             // ========== 第四阶段：当日退费写负向占额 ==========
             var reverseTime = request.ReverseTime ?? DateTime.Now;
+            var reverseRequestId = await SaveReverseRequestLogAsync(
+                request,
+                log,
+                matchedDetails,
+                reverseQty,
+                reverseAmt,
+                reverseTime);
             await InsertNegativeLimitOccupiesAsync(request, reverseQty, reverseAmt, reverseTime);
 
             // ========== 第五阶段：写冲正审计 ==========
@@ -567,6 +664,7 @@ public sealed class PricingApiService
             await _reverseLogRepository.InsertAsync(new ChargeReverseLog
             {
                 OriginalRequestId = request.OriginalRequestId,
+                ReverseRequestId = reverseRequestId,
                 ChargeNo = log.ChargeNo,
                 ReverseNo = request.ReverseNo,
                 ChargeDetailNo = NormalizeString(request.ChargeDetailNo),
@@ -609,6 +707,137 @@ public sealed class PricingApiService
         };
     }
 
+    private static void ValidateCommitActuals(
+        PricingCommitRequest request,
+        IReadOnlyList<ChargeDiscountDetail> details,
+        bool requireActualItems)
+    {
+        if (details.Count == 0)
+        {
+            throw new InvalidOperationException(
+                $"COMMIT_DETAIL_NOT_FOUND: RequestId={request.RequestId} 未找到 confirm 折价明细");
+        }
+
+        var expected = BuildExpectedCommitTotals(details);
+        var expectedTotal = PricingAmountRounder.RoundFinalAmount(expected.Values.Sum(v => v.Amount));
+        var actualItems = request.ActualItems ?? Array.Empty<PricingCommitActualItemRequest>();
+        if (actualItems.Count == 0)
+        {
+            if (request.ActualTotalAmount.HasValue &&
+                PricingAmountRounder.RoundFinalAmount(request.ActualTotalAmount.Value) != expectedTotal)
+            {
+                throw new InvalidOperationException(
+                    $"COMMIT_AMOUNT_MISMATCH: confirm总金额={expectedTotal}, HIS实际总金额={PricingAmountRounder.RoundFinalAmount(request.ActualTotalAmount.Value)}");
+            }
+
+            if (requireActualItems)
+            {
+                throw new InvalidOperationException(
+                    "COMMIT_ACTUAL_ITEMS_REQUIRED: commit 必须传入 HIS 实际落账明细");
+            }
+
+            return;
+        }
+
+        foreach (var item in actualItems)
+        {
+            if (string.IsNullOrWhiteSpace(item.ItemCode))
+            {
+                throw new InvalidOperationException("COMMIT_ACTUAL_ITEM_INVALID: 实际落账明细 ItemCode 不能为空");
+            }
+        }
+
+        var actual = BuildActualCommitTotals(actualItems);
+        var missingKeys = expected.Keys.Where(key => !actual.ContainsKey(key)).ToList();
+        if (missingKeys.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"COMMIT_DETAIL_MISMATCH: HIS 未回传实际落账明细 {string.Join(", ", missingKeys.Select(FormatCommitKey))}");
+        }
+
+        var extraKeys = actual.Keys.Where(key => !expected.ContainsKey(key)).ToList();
+        if (extraKeys.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"COMMIT_DETAIL_MISMATCH: HIS 回传了 confirm 未产生的落账明细 {string.Join(", ", extraKeys.Select(FormatCommitKey))}");
+        }
+
+        foreach (var pair in expected)
+        {
+            var actualValue = actual[pair.Key];
+            if (Math.Round(actualValue.Qty, 4) != Math.Round(pair.Value.Qty, 4))
+            {
+                throw new InvalidOperationException(
+                    $"COMMIT_QTY_MISMATCH: {FormatCommitKey(pair.Key)} confirm数量={Math.Round(pair.Value.Qty, 4)}, HIS实际数量={Math.Round(actualValue.Qty, 4)}");
+            }
+
+            var expectedAmount = PricingAmountRounder.RoundFinalAmount(pair.Value.Amount);
+            var actualAmount = PricingAmountRounder.RoundFinalAmount(actualValue.Amount);
+            if (actualAmount != expectedAmount)
+            {
+                throw new InvalidOperationException(
+                    $"COMMIT_AMOUNT_MISMATCH: {FormatCommitKey(pair.Key)} confirm金额={expectedAmount}, HIS实际金额={actualAmount}");
+            }
+        }
+
+        var actualTotal = PricingAmountRounder.RoundFinalAmount(actual.Values.Sum(v => v.Amount));
+        if (actualTotal != expectedTotal)
+        {
+            throw new InvalidOperationException(
+                $"COMMIT_AMOUNT_MISMATCH: confirm总金额={expectedTotal}, HIS实际明细合计={actualTotal}");
+        }
+
+        if (request.ActualTotalAmount.HasValue &&
+            PricingAmountRounder.RoundFinalAmount(request.ActualTotalAmount.Value) != expectedTotal)
+        {
+            throw new InvalidOperationException(
+                $"COMMIT_AMOUNT_MISMATCH: confirm总金额={expectedTotal}, HIS实际总金额={PricingAmountRounder.RoundFinalAmount(request.ActualTotalAmount.Value)}");
+        }
+    }
+
+    private static Dictionary<CommitDetailKey, CommitDetailTotals> BuildExpectedCommitTotals(
+        IReadOnlyList<ChargeDiscountDetail> details)
+    {
+        return details
+            .GroupBy(d => BuildCommitDetailKey(d.ChargeDetailNo, d.ItemCode, d.PartSeq))
+            .ToDictionary(
+                group => group.Key,
+                group => new CommitDetailTotals(
+                    group.Sum(d => d.FinalQty ?? 0m),
+                    group.Sum(d => d.FinalAmt ?? 0m)));
+    }
+
+    private static Dictionary<CommitDetailKey, CommitDetailTotals> BuildActualCommitTotals(
+        IReadOnlyList<PricingCommitActualItemRequest> actualItems)
+    {
+        return actualItems
+            .GroupBy(i => BuildCommitDetailKey(i.ChargeDetailNo, i.ItemCode, i.PartSeq))
+            .ToDictionary(
+                group => group.Key,
+                group => new CommitDetailTotals(
+                    group.Sum(i => i.FinalQty),
+                    group.Sum(i => i.FinalAmount)));
+    }
+
+    private static CommitDetailKey BuildCommitDetailKey(
+        string? chargeDetailNo,
+        string? itemCode,
+        int? partSeq)
+    {
+        return new CommitDetailKey(
+            NormalizeString(chargeDetailNo)?.ToUpperInvariant() ?? string.Empty,
+            NormalizeString(itemCode)?.ToUpperInvariant() ?? string.Empty,
+            partSeq);
+    }
+
+    private static string FormatCommitKey(CommitDetailKey key)
+    {
+        var chargeDetailNo = string.IsNullOrWhiteSpace(key.ChargeDetailNo) ? "-" : key.ChargeDetailNo;
+        var itemCode = string.IsNullOrWhiteSpace(key.ItemCode) ? "-" : key.ItemCode;
+        var partSeq = key.PartSeq.HasValue ? key.PartSeq.Value.ToString() : "-";
+        return $"ChargeDetailNo={chargeDetailNo}, ItemCode={itemCode}, PartSeq={partSeq}";
+    }
+
     private static IReadOnlyList<ChargeDiscountDetail> FilterReverseDetails(
         IReadOnlyList<ChargeDiscountDetail> details,
         PricingReverseRequest request)
@@ -635,6 +864,51 @@ public sealed class PricingApiService
         }
 
         return query.ToList();
+    }
+
+    private static bool IsSameReverseRequest(
+        ChargeReverseLog existing,
+        PricingReverseRequest request)
+    {
+        var requestChargeDetailNo = NormalizeString(request.ChargeDetailNo);
+        if (requestChargeDetailNo is not null &&
+            !string.Equals(
+                NormalizeString(existing.ChargeDetailNo),
+                requestChargeDetailNo,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var requestItemCode = NormalizeString(request.ItemCode);
+        if (requestItemCode is not null &&
+            !string.Equals(
+                NormalizeString(existing.ItemCode),
+                requestItemCode,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (existing.PartSeq != request.PartSeq)
+        {
+            return false;
+        }
+
+        if (request.ReverseQty.HasValue &&
+            Math.Round(existing.ReverseQty ?? 0m, 4) != Math.Round(request.ReverseQty.Value, 4))
+        {
+            return false;
+        }
+
+        if (request.ReverseAmt.HasValue &&
+            PricingAmountRounder.RoundFinalAmount(existing.ReverseAmt ?? 0m) !=
+            PricingAmountRounder.RoundFinalAmount(request.ReverseAmt.Value))
+        {
+            return false;
+        }
+
+        return true;
     }
 
     private async Task<decimal> GetHistoricalReversedQtyAsync(PricingReverseRequest request)
@@ -671,6 +945,54 @@ public sealed class PricingApiService
                         string.Equals(r.ItemCode, itemCode, StringComparison.OrdinalIgnoreCase))
             .Where(r => !request.PartSeq.HasValue || r.PartSeq == request.PartSeq)
             .Sum(r => r.ReverseAmt ?? 0);
+    }
+
+    private async Task<long> SaveReverseRequestLogAsync(
+        PricingReverseRequest request,
+        ChargeRequestLog originalLog,
+        IReadOnlyList<ChargeDiscountDetail> matchedDetails,
+        decimal reverseQty,
+        decimal reverseAmt,
+        DateTime reverseTime)
+    {
+        var firstDetail = matchedDetails.FirstOrDefault();
+        var reverseRequestLog = new ChargeRequestLog
+        {
+            RequestNo = BuildReverseRequestNo(request.OriginalRequestId, request.ReverseNo!),
+            BusinessRequestNo = NormalizeString(request.ReverseNo),
+            RequestFingerprint = BuildReverseFingerprint(request, originalLog, reverseTime),
+            TraceId = originalLog.TraceId,
+            CallType = "REVERSE",
+            BusinessStatus = "REVERSED",
+            SourceSystem = NormalizeString(originalLog.SourceSystem) ?? "UNKNOWN",
+            SourceTerminal = originalLog.SourceTerminal,
+            PatientId = originalLog.PatientId,
+            VisitId = originalLog.VisitId,
+            ChargeScene = originalLog.ChargeScene,
+            ChargeNo = originalLog.ChargeNo,
+            ChargeDetailNo = NormalizeString(request.ChargeDetailNo) ?? firstDetail?.ChargeDetailNo ?? originalLog.ChargeDetailNo,
+            ResultGroupNo = firstDetail?.ResultGroupNo ?? originalLog.ResultGroupNo,
+            ItemCode = NormalizeString(request.ItemCode) ?? firstDetail?.ItemCode ?? originalLog.ItemCode,
+            ItemName = firstDetail?.ItemName ?? originalLog.ItemName,
+            InputQty = reverseQty,
+            InputUnit = originalLog.InputUnit,
+            BodyPartCode = originalLog.BodyPartCode,
+            BusinessChargeTime = reverseTime,
+            PriceVersion = originalLog.PriceVersion,
+            RequestJson = JsonConvert.SerializeObject(request),
+            ResponseJson = JsonConvert.SerializeObject(new
+            {
+                request.OriginalRequestId,
+                request.ReverseNo,
+                ReverseQty = reverseQty,
+                ReverseAmt = reverseAmt
+            }),
+            RequestAt = DateTime.Now,
+            ResponseAt = DateTime.Now,
+            IsSuccess = "Y"
+        };
+
+        return await _requestLogRepository.InsertAsync(reverseRequestLog);
     }
 
     private async Task InsertNegativeLimitOccupiesAsync(
@@ -943,6 +1265,32 @@ public sealed class PricingApiService
         return $"{limitType.Trim().ToUpperInvariant()}:{limitDimensionCode?.Trim().ToUpperInvariant()}";
     }
 
+    private static string BuildIdempotencyLockKey(
+        string sourceSystem,
+        string businessRequestNo,
+        string callType)
+    {
+        return $"IDEMP:{sourceSystem.Trim()}:{businessRequestNo.Trim()}:{callType.Trim()}"
+            .ToUpperInvariant();
+    }
+
+    internal static string BuildRequestLockKey(long requestId)
+    {
+        return $"REQ:{requestId}".ToUpperInvariant();
+    }
+
+    private static string BuildReverseLockKey(long originalRequestId, string reverseNo)
+    {
+        return $"REV:{originalRequestId}:{reverseNo.Trim()}".ToUpperInvariant();
+    }
+
+    private static string BuildReverseRequestNo(long originalRequestId, string reverseNo)
+    {
+        var raw = $"{originalRequestId}:{reverseNo.Trim()}";
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(raw)))[..16];
+        return $"REV-{originalRequestId}-{hash}";
+    }
+
     private async Task SaveTraceSteps(long requestId, IReadOnlyList<ItemPricingCalculation> calculations)
     {
         // 没有命中特殊规则时可能没有步骤。这里直接返回，避免写空集合导致不必要的数据库调用。
@@ -1150,13 +1498,17 @@ public sealed class PricingApiService
 
     private static PricingCalculateResponse BuildResponse(
         long requestId,
-        IReadOnlyList<ItemPricingCalculation> calculations)
+        IReadOnlyList<ItemPricingCalculation> calculations,
+        DateTime? expireAt = null)
     {
         // 响应 DTO 只返回渠道需要使用或展示的字段；更完整的内部计算状态留在追溯日志和请求快照里。
         var itemResponses = calculations
             .Select(c => BuildItemResponse(requestId, c.Item, c.Result))
             .ToList();
         var first = itemResponses.FirstOrDefault();
+        var expireSeconds = expireAt.HasValue
+            ? Math.Max(0, (int)Math.Ceiling((expireAt.Value - DateTime.Now).TotalSeconds))
+            : (int?)null;
 
         return new PricingCalculateResponse
         {
@@ -1168,6 +1520,8 @@ public sealed class PricingApiService
             UnitPrice = itemResponses.Count == 1 ? first?.UnitPrice ?? 0 : 0,
             FinalAmount = itemResponses.Sum(i => i.FinalAmount),
             DiscountAmount = itemResponses.Sum(i => i.DiscountAmount),
+            ExpireAt = expireAt,
+            ExpireSeconds = expireSeconds,
             TraceSteps = itemResponses.Count == 1 ? first?.TraceSteps ?? Array.Empty<PricingTraceStepResponse>() : Array.Empty<PricingTraceStepResponse>(),
             MatchedRuleIds = itemResponses.SelectMany(i => i.MatchedRuleIds).Distinct().ToList()
         };
@@ -1282,6 +1636,13 @@ public sealed class PricingApiService
         var replacement = detail is null
             ? null
             : details.FirstOrDefault(d => d.ParentDiscountId == detail.DiscountId);
+        var expireAt = log.BusinessStatus == "CONFIRM_PENDING"
+            ? log.RequestAt.AddMinutes(_options.ConfirmExpireMinutes)
+            : (DateTime?)null;
+        var expireSeconds = expireAt.HasValue
+            ? Math.Max(0, (int)Math.Ceiling((expireAt.Value - DateTime.Now).TotalSeconds))
+            : (int?)null;
+
         return new PricingCalculateResponse
         {
             RequestId = log.RequestId,
@@ -1291,6 +1652,8 @@ public sealed class PricingApiService
             UnitPrice = detail?.UnitPrice ?? 0,
             FinalAmount = (detail?.FinalAmt ?? 0) + (replacement?.FinalAmt ?? 0),
             DiscountAmount = (detail?.DiscountAmt ?? 0) + (replacement?.DiscountAmt ?? 0),
+            ExpireAt = expireAt,
+            ExpireSeconds = expireSeconds,
             Items = detail is null
                 ? Array.Empty<PricingCalculateItemResponse>()
                 : new[]
@@ -1435,6 +1798,33 @@ public sealed class PricingApiService
 
         // ========== 第二阶段：序列化后计算 SHA256 ==========
         // 存 hash 而不是完整 JSON，可以控制 REQUEST_FINGERPRINT 字段长度，同时避免数据库索引过大。
+        var json = JsonConvert.SerializeObject(payload, Formatting.None);
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(json));
+        return Convert.ToHexString(hash);
+    }
+
+    private static string BuildReverseFingerprint(
+        PricingReverseRequest request,
+        ChargeRequestLog originalLog,
+        DateTime reverseTime)
+    {
+        var payload = new
+        {
+            sourceSystem = NormalizeString(originalLog.SourceSystem),
+            callType = "REVERSE",
+            originalRequestId = request.OriginalRequestId,
+            reverseNo = NormalizeString(request.ReverseNo),
+            chargeNo = NormalizeString(originalLog.ChargeNo),
+            chargeDetailNo = NormalizeString(request.ChargeDetailNo),
+            itemCode = NormalizeString(request.ItemCode),
+            partSeq = request.PartSeq,
+            reverseTime,
+            reverseQty = request.ReverseQty.HasValue ? Math.Round(request.ReverseQty.Value, 4) : (decimal?)null,
+            reverseAmt = request.ReverseAmt.HasValue ? PricingAmountRounder.RoundFinalAmount(request.ReverseAmt.Value) : (decimal?)null,
+            reversedBy = NormalizeString(request.ReversedBy),
+            reason = NormalizeString(request.Reason)
+        };
+
         var json = JsonConvert.SerializeObject(payload, Formatting.None);
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(json));
         return Convert.ToHexString(hash);

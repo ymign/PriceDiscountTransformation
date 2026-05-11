@@ -127,6 +127,30 @@ namespace HIS.Pricing.Client
         }
 
         /// <summary>
+        /// HIS 落账成功后通知计价服务提交（commit），并回传 HIS 实际落账明细。
+        /// 生产收费链路应优先使用此重载；计价中心会校验实际落账数量/金额与 confirm 结果完全一致。
+        /// </summary>
+        /// <param name="requestId">confirm 阶段返回的请求 ID</param>
+        /// <param name="chargeNo">HIS 落账后的收费单号</param>
+        /// <param name="actualItems">HIS 实际落账明细列表</param>
+        /// <param name="actualTotalAmount">HIS 实际落账总金额</param>
+        /// <returns>API 响应</returns>
+        public ApiResponse CommitAfterHisSuccess(
+            long requestId,
+            string chargeNo,
+            List<PricingCommitActualItemRequest> actualItems,
+            decimal? actualTotalAmount)
+        {
+            return _client.Commit(new PricingCommitRequest
+            {
+                RequestId = requestId,
+                ChargeNo = chargeNo,
+                ActualItems = actualItems,
+                ActualTotalAmount = actualTotalAmount
+            });
+        }
+
+        /// <summary>
         /// HIS 落账失败后通知计价服务取消（cancel）。
         /// cancel 释放 confirm 阶段占用的额度，状态从 CONFIRMED 流转为 CANCELLED。
         /// 资金安全约束：HIS 落账失败时必须调用此方法，否则额度会被永久占用。
