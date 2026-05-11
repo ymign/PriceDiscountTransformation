@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <Compile Include="..\..\his-client\PricingApiUrlBuilder.cs" Link="HisClient\PricingApiUrlBuilder.cs" />
+    <Compile Include="..\..\his-client\PricingSdkOptions.cs" Link="HisClient\PricingSdkOptions.cs" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -39,10 +39,14 @@
   <ItemGroup>
     <Compile Include="FrmPricingPopup.cs" />
     <Compile Include="FrmPricingRuleWorkbench.cs" />
+    <Compile Include="PricingAgent.cs" />
     <Compile Include="PricingApiClient.cs" />
     <Compile Include="PricingApiUrlBuilder.cs" />
+    <Compile Include="PricingChargeContext.cs" />
     <Compile Include="PricingHisIntegrationHelper.cs" />
     <Compile Include="PricingRuleDtos.cs" />
+    <Compile Include="PricingSdk.cs" />
+    <Compile Include="PricingSdkOptions.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
