@@ -2,7 +2,7 @@ using Newtonsoft.Json;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 
-namespace Pricing.RuleCenter.Api.Engine.Executors;
+namespace Pricing.RuleCenter.Core.Engine.Executors;
 
 /// <summary>
 /// 金额封顶（上限）动作执行器。

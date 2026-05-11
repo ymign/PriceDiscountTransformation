@@ -1,5 +1,3 @@
-using SqlSugar;
-
 namespace Pricing.RuleCenter.Core.Models;
 
 /// <summary>
@@ -23,7 +21,6 @@ namespace Pricing.RuleCenter.Core.Models;
 /// 隔日退费重收后按重收当天重新做额度校验。
 /// </para>
 /// </remarks>
-[SugarTable("PR_LIMIT_OCCUPY")]
 public sealed class LimitOccupy
 {
     /// <summary>
@@ -33,8 +30,7 @@ public sealed class LimitOccupy
     /// 对应 Oracle 列 OCCUPY_ID，NUMBER 类型，由 SEQUENCE 生成。
     /// 全局唯一标识一条占用记录，用于冲正记录关联（OriginalOccupyId）。
     /// </remarks>
-    [SugarColumn(IsPrimaryKey = true, ColumnName = "OCCUPY_ID")]
-    public long OccupyId { get; set; }
+        public long OccupyId { get; set; }
 
     /// <summary>
     /// 关联的计价请求日志主键。
@@ -43,8 +39,7 @@ public sealed class LimitOccupy
     /// 对应 PR_CHARGE_REQUEST_LOG.REQUEST_ID，用于串联请求、步骤、折价明细和限额占用四张表。
     /// 一条请求日志可以产生多条限额占用（如同时占用日限额和时间窗限额）。
     /// </remarks>
-    [SugarColumn(ColumnName = "REQUEST_ID")]
-    public long RequestId { get; set; }
+        public long RequestId { get; set; }
 
     /// <summary>
     /// 计价追踪号。
@@ -53,8 +48,7 @@ public sealed class LimitOccupy
     /// 全局唯一的追踪标识，用于跨表（REQUEST_LOG、TRACE_STEP、DISCOUNT_DETAIL、LIMIT_OCCUPY）
     /// 查看一次完整计价过程。可为空，空值表示追踪号未生成。
     /// </remarks>
-    [SugarColumn(ColumnName = "TRACE_ID", IsNullable = true)]
-    public string? TraceId { get; set; }
+        public string? TraceId { get; set; }
 
     /// <summary>
     /// 患者标识。
@@ -63,8 +57,7 @@ public sealed class LimitOccupy
     /// 限额累计和追溯查询的重要维度。日限额、时间窗限额均按患者维度累计。
     /// 来源为调用方传入的 patientId。
     /// </remarks>
-    [SugarColumn(ColumnName = "PATIENT_ID")]
-    public string PatientId { get; set; } = string.Empty;
+        public string PatientId { get; set; } = string.Empty;
 
     /// <summary>
     /// 项目编码。
@@ -74,8 +67,7 @@ public sealed class LimitOccupy
     /// 是规则匹配、价格校验和限额累计的核心维度。
     /// 该字段可为空，空值表示该占用记录不关联特定项目（如全局限额场景）。
     /// </remarks>
-    [SugarColumn(ColumnName = "ITEM_CODE", IsNullable = true)]
-    public string? ItemCode { get; set; }
+        public string? ItemCode { get; set; }
 
     /// <summary>
     /// 产生本次占用的规则主键。
@@ -84,8 +76,7 @@ public sealed class LimitOccupy
     /// 关联 PR_RULE_HEADER.RULE_ID，用于追溯该占用是由哪条规则触发的。
     /// 可为空，空值表示非规则触发的占用（如手工限额调整）。
     /// </remarks>
-    [SugarColumn(ColumnName = "RULE_ID", IsNullable = true)]
-    public long? RuleId { get; set; }
+        public long? RuleId { get; set; }
 
     /// <summary>
     /// 产生本次占用的规则版本号。
@@ -94,8 +85,7 @@ public sealed class LimitOccupy
     /// 关联 PR_RULE_VERSION.VERSION_NO，用于锁定产生占用时的规则版本，
     /// 便于后续版本回滚或变更时评估影响范围。
     /// </remarks>
-    [SugarColumn(ColumnName = "RULE_VERSION_NO", IsNullable = true)]
-    public int? RuleVersionNo { get; set; }
+        public int? RuleVersionNo { get; set; }
 
     /// <summary>
     /// 限额类型编码。
@@ -110,8 +100,7 @@ public sealed class LimitOccupy
     /// </list>
     /// 不可为空，必须由计价引擎在规则匹配阶段确定。
     /// </remarks>
-    [SugarColumn(ColumnName = "LIMIT_TYPE")]
-    public string LimitType { get; set; } = string.Empty;
+        public string LimitType { get; set; } = string.Empty;
 
     /// <summary>
     /// 限额维度键。
@@ -122,8 +111,7 @@ public sealed class LimitOccupy
     /// 渠道不得传入，必须由计价中心生成，防止渠道绕过限额校验。
     /// 格式示例：DAY_QTY|PATIENT_001|ITEM_1001|20260510
     /// </remarks>
-    [SugarColumn(ColumnName = "LIMIT_KEY")]
-    public string LimitKey { get; set; } = string.Empty;
+        public string LimitKey { get; set; } = string.Empty;
 
     /// <summary>
     /// 本次占用数量。
@@ -133,8 +121,7 @@ public sealed class LimitOccupy
     /// 累计时 SUM(OCCUPY_QTY) WHERE STATUS IN ('PENDING','CONFIRMED') 即为当前已占用总量。
     /// 精度 NUMBER(18,4)，与项目数量单位一致（如次、个、CM2）。
     /// </remarks>
-    [SugarColumn(ColumnName = "OCCUPY_QTY")]
-    public decimal OccupyQty { get; set; }
+        public decimal OccupyQty { get; set; }
 
     /// <summary>
     /// 本次占用金额。
@@ -144,8 +131,7 @@ public sealed class LimitOccupy
     /// 用于金额维度的限额校验（如单次收费金额上限、日累计金额上限）。
     /// 精度 NUMBER(18,4)，单位：元（人民币）。
     /// </remarks>
-    [SugarColumn(ColumnName = "OCCUPY_AMT")]
-    public decimal OccupyAmt { get; set; }
+        public decimal OccupyAmt { get; set; }
 
     /// <summary>
     /// 占用类型。
@@ -158,8 +144,7 @@ public sealed class LimitOccupy
     /// </list>
     /// 默认值为 "CHARGE"。
     /// </remarks>
-    [SugarColumn(ColumnName = "OCCUPY_TYPE")]
-    public string OccupyType { get; set; } = "CHARGE";
+        public string OccupyType { get; set; } = "CHARGE";
 
     /// <summary>
     /// 冲正记录关联的原占用记录主键。
@@ -169,8 +154,7 @@ public sealed class LimitOccupy
     /// 用于双向追溯：从原占用找到其冲正记录，或从冲正记录找到原始占用。
     /// 空值表示该记录不是冲正记录。
     /// </remarks>
-    [SugarColumn(ColumnName = "ORIGINAL_OCCUPY_ID", IsNullable = true)]
-    public long? OriginalOccupyId { get; set; }
+        public long? OriginalOccupyId { get; set; }
 
     /// <summary>
     /// 业务收费发生时间。
@@ -182,8 +166,7 @@ public sealed class LimitOccupy
     /// 2. 日数量限额的当日划分（按业务日期而非系统日期）
     /// 3. 2 小时滑动窗口的起点计算（按业务收费时间向前查 2 小时）
     /// </remarks>
-    [SugarColumn(ColumnName = "BUSINESS_CHARGE_TIME")]
-    public DateTime BusinessChargeTime { get; set; }
+        public DateTime BusinessChargeTime { get; set; }
 
     /// <summary>
     /// 限额查询维度编码。
@@ -192,8 +175,7 @@ public sealed class LimitOccupy
     /// 用于按业务时间稳定累计，避免技术时间漂移导致累计偏差。
     /// 例如日限额维度编码格式为 "PATIENT_001|ITEM_1001|20260510"。
     /// </remarks>
-    [SugarColumn(ColumnName = "LIMIT_DIMENSION_CODE", IsNullable = true)]
-    public string? LimitDimensionCode { get; set; }
+        public string? LimitDimensionCode { get; set; }
 
     /// <summary>
     /// 多部位或多片段计价时的片段序号。
@@ -203,8 +185,7 @@ public sealed class LimitOccupy
     /// PartSeq 从 1 开始递增，用于区分同一请求内的不同部位占用。
     /// 空值表示该项目不涉及多部位拆分。
     /// </remarks>
-    [SugarColumn(ColumnName = "PART_SEQ", IsNullable = true)]
-    public int? PartSeq { get; set; }
+        public int? PartSeq { get; set; }
 
     /// <summary>
     /// 占用记录状态。
@@ -220,8 +201,7 @@ public sealed class LimitOccupy
     /// 累计限额时只统计 PENDING 和 CONFIRMED 状态。
     /// 默认值为 "PENDING"。
     /// </remarks>
-    [SugarColumn(ColumnName = "STATUS")]
-    public string Status { get; set; } = "PENDING";
+        public string Status { get; set; } = "PENDING";
 
     /// <summary>
     /// 计价中心创建占额记录的技术时间。
@@ -230,8 +210,7 @@ public sealed class LimitOccupy
     /// 由计价中心在 confirm 阶段自动填充，用于审计和过期清理。
     /// 不得用该时间替代 BusinessChargeTime 做业务判断。
     /// </remarks>
-    [SugarColumn(ColumnName = "OCCUPIED_AT")]
-    public DateTime OccupiedAt { get; set; }
+        public DateTime OccupiedAt { get; set; }
 
     /// <summary>
     /// HIS commit 成功后的确认时间。
@@ -241,8 +220,7 @@ public sealed class LimitOccupy
     /// 空值表示尚未 commit（仍为 PENDING 状态）。
     /// 用于审计和对账，确认 HIS 何时完成落账。
     /// </remarks>
-    [SugarColumn(ColumnName = "CONFIRMED_AT", IsNullable = true)]
-    public DateTime? ConfirmedAt { get; set; }
+        public DateTime? ConfirmedAt { get; set; }
 
     /// <summary>
     /// confirm 结果过期时间。
@@ -252,6 +230,5 @@ public sealed class LimitOccupy
     /// 后台挂起清理任务（expire）会将其状态推进为 CANCELLED 并释放额度。
     /// 防止 HIS 超时未调用 commit/cancel 导致额度被永久占用。
     /// </remarks>
-    [SugarColumn(ColumnName = "EXPIRE_AT", IsNullable = true)]
-    public DateTime? ExpireAt { get; set; }
+        public DateTime? ExpireAt { get; set; }
 }

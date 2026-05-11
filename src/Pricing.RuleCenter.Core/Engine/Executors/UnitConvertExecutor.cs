@@ -2,7 +2,7 @@ using Newtonsoft.Json;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 
-namespace Pricing.RuleCenter.Api.Engine.Executors;
+namespace Pricing.RuleCenter.Core.Engine.Executors;
 
 /// <summary>
 /// 双单位换算动作执行器。

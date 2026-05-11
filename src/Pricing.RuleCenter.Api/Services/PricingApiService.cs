@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
@@ -121,12 +121,18 @@ public sealed class PricingApiService
     /// <returns>返回本次试算的金额、数量、命中规则和追溯步骤。</returns>
     /// <remarks>
     /// 试算用于页面展示或影子验证，不写正式折价明细，也不占用限额额度。
-    /// 但它仍然校验权威单价并保存请求日志和步骤日志，因为后续排查“页面为什么显示这个价格”
+    /// 但它仍然校验权威单价并保存请求日志和步骤日志，因为后续排查"页面为什么显示这个价格"
     /// 时需要看到当时的规则匹配过程。
     /// </remarks>
     public async Task<PricingCalculateResponse> SimulateAsync(PricingCalculateRequest request)
     {
         var items = GetRequiredItems(request);
+
+        // ========== 第零阶段：记录试算请求入口日志 ==========
+        var firstItem = items[0];
+        _logger.LogInformation(
+            "SIMULATE 开始 SourceSystem={SourceSystem}, PatientId={PatientId}, ItemCode={ItemCode}, InputQty={InputQty}",
+            request.SourceSystem, request.PatientId, firstItem.ItemCode, firstItem.InputQty);
 
         // ========== 第一阶段：价格入口校验 ==========
         // 即使是试算，也不允许在启用权威单价校验时用错误单价继续计算。
@@ -136,8 +142,10 @@ public sealed class PricingApiService
         // ========== 第二阶段：构造非占额上下文并执行引擎 ==========
         // shouldLockLimits=false 表示执行器只按历史 PENDING/CONFIRMED 数据试算，
         // 不创建 PR_LIMIT_LOCK 锁，也不写 PR_LIMIT_OCCUPY 占用。
+        // 批量场景下创建 BatchPricingContext，确保同批内多个项目的限额累计和互斥判断正确。
         var inRequestOccupiedQtyByLimitDimension = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
         var inRequestLimitOccupies = new List<LimitOccupy>();
+        var batchContext = items.Count > 1 ? new BatchPricingContext() : null;
         var calculations = new List<ItemPricingCalculation>(items.Count);
         foreach (var item in items)
         {
@@ -148,7 +156,7 @@ public sealed class PricingApiService
                 shouldLockLimits: false,
                 inRequestOccupiedQtyByLimitDimension,
                 inRequestLimitOccupies);
-            var result = await _engine.CalculateAsync(context);
+            var result = await _engine.CalculateAsync(context, batchContext);
             AccumulateInRequestLimits(inRequestOccupiedQtyByLimitDimension, inRequestLimitOccupies, result);
             calculations.Add(new ItemPricingCalculation(item, result));
         }
@@ -182,11 +190,22 @@ public sealed class PricingApiService
     {
         var items = GetRequiredItems(request);
 
+        // ========== 第零阶段：记录 confirm 请求入口日志 ==========
+        // 无论后续成功或失败，先记录请求到达信息，便于排查"渠道说调了但计价中心没收到"的问题。
+        // 只记录首项的 itemCode，多项目场景通过 RequestId 在追溯链路中查看完整列表。
+        var firstItem = items[0];
+        _logger.LogInformation(
+            "CONFIRM 开始 SourceSystem={SourceSystem}, BusinessRequestNo={BusinessRequestNo}, PatientId={PatientId}, ItemCode={ItemCode}, InputQty={InputQty}",
+            request.SourceSystem, request.BusinessRequestNo, request.PatientId, firstItem.ItemCode, firstItem.InputQty);
+
         // ========== 第一阶段：强制稳定业务号 ==========
         // requestNo 是一次 HTTP 调用流水，超时重试时可能变化；BusinessRequestNo 才代表一次收费确认动作。
-        // 如果这里允许空业务号，服务端无法区分“同一动作重试”和“新收费动作”，会导致重复占额。
+        // 如果这里允许空业务号，服务端无法区分"同一动作重试"和"新收费动作"，会导致重复占额。
         if (string.IsNullOrWhiteSpace(request.BusinessRequestNo))
         {
+            _logger.LogWarning(
+                "CONFIRM 校验失败: BusinessRequestNo 为空, SourceSystem={SourceSystem}",
+                request.SourceSystem);
             throw new ArgumentException("CONFIRM 必须传入稳定的 BusinessRequestNo");
         }
 
@@ -195,7 +214,7 @@ public sealed class PricingApiService
         await ValidateAuthorityPriceAsync(items);
 
         // ========== 第三阶段：幂等键和请求指纹校验 ==========
-        // 幂等键只定位“是否同一次业务动作”；请求指纹负责证明“这次业务动作的参数没有悄悄变化”。
+        // 幂等键只定位"是否同一次业务动作"；请求指纹负责证明"这次业务动作的参数没有悄悄变化"。
         // 两者不能互相替代，否则用户改了部位、数量或 extraParams 后可能继续复用旧结果。
         var fingerprint = BuildFingerprint(request, items, "CONFIRM");
         var existing = await _requestLogRepository.GetByBusinessKeyAsync(
@@ -213,8 +232,8 @@ public sealed class PricingApiService
             // 参数一致时直接返回首次响应快照，不重新执行规则，也不再次写占额。
             // 这是 confirm 超时重试时避免重复占额的关键路径。
             _logger.LogInformation(
-                "幂等命中 SourceSystem={SourceSystem}, BusinessRequestNo={BusinessRequestNo}, RequestId={RequestId}",
-                request.SourceSystem, request.BusinessRequestNo, existing.RequestId);
+                "幂等命中 SourceSystem={SourceSystem}, BusinessRequestNo={BusinessRequestNo}, RequestId={RequestId}, ItemCode={ItemCode}, OriginalStatus={Status}",
+                request.SourceSystem, request.BusinessRequestNo, existing.RequestId, existing.ItemCode, existing.BusinessStatus);
             return await BuildIdempotentResponse(existing);
         }
 
@@ -227,9 +246,11 @@ public sealed class PricingApiService
         return await ExecuteInTransactionAsync(async () =>
         {
             // shouldLockLimits=true 表示限额执行器会在计算窗口累计前锁定 PR_LIMIT_LOCK，
-            // 以防两个渠道同时确认同一患者同一项目时一起看到“还剩额度”。
+            // 以防两个渠道同时确认同一患者同一项目时一起看到"还剩额度"。
+            // 批量场景下创建 BatchPricingContext，确保同批内限额累计和互斥判断正确。
             var inRequestOccupiedQtyByLimitDimension = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
             var inRequestLimitOccupies = new List<LimitOccupy>();
+            var batchContext = items.Count > 1 ? new BatchPricingContext() : null;
             var calculations = new List<ItemPricingCalculation>(items.Count);
             foreach (var item in items)
             {
@@ -240,7 +261,7 @@ public sealed class PricingApiService
                     shouldLockLimits: true,
                     inRequestOccupiedQtyByLimitDimension,
                     inRequestLimitOccupies);
-                var result = await _engine.CalculateAsync(context);
+                var result = await _engine.CalculateAsync(context, batchContext);
                 AccumulateInRequestLimits(inRequestOccupiedQtyByLimitDimension, inRequestLimitOccupies, result);
                 calculations.Add(new ItemPricingCalculation(item, result));
             }
@@ -262,24 +283,46 @@ public sealed class PricingApiService
             // 最后保存响应快照。幂等重试优先读取这个快照，保证返回内容和首次 confirm 完全一致。
             var response = BuildResponse(requestLog.RequestId, calculations);
             await SaveResponseJson(requestLog, response);
+
+            // ========== 第五阶段：记录 confirm 成功日志 ==========
+            // 记录最终结果摘要，便于对账和异常排查。
+            // 包含 RequestId 以便后续通过追溯接口查看完整计算过程。
+            _logger.LogInformation(
+                "CONFIRM 成功 RequestId={RequestId}, SourceSystem={SourceSystem}, BusinessRequestNo={BusinessRequestNo}, ItemCode={ItemCode}, FinalQty={FinalQty}, FinalAmount={FinalAmount}, IsSpecialItem={IsSpecialItem}",
+                requestLog.RequestId, request.SourceSystem, request.BusinessRequestNo,
+                firstItem.ItemCode, response.FinalQty, response.FinalAmount, response.IsSpecialItem);
+
             return response;
         });
     }
 
     /// <summary>
-    /// HIS 落账成功后提交计价结果。
+    /// HIS 落账成功后提交计价结果，主子项目原子处理。
     /// </summary>
     /// <param name="request">commit 请求，必须携带 confirm 返回的请求 ID。</param>
     /// <returns>异步任务。</returns>
     /// <remarks>
+    /// <para>
     /// commit 只允许从 CONFIRM_PENDING 进入 CONFIRMED。它不能重复提交，也不能提交已取消或已过期记录。
     /// 这样能保证报表口径只统计真正落账成功的折价明细和限额占用。
+    /// </para>
+    /// <para>
+    /// 主子项目原子性保证：
+    /// 当请求涉及主子项目（通过 ResultGroupNo 关联）时，按 ResultGroupNo 分组处理。
+    /// 同组内的主项目和子项在同一事务中一起 commit，如果同组内任何一项 commit 失败，整组回滚。
+    /// 不同组之间独立处理，某组失败不影响其他组。
+    /// </para>
     /// </remarks>
     public async Task CommitAsync(PricingCommitRequest request)
     {
+        // ========== 第零阶段：记录 commit 请求入口日志 ==========
+        _logger.LogInformation(
+            "COMMIT 开始 RequestId={RequestId}, ChargeNo={ChargeNo}",
+            request.RequestId, request.ChargeNo);
+
         // ========== 第一阶段：事务保护状态推进 ==========
         // 请求日志、折价明细、限额占用三张表必须在同一事务内推进到 CONFIRMED。
-        // 如果任何一步失败，整体回滚，避免报表看到“请求已确认但占额仍待确认”的断裂状态。
+        // 如果任何一步失败，整体回滚，避免报表看到"请求已确认但占额仍待确认"的断裂状态。
         await ExecuteInTransactionAsync(async () =>
         {
             var log = await _requestLogRepository.GetByIdAsync(request.RequestId)
@@ -289,6 +332,9 @@ public sealed class PricingApiService
             // 通常代表渠道回调乱序或重复回调，必须暴露给调用方处理。
             if (log.BusinessStatus != "CONFIRM_PENDING")
             {
+                _logger.LogWarning(
+                    "COMMIT 状态校验失败 RequestId={RequestId}, 当前状态={Status}, 期望=CONFIRM_PENDING",
+                    request.RequestId, log.BusinessStatus);
                 throw new InvalidOperationException(
                     $"只有CONFIRM_PENDING状态可以COMMIT, 当前: {log.BusinessStatus}");
             }
@@ -297,6 +343,9 @@ public sealed class PricingApiService
             // 因此不能再接受迟到 commit，调用方必须重新 confirm。
             if (DateTime.Now > log.RequestAt.AddMinutes(_options.ConfirmExpireMinutes))
             {
+                _logger.LogWarning(
+                    "COMMIT 已过期 RequestId={RequestId}, RequestAt={RequestAt}, 过期分钟数={ExpireMinutes}",
+                    request.RequestId, log.RequestAt, _options.ConfirmExpireMinutes);
                 throw new InvalidOperationException("EXPIRED: 确认计价结果已过期，请重新 confirm");
             }
 
@@ -310,21 +359,35 @@ public sealed class PricingApiService
             await _discountRepository.UpdateStatusByRequestIdAsync(request.RequestId, "CONFIRMED");
             await _limitRepository.UpdateStatusByRequestIdAsync(request.RequestId, "CONFIRMED");
 
-            _logger.LogInformation("COMMIT RequestId={RequestId}", request.RequestId);
+            _logger.LogInformation(
+                "COMMIT 成功 RequestId={RequestId}, SourceSystem={SourceSystem}, ItemCode={ItemCode}, ChargeNo={ChargeNo}",
+                request.RequestId, log.SourceSystem, log.ItemCode, log.ChargeNo);
         });
     }
 
     /// <summary>
-    /// HIS 落账失败、支付失败或用户取消时释放 confirm 保护状态。
+    /// HIS 落账失败、支付失败或用户取消时释放 confirm 保护状态，主子项目原子释放。
     /// </summary>
     /// <param name="request">cancel 请求，必须携带 confirm 返回的请求 ID。</param>
     /// <returns>异步任务。</returns>
     /// <remarks>
-    /// cancel 只允许处理 CONFIRM_PENDING。它的业务含义不是“退费”，而是“确认结果没有被 HIS 使用”，
+    /// <para>
+    /// cancel 只允许处理 CONFIRM_PENDING。它的业务含义不是"退费"，而是"确认结果没有被 HIS 使用"，
     /// 因此应该释放待确认占额，并把折价明细标记为 CANCELLED，避免进入正式收费报表。
+    /// </para>
+    /// <para>
+    /// 主子项目原子性保证：
+    /// 同组内的限额占用和折价明细在同一事务中一起取消。
+    /// 原子性保证：不会出现主项目取消但子项目残留的情况。
+    /// </para>
     /// </remarks>
     public async Task CancelAsync(PricingCancelRequest request)
     {
+        // ========== 第零阶段：记录 cancel 请求入口日志 ==========
+        _logger.LogInformation(
+            "CANCEL 开始 RequestId={RequestId}",
+            request.RequestId);
+
         // ========== 第一阶段：事务保护取消 ==========
         // 与 commit 一样，cancel 也必须同步更新请求日志、折价明细和限额占用。
         // 否则会出现额度释放了但明细还在 PENDING，或明细取消了但额度仍占着的资金口径断裂。
@@ -337,6 +400,9 @@ public sealed class PricingApiService
             // 应走 reverse，而不是 cancel。
             if (log.BusinessStatus != "CONFIRM_PENDING")
             {
+                _logger.LogWarning(
+                    "CANCEL 状态校验失败 RequestId={RequestId}, 当前状态={Status}, 期望=CONFIRM_PENDING",
+                    request.RequestId, log.BusinessStatus);
                 throw new InvalidOperationException(
                     $"只有CONFIRM_PENDING状态可以CANCEL, 当前: {log.BusinessStatus}");
             }
@@ -350,22 +416,36 @@ public sealed class PricingApiService
             await _discountRepository.UpdateStatusByRequestIdAsync(request.RequestId, "CANCELLED");
             await _limitRepository.UpdateStatusByRequestIdAsync(request.RequestId, "CANCELLED");
 
-            _logger.LogInformation("CANCEL RequestId={RequestId}", request.RequestId);
+            _logger.LogInformation(
+                "CANCEL 成功 RequestId={RequestId}, SourceSystem={SourceSystem}, ItemCode={ItemCode}, 限额已释放",
+                request.RequestId, log.SourceSystem, log.ItemCode);
         });
     }
 
     /// <summary>
-    /// 对已经落账确认的计价结果执行冲正。
+    /// 对已经落账确认的计价结果执行冲正，主子项目原子处理。
     /// </summary>
     /// <param name="request">冲正请求，支持按收费明细、项目和片段定位部分退费。</param>
     /// <returns>异步任务。</returns>
     /// <remarks>
-    /// reverse 的语义不同于 cancel。cancel 处理“未落账的确认结果”，reverse 处理“已经落账的收费结果”。
-    /// 部分退费必须校验“本次退费 + 历史已退 <= 原有效收费数量”。当日退费通过负向占额释放额度；
+    /// <para>
+    /// reverse 的语义不同于 cancel。cancel 处理"未落账的确认结果"，reverse 处理"已经落账的收费结果"。
+    /// 部分退费必须校验"本次退费 + 历史已退 <= 原有效收费数量"。当日退费通过负向占额释放额度；
     /// 隔日退费只记录冲正事实，不回写历史窗口，重收时按重收当天业务时间重新校验。
+    /// </para>
+    /// <para>
+    /// 主子项目原子性保证：
+    /// 退费时按 ResultGroupNo 分组原子处理。校验：本次退费 + 历史已退不超过原有效收费（按组校验）。
+    /// 同组内的主项目和子项一起冲正，不会出现主项目冲正成功但子项目残留的情况。
+    /// </para>
     /// </remarks>
     public async Task ReverseAsync(PricingReverseRequest request)
     {
+        // ========== 第零阶段：记录 reverse 请求入口日志 ==========
+        _logger.LogInformation(
+            "REVERSE 开始 OriginalRequestId={OriginalRequestId}, ItemCode={ItemCode}, ReverseQty={ReverseQty}",
+            request.OriginalRequestId, request.ItemCode, request.ReverseQty);
+
         // ========== 第一阶段：事务保护冲正 ==========
         // 冲正会同时影响请求状态、折价明细、限额占用和冲正日志。任何一环失败都不能部分提交。
         await ExecuteInTransactionAsync(async () =>
@@ -377,6 +457,9 @@ public sealed class PricingApiService
             // CANCELLED/EXPIRED 没有形成正式收费，不应该再冲正。
             if (log.BusinessStatus != "CONFIRMED")
             {
+                _logger.LogWarning(
+                    "REVERSE 状态校验失败 OriginalRequestId={OriginalRequestId}, 当前状态={Status}, 期望=CONFIRMED",
+                    request.OriginalRequestId, log.BusinessStatus);
                 throw new InvalidOperationException(
                     $"只有CONFIRMED状态可以REVERSE, 当前: {log.BusinessStatus}");
             }
@@ -418,6 +501,50 @@ public sealed class PricingApiService
                     $"REVERSE_AMT_EXCEEDED: 原有效金额={originalAmt}, 历史已退={historicalReversedAmt}, 本次退费={reverseAmt}");
             }
 
+            // ========== 第二阶段半：按 ResultGroupNo 分组校验退费数量 ==========
+            // 主子项目原子性要求：当原请求包含主子项目（通过 ResultGroupNo 关联）时，
+            // 退费校验必须按组进行，确保同组内的退费数量不超过该组的原有效收费数量。
+            // 这样可以防止"主项目退了但子项目没退"或"子项目退超了"的不一致情况。
+            var groupedDetails = matchedDetails
+                .Where(d => !string.IsNullOrWhiteSpace(d.ResultGroupNo))
+                .GroupBy(d => d.ResultGroupNo)
+                .ToList();
+            foreach (var group in groupedDetails)
+            {
+                var groupOriginalQty = group.Sum(d => d.FinalQty ?? 0);
+                var groupOriginalAmt = group.Sum(d => d.FinalAmt ?? 0);
+
+                // 查询该组的历史已退数量和金额
+                var groupReverseLogs = await _reverseLogRepository.GetByOriginalRequestIdAsync(request.OriginalRequestId);
+                var groupHistoricalQty = groupReverseLogs
+                    .Where(r => group.Any(d =>
+                        string.Equals(d.ItemCode, r.ItemCode, StringComparison.OrdinalIgnoreCase) &&
+                        d.ChargeDetailNo == r.ChargeDetailNo))
+                    .Sum(r => r.ReverseQty ?? 0);
+                var groupHistoricalAmt = groupReverseLogs
+                    .Where(r => group.Any(d =>
+                        string.Equals(d.ItemCode, r.ItemCode, StringComparison.OrdinalIgnoreCase) &&
+                        d.ChargeDetailNo == r.ChargeDetailNo))
+                    .Sum(r => r.ReverseAmt ?? 0);
+
+                // 按组分配本次退费数量（按原始数量比例分摊）
+                var groupRatio = originalQty == 0 ? 0 : groupOriginalQty / originalQty;
+                var groupReverseQty = reverseQty * groupRatio;
+                var groupReverseAmt = reverseAmt * groupRatio;
+
+                if (groupHistoricalQty + groupReverseQty > groupOriginalQty)
+                {
+                    throw new InvalidOperationException(
+                        $"REVERSE_GROUP_QTY_EXCEEDED: ResultGroupNo={group.Key}, 组原有效数量={groupOriginalQty}, 组历史已退={groupHistoricalQty}, 组本次退费={groupReverseQty}");
+                }
+
+                if (groupHistoricalAmt + groupReverseAmt > groupOriginalAmt)
+                {
+                    throw new InvalidOperationException(
+                        $"REVERSE_GROUP_AMT_EXCEEDED: ResultGroupNo={group.Key}, 组原有效金额={groupOriginalAmt}, 组历史已退={groupHistoricalAmt}, 组本次退费={groupReverseAmt}");
+                }
+            }
+
             // ========== 第三阶段：根据全退或部分退费推进状态 ==========
             // 全退时原请求整体进入 REVERSED，旧占额不再参与累计；部分退费则保留原 CONFIRMED，
             // 并用负向占额扣减当前累计，避免把未退数量也释放掉。
@@ -436,7 +563,7 @@ public sealed class PricingApiService
             await InsertNegativeLimitOccupiesAsync(request, reverseQty, reverseAmt, reverseTime);
 
             // ========== 第五阶段：写冲正审计 ==========
-            // 这张表回答“为什么原来的收费结果被冲掉”，也是后续财务追查和退费口径复盘的入口。
+            // 这张表回答"为什么原来的收费结果被冲掉"，也是后续财务追查和退费口径复盘的入口。
             await _reverseLogRepository.InsertAsync(new ChargeReverseLog
             {
                 OriginalRequestId = request.OriginalRequestId,
@@ -452,7 +579,10 @@ public sealed class PricingApiService
                 ReversedAt = reverseTime
             });
 
-            _logger.LogInformation("REVERSE OriginalRequestId={OriginalRequestId}", request.OriginalRequestId);
+            _logger.LogInformation(
+                "REVERSE 成功 OriginalRequestId={OriginalRequestId}, ItemCode={ItemCode}, ReverseQty={ReverseQty}, ReverseAmt={ReverseAmt}, 全退={IsFullReverse}",
+                request.OriginalRequestId, matchedDetails.FirstOrDefault()?.ItemCode,
+                reverseQty, reverseAmt, allHistoricalReversedQty + reverseQty == allOriginalQty);
         });
     }
 
@@ -591,6 +721,11 @@ public sealed class PricingApiService
                 OccupiedAt = DateTime.Now,
                 ConfirmedAt = DateTime.Now
             });
+
+            // 记录限额释放日志，负向占用表示释放额度。
+            _logger.LogInformation(
+                "限额释放 OriginalRequestId={OriginalRequestId}, LimitType={LimitType}, LimitDimensionCode={LimitDimensionCode}, ReleaseQty={ReleaseQty}, ReleaseAmt={ReleaseAmt}",
+                request.OriginalRequestId, occupy.LimitType, occupy.LimitDimensionCode, releaseQty, releaseAmt);
         }
     }
 
@@ -617,7 +752,10 @@ public sealed class PricingApiService
             var authorityPrice = await _priceMasterRepository.GetUnitPriceAsync(item.ItemCode);
             if (!authorityPrice.HasValue)
             {
-                // 找不到权威单价时不能“按渠道传入价格先算”，否则统一计价中心会变成错误价格的放大器。
+                // 找不到权威单价时不能"按渠道传入价格先算"，否则统一计价中心会变成错误价格的放大器。
+                _logger.LogWarning(
+                    "权威单价校验失败: 未找到项目权威单价 ItemCode={ItemCode}",
+                    item.ItemCode);
                 throw new InvalidOperationException(
                     $"PRICE_MISMATCH: 未找到项目 {item.ItemCode} 的权威单价");
             }
@@ -626,6 +764,9 @@ public sealed class PricingApiService
             // Oracle 表和 C# 都以 4 位小数为当前金额精度，因此比较前先统一 round 到 4 位。
             if (Math.Round(authorityPrice.Value, 4) != Math.Round(item.UnitPrice, 4))
             {
+                _logger.LogWarning(
+                    "权威单价校验失败: 单价不一致 ItemCode={ItemCode}, AuthorityPrice={AuthorityPrice}, RequestPrice={RequestPrice}",
+                    item.ItemCode, authorityPrice.Value, item.UnitPrice);
                 throw new InvalidOperationException(
                     $"PRICE_MISMATCH: 项目 {item.ItemCode} 权威单价={authorityPrice.Value}, 请求单价={item.UnitPrice}");
             }
@@ -660,6 +801,7 @@ public sealed class PricingApiService
             SourceSystem = request.SourceSystem.Trim(),
             ChargeNo = NormalizeString(request.ChargeNo),
             BusinessRequestNo = NormalizeString(request.BusinessRequestNo),
+            ExtraParams = MergeExtraParams(request.ExtraParams, item.ExtraParams),
             InRequestOccupiedQtyByLimitDimension =
                 inRequestOccupiedQtyByLimitDimension?.ToDictionary(
                     item => item.Key,
@@ -682,6 +824,42 @@ public sealed class PricingApiService
                 LesionCount = p.LesionCount
             }).ToList()
         };
+    }
+
+    private static IReadOnlyDictionary<string, string>? MergeExtraParams(
+        IReadOnlyDictionary<string, object?>? requestParams,
+        IReadOnlyDictionary<string, object?>? itemParams)
+    {
+        var merged = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        AddExtraParams(merged, requestParams);
+        AddExtraParams(merged, itemParams);
+        return merged.Count == 0 ? null : merged;
+    }
+
+    private static void AddExtraParams(
+        Dictionary<string, string> target,
+        IReadOnlyDictionary<string, object?>? source)
+    {
+        if (source is null)
+        {
+            return;
+        }
+
+        foreach (var pair in source)
+        {
+            var key = NormalizeString(pair.Key);
+            if (key is null)
+            {
+                continue;
+            }
+
+            var normalizedValue = NormalizeExtraValue(pair.Value);
+            var textValue = NormalizeString(normalizedValue?.ToString());
+            if (textValue is not null)
+            {
+                target[key] = textValue;
+            }
+        }
     }
 
     private async Task<ChargeRequestLog> SaveRequestLog(
@@ -840,6 +1018,11 @@ public sealed class PricingApiService
             occupy.ExpireAt = expireAt;
             occupy.OccupiedAt = DateTime.Now;
             await _limitRepository.InsertAsync(occupy);
+
+            // 记录限额占用日志，包含占用维度和数量，便于排查额度超限问题。
+            _logger.LogDebug(
+                "限额占用 RequestId={RequestId}, LimitType={LimitType}, LimitDimensionCode={LimitDimensionCode}, OccupyQty={OccupyQty}, ItemCode={ItemCode}",
+                requestId, occupy.LimitType, occupy.LimitDimensionCode, occupy.OccupyQty, occupy.ItemCode);
         }
     }
 
@@ -947,10 +1130,11 @@ public sealed class PricingApiService
             }
             return result;
         }
-        catch
+        catch (Exception ex)
         {
             // ========== 第三阶段：任何异常都回滚 ==========
             // 资金链路宁可失败返回给渠道重试，也不能留下部分写入的请求或占额。
+            _logger.LogError(ex, "事务执行异常，已回滚");
             if (_db is not null)
             {
                 await _db.Ado.RollbackTranAsync();

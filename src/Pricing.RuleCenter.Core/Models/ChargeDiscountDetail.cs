@@ -1,5 +1,3 @@
-using SqlSugar;
-
 namespace Pricing.RuleCenter.Core.Models;
 
 /// <summary>
@@ -23,7 +21,6 @@ namespace Pricing.RuleCenter.Core.Models;
 /// | REVERSED（冲正后）。主子项目同 resultGroupNo 原子 commit/cancel。
 /// </para>
 /// </remarks>
-[SugarTable("PR_CHARGE_DISCOUNT_DETAIL")]
 public sealed class ChargeDiscountDetail
 {
     /// <summary>
@@ -33,8 +30,7 @@ public sealed class ChargeDiscountDetail
     /// 对应 Oracle 列 DISCOUNT_ID，NUMBER 类型，由 SEQUENCE 生成。
     /// 全局唯一标识一条折扣明细记录。
     /// </remarks>
-    [SugarColumn(IsPrimaryKey = true, ColumnName = "DISCOUNT_ID")]
-    public long DiscountId { get; set; }
+        public long DiscountId { get; set; }
 
     /// <summary>
     /// 关联的计价请求日志主键。
@@ -43,8 +39,7 @@ public sealed class ChargeDiscountDetail
     /// 对应 PR_CHARGE_REQUEST_LOG.REQUEST_ID，用于串联请求、步骤、折价明细和限额占用四张表。
     /// 一条请求日志可以产生多条折扣明细（如多部位拆分、主子项目）。
     /// </remarks>
-    [SugarColumn(ColumnName = "REQUEST_ID")]
-    public long RequestId { get; set; }
+        public long RequestId { get; set; }
 
     /// <summary>
     /// 计价追踪号。
@@ -53,8 +48,7 @@ public sealed class ChargeDiscountDetail
     /// 全局唯一的追踪标识，用于跨表查看一次完整计价过程。
     /// 与 ChargeRequestLog.TraceId 一致。
     /// </remarks>
-    [SugarColumn(ColumnName = "TRACE_ID", IsNullable = true)]
-    public string? TraceId { get; set; }
+        public string? TraceId { get; set; }
 
     /// <summary>
     /// 收费单号。
@@ -63,8 +57,7 @@ public sealed class ChargeDiscountDetail
     /// 来源为 HIS 传入的收费单号，用于与 HIS 落账结果关联。
     /// 一张收费单可能包含多条收费明细。
     /// </remarks>
-    [SugarColumn(ColumnName = "CHARGE_NO", IsNullable = true)]
-    public string? ChargeNo { get; set; }
+        public string? ChargeNo { get; set; }
 
     /// <summary>
     /// 收费明细号。
@@ -73,8 +66,7 @@ public sealed class ChargeDiscountDetail
     /// 来源为 HIS 传入的收费明细号，用于定位单条收费项目。
     /// "单条"指单条收费明细，与"单次"（单次收费动作）不同。
     /// </remarks>
-    [SugarColumn(ColumnName = "CHARGE_DETAIL_NO", IsNullable = true)]
-    public string? ChargeDetailNo { get; set; }
+        public string? ChargeDetailNo { get; set; }
 
     /// <summary>
     /// 患者标识。
@@ -83,8 +75,7 @@ public sealed class ChargeDiscountDetail
     /// 限额累计和追溯查询的重要维度。
     /// 空值理论上不应出现。
     /// </remarks>
-    [SugarColumn(ColumnName = "PATIENT_ID", IsNullable = true)]
-    public string? PatientId { get; set; }
+        public string? PatientId { get; set; }
 
     /// <summary>
     /// 就诊标识。
@@ -92,8 +83,7 @@ public sealed class ChargeDiscountDetail
     /// <remarks>
     /// 可为空，存在时用于缩小追溯和对账范围。
     /// </remarks>
-    [SugarColumn(ColumnName = "VISIT_ID", IsNullable = true)]
-    public string? VisitId { get; set; }
+        public string? VisitId { get; set; }
 
     /// <summary>
     /// 项目编码。
@@ -102,8 +92,7 @@ public sealed class ChargeDiscountDetail
     /// 对应 HIS 物价主数据表 FIN_COM_UNDRUGINFO.ITEM_CODE。
     /// 是规则匹配、价格校验和限额累计的核心维度。
     /// </remarks>
-    [SugarColumn(ColumnName = "ITEM_CODE", IsNullable = true)]
-    public string? ItemCode { get; set; }
+        public string? ItemCode { get; set; }
 
     /// <summary>
     /// 项目名称。
@@ -112,8 +101,7 @@ public sealed class ChargeDiscountDetail
     /// 来源为 HIS 物价主数据，用于展示、审计和追溯说明。
     /// 非计算字段，仅用于可读性。
     /// </remarks>
-    [SugarColumn(ColumnName = "ITEM_NAME", IsNullable = true)]
-    public string? ItemName { get; set; }
+        public string? ItemName { get; set; }
 
     /// <summary>
     /// 产生本次折价结果的规则主键。
@@ -122,8 +110,7 @@ public sealed class ChargeDiscountDetail
     /// 关联 PR_RULE_HEADER.RULE_ID，用于追溯该折价是由哪条规则触发的。
     /// 空值表示未命中折价规则（普通计价，原价收费）。
     /// </remarks>
-    [SugarColumn(ColumnName = "RULE_ID", IsNullable = true)]
-    public long? RuleId { get; set; }
+        public long? RuleId { get; set; }
 
     /// <summary>
     /// 产生本次折价结果的规则版本号。
@@ -132,8 +119,7 @@ public sealed class ChargeDiscountDetail
     /// 关联 PR_RULE_VERSION.VERSION_NO，用于锁定产生折价时的规则版本，
     /// 便于后续版本回滚或变更时评估影响范围。
     /// </remarks>
-    [SugarColumn(ColumnName = "RULE_VERSION_NO", IsNullable = true)]
-    public int? RuleVersionNo { get; set; }
+        public int? RuleVersionNo { get; set; }
 
     /// <summary>
     /// 折价类型编码。
@@ -148,8 +134,7 @@ public sealed class ChargeDiscountDetail
     /// </list>
     /// 空值表示未命中折价规则。
     /// </remarks>
-    [SugarColumn(ColumnName = "DISCOUNT_TYPE", IsNullable = true)]
-    public string? DiscountType { get; set; }
+        public string? DiscountType { get; set; }
 
     /// <summary>
     /// 折扣明细记录状态。
@@ -165,8 +150,7 @@ public sealed class ChargeDiscountDetail
     /// </list>
     /// 默认值为 "PENDING"。
     /// </remarks>
-    [SugarColumn(ColumnName = "STATUS")]
-    public string Status { get; set; } = "PENDING";
+        public string Status { get; set; } = "PENDING";
 
     /// <summary>
     /// 主子项目同组结果号。
@@ -176,8 +160,7 @@ public sealed class ChargeDiscountDetail
     /// 同组的所有明细在同一 confirm 中一起提交，commit 和 cancel 也必须一起处理。
     /// 空值表示该明细不涉及主子项目关系。
     /// </remarks>
-    [SugarColumn(ColumnName = "RESULT_GROUP_NO", IsNullable = true)]
-    public string? ResultGroupNo { get; set; }
+        public string? ResultGroupNo { get; set; }
 
     /// <summary>
     /// 父折扣明细主键。
@@ -187,8 +170,7 @@ public sealed class ChargeDiscountDetail
     /// 例如：主项目的 DiscountId 作为子项目的 ParentDiscountId。
     /// 空值表示该明细是顶层记录，没有父级。
     /// </remarks>
-    [SugarColumn(ColumnName = "PARENT_DISCOUNT_ID", IsNullable = true)]
-    public long? ParentDiscountId { get; set; }
+        public long? ParentDiscountId { get; set; }
 
     /// <summary>
     /// 多部位或多片段计价时的片段序号。
@@ -198,8 +180,7 @@ public sealed class ChargeDiscountDetail
     /// PartSeq 从 1 开始递增，用于区分同一请求内的不同部位明细。
     /// 空值表示该项目不涉及多部位拆分。
     /// </remarks>
-    [SugarColumn(ColumnName = "PART_SEQ", IsNullable = true)]
-    public int? PartSeq { get; set; }
+        public int? PartSeq { get; set; }
 
     /// <summary>
     /// 原始数量。
@@ -209,8 +190,7 @@ public sealed class ChargeDiscountDetail
     /// 用于与 FinalQty 对比展示折价过程。
     /// 精度 NUMBER(18,4)。
     /// </remarks>
-    [SugarColumn(ColumnName = "ORIGINAL_QTY", IsNullable = true)]
-    public decimal? OriginalQty { get; set; }
+        public decimal? OriginalQty { get; set; }
 
     /// <summary>
     /// 换算后的计价数量。
@@ -221,8 +201,7 @@ public sealed class ChargeDiscountDetail
     /// 若未配置换算规则，该值等于 OriginalQty。
     /// 精度 NUMBER(18,4)。
     /// </remarks>
-    [SugarColumn(ColumnName = "CONVERTED_QTY", IsNullable = true)]
-    public decimal? ConvertedQty { get; set; }
+        public decimal? ConvertedQty { get; set; }
 
     /// <summary>
     /// 最终可收费数量。
@@ -233,8 +212,7 @@ public sealed class ChargeDiscountDetail
     /// 若超出限制，超出部分为 0（不是整单归零，不是拒单）。
     /// 精度 NUMBER(18,4)。
     /// </remarks>
-    [SugarColumn(ColumnName = "FINAL_QTY", IsNullable = true)]
-    public decimal? FinalQty { get; set; }
+        public decimal? FinalQty { get; set; }
 
     /// <summary>
     /// 项目单价。
@@ -244,8 +222,7 @@ public sealed class ChargeDiscountDetail
     /// confirm 阶段计价中心必须读取权威单价或强校验，不一致返回 PRICE_MISMATCH。
     /// 单位：元（人民币），精度 NUMBER(18,4)。
     /// </remarks>
-    [SugarColumn(ColumnName = "UNIT_PRICE", IsNullable = true)]
-    public decimal? UnitPrice { get; set; }
+        public decimal? UnitPrice { get; set; }
 
     /// <summary>
     /// 原始金额。
@@ -256,8 +233,7 @@ public sealed class ChargeDiscountDetail
     /// 中间计算字段，保留全部精度，不做取整。
     /// 单位：元（人民币），精度 NUMBER(18,4)。
     /// </remarks>
-    [SugarColumn(ColumnName = "ORIGINAL_AMT", IsNullable = true)]
-    public decimal? OriginalAmt { get; set; }
+        public decimal? OriginalAmt { get; set; }
 
     /// <summary>
     /// 公式或动作链中间计算金额。
@@ -268,8 +244,7 @@ public sealed class ChargeDiscountDetail
     /// 中间计算字段，保留全部精度，不做取整。
     /// 单位：元（人民币），精度 NUMBER(18,4)。
     /// </remarks>
-    [SugarColumn(ColumnName = "CALCULATED_AMT", IsNullable = true)]
-    public decimal? CalculatedAmt { get; set; }
+        public decimal? CalculatedAmt { get; set; }
 
     /// <summary>
     /// 最终收费金额。
@@ -280,8 +255,7 @@ public sealed class ChargeDiscountDetail
     /// 若项目超出限额，超出部分为 0 元。
     /// 单位：元（人民币），精度 NUMBER(18,4)。
     /// </remarks>
-    [SugarColumn(ColumnName = "FINAL_AMT", IsNullable = true)]
-    public decimal? FinalAmt { get; set; }
+        public decimal? FinalAmt { get; set; }
 
     /// <summary>
     /// 折价金额。
@@ -292,8 +266,7 @@ public sealed class ChargeDiscountDetail
     /// 用于 HIS 对账和审计，展示折价让利了多少。
     /// 单位：元（人民币），精度 NUMBER(18,4)。
     /// </remarks>
-    [SugarColumn(ColumnName = "DISCOUNT_AMT", IsNullable = true)]
-    public decimal? DiscountAmt { get; set; }
+        public decimal? DiscountAmt { get; set; }
 
     /// <summary>
     /// 折价原因编码。
@@ -302,8 +275,7 @@ public sealed class ChargeDiscountDetail
     /// 便于与规则或业务原因字典关联。
     /// 常见值：FORMULA（公式折算）、LIMIT_EXCEEDED（超限）、ZERO_EXCESS（超额归零）。
     /// </remarks>
-    [SugarColumn(ColumnName = "REASON_CODE", IsNullable = true)]
-    public string? ReasonCode { get; set; }
+        public string? ReasonCode { get; set; }
 
     /// <summary>
     /// 折价原因描述。
@@ -312,8 +284,7 @@ public sealed class ChargeDiscountDetail
     /// 面向追踪页面或对账说明展示的人类可读描述。
     /// 例如："超出日限额 3 次，超出部分为 0 元"。
     /// </remarks>
-    [SugarColumn(ColumnName = "REASON_DESC", IsNullable = true)]
-    public string? ReasonDesc { get; set; }
+        public string? ReasonDesc { get; set; }
 
     /// <summary>
     /// 限额计算依据快照 JSON。
@@ -323,8 +294,7 @@ public sealed class ChargeDiscountDetail
     /// 包含：已占用数量、已占用金额、时间窗口范围、同组项目列表等。
     /// Oracle 存储类型为 CLOB。
     /// </remarks>
-    [SugarColumn(ColumnName = "LIMIT_BASE_INFO", ColumnDataType = "CLOB", IsNullable = true)]
-    public string? LimitBaseInfo { get; set; }
+        public string? LimitBaseInfo { get; set; }
 
     /// <summary>
     /// 折价明细生成时间。
@@ -333,8 +303,7 @@ public sealed class ChargeDiscountDetail
     /// 由计价中心在 confirm 阶段自动填充。
     /// 用于审计和排序。
     /// </remarks>
-    [SugarColumn(ColumnName = "OCCURRED_AT")]
-    public DateTime OccurredAt { get; set; }
+        public DateTime OccurredAt { get; set; }
 
     /// <summary>
     /// 确认操作人或来源系统账号。
@@ -343,8 +312,7 @@ public sealed class ChargeDiscountDetail
     /// 记录 confirm 操作的执行者，用于审计。
     /// 可为空，空值表示来源系统未提供操作人信息。
     /// </remarks>
-    [SugarColumn(ColumnName = "CONFIRMED_BY", IsNullable = true)]
-    public string? ConfirmedBy { get; set; }
+        public string? ConfirmedBy { get; set; }
 
     /// <summary>
     /// HIS 成功落账并调用 commit 的时间。
@@ -354,8 +322,7 @@ public sealed class ChargeDiscountDetail
     /// 空值表示尚未 commit（仍为 PENDING 状态）。
     /// 用于审计和对账，确认 HIS 何时完成落账。
     /// </remarks>
-    [SugarColumn(ColumnName = "COMMITTED_AT", IsNullable = true)]
-    public DateTime? CommittedAt { get; set; }
+        public DateTime? CommittedAt { get; set; }
 
     /// <summary>
     /// 保护占用被取消的时间。
@@ -364,8 +331,7 @@ public sealed class ChargeDiscountDetail
     /// 由计价中心在 cancel 阶段填充。
     /// 空值表示未被取消。
     /// </remarks>
-    [SugarColumn(ColumnName = "CANCELLED_AT", IsNullable = true)]
-    public DateTime? CancelledAt { get; set; }
+        public DateTime? CancelledAt { get; set; }
 
     /// <summary>
     /// confirm 保护期过期并被清理的时间。
@@ -374,8 +340,7 @@ public sealed class ChargeDiscountDetail
     /// 由后台挂起清理任务（expire）在超时后填充。
     /// 防止 HIS 超时未调用 commit/cancel 导致额度被永久占用。
     /// </remarks>
-    [SugarColumn(ColumnName = "EXPIRED_AT", IsNullable = true)]
-    public DateTime? ExpiredAt { get; set; }
+        public DateTime? ExpiredAt { get; set; }
 
     /// <summary>
     /// 已提交折扣明细被冲正的时间。
@@ -385,6 +350,5 @@ public sealed class ChargeDiscountDetail
     /// 空值表示未被冲正。
     /// 退费规则：当日退费释放数量；隔日退费重收后按重收当天重新做额度校验。
     /// </remarks>
-    [SugarColumn(ColumnName = "REVERSED_AT", IsNullable = true)]
-    public DateTime? ReversedAt { get; set; }
+        public DateTime? ReversedAt { get; set; }
 }

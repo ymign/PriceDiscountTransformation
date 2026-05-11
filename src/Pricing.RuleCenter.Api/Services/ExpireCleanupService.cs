@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Options;
+﻿using Microsoft.Extensions.Options;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Options;
 using SqlSugar;
@@ -11,7 +11,7 @@ namespace Pricing.RuleCenter.Api.Services;
 /// <remarks>
 /// <para>
 /// 职责边界：该后台服务负责清理长时间停留在 CONFIRM_PENDING 的确认结果。
-/// 它的职责不是”批量改状态”这么简单，而是把请求日志、折价明细和限额占用三张资金表
+/// 它的职责不是"批量改状态"这么简单，而是把请求日志、折价明细和限额占用三张资金表
 /// 一起推进到 EXPIRED，释放 confirm 阶段的保护占用。
 /// </para>
 /// <para>

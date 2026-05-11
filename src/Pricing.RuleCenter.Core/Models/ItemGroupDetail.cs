@@ -1,5 +1,3 @@
-using SqlSugar;
-
 namespace Pricing.RuleCenter.Core.Models;
 
 /// <summary>
@@ -21,7 +19,6 @@ namespace Pricing.RuleCenter.Core.Models;
 /// </list>
 /// </para>
 /// </remarks>
-[SugarTable("PR_ITEM_GROUP_DETAIL")]
 public sealed class ItemGroupDetail
 {
     /// <summary>
@@ -31,8 +28,7 @@ public sealed class ItemGroupDetail
     /// 对应 Oracle 列 DETAIL_ID，NUMBER 类型，由 SEQUENCE 生成。
     /// 全局唯一标识一条项目组明细记录。
     /// </remarks>
-    [SugarColumn(IsPrimaryKey = true, ColumnName = "DETAIL_ID")]
-    public long DetailId { get; set; }
+        public long DetailId { get; set; }
 
     /// <summary>
     /// 所属项目组主键。
@@ -41,8 +37,7 @@ public sealed class ItemGroupDetail
     /// 对应 PR_ITEM_GROUP.GROUP_ID，标识该明细属于哪个项目组。
     /// 一个项目组可以包含多条明细（多个项目）。
     /// </remarks>
-    [SugarColumn(ColumnName = "GROUP_ID")]
-    public long GroupId { get; set; }
+        public long GroupId { get; set; }
 
     /// <summary>
     /// 项目编码。
@@ -52,8 +47,7 @@ public sealed class ItemGroupDetail
     /// 是规则匹配、价格校验和限额累计的核心维度。
     /// 同一项目组内同一项目编码不应重复。
     /// </remarks>
-    [SugarColumn(ColumnName = "ITEM_CODE")]
-    public string ItemCode { get; set; } = string.Empty;
+        public string ItemCode { get; set; } = string.Empty;
 
     /// <summary>
     /// 项目名称。
@@ -62,8 +56,7 @@ public sealed class ItemGroupDetail
     /// 来源为 HIS 物价主数据，用于工作台展示和审计。
     /// 非计算字段，仅用于可读性。
     /// </remarks>
-    [SugarColumn(ColumnName = "ITEM_NAME", IsNullable = true)]
-    public string? ItemName { get; set; }
+        public string? ItemName { get; set; }
 
     /// <summary>
     /// 项目在组内的角色类型。
@@ -77,8 +70,7 @@ public sealed class ItemGroupDetail
     /// 主子项目关系：子项加收必须与主项目同 resultGroupNo 原子 commit/cancel。
     /// 默认值为 "MAIN"。
     /// </remarks>
-    [SugarColumn(ColumnName = "ROLE_TYPE")]
-    public string RoleType { get; set; } = "MAIN";
+        public string RoleType { get; set; } = "MAIN";
 
     /// <summary>
     /// 排序号。
@@ -87,8 +79,7 @@ public sealed class ItemGroupDetail
     /// 数字越小越靠前展示。用于控制工作台项目列表的展示顺序。
     /// 默认值通常从 10 开始，间隔 10，便于插入。
     /// </remarks>
-    [SugarColumn(ColumnName = "SORT_NO")]
-    public int SortNo { get; set; }
+        public int SortNo { get; set; }
 
     /// <summary>
     /// 启用标识。
@@ -98,6 +89,5 @@ public sealed class ItemGroupDetail
     /// 禁用的明细不影响组内其他项目的匹配。
     /// 默认值为 "Y"。
     /// </remarks>
-    [SugarColumn(ColumnName = "IS_ENABLED")]
-    public string IsEnabled { get; set; } = "Y";
+        public string IsEnabled { get; set; } = "Y";
 }

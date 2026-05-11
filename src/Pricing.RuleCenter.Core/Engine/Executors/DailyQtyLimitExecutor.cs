@@ -1,14 +1,14 @@
-using Newtonsoft.Json;
+﻿using Newtonsoft.Json;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 
-namespace Pricing.RuleCenter.Api.Engine.Executors;
+namespace Pricing.RuleCenter.Core.Engine.Executors;
 
 /// <summary>
 /// DailyQtyLimitExecutor 规则动作执行器，负责执行一种可配置动作并把结果写回计价上下文。
 /// </summary>
 /// <remarks>
-/// 该执行器处理“同一患者同一项目自然日数量上限”。它与时间窗口执行器共享同一套
+/// 该执行器处理"同一患者同一项目自然日数量上限"。它与时间窗口执行器共享同一套
 /// PENDING + CONFIRMED 占额口径，区别只是窗口范围固定为业务收费日当天。
 /// </remarks>
 public sealed class DailyQtyLimitExecutor : IRuleActionExecutor

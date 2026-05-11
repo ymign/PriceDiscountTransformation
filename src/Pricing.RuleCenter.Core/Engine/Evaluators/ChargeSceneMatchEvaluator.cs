@@ -1,7 +1,7 @@
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 
-namespace Pricing.RuleCenter.Api.Engine.Evaluators;
+namespace Pricing.RuleCenter.Core.Engine.Evaluators;
 
 /// <summary>
 /// 收费场景匹配条件评估器。

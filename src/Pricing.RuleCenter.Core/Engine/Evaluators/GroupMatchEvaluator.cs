@@ -1,7 +1,7 @@
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 
-namespace Pricing.RuleCenter.Api.Engine.Evaluators;
+namespace Pricing.RuleCenter.Core.Engine.Evaluators;
 
 /// <summary>
 /// 项目组匹配条件评估器。
@@ -125,8 +125,14 @@ public sealed class GroupMatchEvaluator : IRuleConditionEvaluator
                 .GetAwaiter().GetResult();
 
             // 按项目编码匹配，不区分大小写。
-            return details.Any(d =>
+            var matched = details.Any(d =>
                 string.Equals(d.ItemCode, context.ItemCode, StringComparison.OrdinalIgnoreCase));
+            if (matched)
+            {
+                context.ItemGroupCode = group.GroupCode;
+            }
+
+            return matched;
         }
         catch
         {

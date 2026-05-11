@@ -1,5 +1,3 @@
-using SqlSugar;
-
 namespace Pricing.RuleCenter.Core.Models;
 
 /// <summary>
@@ -25,7 +23,6 @@ namespace Pricing.RuleCenter.Core.Models;
 /// 例如同组互斥项目只保留优先级最高的那条收费。
 /// </para>
 /// </remarks>
-[SugarTable("PR_RULE_ACTION")]
 public sealed class RuleAction
 {
     /// <summary>
@@ -35,8 +32,7 @@ public sealed class RuleAction
     /// 对应 Oracle 列 ACTION_ID，NUMBER 类型，由 SEQUENCE 生成。
     /// 全局唯一标识一条规则动作记录。
     /// </remarks>
-    [SugarColumn(IsPrimaryKey = true, ColumnName = "ACTION_ID")]
-    public long ActionId { get; set; }
+        public long ActionId { get; set; }
 
     /// <summary>
     /// 关联的规则主键。
@@ -45,8 +41,7 @@ public sealed class RuleAction
     /// 对应 PR_RULE_HEADER.RULE_ID，用于关联规则头、版本、条件、动作和追溯结果。
     /// 同一规则下可以有多条动作，按 SortNo 排序执行。
     /// </remarks>
-    [SugarColumn(ColumnName = "RULE_ID")]
-    public long RuleId { get; set; }
+        public long RuleId { get; set; }
 
     /// <summary>
     /// 规则版本号。
@@ -56,8 +51,7 @@ public sealed class RuleAction
     /// 同一规则的不同版本可以有不同的动作配置。
     /// 规则条件和动作的 VERSION_NO 必须对齐。
     /// </remarks>
-    [SugarColumn(ColumnName = "VERSION_NO")]
-    public int VersionNo { get; set; }
+        public int VersionNo { get; set; }
 
     /// <summary>
     /// 动作类型编码。
@@ -75,8 +69,7 @@ public sealed class RuleAction
     /// </list>
     /// 不可为空。
     /// </remarks>
-    [SugarColumn(ColumnName = "ACTION_TYPE")]
-    public string ActionType { get; set; } = string.Empty;
+        public string ActionType { get; set; } = string.Empty;
 
     /// <summary>
     /// 执行器编码。
@@ -86,8 +79,7 @@ public sealed class RuleAction
     /// 例如 ACTION_TYPE = FORMULA 时，ExecutorCode 指定使用哪个公式定义（PR_FORMULA_DEF.FORMULA_CODE）。
     /// 由计价引擎根据该编码查找对应的执行器实例。
     /// </remarks>
-    [SugarColumn(ColumnName = "EXECUTOR_CODE")]
-    public string ExecutorCode { get; set; } = string.Empty;
+        public string ExecutorCode { get; set; } = string.Empty;
 
     /// <summary>
     /// 扩展参数 JSON。
@@ -98,8 +90,7 @@ public sealed class RuleAction
     /// Oracle 存储类型为 CLOB，无原生 JSON 支持。
     /// 空值表示该动作不需要额外参数。
     /// </remarks>
-    [SugarColumn(ColumnName = "PARAMS_JSON", ColumnDataType = "CLOB", IsNullable = true)]
-    public string? ParamsJson { get; set; }
+        public string? ParamsJson { get; set; }
 
     /// <summary>
     /// 互斥组编码。
@@ -109,8 +100,7 @@ public sealed class RuleAction
     /// 例如同手术互斥：同一手术下的多个项目，只执行优先级最高的那条收费规则。
     /// 空值表示该动作不参与互斥判断。
     /// </remarks>
-    [SugarColumn(ColumnName = "EXCLUSIVE_GROUP", IsNullable = true)]
-    public string? ExclusiveGroup { get; set; }
+        public string? ExclusiveGroup { get; set; }
 
     /// <summary>
     /// 排序号。
@@ -121,8 +111,7 @@ public sealed class RuleAction
     /// 2. 互斥组内确定优先级（数字越小优先级越高）
     /// 默认值通常从 10 开始，间隔 10，便于插入。
     /// </remarks>
-    [SugarColumn(ColumnName = "SORT_NO")]
-    public int SortNo { get; set; }
+        public int SortNo { get; set; }
 
     /// <summary>
     /// 动作异常处理策略。
@@ -137,8 +126,7 @@ public sealed class RuleAction
     /// 资金相关动作（如 FORMULA、LIMIT_AMT）默认应为 STOP，防止异常导致金额错误。
     /// 默认值为 "STOP"。
     /// </remarks>
-    [SugarColumn(ColumnName = "ON_ERROR")]
-    public string OnError { get; set; } = "STOP";
+        public string OnError { get; set; } = "STOP";
 
     /// <summary>
     /// 启用标识。
@@ -149,6 +137,5 @@ public sealed class RuleAction
     /// 工作台可以通过该标识临时禁用某条动作而不删除。
     /// 默认值为 "Y"。
     /// </remarks>
-    [SugarColumn(ColumnName = "IS_ENABLED")]
-    public string IsEnabled { get; set; } = "Y";
+        public string IsEnabled { get; set; } = "Y";
 }

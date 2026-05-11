@@ -1,5 +1,3 @@
-using SqlSugar;
-
 namespace Pricing.RuleCenter.Core.Models;
 
 /// <summary>
@@ -26,7 +24,6 @@ namespace Pricing.RuleCenter.Core.Models;
 /// 不允许同一项目维护不同折价公式或不同折价额度规则。
 /// </para>
 /// </remarks>
-[SugarTable("PR_ITEM_GROUP")]
 public sealed class ItemGroup
 {
     /// <summary>
@@ -36,8 +33,7 @@ public sealed class ItemGroup
     /// 对应 Oracle 列 GROUP_ID，NUMBER 类型，由 SEQUENCE 生成。
     /// 全局唯一标识一条项目组记录。
     /// </remarks>
-    [SugarColumn(IsPrimaryKey = true, ColumnName = "GROUP_ID")]
-    public long GroupId { get; set; }
+        public long GroupId { get; set; }
 
     /// <summary>
     /// 项目组编码。
@@ -47,8 +43,7 @@ public sealed class ItemGroup
     /// 规则头的 GROUP_CODE 字段引用该编码。
     /// 例如：GROUP_001、MUTUAL_EXCLUSIVE_SKIN。
     /// </remarks>
-    [SugarColumn(ColumnName = "GROUP_CODE")]
-    public string GroupCode { get; set; } = string.Empty;
+        public string GroupCode { get; set; } = string.Empty;
 
     /// <summary>
     /// 项目组名称。
@@ -57,8 +52,7 @@ public sealed class ItemGroup
     /// 面向配置人员展示的中文名称。
     /// 例如：编码 "GROUP_001" 对应名称 "皮肤科治疗项目组"。
     /// </remarks>
-    [SugarColumn(ColumnName = "GROUP_NAME")]
-    public string GroupName { get; set; } = string.Empty;
+        public string GroupName { get; set; } = string.Empty;
 
     /// <summary>
     /// 项目组类型编码。
@@ -72,8 +66,7 @@ public sealed class ItemGroup
     /// </list>
     /// 该值应与 PR_DICT 中的 GROUP_TYPE 字典对应。
     /// </remarks>
-    [SugarColumn(ColumnName = "GROUP_TYPE")]
-    public string GroupType { get; set; } = string.Empty;
+        public string GroupType { get; set; } = string.Empty;
 
     /// <summary>
     /// 启用标识。
@@ -83,8 +76,7 @@ public sealed class ItemGroup
     /// 禁用的项目组不出现在工作台下拉列表中，但已引用的规则不受影响。
     /// 默认值为 "Y"。
     /// </remarks>
-    [SugarColumn(ColumnName = "IS_ENABLED")]
-    public string IsEnabled { get; set; } = "Y";
+        public string IsEnabled { get; set; } = "Y";
 
     /// <summary>
     /// 项目组备注。
@@ -92,8 +84,7 @@ public sealed class ItemGroup
     /// <remarks>
     /// 配置人员填写的补充说明，用于解释项目组的用途或特殊含义。
     /// </remarks>
-    [SugarColumn(ColumnName = "REMARK", IsNullable = true)]
-    public string? Remark { get; set; }
+        public string? Remark { get; set; }
 
     /// <summary>
     /// 创建人。
@@ -101,8 +92,7 @@ public sealed class ItemGroup
     /// <remarks>
     /// 来源为工作台登录用户，用于审计。
     /// </remarks>
-    [SugarColumn(ColumnName = "CREATED_BY", IsNullable = true)]
-    public string? CreatedBy { get; set; }
+        public string? CreatedBy { get; set; }
 
     /// <summary>
     /// 记录创建时间。
@@ -110,8 +100,7 @@ public sealed class ItemGroup
     /// <remarks>
     /// 由计价中心自动填充，用于审计和排序。
     /// </remarks>
-    [SugarColumn(ColumnName = "CREATED_AT")]
-    public DateTime CreatedAt { get; set; }
+        public DateTime CreatedAt { get; set; }
 
     /// <summary>
     /// 最后修改人。
@@ -119,8 +108,7 @@ public sealed class ItemGroup
     /// <remarks>
     /// 来源为工作台登录用户，用于审计。
     /// </remarks>
-    [SugarColumn(ColumnName = "UPDATED_BY", IsNullable = true)]
-    public string? UpdatedBy { get; set; }
+        public string? UpdatedBy { get; set; }
 
     /// <summary>
     /// 记录最后更新时间。
@@ -128,6 +116,5 @@ public sealed class ItemGroup
     /// <remarks>
     /// 由计价中心在每次更新时自动填充，用于乐观锁和审计。
     /// </remarks>
-    [SugarColumn(ColumnName = "UPDATED_AT")]
-    public DateTime UpdatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
 }

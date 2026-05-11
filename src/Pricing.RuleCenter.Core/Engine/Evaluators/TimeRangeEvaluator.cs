@@ -1,7 +1,7 @@
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 
-namespace Pricing.RuleCenter.Api.Engine.Evaluators;
+namespace Pricing.RuleCenter.Core.Engine.Evaluators;
 
 /// <summary>
 /// 业务时间范围条件评估器。

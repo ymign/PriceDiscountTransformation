@@ -26,6 +26,8 @@ namespace Pricing.RuleCenter.Api.Controllers;
 /// <list type="number">
 ///   <item>数据库连通性 — 执行最小化 SQL 查询验证 Oracle 连接池可用</item>
 ///   <item>PR_DICT 表可访问性 — 验证核心基础表存在且可查询</item>
+///   <item>PR_RULE_HEADER 表可访问性 — 验证规则配置表存在且可查询</item>
+///   <item>服务启动时间 — 用于排查服务是否意外重启</item>
 ///   <item>服务端时间 — 用于排查跨时区或时钟偏移问题</item>
 /// </list>
 /// </para>
@@ -47,6 +49,12 @@ public sealed class HealthController : ControllerBase
     private readonly ISqlSugarClient _db;
 
     /// <summary>
+    /// 服务启动时间戳，用于计算服务运行时长和排查意外重启。
+    /// 在控制器实例化时记录，与进程启动时间基本一致。
+    /// </summary>
+    private static readonly DateTime _startedAt = DateTime.Now;
+
+    /// <summary>
     /// 构造函数，通过依赖注入获取 SqlSugar 数据库客户端。
     /// </summary>
     /// <param name="db">SqlSugar 数据库客户端（<see cref="ISqlSugarClient"/>）。</param>
@@ -64,7 +72,8 @@ public sealed class HealthController : ControllerBase
     /// 检查逻辑：
     /// <list type="number">
     ///   <item>执行 <c>SELECT COUNT(*) FROM PR_DICT WHERE ROWNUM = 1</c> 验证数据库连接和 PR_DICT 表可访问</item>
-    ///   <item>查询成功则标记 Database = "connected"，DictTableReady = true</item>
+    ///   <item>执行 <c>SELECT COUNT(*) FROM PR_RULE_HEADER WHERE ROWNUM = 1</c> 验证规则配置表可访问</item>
+    ///   <item>查询成功则标记 Database = "connected"，DictTableReady / RuleHeaderReady = true</item>
     ///   <item>查询失败则标记 Database = "error: {message}"，异常信息仅包含消息不包含堆栈（安全考虑）</item>
     ///   <item>根据 Database 状态自动计算 Status：connected → "healthy"，否则 → "unhealthy"</item>
     /// </list>
@@ -76,6 +85,8 @@ public sealed class HealthController : ControllerBase
     ///   <item><c>Status</c> — 综合健康状态（"healthy" 或 "unhealthy"）</item>
     ///   <item><c>Database</c> — 数据库连接状态描述</item>
     ///   <item><c>DictTableReady</c> — PR_DICT 表是否可访问</item>
+    ///   <item><c>RuleHeaderReady</c> — PR_RULE_HEADER 表是否可访问</item>
+    ///   <item><c>UptimeSeconds</c> — 服务已运行秒数</item>
     ///   <item><c>ServerTime</c> — 服务端当前时间（用于时钟偏移排查）</item>
     /// </list>
     /// </returns>
@@ -86,16 +97,27 @@ public sealed class HealthController : ControllerBase
 
         try
         {
-            // 执行最小化查询：仅取一行验证连接可用，避免全表扫描
-            var count = await _db.Ado.GetIntAsync(
+            // ========== 第一阶段：验证数据库连通性 ==========
+            // 执行最小化查询：仅取一行验证连接可用，避免全表扫描。
+            // PR_DICT 是核心基础字典表，几乎所有计价操作都依赖它，用它作为连通性探针最合适。
+            var dictCount = await _db.Ado.GetIntAsync(
                 "SELECT COUNT(*) FROM PR_DICT WHERE ROWNUM = 1");
             result.Database = "connected";
             // count >= 0 表示查询成功（即使表为空也返回 0）
-            result.DictTableReady = count >= 0;
+            result.DictTableReady = dictCount >= 0;
+
+            // ========== 第二阶段：验证规则配置表可访问性 ==========
+            // PR_RULE_HEADER 是规则配置主表，计价引擎的核心依赖。
+            // 健康检查同时验证两张表，可以更准确地反映服务的真实可用性——
+            // 如果 PR_DICT 可访问但 PR_RULE_HEADER 不可访问，说明规则配置功能降级。
+            var headerCount = await _db.Ado.GetIntAsync(
+                "SELECT COUNT(*) FROM PR_RULE_HEADER WHERE ROWNUM = 1");
+            result.RuleHeaderReady = headerCount >= 0;
         }
         catch (Exception ex)
         {
-            // 异常仅记录消息，不暴露堆栈信息（安全考虑）
+            // 异常仅记录消息，不暴露堆栈信息（安全考虑）。
+            // 堆栈可能包含连接字符串片段或内部路径，不应对外暴露。
             result.Database = $"error: {ex.Message}";
         }
 
@@ -111,6 +133,8 @@ public sealed class HealthController : ControllerBase
 /// </summary>
 public sealed class HealthResult
 {
+    private static readonly DateTime _startedAt = DateTime.Now;
+
     /// <summary>
     /// 综合健康状态。根据数据库连接状态自动计算：
     /// <list type="bullet">
@@ -127,8 +151,20 @@ public sealed class HealthResult
 
     /// <summary>
     /// PR_DICT 表是否可访问。true 表示表存在且可查询，false 表示查询失败。
+    /// PR_DICT 是核心基础字典表，不可访问意味着大部分计价功能将异常。
     /// </summary>
     public bool DictTableReady { get; set; }
+
+    /// <summary>
+    /// PR_RULE_HEADER 表是否可访问。true 表示规则配置表正常，false 表示规则相关功能可能降级。
+    /// </summary>
+    public bool RuleHeaderReady { get; set; }
+
+    /// <summary>
+    /// 服务已运行的秒数。由当前时间减去进程启动时间计算。
+    /// 用于排查服务是否意外重启（如运行时长远小于预期）。
+    /// </summary>
+    public double UptimeSeconds => (DateTime.Now - _startedAt).TotalSeconds;
 
     /// <summary>
     /// 生成健康检查结果时的服务端时间（只读）。

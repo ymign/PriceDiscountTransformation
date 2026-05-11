@@ -43,6 +43,11 @@ public interface IPricingEngine
     /// - 调用类型（CallType：试算/确认/提交/取消/冲正）
     /// - 多部位明细（pricingParts），用于多肿物、多部位、多面积项目的精确计价
     /// </param>
+    /// <param name="batchContext">
+    /// 批量计价共享上下文，可选。当一批请求包含多个项目时传入，
+    /// 确保同批内限额累计、同组互斥和同手术封顶的跨项目判断正确。
+    /// 为空时按单项目模式计算，不做跨项目共享。
+    /// </param>
     /// <returns>
     /// 计价结果，包含：
     /// - 原始金额、折后金额、折扣率
@@ -50,5 +55,5 @@ public interface IPricingEngine
     /// - 计算步骤追溯信息（用于追溯查询接口）
     /// - 匹配到的规则版本信息
     /// </returns>
-    Task<PricingResult> CalculateAsync(PricingContext context);
+    Task<PricingResult> CalculateAsync(PricingContext context, BatchPricingContext? batchContext = null);
 }

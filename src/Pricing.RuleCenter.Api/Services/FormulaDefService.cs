@@ -1,4 +1,4 @@
-using Pricing.RuleCenter.Api.Dto;
+﻿using Pricing.RuleCenter.Api.Dto;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 
@@ -9,7 +9,7 @@ namespace Pricing.RuleCenter.Api.Services;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 职责边界：公式定义不是直接计算价格的地方。它保存”公式编码、执行器编码、参数结构”等元数据，
+/// 职责边界：公式定义不是直接计算价格的地方。它保存"公式编码、执行器编码、参数结构"等元数据，
 /// 供规则动作配置页面约束用户输入，并在计价引擎运行时通过 ExecutorCode 找到对应的
 /// IFormulaExecutor 实现完成实际计算。
 /// </para>
@@ -140,7 +140,7 @@ public sealed class FormulaDefService
     public async Task ToggleAsync(long formulaId)
     {
         // ========== 第一阶段：读取当前状态 ==========
-        // 这里采用显式查询后切换，便于返回“不存在”的业务错误，而不是静默影响 0 行。
+        // 这里采用显式查询后切换，便于返回"不存在"的业务错误，而不是静默影响 0 行。
         var entity = await _repository.GetByIdAsync(formulaId)
             ?? throw new KeyNotFoundException($"公式定义不存在: {formulaId}");
 

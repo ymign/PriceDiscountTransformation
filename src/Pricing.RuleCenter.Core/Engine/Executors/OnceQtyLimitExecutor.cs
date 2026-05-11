@@ -1,14 +1,14 @@
-using Newtonsoft.Json;
+﻿using Newtonsoft.Json;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 
-namespace Pricing.RuleCenter.Api.Engine.Executors;
+namespace Pricing.RuleCenter.Core.Engine.Executors;
 
 /// <summary>
 /// 单次收费动作数量限制执行器。
 /// </summary>
 /// <remarks>
-/// “单次”按单次收费动作统计，维度为来源系统 + 稳定业务请求号 + 项目编码。它不能用收费明细号作为
+/// "单次"按单次收费动作统计，维度为来源系统 + 稳定业务请求号 + 项目编码。它不能用收费明细号作为
 /// 维度，否则一次结算内同一项目多条费用会绕过单次上限。
 /// </remarks>
 public sealed class OnceQtyLimitExecutor : IRuleActionExecutor

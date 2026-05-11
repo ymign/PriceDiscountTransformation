@@ -1,5 +1,3 @@
-using SqlSugar;
-
 namespace Pricing.RuleCenter.Core.Models;
 
 /// <summary>
@@ -26,7 +24,6 @@ namespace Pricing.RuleCenter.Core.Models;
 /// </list>
 /// </para>
 /// </remarks>
-[SugarTable("PR_RULE_HEADER")]
 public sealed class RuleHeader
 {
     /// <summary>
@@ -36,7 +33,6 @@ public sealed class RuleHeader
     /// 对应 Oracle 列 RULE_ID，NUMBER 类型，由 SEQUENCE 生成。
     /// 全局唯一标识一条规则，是关联规则头、版本、条件、动作和追溯结果的核心外键。
     /// </remarks>
-    [SugarColumn(IsPrimaryKey = true, ColumnName = "RULE_ID")]
     public long RuleId { get; set; }
 
     /// <summary>
@@ -47,7 +43,6 @@ public sealed class RuleHeader
     /// 格式建议：RULE_ + 分类缩写 + 序号，如 RULE_DISCOUNT_001。
     /// 修改编码需评估所有引用该规则的追溯记录。
     /// </remarks>
-    [SugarColumn(ColumnName = "RULE_CODE")]
     public string RuleCode { get; set; } = string.Empty;
 
     /// <summary>
@@ -57,7 +52,6 @@ public sealed class RuleHeader
     /// 面向配置人员展示的中文名称，用于工作台展示和审计。
     /// 例如："皮肤科治疗项目折价规则"。
     /// </remarks>
-    [SugarColumn(ColumnName = "RULE_NAME")]
     public string RuleName { get; set; } = string.Empty;
 
     /// <summary>
@@ -73,7 +67,6 @@ public sealed class RuleHeader
     /// </list>
     /// 默认值为 "MIXED"。该值应与 PR_DICT 中的 RULE_CATEGORY 字典对应。
     /// </remarks>
-    [SugarColumn(ColumnName = "RULE_CATEGORY")]
     public string RuleCategory { get; set; } = "MIXED";
 
     /// <summary>
@@ -88,7 +81,6 @@ public sealed class RuleHeader
     /// </list>
     /// 默认值为 "ITEM"。
     /// </remarks>
-    [SugarColumn(ColumnName = "RULE_SCOPE")]
     public string RuleScope { get; set; } = "ITEM";
 
     /// <summary>
@@ -99,7 +91,6 @@ public sealed class RuleHeader
     /// 当 RULE_SCOPE = "ITEM" 时，该字段指定规则针对哪个项目。
     /// 空值表示该规则不针对特定项目（如按项目组或场景匹配）。
     /// </remarks>
-    [SugarColumn(ColumnName = "ITEM_CODE", IsNullable = true)]
     public string? ItemCode { get; set; }
 
     /// <summary>
@@ -109,7 +100,6 @@ public sealed class RuleHeader
     /// 来源为 HIS 物价主数据，用于工作台展示和审计。
     /// 非计算字段，仅用于可读性。
     /// </remarks>
-    [SugarColumn(ColumnName = "ITEM_NAME", IsNullable = true)]
     public string? ItemName { get; set; }
 
     /// <summary>
@@ -120,7 +110,6 @@ public sealed class RuleHeader
     /// 当 RULE_SCOPE = "GROUP" 时，该字段指定规则针对哪个项目组。
     /// 空值表示该规则不针对特定项目组。
     /// </remarks>
-    [SugarColumn(ColumnName = "GROUP_CODE", IsNullable = true)]
     public string? GroupCode { get; set; }
 
     /// <summary>
@@ -131,7 +120,6 @@ public sealed class RuleHeader
     /// 当同一项目命中多条规则时，按优先级排序执行。
     /// 默认值为 100，建议间隔 10，便于插入。
     /// </remarks>
-    [SugarColumn(ColumnName = "PRIORITY")]
     public int Priority { get; set; } = 100;
 
     /// <summary>
@@ -142,7 +130,6 @@ public sealed class RuleHeader
     /// 由规则生命周期服务在发布或回滚时维护。
     /// 0 或特殊值表示该规则尚未发布任何版本。
     /// </remarks>
-    [SugarColumn(ColumnName = "CURRENT_VERSION")]
     public int CurrentVersion { get; set; }
 
     /// <summary>
@@ -158,7 +145,6 @@ public sealed class RuleHeader
     /// </list>
     /// 默认值为 "DRAFT"。
     /// </remarks>
-    [SugarColumn(ColumnName = "STATUS")]
     public string Status { get; set; } = "DRAFT";
 
     /// <summary>
@@ -170,7 +156,6 @@ public sealed class RuleHeader
     /// 与 STATUS 的区别：STATUS 描述生命周期，IS_ENABLED 描述是否参与匹配。
     /// 默认值为 "Y"。
     /// </remarks>
-    [SugarColumn(ColumnName = "IS_ENABLED")]
     public string IsEnabled { get; set; } = "Y";
 
     /// <summary>
@@ -182,7 +167,6 @@ public sealed class RuleHeader
     /// 规则生效期判断必须使用业务收费发生时间（BusinessChargeTime），
     /// 不得使用技术占用时间替代。
     /// </remarks>
-    [SugarColumn(ColumnName = "EFFECTIVE_FROM", IsNullable = true)]
     public DateTime? EffectiveFrom { get; set; }
 
     /// <summary>
@@ -192,7 +176,6 @@ public sealed class RuleHeader
     /// 规则的生效结束时间，业务收费时间晚于该时间的请求不匹配该规则。
     /// 空值表示未设失效时间（长期有效）。
     /// </remarks>
-    [SugarColumn(ColumnName = "EFFECTIVE_TO", IsNullable = true)]
     public DateTime? EffectiveTo { get; set; }
 
     /// <summary>
@@ -216,7 +199,6 @@ public sealed class RuleHeader
     /// 空值行为：NULL 等价于 <c>STOP_CHARGE</c>（最安全策略）。
     /// </para>
     /// </remarks>
-    [SugarColumn(ColumnName = "ROLLBACK_MODE", IsNullable = true)]
     public string? RollbackMode { get; set; }
 
     /// <summary>
@@ -226,7 +208,6 @@ public sealed class RuleHeader
     /// 配置人员或开发人员填写的补充说明。
     /// 例如："该规则根据收费处 2026 年 5 月通知新增"。
     /// </remarks>
-    [SugarColumn(ColumnName = "REMARK", IsNullable = true)]
     public string? Remark { get; set; }
 
     /// <summary>
@@ -235,7 +216,6 @@ public sealed class RuleHeader
     /// <remarks>
     /// 来源为工作台登录用户，用于审计。
     /// </remarks>
-    [SugarColumn(ColumnName = "CREATED_BY", IsNullable = true)]
     public string? CreatedBy { get; set; }
 
     /// <summary>
@@ -244,7 +224,6 @@ public sealed class RuleHeader
     /// <remarks>
     /// 由计价中心自动填充，用于审计和排序。
     /// </remarks>
-    [SugarColumn(ColumnName = "CREATED_AT")]
     public DateTime CreatedAt { get; set; }
 
     /// <summary>
@@ -253,7 +232,6 @@ public sealed class RuleHeader
     /// <remarks>
     /// 来源为工作台登录用户，用于审计。
     /// </remarks>
-    [SugarColumn(ColumnName = "UPDATED_BY", IsNullable = true)]
     public string? UpdatedBy { get; set; }
 
     /// <summary>
@@ -262,6 +240,5 @@ public sealed class RuleHeader
     /// <remarks>
     /// 由计价中心在每次更新时自动填充，用于乐观锁和审计。
     /// </remarks>
-    [SugarColumn(ColumnName = "UPDATED_AT")]
     public DateTime UpdatedAt { get; set; }
 }

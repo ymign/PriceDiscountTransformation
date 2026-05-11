@@ -1,5 +1,3 @@
-using SqlSugar;
-
 namespace Pricing.RuleCenter.Core.Models;
 
 /// <summary>
@@ -34,7 +32,6 @@ namespace Pricing.RuleCenter.Core.Models;
 /// </list>
 /// </para>
 /// </remarks>
-[SugarTable("PR_CHARGE_TRACE_STEP")]
 public sealed class ChargeTraceStep
 {
     /// <summary>
@@ -44,8 +41,7 @@ public sealed class ChargeTraceStep
     /// 对应 Oracle 列 STEP_ID，NUMBER 类型，由 SEQUENCE 生成。
     /// 全局唯一标识一条计价步骤记录。
     /// </remarks>
-    [SugarColumn(IsPrimaryKey = true, ColumnName = "STEP_ID")]
-    public long StepId { get; set; }
+        public long StepId { get; set; }
 
     /// <summary>
     /// 关联的计价请求日志主键。
@@ -54,8 +50,7 @@ public sealed class ChargeTraceStep
     /// 对应 PR_CHARGE_REQUEST_LOG.REQUEST_ID，用于串联请求、步骤、折价明细和限额占用四张表。
     /// 一条请求日志可以产生多条追踪步骤。
     /// </remarks>
-    [SugarColumn(ColumnName = "REQUEST_ID")]
-    public long RequestId { get; set; }
+        public long RequestId { get; set; }
 
     /// <summary>
     /// 计价追踪号。
@@ -64,8 +59,7 @@ public sealed class ChargeTraceStep
     /// 全局唯一的追踪标识，用于跨表查看一次完整计价过程。
     /// 与 ChargeRequestLog.TraceId 一致。
     /// </remarks>
-    [SugarColumn(ColumnName = "TRACE_ID", IsNullable = true)]
-    public string? TraceId { get; set; }
+        public string? TraceId { get; set; }
 
     /// <summary>
     /// 步骤序号。
@@ -75,8 +69,7 @@ public sealed class ChargeTraceStep
     /// 顺序为：MATCH → CONVERT → FORMULA → LIMIT → DISCOUNT → VALIDATE。
     /// 前端按 StepNo 排序展示完整的计算过程。
     /// </remarks>
-    [SugarColumn(ColumnName = "STEP_NO")]
-    public int StepNo { get; set; }
+        public int StepNo { get; set; }
 
     /// <summary>
     /// 步骤名称。
@@ -85,8 +78,7 @@ public sealed class ChargeTraceStep
     /// 人类可读的步骤名称，用于追溯页面展示。
     /// 例如："规则匹配"、"双单位换算"、"公式计算"、"日数量限额校验"。
     /// </remarks>
-    [SugarColumn(ColumnName = "STEP_NAME")]
-    public string StepName { get; set; } = string.Empty;
+        public string StepName { get; set; } = string.Empty;
 
     /// <summary>
     /// 步骤类型编码。
@@ -95,8 +87,7 @@ public sealed class ChargeTraceStep
     /// 只使用 DDL 允许的值：MATCH、CONVERT、FORMULA、LIMIT、DISCOUNT、VALIDATE、ERROR。
     /// 决定前端如何渲染该步骤（如 MATCH 步骤显示规则列表，LIMIT 步骤显示额度进度条）。
     /// </remarks>
-    [SugarColumn(ColumnName = "STEP_TYPE")]
-    public string StepType { get; set; } = string.Empty;
+        public string StepType { get; set; } = string.Empty;
 
     /// <summary>
     /// 产生该步骤的规则主键。
@@ -105,8 +96,7 @@ public sealed class ChargeTraceStep
     /// 关联 PR_RULE_HEADER.RULE_ID，用于追溯该步骤是由哪条规则触发的。
     /// 部分步骤类型（如 VALIDATE）可能不关联规则，此时为空。
     /// </remarks>
-    [SugarColumn(ColumnName = "RULE_ID", IsNullable = true)]
-    public long? RuleId { get; set; }
+        public long? RuleId { get; set; }
 
     /// <summary>
     /// 产生该步骤的规则版本号。
@@ -115,8 +105,7 @@ public sealed class ChargeTraceStep
     /// 关联 PR_RULE_VERSION.VERSION_NO，用于锁定产生步骤时的规则版本。
     /// 便于后续版本回滚或变更时评估影响范围。
     /// </remarks>
-    [SugarColumn(ColumnName = "RULE_VERSION_NO", IsNullable = true)]
-    public int? RuleVersionNo { get; set; }
+        public int? RuleVersionNo { get; set; }
 
     /// <summary>
     /// 步骤执行前的输入快照 JSON。
@@ -126,8 +115,7 @@ public sealed class ChargeTraceStep
     /// 例如：FORMULA 步骤的输入快照包含换算后数量、单价、公式参数等。
     /// Oracle 存储类型为 CLOB，无原生 JSON 支持。
     /// </remarks>
-    [SugarColumn(ColumnName = "INPUT_SNAPSHOT", ColumnDataType = "CLOB", IsNullable = true)]
-    public string? InputSnapshot { get; set; }
+        public string? InputSnapshot { get; set; }
 
     /// <summary>
     /// 步骤执行后的输出快照 JSON。
@@ -137,8 +125,7 @@ public sealed class ChargeTraceStep
     /// 例如：FORMULA 步骤的输出快照包含计算后的金额。
     /// Oracle 存储类型为 CLOB，无原生 JSON 支持。
     /// </remarks>
-    [SugarColumn(ColumnName = "OUTPUT_SNAPSHOT", ColumnDataType = "CLOB", IsNullable = true)]
-    public string? OutputSnapshot { get; set; }
+        public string? OutputSnapshot { get; set; }
 
     /// <summary>
     /// 步骤说明。
@@ -152,8 +139,7 @@ public sealed class ChargeTraceStep
     /// <item>DISCOUNT — "原始金额 100.00 元，折后金额 80.00 元，折让 20.00 元"</item>
     /// </list>
     /// </remarks>
-    [SugarColumn(ColumnName = "STEP_DESC", IsNullable = true)]
-    public string? StepDesc { get; set; }
+        public string? StepDesc { get; set; }
 
     /// <summary>
     /// 记录创建时间。
@@ -161,6 +147,5 @@ public sealed class ChargeTraceStep
     /// <remarks>
     /// 由计价中心自动填充，用于审计和排序。
     /// </remarks>
-    [SugarColumn(ColumnName = "CREATED_AT")]
-    public DateTime CreatedAt { get; set; }
+        public DateTime CreatedAt { get; set; }
 }

@@ -1,5 +1,3 @@
-using SqlSugar;
-
 namespace Pricing.RuleCenter.Core.Models;
 
 /// <summary>
@@ -26,7 +24,6 @@ namespace Pricing.RuleCenter.Core.Models;
 /// 新增条件类型只需新增评估器（IRuleConditionEvaluator），无需修改各渠道代码。
 /// </para>
 /// </remarks>
-[SugarTable("PR_RULE_CONDITION")]
 public sealed class RuleCondition
 {
     /// <summary>
@@ -36,8 +33,7 @@ public sealed class RuleCondition
     /// 对应 Oracle 列 CONDITION_ID，NUMBER 类型，由 SEQUENCE 生成。
     /// 全局唯一标识一条规则条件记录。
     /// </remarks>
-    [SugarColumn(IsPrimaryKey = true, ColumnName = "CONDITION_ID")]
-    public long ConditionId { get; set; }
+        public long ConditionId { get; set; }
 
     /// <summary>
     /// 关联的规则主键。
@@ -46,8 +42,7 @@ public sealed class RuleCondition
     /// 对应 PR_RULE_HEADER.RULE_ID，用于关联规则头、版本、条件、动作和追溯结果。
     /// 同一规则下可以有多条条件，按 ConditionGroup 分组聚合。
     /// </remarks>
-    [SugarColumn(ColumnName = "RULE_ID")]
-    public long RuleId { get; set; }
+        public long RuleId { get; set; }
 
     /// <summary>
     /// 规则版本号。
@@ -57,8 +52,7 @@ public sealed class RuleCondition
     /// 同一规则的不同版本可以有不同的条件配置。
     /// 规则条件和动作的 VERSION_NO 必须对齐。
     /// </remarks>
-    [SugarColumn(ColumnName = "VERSION_NO")]
-    public int VersionNo { get; set; }
+        public int VersionNo { get; set; }
 
     /// <summary>
     /// 条件组编码。
@@ -69,8 +63,7 @@ public sealed class RuleCondition
     /// 例如：条件组 A 判断"门诊场景 AND 特定项目"，条件组 B 判断"住院场景 AND 特定部位"，
     /// 满足 A 或 B 任一组即命中规则。
     /// </remarks>
-    [SugarColumn(ColumnName = "CONDITION_GROUP")]
-    public string ConditionGroup { get; set; } = "DEFAULT";
+        public string ConditionGroup { get; set; } = "DEFAULT";
 
     /// <summary>
     /// 条件类型编码。
@@ -87,8 +80,7 @@ public sealed class RuleCondition
     /// </list>
     /// 不可为空。
     /// </remarks>
-    [SugarColumn(ColumnName = "CONDITION_TYPE")]
-    public string ConditionType { get; set; } = string.Empty;
+        public string ConditionType { get; set; } = string.Empty;
 
     /// <summary>
     /// 比较运算符。
@@ -105,8 +97,7 @@ public sealed class RuleCondition
     /// </list>
     /// 默认值为 "EQ"。
     /// </remarks>
-    [SugarColumn(ColumnName = "OPERATOR_TYPE", IsNullable = true)]
-    public string? OperatorType { get; set; } = "EQ";
+        public string? OperatorType { get; set; } = "EQ";
 
     /// <summary>
     /// 条件左值字段名。
@@ -116,8 +107,7 @@ public sealed class RuleCondition
     /// 由条件评估器根据该字段名从请求上下文中提取实际值。
     /// 空值表示该条件类型不需要左值（如自定义条件）。
     /// </remarks>
-    [SugarColumn(ColumnName = "LEFT_KEY", IsNullable = true)]
-    public string? LeftKey { get; set; }
+        public string? LeftKey { get; set; }
 
     /// <summary>
     /// 条件右值。
@@ -132,8 +122,7 @@ public sealed class RuleCondition
     /// </list>
     /// 空值表示该条件类型不需要右值（如 IS_NULL 判断）。
     /// </remarks>
-    [SugarColumn(ColumnName = "RIGHT_VALUE", IsNullable = true)]
-    public string? RightValue { get; set; }
+        public string? RightValue { get; set; }
 
     /// <summary>
     /// 扩展参数 JSON。
@@ -143,8 +132,7 @@ public sealed class RuleCondition
     /// Oracle 存储类型为 CLOB，无原生 JSON 支持。
     /// 空值表示该条件不需要额外参数。
     /// </remarks>
-    [SugarColumn(ColumnName = "PARAMS_JSON", ColumnDataType = "CLOB", IsNullable = true)]
-    public string? ParamsJson { get; set; }
+        public string? ParamsJson { get; set; }
 
     /// <summary>
     /// 排序号。
@@ -155,8 +143,7 @@ public sealed class RuleCondition
     /// 2. 追踪展示时按顺序列出匹配的条件
     /// 默认值通常从 10 开始，间隔 10，便于插入。
     /// </remarks>
-    [SugarColumn(ColumnName = "SORT_NO")]
-    public int SortNo { get; set; }
+        public int SortNo { get; set; }
 
     /// <summary>
     /// 启用标识。
@@ -167,6 +154,5 @@ public sealed class RuleCondition
     /// 工作台可以通过该标识临时禁用某条条件而不删除。
     /// 默认值为 "Y"。
     /// </remarks>
-    [SugarColumn(ColumnName = "IS_ENABLED")]
-    public string IsEnabled { get; set; } = "Y";
+        public string IsEnabled { get; set; } = "Y";
 }

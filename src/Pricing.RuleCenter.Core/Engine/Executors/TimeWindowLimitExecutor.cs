@@ -1,14 +1,14 @@
-using Newtonsoft.Json;
+﻿using Newtonsoft.Json;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 
-namespace Pricing.RuleCenter.Api.Engine.Executors;
+namespace Pricing.RuleCenter.Core.Engine.Executors;
 
 /// <summary>
 /// TimeWindowLimitExecutor 规则动作执行器，负责执行一种可配置动作并把结果写回计价上下文。
 /// </summary>
 /// <remarks>
-/// 该执行器实现“最近 N 分钟内同一患者同一项目最多收费 M 个”的口径。
+/// 该执行器实现"最近 N 分钟内同一患者同一项目最多收费 M 个"的口径。
 /// 试算时只读累计，不写占额；confirm 时会先锁定窗口覆盖到的全部小时桶，
 /// 再读取 PENDING + CONFIRMED 净占用，最后向计价结果中挂上待写入的占额草稿。
 /// </remarks>

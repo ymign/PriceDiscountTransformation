@@ -1,5 +1,3 @@
-using SqlSugar;
-
 namespace Pricing.RuleCenter.Core.Models;
 
 /// <summary>
@@ -25,7 +23,6 @@ namespace Pricing.RuleCenter.Core.Models;
 /// 待确认问题：权威物价单价从 HIS 哪张表或同步表读取，价格版本如何追溯。
 /// </para>
 /// </remarks>
-[SugarTable("FIN_COM_UNDRUGINFO")]
 public sealed class PriceMasterItem
 {
     /// <summary>
@@ -36,8 +33,7 @@ public sealed class PriceMasterItem
     /// 是规则匹配、价格校验和限额累计的核心维度。
     /// "特殊项目"和"折价项目"是同一标识，通过该编码区分是否为特殊计价项目。
     /// </remarks>
-    [SugarColumn(ColumnName = "ITEM_CODE")]
-    public string ItemCode { get; set; } = string.Empty;
+        public string ItemCode { get; set; } = string.Empty;
 
     /// <summary>
     /// 项目权威单价。
@@ -49,6 +45,5 @@ public sealed class PriceMasterItem
     /// 单位：元（人民币），精度 NUMBER(18,4)。
     /// 禁止使用 double 或 float，始终使用 decimal。
     /// </remarks>
-    [SugarColumn(ColumnName = "UNIT_PRICE")]
-    public decimal UnitPrice { get; set; }
+        public decimal UnitPrice { get; set; }
 }

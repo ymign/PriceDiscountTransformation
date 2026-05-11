@@ -1,7 +1,8 @@
+﻿using Microsoft.Extensions.Logging;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 
-namespace Pricing.RuleCenter.Api.Engine;
+namespace Pricing.RuleCenter.Core.Engine;
 
 /// <summary>
 /// 规则匹配服务，负责从已发布规则中找出本次计价应执行的规则和动作链。

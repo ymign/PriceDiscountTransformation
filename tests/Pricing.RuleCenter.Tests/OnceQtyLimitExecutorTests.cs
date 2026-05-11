@@ -1,5 +1,5 @@
-using Newtonsoft.Json;
-using Pricing.RuleCenter.Api.Engine.Executors;
+﻿using Newtonsoft.Json;
+using Pricing.RuleCenter.Core.Engine.Executors;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 using Xunit;

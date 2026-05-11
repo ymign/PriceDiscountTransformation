@@ -1,5 +1,3 @@
-using SqlSugar;
-
 namespace Pricing.RuleCenter.Core.Models;
 
 /// <summary>
@@ -27,7 +25,6 @@ namespace Pricing.RuleCenter.Core.Models;
 /// 缓存失效：规则发布/停用/回滚时必须立即失效计价引擎的规则缓存。
 /// </para>
 /// </remarks>
-[SugarTable("PR_RULE_PUBLISH")]
 public sealed class RulePublish
 {
     /// <summary>
@@ -37,8 +34,7 @@ public sealed class RulePublish
     /// 对应 Oracle 列 PUBLISH_ID，NUMBER 类型，由 SEQUENCE 生成。
     /// 全局唯一标识一条发布流水记录。
     /// </remarks>
-    [SugarColumn(IsPrimaryKey = true, ColumnName = "PUBLISH_ID")]
-    public long PublishId { get; set; }
+        public long PublishId { get; set; }
 
     /// <summary>
     /// 发布流水号。
@@ -47,8 +43,7 @@ public sealed class RulePublish
     /// 业务流水号，用于审计和日志交叉定位。
     /// 格式建议：PUB + 时间戳 + 随机数。
     /// </remarks>
-    [SugarColumn(ColumnName = "PUBLISH_NO")]
-    public string PublishNo { get; set; } = string.Empty;
+        public string PublishNo { get; set; } = string.Empty;
 
     /// <summary>
     /// 关联的规则主键。
@@ -56,8 +51,7 @@ public sealed class RulePublish
     /// <remarks>
     /// 对应 PR_RULE_HEADER.RULE_ID，标识本次发布操作针对哪条规则。
     /// </remarks>
-    [SugarColumn(ColumnName = "RULE_ID")]
-    public long RuleId { get; set; }
+        public long RuleId { get; set; }
 
     /// <summary>
     /// 操作前版本号。
@@ -67,8 +61,7 @@ public sealed class RulePublish
     /// 回滚时指向被回滚的版本号。
     /// 停用时指向被停用的版本号。
     /// </remarks>
-    [SugarColumn(ColumnName = "FROM_VERSION", IsNullable = true)]
-    public int? FromVersion { get; set; }
+        public int? FromVersion { get; set; }
 
     /// <summary>
     /// 操作后版本号。
@@ -78,8 +71,7 @@ public sealed class RulePublish
     /// 回滚时指向回滚目标版本号。
     /// 停用时通常与 FromVersion 相同。
     /// </remarks>
-    [SugarColumn(ColumnName = "TO_VERSION")]
-    public int ToVersion { get; set; }
+        public int ToVersion { get; set; }
 
     /// <summary>
     /// 发布操作类型。
@@ -93,8 +85,7 @@ public sealed class RulePublish
     /// </list>
     /// 不可为空。
     /// </remarks>
-    [SugarColumn(ColumnName = "ACTION_TYPE")]
-    public string ActionType { get; set; } = string.Empty;
+        public string ActionType { get; set; } = string.Empty;
 
     /// <summary>
     /// 发布、停用或回滚操作人。
@@ -103,8 +94,7 @@ public sealed class RulePublish
     /// 记录操作执行者，用于审计和责任追溯。
     /// 来源为工作台登录用户。
     /// </remarks>
-    [SugarColumn(ColumnName = "PUBLISHED_BY", IsNullable = true)]
-    public string? PublishedBy { get; set; }
+        public string? PublishedBy { get; set; }
 
     /// <summary>
     /// 发布、停用或回滚发生时间。
@@ -112,8 +102,7 @@ public sealed class RulePublish
     /// <remarks>
     /// 由计价中心自动填充，用于审计和时间线展示。
     /// </remarks>
-    [SugarColumn(ColumnName = "PUBLISHED_AT")]
-    public DateTime PublishedAt { get; set; }
+        public DateTime PublishedAt { get; set; }
 
     /// <summary>
     /// 发布、停用或回滚备注。
@@ -122,6 +111,5 @@ public sealed class RulePublish
     /// 操作人填写的备注信息，用于审计和说明操作原因。
     /// 例如："根据收费处 2026 年 5 月通知，调整 XX 项目折价规则"。
     /// </remarks>
-    [SugarColumn(ColumnName = "REMARK", IsNullable = true)]
-    public string? Remark { get; set; }
+        public string? Remark { get; set; }
 }

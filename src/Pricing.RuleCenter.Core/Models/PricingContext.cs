@@ -1,4 +1,4 @@
-namespace Pricing.RuleCenter.Core.Models;
+﻿namespace Pricing.RuleCenter.Core.Models;
 
 /// <summary>
 /// 计价上下文，承载一次规则计算从输入到输出的全部运行态数据。
@@ -172,7 +172,7 @@ public sealed class PricingContext
     /// 同一次收费动作内已经被前序费用明细占用的数量缓存。
     /// </summary>
     /// <remarks>
-    /// 一次结算请求可以携带多条收费明细。单次限额的业务口径是“单次收费动作”，不是单条收费明细，
+    /// 一次结算请求可以携带多条收费明细。单次限额的业务口径是"单次收费动作"，不是单条收费明细，
     /// 因此应用服务在循环计算 items[] 时需要把前面明细已经占用的单次额度传给后续明细。
     /// </remarks>
     public IReadOnlyDictionary<string, decimal> InRequestOccupiedQtyByLimitDimension { get; set; } =

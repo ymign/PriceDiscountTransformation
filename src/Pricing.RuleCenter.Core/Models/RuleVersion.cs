@@ -1,5 +1,3 @@
-using SqlSugar;
-
 namespace Pricing.RuleCenter.Core.Models;
 
 /// <summary>
@@ -30,7 +28,6 @@ namespace Pricing.RuleCenter.Core.Models;
 /// 即使后续版本变更，已发出的计价结果仍可通过快照还原当时的计算依据。
 /// </para>
 /// </remarks>
-[SugarTable("PR_RULE_VERSION")]
 public sealed class RuleVersion
 {
     /// <summary>
@@ -40,7 +37,6 @@ public sealed class RuleVersion
     /// 对应 Oracle 列 VERSION_ID，NUMBER 类型，由 SEQUENCE 生成。
     /// 全局唯一标识一条规则版本记录。
     /// </remarks>
-    [SugarColumn(IsPrimaryKey = true, ColumnName = "VERSION_ID")]
     public long VersionId { get; set; }
 
     /// <summary>
@@ -50,7 +46,6 @@ public sealed class RuleVersion
     /// 对应 PR_RULE_HEADER.RULE_ID，标识该版本属于哪条规则。
     /// 同一规则可以有多个版本（VERSION_NO 不同）。
     /// </remarks>
-    [SugarColumn(ColumnName = "RULE_ID")]
     public long RuleId { get; set; }
 
     /// <summary>
@@ -61,7 +56,6 @@ public sealed class RuleVersion
     /// 规则条件和动作的 VERSION_NO 必须与该值对齐。
     /// 规则头的 CurrentVersion 指向该值，决定计价时读取哪套版本明细。
     /// </remarks>
-    [SugarColumn(ColumnName = "VERSION_NO")]
     public int VersionNo { get; set; }
 
     /// <summary>
@@ -77,7 +71,6 @@ public sealed class RuleVersion
     /// </list>
     /// 默认值为 "DRAFT"。
     /// </remarks>
-    [SugarColumn(ColumnName = "VERSION_STATUS")]
     public string VersionStatus { get; set; } = "DRAFT";
 
     /// <summary>
@@ -89,7 +82,6 @@ public sealed class RuleVersion
     /// 规则生效期判断必须使用业务收费发生时间（BusinessChargeTime），
     /// 不得使用技术占用时间替代。
     /// </remarks>
-    [SugarColumn(ColumnName = "EFFECTIVE_FROM", IsNullable = true)]
     public DateTime? EffectiveFrom { get; set; }
 
     /// <summary>
@@ -99,7 +91,6 @@ public sealed class RuleVersion
     /// 该版本的生效结束时间，业务收费时间晚于该时间的请求不使用该版本。
     /// 空值表示未设失效时间（长期有效）。
     /// </remarks>
-    [SugarColumn(ColumnName = "EFFECTIVE_TO", IsNullable = true)]
     public DateTime? EffectiveTo { get; set; }
 
     /// <summary>
@@ -111,7 +102,6 @@ public sealed class RuleVersion
     /// Oracle 存储类型为 CLOB，无原生 JSON 支持。
     /// 仅在版本发布（PUBLISH）时生成，草稿版本该字段为空。
     /// </remarks>
-    [SugarColumn(ColumnName = "RULE_SNAPSHOT", ColumnDataType = "CLOB", IsNullable = true)]
     public string? RuleSnapshot { get; set; }
 
     /// <summary>
@@ -120,7 +110,6 @@ public sealed class RuleVersion
     /// <remarks>
     /// 来源为工作台登录用户，用于审计和责任追溯。
     /// </remarks>
-    [SugarColumn(ColumnName = "PUBLISHED_BY", IsNullable = true)]
     public string? PublishedBy { get; set; }
 
     /// <summary>
@@ -129,7 +118,6 @@ public sealed class RuleVersion
     /// <remarks>
     /// 由计价中心自动填充，用于审计和时间线展示。
     /// </remarks>
-    [SugarColumn(ColumnName = "PUBLISHED_AT", IsNullable = true)]
     public DateTime? PublishedAt { get; set; }
 
     /// <summary>
@@ -139,6 +127,5 @@ public sealed class RuleVersion
     /// 操作人填写的发布说明或审批备注。
     /// 例如："根据收费处通知调整折价比例，经审核通过后发布"。
     /// </remarks>
-    [SugarColumn(ColumnName = "PUBLISH_REMARK", IsNullable = true)]
     public string? PublishRemark { get; set; }
 }

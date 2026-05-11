@@ -1,5 +1,3 @@
-using SqlSugar;
-
 namespace Pricing.RuleCenter.Core.Models;
 
 /// <summary>
@@ -26,7 +24,6 @@ namespace Pricing.RuleCenter.Core.Models;
 /// 发布前校验应检查所有关联测试用例的最新运行记录是否全部通过。
 /// </para>
 /// </remarks>
-[SugarTable("PR_RULE_TEST_RUN")]
 public sealed class RuleTestRun
 {
     /// <summary>
@@ -36,8 +33,7 @@ public sealed class RuleTestRun
     /// 对应 Oracle 列 TEST_RUN_ID，NUMBER 类型，由 SEQUENCE 生成。
     /// 全局唯一标识一条测试运行记录。
     /// </remarks>
-    [SugarColumn(IsPrimaryKey = true, ColumnName = "TEST_RUN_ID")]
-    public long TestRunId { get; set; }
+        public long TestRunId { get; set; }
 
     /// <summary>
     /// 关联的测试用例主键。
@@ -45,8 +41,7 @@ public sealed class RuleTestRun
     /// <remarks>
     /// 对应 PR_RULE_TEST_CASE.TEST_CASE_ID，标识本次运行针对哪个测试用例。
     /// </remarks>
-    [SugarColumn(ColumnName = "TEST_CASE_ID")]
-    public long TestCaseId { get; set; }
+        public long TestCaseId { get; set; }
 
     /// <summary>
     /// 关联的规则主键。
@@ -54,8 +49,7 @@ public sealed class RuleTestRun
     /// <remarks>
     /// 对应 PR_RULE_HEADER.RULE_ID，冗余存储便于按规则维度查询测试运行记录。
     /// </remarks>
-    [SugarColumn(ColumnName = "RULE_ID")]
-    public long RuleId { get; set; }
+        public long RuleId { get; set; }
 
     /// <summary>
     /// 实际结果 JSON。
@@ -66,8 +60,7 @@ public sealed class RuleTestRun
     /// 用于与 EXPECTED_JSON 比对，判断测试是否通过。
     /// 可为空，表示运行异常未产生结果。
     /// </remarks>
-    [SugarColumn(ColumnName = "ACTUAL_JSON", ColumnDataType = "CLOB", IsNullable = true)]
-    public string? ActualJson { get; set; }
+        public string? ActualJson { get; set; }
 
     /// <summary>
     /// 是否通过标识。
@@ -80,8 +73,7 @@ public sealed class RuleTestRun
     /// </list>
     /// 不可为空。
     /// </remarks>
-    [SugarColumn(ColumnName = "IS_PASS")]
-    public string IsPass { get; set; } = "N";
+        public string IsPass { get; set; } = "N";
 
     /// <summary>
     /// 运行时间。
@@ -90,8 +82,7 @@ public sealed class RuleTestRun
     /// 测试运行执行的时间，由计价中心自动填充。
     /// 用于记录测试历史和排序。
     /// </remarks>
-    [SugarColumn(ColumnName = "RUN_AT")]
-    public DateTime RunAt { get; set; }
+        public DateTime RunAt { get; set; }
 
     /// <summary>
     /// 运行人。
@@ -100,8 +91,7 @@ public sealed class RuleTestRun
     /// 执行测试运行的操作人，来源为工作台登录用户。
     /// 可为空，表示系统自动运行。
     /// </remarks>
-    [SugarColumn(ColumnName = "RUN_BY", IsNullable = true)]
-    public string? RunBy { get; set; }
+        public string? RunBy { get; set; }
 
     /// <summary>
     /// 错误信息。
@@ -111,6 +101,5 @@ public sealed class RuleTestRun
     /// 当测试运行出现异常（如输入参数解析失败、计价引擎抛出异常等）时记录。
     /// 正常运行时为空。
     /// </remarks>
-    [SugarColumn(ColumnName = "ERROR_MESSAGE", IsNullable = true)]
-    public string? ErrorMessage { get; set; }
+        public string? ErrorMessage { get; set; }
 }

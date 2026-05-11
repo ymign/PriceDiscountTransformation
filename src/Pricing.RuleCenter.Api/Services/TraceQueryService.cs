@@ -1,4 +1,4 @@
-using Pricing.RuleCenter.Api.Dto;
+﻿using Pricing.RuleCenter.Api.Dto;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 
@@ -73,7 +73,7 @@ public sealed class TraceQueryService
             var log = await _requestLogRepository.GetByIdAsync(request.RequestId.Value);
             if (log is null)
             {
-                // 找不到主请求时返回空分页，而不是抛异常；追踪页面可以自然展示“无数据”。
+                // 找不到主请求时返回空分页，而不是抛异常；追踪页面可以自然展示"无数据"。
                 return new PagedResponse<TraceQueryResponse> { PageIndex = 1, PageSize = 1 };
             }
 
@@ -119,12 +119,12 @@ public sealed class TraceQueryService
     /// 折扣表提供最终结果。三张表通过 RequestId 关联，不使用 JOIN 查询，
     /// 因为步骤和明细的数量级通常很小（单次计价一般不超过 20 步），多次查询的开销可接受。
     /// </remarks>
-    /// <param name=”log”>请求主记录，提供患者、项目、调用类型和业务状态等主维度。</param>
+    /// <param name="log">请求主记录，提供患者、项目、调用类型和业务状态等主维度。</param>
     /// <returns>包含步骤快照和折扣明细的追踪响应，用于前端追踪页面完整展示。</returns>
     private async Task<TraceQueryResponse> BuildTraceDetail(ChargeRequestLog log)
     {
         // ========== 第一阶段：读取关联明细 ==========
-        // 步骤表解释”为什么这样计算”，折扣表解释”最终数量和金额变成了什么”。
+        // 步骤表解释"为什么这样计算"，折扣表解释"最终数量和金额变成了什么"。
         // 两张表都按 RequestId 查询，数据量通常很小（单次计价步骤 < 20，折扣明细 < 10）。
         var steps = await _traceStepRepository.GetByRequestIdAsync(log.RequestId);
         var discounts = await _discountRepository.GetByRequestIdAsync(log.RequestId);

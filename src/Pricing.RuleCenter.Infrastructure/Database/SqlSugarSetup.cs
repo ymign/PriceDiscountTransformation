@@ -62,8 +62,7 @@ public static class SqlSugarSetup
             var logger = provider.GetRequiredService<ILogger<SqlSugarClient>>();
 
             // ========== 第二阶段：配置 Oracle 连接和实体映射 ==========
-            // InitKeyType.Attribute 表示模型上的 SugarTable/SugarColumn 特性是表结构映射来源。
-            // 这与项目中实体类使用 [SugarTable("PR_xxx")] 特性标注的风格一致。
+            // Core 模型不再直接标注 SqlSugar 特性，表名、列名和主键统一由 EntityTypeConfigs 配置。
             var db = new SqlSugarClient(new ConnectionConfig
             {
                 ConnectionString = options.OracleConnectionString,
@@ -71,8 +70,14 @@ public static class SqlSugarSetup
                 // IsAutoCloseConnection = true 表示每次操作后自动关闭连接，
                 // 适合 Scoped 生命周期，避免连接泄漏。
                 IsAutoCloseConnection = true,
-                InitKeyType = InitKeyType.Attribute
+                InitKeyType = InitKeyType.Attribute,
+                ConfigureExternalServices = EntityTypeConfigs.CreateExternalServices()
             });
+
+            // ========== 应用 Fluent API 实体映射 ==========
+            // Core 模型已移除 SqlSugar 特性注解，所有表名和列映射通过 EntityTypeConfigs 统一配置。
+            // 这保证 Core 领域模型不依赖任何 ORM 框架，是 Clean Architecture 的关键保障。
+            EntityTypeConfigs.ApplyAllConfigs(db);
 
             // ========== 第三阶段：接入 SQL 日志 ==========
             // SQL 输出为 Debug 级别，正常生产日志不会被大量 SQL 冲满；

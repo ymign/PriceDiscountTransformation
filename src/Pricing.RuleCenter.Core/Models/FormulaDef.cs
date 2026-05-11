@@ -1,5 +1,3 @@
-using SqlSugar;
-
 namespace Pricing.RuleCenter.Core.Models;
 
 /// <summary>
@@ -23,7 +21,6 @@ namespace Pricing.RuleCenter.Core.Models;
 /// </list>
 /// </para>
 /// </remarks>
-[SugarTable("PR_FORMULA_DEF")]
 public sealed class FormulaDef
 {
     /// <summary>
@@ -33,8 +30,7 @@ public sealed class FormulaDef
     /// 对应 Oracle 列 FORMULA_ID，NUMBER 类型，由 SEQUENCE 生成。
     /// 全局唯一标识一条公式定义记录。
     /// </remarks>
-    [SugarColumn(IsPrimaryKey = true, ColumnName = "FORMULA_ID")]
-    public long FormulaId { get; set; }
+        public long FormulaId { get; set; }
 
     /// <summary>
     /// 公式编码。
@@ -45,8 +41,7 @@ public sealed class FormulaDef
     /// 规则动作的 ExecutorCode 字段引用该编码。
     /// 修改编码需评估所有引用该公式的规则动作。
     /// </remarks>
-    [SugarColumn(ColumnName = "FORMULA_CODE")]
-    public string FormulaCode { get; set; } = string.Empty;
+        public string FormulaCode { get; set; } = string.Empty;
 
     /// <summary>
     /// 公式显示名称。
@@ -55,8 +50,7 @@ public sealed class FormulaDef
     /// 面向配置人员展示的中文名称，用于工作台下拉选择。
     /// 例如：公式编码 "AREA_PRICE" 对应名称 "面积单价公式"。
     /// </remarks>
-    [SugarColumn(ColumnName = "FORMULA_NAME")]
-    public string FormulaName { get; set; } = string.Empty;
+        public string FormulaName { get; set; } = string.Empty;
 
     /// <summary>
     /// 公式说明。
@@ -66,8 +60,7 @@ public sealed class FormulaDef
     /// 例如："按面积（CM2）乘以单价系数计算收费金额，适用于皮肤科等按面积收费项目"。
     /// 帮助配置人员理解公式的用途和参数含义。
     /// </remarks>
-    [SugarColumn(ColumnName = "FORMULA_DESC", IsNullable = true)]
-    public string? FormulaDesc { get; set; }
+        public string? FormulaDesc { get; set; }
 
     /// <summary>
     /// 执行器编码。
@@ -78,8 +71,7 @@ public sealed class FormulaDef
     /// 计价引擎根据该编码在依赖注入容器中查找对应的执行器实例。
     /// 新增公式类型只需新增执行器实现并注册到容器。
     /// </remarks>
-    [SugarColumn(ColumnName = "EXECUTOR_CODE")]
-    public string ExecutorCode { get; set; } = string.Empty;
+        public string ExecutorCode { get; set; } = string.Empty;
 
     /// <summary>
     /// 参数结构 JSON Schema。
@@ -90,8 +82,7 @@ public sealed class FormulaDef
     /// 例如：{"baseQty": {"type": "decimal", "required": true}, "multiplier": {"type": "decimal", "default": 1.0}}
     /// Oracle 存储类型为 CLOB，无原生 JSON 支持。
     /// </remarks>
-    [SugarColumn(ColumnName = "PARAM_SCHEMA_JSON", ColumnDataType = "CLOB", IsNullable = true)]
-    public string? ParamSchemaJson { get; set; }
+        public string? ParamSchemaJson { get; set; }
 
     /// <summary>
     /// 启用标识。
@@ -101,8 +92,7 @@ public sealed class FormulaDef
     /// 禁用的公式不出现在下拉列表中，但已引用的规则动作不受影响（仍可正常执行）。
     /// 默认值为 "Y"。
     /// </remarks>
-    [SugarColumn(ColumnName = "IS_ENABLED")]
-    public string IsEnabled { get; set; } = "Y";
+        public string IsEnabled { get; set; } = "Y";
 
     /// <summary>
     /// 公式备注。
@@ -111,6 +101,5 @@ public sealed class FormulaDef
     /// 配置人员或开发人员填写的补充说明。
     /// 例如："该公式于 2026 年 5 月新增，替代旧版 AREA_PRICE_V1"。
     /// </remarks>
-    [SugarColumn(ColumnName = "REMARK", IsNullable = true)]
-    public string? Remark { get; set; }
+        public string? Remark { get; set; }
 }

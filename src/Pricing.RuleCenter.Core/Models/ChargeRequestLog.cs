@@ -1,5 +1,3 @@
-using SqlSugar;
-
 namespace Pricing.RuleCenter.Core.Models;
 
 /// <summary>
@@ -25,7 +23,6 @@ namespace Pricing.RuleCenter.Core.Models;
 /// → REVERSED（冲正，已对冲）。
 /// </para>
 /// </remarks>
-[SugarTable("PR_CHARGE_REQUEST_LOG")]
 public sealed class ChargeRequestLog
 {
     /// <summary>
@@ -36,8 +33,7 @@ public sealed class ChargeRequestLog
     /// 全局唯一标识一条请求日志，是串联 REQUEST_LOG → TRACE_STEP → DISCOUNT_DETAIL → LIMIT_OCCUPY
     /// 四张表的核心外键。
     /// </remarks>
-    [SugarColumn(IsPrimaryKey = true, ColumnName = "REQUEST_ID")]
-    public long RequestId { get; set; }
+        public long RequestId { get; set; }
 
     /// <summary>
     /// 技术请求流水号。
@@ -46,8 +42,7 @@ public sealed class ChargeRequestLog
     /// 由调用方或服务端生成的技术流水号，用于排查单次 HTTP 调用。
     /// 与 businessRequestNo 的区别：requestNo 每次调用都不同，businessRequestNo 在重试时保持不变。
     /// </remarks>
-    [SugarColumn(ColumnName = "REQUEST_NO")]
-    public string RequestNo { get; set; } = string.Empty;
+        public string RequestNo { get; set; } = string.Empty;
 
     /// <summary>
     /// 调用方稳定业务号。
@@ -58,8 +53,7 @@ public sealed class ChargeRequestLog
     /// 空值表示该调用类型不支持幂等（如 simulate 试算）。
     /// HIS 能否提供稳定的 businessRequestNo 是待确认问题。
     /// </remarks>
-    [SugarColumn(ColumnName = "BUSINESS_REQUEST_NO", IsNullable = true)]
-    public string? BusinessRequestNo { get; set; }
+        public string? BusinessRequestNo { get; set; }
 
     /// <summary>
     /// 规范化请求指纹。
@@ -70,8 +64,7 @@ public sealed class ChargeRequestLog
     /// 若指纹不一致，说明调用方在重试时修改了参数，应拒绝并返回错误。
     /// 该字段是资金安全硬约束，必须在 confirm 接口编码前实现。
     /// </remarks>
-    [SugarColumn(ColumnName = "REQUEST_FINGERPRINT", IsNullable = true)]
-    public string? RequestFingerprint { get; set; }
+        public string? RequestFingerprint { get; set; }
 
     /// <summary>
     /// 计价追踪号。
@@ -81,8 +74,7 @@ public sealed class ChargeRequestLog
     /// 由计价中心在首次 confirm 时生成，后续 commit/cancel/reverse 复用同一追踪号。
     /// 格式建议：TRACE + 时间戳 + 随机数。
     /// </remarks>
-    [SugarColumn(ColumnName = "TRACE_ID", IsNullable = true)]
-    public string? TraceId { get; set; }
+        public string? TraceId { get; set; }
 
     /// <summary>
     /// 调用类型。
@@ -98,8 +90,7 @@ public sealed class ChargeRequestLog
     /// </list>
     /// 不可为空。
     /// </remarks>
-    [SugarColumn(ColumnName = "CALL_TYPE")]
-    public string CallType { get; set; } = string.Empty;
+        public string CallType { get; set; } = string.Empty;
 
     /// <summary>
     /// 业务状态。
@@ -116,8 +107,7 @@ public sealed class ChargeRequestLog
     /// </list>
     /// 不可为空，默认值由 callType 决定。
     /// </remarks>
-    [SugarColumn(ColumnName = "BUSINESS_STATUS")]
-    public string BusinessStatus { get; set; } = string.Empty;
+        public string BusinessStatus { get; set; } = string.Empty;
 
     /// <summary>
     /// 来源系统编码。
@@ -127,8 +117,7 @@ public sealed class ChargeRequestLog
     /// 常见值：HIS（医院信息系统）、KIOSK（自助机）、WECHAT（微信公众号）。
     /// 不同来源系统的限额统计独立计算（按收费途径统计）。
     /// </remarks>
-    [SugarColumn(ColumnName = "SOURCE_SYSTEM")]
-    public string SourceSystem { get; set; } = string.Empty;
+        public string SourceSystem { get; set; } = string.Empty;
 
     /// <summary>
     /// 来源终端或站点标识。
@@ -137,8 +126,7 @@ public sealed class ChargeRequestLog
     /// 用于定位具体调用入口，如 HIS 工作站编号、自助机编号、微信 openid。
     /// 可为空，空值表示来源终端未知或不重要。
     /// </remarks>
-    [SugarColumn(ColumnName = "SOURCE_TERMINAL", IsNullable = true)]
-    public string? SourceTerminal { get; set; }
+        public string? SourceTerminal { get; set; }
 
     /// <summary>
     /// 患者标识。
@@ -148,8 +136,7 @@ public sealed class ChargeRequestLog
     /// 日限额、时间窗限额均按患者维度累计。
     /// 空值表示该请求不关联特定患者（理论上不应出现）。
     /// </remarks>
-    [SugarColumn(ColumnName = "PATIENT_ID", IsNullable = true)]
-    public string? PatientId { get; set; }
+        public string? PatientId { get; set; }
 
     /// <summary>
     /// 就诊标识。
@@ -158,8 +145,7 @@ public sealed class ChargeRequestLog
     /// 可为空，存在时用于缩小追溯和对账范围。
     /// 一个患者可能有多次就诊，visitId 可区分不同就诊的收费记录。
     /// </remarks>
-    [SugarColumn(ColumnName = "VISIT_ID", IsNullable = true)]
-    public string? VisitId { get; set; }
+        public string? VisitId { get; set; }
 
     /// <summary>
     /// 收费场景编码。
@@ -169,8 +155,7 @@ public sealed class ChargeRequestLog
     /// 常见值：OUTPATIENT（门诊）、INPATIENT（住院）、SURGERY（手术）、MEDICAL_TECH（医技）。
     /// 空值表示不按场景区分规则。
     /// </remarks>
-    [SugarColumn(ColumnName = "CHARGE_SCENE", IsNullable = true)]
-    public string? ChargeScene { get; set; }
+        public string? ChargeScene { get; set; }
 
     /// <summary>
     /// 收费单号。
@@ -179,8 +164,7 @@ public sealed class ChargeRequestLog
     /// 来源为 HIS 传入的收费单号，用于与 HIS 落账结果关联。
     /// 一张收费单可能包含多条收费明细，通过 chargeNo 聚合。
     /// </remarks>
-    [SugarColumn(ColumnName = "CHARGE_NO", IsNullable = true)]
-    public string? ChargeNo { get; set; }
+        public string? ChargeNo { get; set; }
 
     /// <summary>
     /// 收费明细号。
@@ -189,8 +173,7 @@ public sealed class ChargeRequestLog
     /// 来源为 HIS 传入的收费明细号，用于定位单条收费项目。
     /// "单条"指单条收费明细，与"单次"（单次收费动作，即一张收费单）不同。
     /// </remarks>
-    [SugarColumn(ColumnName = "CHARGE_DETAIL_NO", IsNullable = true)]
-    public string? ChargeDetailNo { get; set; }
+        public string? ChargeDetailNo { get; set; }
 
     /// <summary>
     /// 主子项目同组结果号。
@@ -200,8 +183,7 @@ public sealed class ChargeRequestLog
     /// 同组的所有明细在同一 confirm 中一起提交，commit 和 cancel 也必须一起处理。
     /// 空值表示该请求不涉及主子项目关系。
     /// </remarks>
-    [SugarColumn(ColumnName = "RESULT_GROUP_NO", IsNullable = true)]
-    public string? ResultGroupNo { get; set; }
+        public string? ResultGroupNo { get; set; }
 
     /// <summary>
     /// 项目编码。
@@ -211,8 +193,7 @@ public sealed class ChargeRequestLog
     /// 是规则匹配、价格校验和限额累计的核心维度。
     /// "特殊项目"和"折价项目"是同一标识，通过该编码区分是否为特殊计价项目。
     /// </remarks>
-    [SugarColumn(ColumnName = "ITEM_CODE", IsNullable = true)]
-    public string? ItemCode { get; set; }
+        public string? ItemCode { get; set; }
 
     /// <summary>
     /// 项目名称。
@@ -221,8 +202,7 @@ public sealed class ChargeRequestLog
     /// 来源为 HIS 物价主数据，用于展示、审计和追溯说明。
     /// 非计算字段，仅用于可读性。
     /// </remarks>
-    [SugarColumn(ColumnName = "ITEM_NAME", IsNullable = true)]
-    public string? ItemName { get; set; }
+        public string? ItemName { get; set; }
 
     /// <summary>
     /// 调用方录入的原始数量。
@@ -232,8 +212,7 @@ public sealed class ChargeRequestLog
     /// 单位取决于 inputUnit 的配置（如 PART、CM2、EACH）。
     /// 多肿物、多部位项目应通过 pricingParts 明细表达，不能压成单个数量粗算。
     /// </remarks>
-    [SugarColumn(ColumnName = "INPUT_QTY", IsNullable = true)]
-    public decimal? InputQty { get; set; }
+        public decimal? InputQty { get; set; }
 
     /// <summary>
     /// 调用方录入数量的单位。
@@ -242,8 +221,7 @@ public sealed class ChargeRequestLog
     /// 常见值：PART（部位/个）、CM2（平方厘米）、EACH（每个）、次。
     /// 用于双单位换算时确定输入单位。
     /// </remarks>
-    [SugarColumn(ColumnName = "INPUT_UNIT", IsNullable = true)]
-    public string? InputUnit { get; set; }
+        public string? InputUnit { get; set; }
 
     /// <summary>
     /// 身体部位编码。
@@ -253,8 +231,7 @@ public sealed class ChargeRequestLog
     /// 同一项目允许按不同部位维护不同换算规则。
     /// 空值表示不按部位区分规则。
     /// </remarks>
-    [SugarColumn(ColumnName = "BODY_PART_CODE", IsNullable = true)]
-    public string? BodyPartCode { get; set; }
+        public string? BodyPartCode { get; set; }
 
     /// <summary>
     /// 业务收费发生时间。
@@ -267,8 +244,7 @@ public sealed class ChargeRequestLog
     /// 3. 2 小时滑动窗口的起点计算
     /// 4. 退费时按收费时间（包含重收时间）向前查 2 小时
     /// </remarks>
-    [SugarColumn(ColumnName = "BUSINESS_CHARGE_TIME", IsNullable = true)]
-    public DateTime? BusinessChargeTime { get; set; }
+        public DateTime? BusinessChargeTime { get; set; }
 
     /// <summary>
     /// 权威价格版本或价格快照版本。
@@ -278,8 +254,7 @@ public sealed class ChargeRequestLog
     /// 若后续价格调整，可通过该版本号追溯当时的计价依据。
     /// 权威物价单价从 HIS 哪张表或同步表读取是待确认问题。
     /// </remarks>
-    [SugarColumn(ColumnName = "PRICE_VERSION", IsNullable = true)]
-    public string? PriceVersion { get; set; }
+        public string? PriceVersion { get; set; }
 
     /// <summary>
     /// 原始请求快照 JSON。
@@ -291,8 +266,7 @@ public sealed class ChargeRequestLog
     /// 3. 审计和合规
     /// Oracle 存储类型为 CLOB，无原生 JSON 支持。
     /// </remarks>
-    [SugarColumn(ColumnName = "REQUEST_JSON", ColumnDataType = "CLOB", IsNullable = true)]
-    public string? RequestJson { get; set; }
+        public string? RequestJson { get; set; }
 
     /// <summary>
     /// 计价响应快照 JSON。
@@ -304,8 +278,7 @@ public sealed class ChargeRequestLog
     /// 3. 审计和合规
     /// Oracle 存储类型为 CLOB。
     /// </remarks>
-    [SugarColumn(ColumnName = "RESPONSE_JSON", ColumnDataType = "CLOB", IsNullable = true)]
-    public string? ResponseJson { get; set; }
+        public string? ResponseJson { get; set; }
 
     /// <summary>
     /// 计价中心收到请求的技术时间。
@@ -314,8 +287,7 @@ public sealed class ChargeRequestLog
     /// 由计价中心自动填充，用于审计和性能监控。
     /// 不得用该时间替代 BusinessChargeTime 做业务判断。
     /// </remarks>
-    [SugarColumn(ColumnName = "REQUEST_AT")]
-    public DateTime RequestAt { get; set; }
+        public DateTime RequestAt { get; set; }
 
     /// <summary>
     /// 计价中心完成响应或状态更新的技术时间。
@@ -325,8 +297,7 @@ public sealed class ChargeRequestLog
     /// 用于性能监控（responseAt - requestAt = 处理耗时）。
     /// 空值表示请求尚未处理完成。
     /// </remarks>
-    [SugarColumn(ColumnName = "RESPONSE_AT", IsNullable = true)]
-    public DateTime? ResponseAt { get; set; }
+        public DateTime? ResponseAt { get; set; }
 
     /// <summary>
     /// 请求是否成功落入计价中心处理链路。
@@ -336,8 +307,7 @@ public sealed class ChargeRequestLog
     /// 注意：该字段表示计价中心是否成功处理，不代表 HIS commit 是否成功。
     /// 默认值为 "N"，处理成功后更新为 "Y"。
     /// </remarks>
-    [SugarColumn(ColumnName = "IS_SUCCESS")]
-    public string IsSuccess { get; set; } = "N";
+        public string IsSuccess { get; set; } = "N";
 
     /// <summary>
     /// 请求失败时记录的错误信息。
@@ -347,6 +317,5 @@ public sealed class ChargeRequestLog
     /// 常见错误码：PRICE_MISMATCH（单价不匹配）、RULE_NOT_FOUND（规则未找到）、
     /// LIMIT_EXCEEDED（限额超限）、IDEMPOTENT_MISMATCH（幂等指纹不匹配）。
     /// </remarks>
-    [SugarColumn(ColumnName = "ERROR_MESSAGE", IsNullable = true)]
-    public string? ErrorMessage { get; set; }
+        public string? ErrorMessage { get; set; }
 }

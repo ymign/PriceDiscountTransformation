@@ -1,5 +1,3 @@
-using SqlSugar;
-
 namespace Pricing.RuleCenter.Core.Models;
 
 /// <summary>
@@ -26,7 +24,6 @@ namespace Pricing.RuleCenter.Core.Models;
 /// 两者均为 CLOB 类型，存储在 Oracle 中无原生 JSON 支持，使用 CLOB 存储。
 /// </para>
 /// </remarks>
-[SugarTable("PR_RULE_TEST_CASE")]
 public sealed class RuleTestCase
 {
     /// <summary>
@@ -36,8 +33,7 @@ public sealed class RuleTestCase
     /// 对应 Oracle 列 TEST_CASE_ID，NUMBER 类型，由 SEQUENCE 生成。
     /// 全局唯一标识一条测试用例记录。
     /// </remarks>
-    [SugarColumn(IsPrimaryKey = true, ColumnName = "TEST_CASE_ID")]
-    public long TestCaseId { get; set; }
+        public long TestCaseId { get; set; }
 
     /// <summary>
     /// 关联的规则主键。
@@ -46,8 +42,7 @@ public sealed class RuleTestCase
     /// 对应 PR_RULE_HEADER.RULE_ID，标识该测试用例属于哪条规则。
     /// 与 VERSION_NO 联合定位特定规则版本的测试用例。
     /// </remarks>
-    [SugarColumn(ColumnName = "RULE_ID")]
-    public long RuleId { get; set; }
+        public long RuleId { get; set; }
 
     /// <summary>
     /// 版本号。
@@ -56,8 +51,7 @@ public sealed class RuleTestCase
     /// 对应 PR_RULE_VERSION.VERSION_NO，标识该测试用例属于规则的哪个版本。
     /// 与 RULE_ID 联合定位特定规则版本的测试用例。
     /// </remarks>
-    [SugarColumn(ColumnName = "VERSION_NO")]
-    public int VersionNo { get; set; }
+        public int VersionNo { get; set; }
 
     /// <summary>
     /// 用例名称。
@@ -66,8 +60,7 @@ public sealed class RuleTestCase
     /// 面向配置人员展示的测试用例名称，用于标识测试场景。
     /// 例如："皮肤科治疗项目-正常数量折价"、"超出日限额-应返回0元"。
     /// </remarks>
-    [SugarColumn(ColumnName = "CASE_NAME")]
-    public string CaseName { get; set; } = string.Empty;
+        public string CaseName { get; set; } = string.Empty;
 
     /// <summary>
     /// 输入参数 JSON。
@@ -78,8 +71,7 @@ public sealed class RuleTestCase
     /// 对应计价接口的请求体结构。
     /// 可为空，表示该用例暂未配置输入。
     /// </remarks>
-    [SugarColumn(ColumnName = "INPUT_JSON", ColumnDataType = "CLOB", IsNullable = true)]
-    public string? InputJson { get; set; }
+        public string? InputJson { get; set; }
 
     /// <summary>
     /// 期望结果 JSON。
@@ -90,8 +82,7 @@ public sealed class RuleTestCase
     /// 对应计价接口的响应体结构。
     /// 可为空，表示该用例暂未配置期望结果。
     /// </remarks>
-    [SugarColumn(ColumnName = "EXPECTED_JSON", ColumnDataType = "CLOB", IsNullable = true)]
-    public string? ExpectedJson { get; set; }
+        public string? ExpectedJson { get; set; }
 
     /// <summary>
     /// 启用标识。
@@ -101,8 +92,7 @@ public sealed class RuleTestCase
     /// 禁用的用例在批量测试时跳过，但保留历史运行记录。
     /// 默认值为 "Y"。
     /// </remarks>
-    [SugarColumn(ColumnName = "IS_ENABLED")]
-    public string IsEnabled { get; set; } = "Y";
+        public string IsEnabled { get; set; } = "Y";
 
     /// <summary>
     /// 创建人。
@@ -110,8 +100,7 @@ public sealed class RuleTestCase
     /// <remarks>
     /// 来源为工作台登录用户，用于审计。
     /// </remarks>
-    [SugarColumn(ColumnName = "CREATED_BY", IsNullable = true)]
-    public string? CreatedBy { get; set; }
+        public string? CreatedBy { get; set; }
 
     /// <summary>
     /// 记录创建时间。
@@ -119,6 +108,5 @@ public sealed class RuleTestCase
     /// <remarks>
     /// 由计价中心自动填充，用于审计和排序。
     /// </remarks>
-    [SugarColumn(ColumnName = "CREATED_AT")]
-    public DateTime CreatedAt { get; set; }
+        public DateTime CreatedAt { get; set; }
 }

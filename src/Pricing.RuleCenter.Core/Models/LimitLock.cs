@@ -1,5 +1,3 @@
-using SqlSugar;
-
 namespace Pricing.RuleCenter.Core.Models;
 
 /// <summary>
@@ -27,7 +25,6 @@ namespace Pricing.RuleCenter.Core.Models;
 /// TIME_WINDOW 类型必须锁定业务时间窗口覆盖的全部小时桶，防止跨桶并发突破。
 /// </para>
 /// </remarks>
-[SugarTable("PR_LIMIT_LOCK")]
 public sealed class LimitLock
 {
     /// <summary>
@@ -39,8 +36,7 @@ public sealed class LimitLock
     /// 格式示例：DAY_QTY|PATIENT_001|ITEM_1001|20260510
     /// 该键必须与 PR_LIMIT_OCCUPY.LIMIT_KEY 对应维度一致。
     /// </remarks>
-    [SugarColumn(IsPrimaryKey = true, ColumnName = "LOCK_KEY")]
-    public string LockKey { get; set; } = string.Empty;
+        public string LockKey { get; set; } = string.Empty;
 
     /// <summary>
     /// 锁说明。
@@ -49,8 +45,7 @@ public sealed class LimitLock
     /// 人工可读的锁行来源说明，用于排查锁等待和死锁问题。
     /// 例如："患者张三|项目1001|日限额|2026-05-10"。
     /// </remarks>
-    [SugarColumn(ColumnName = "LOCK_DESC", IsNullable = true)]
-    public string? LockDesc { get; set; }
+        public string? LockDesc { get; set; }
 
     /// <summary>
     /// 记录最后更新时间。
@@ -59,8 +54,7 @@ public sealed class LimitLock
     /// 由计价中心在每次更新时自动填充。
     /// 用于排查长时间未释放的锁行（理论上不应出现，因为 FOR UPDATE 在事务提交后自动释放）。
     /// </remarks>
-    [SugarColumn(ColumnName = "UPDATED_AT")]
-    public DateTime UpdatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
 
     /// <summary>
     /// 锁过期时间。
@@ -71,6 +65,5 @@ public sealed class LimitLock
     /// 后台定时任务通过 CleanupExpiredAsync 清理早于该时间的锁行，
     /// 防止因异常情况（如应用崩溃、事务超时）导致锁行堆积。
     /// </remarks>
-    [SugarColumn(ColumnName = "EXPIRE_AT", IsNullable = true)]
-    public DateTime? ExpireAt { get; set; }
+        public DateTime? ExpireAt { get; set; }
 }

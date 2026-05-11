@@ -36,6 +36,10 @@ public sealed class PricingApiServiceTests
             PatientId = "P001",
             ChargeNo = "C001",
             BusinessChargeTime = new DateTime(2026, 5, 10, 9, 30, 0),
+            ExtraParams = new Dictionary<string, object?>
+            {
+                ["operationNo"] = "OP001"
+            },
             Items = new List<PricingCalculateItemRequest>
             {
                 new()
@@ -45,7 +49,11 @@ public sealed class PricingApiServiceTests
                     ItemName = "CT平扫",
                     InputQty = 2m,
                     Unit = "PART",
-                    UnitPrice = 300m
+                    UnitPrice = 300m,
+                    ExtraParams = new Dictionary<string, object?>
+                    {
+                        ["pregnancyNo"] = "PREG001"
+                    }
                 },
                 new()
                 {
@@ -68,6 +76,8 @@ public sealed class PricingApiServiceTests
                 Assert.Equal("CT001", first.ItemCode);
                 Assert.Equal("CD001", response.Items[0].ChargeDetailNo);
                 Assert.Equal(2m, first.InputQty);
+                Assert.Equal("OP001", first.ExtraParams?["operationNo"]);
+                Assert.Equal("PREG001", first.ExtraParams?["pregnancyNo"]);
             },
             second =>
             {
@@ -138,7 +148,7 @@ public sealed class PricingApiServiceTests
     {
         public List<PricingContext> Contexts { get; } = new();
 
-        public Task<PricingResult> CalculateAsync(PricingContext context)
+        public Task<PricingResult> CalculateAsync(PricingContext context, BatchPricingContext? batchContext = null)
         {
             Contexts.Add(context);
             return Task.FromResult(new PricingResult
@@ -157,7 +167,7 @@ public sealed class PricingApiServiceTests
     {
         public List<PricingContext> Contexts { get; } = new();
 
-        public Task<PricingResult> CalculateAsync(PricingContext context)
+        public Task<PricingResult> CalculateAsync(PricingContext context, BatchPricingContext? batchContext = null)
         {
             Contexts.Add(context);
             var dayDimensionCode = $"{context.PatientId}:{context.ItemCode}:{context.BusinessChargeTime:yyyyMMdd}".ToUpperInvariant();
