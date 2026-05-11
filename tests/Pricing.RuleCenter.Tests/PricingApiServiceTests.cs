@@ -144,6 +144,63 @@ public sealed class PricingApiServiceTests
             secondContext.InRequestOccupiedQtyByLimitDimension["TIME_WINDOW:P001:ITEM001"]);
     }
 
+    [Fact]
+    public async Task ConfirmAsync_ReturnsAndPersistsReplacementItem()
+    {
+        var discountRepository = new CapturingChargeDiscountDetailRepository();
+        var service = new PricingApiService(
+            new ReplacementPricingEngine(),
+            new EmptyRuleHeaderRepository(),
+            new InMemoryChargeRequestLogRepository(),
+            discountRepository,
+            new EmptyChargeTraceStepRepository(),
+            new EmptyLimitOccupyRepository(),
+            new EmptyChargeReverseLogRepository(),
+            new EmptyPriceMasterRepository(),
+            db: null!,
+            Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
+            NullLogger<PricingApiService>.Instance);
+
+        var request = new PricingCalculateRequest
+        {
+            RequestNo = "REQ-003",
+            BusinessRequestNo = "BR-003",
+            SourceSystem = "HIS",
+            PatientId = "P001",
+            ChargeNo = "C003",
+            BusinessChargeTime = new DateTime(2026, 5, 10, 9, 30, 0),
+            Items = new List<PricingCalculateItemRequest>
+            {
+                new()
+                {
+                    ChargeDetailNo = "CD003",
+                    ItemCode = "ITEM001",
+                    ItemName = "原项目",
+                    InputQty = 4m,
+                    UnitPrice = 10m
+                }
+            }
+        };
+
+        var response = await service.ConfirmAsync(request);
+
+        var itemResponse = Assert.Single(response.Items);
+        var replacementItem = Assert.IsType<PricingReplacementItemResponse>(itemResponse.ReplacementItem);
+        Assert.Equal("ITEM_ADD", replacementItem.ItemCode);
+        Assert.Equal(4m, itemResponse.ExceedQty);
+        Assert.Equal(20m, itemResponse.FinalAmount);
+        Assert.Equal(20m, replacementItem.Amount);
+
+        Assert.Equal(2, discountRepository.Inserted.Count);
+        var mainDetail = discountRepository.Inserted.Single(d => d.ParentDiscountId is null);
+        var replacementDetail = discountRepository.Inserted.Single(d => d.ParentDiscountId == mainDetail.DiscountId);
+        Assert.Equal(0m, mainDetail.FinalAmt);
+        Assert.Equal("ITEM_ADD", replacementDetail.ItemCode);
+        Assert.Equal(4m, replacementDetail.FinalQty);
+        Assert.Equal(20m, replacementDetail.FinalAmt);
+        Assert.Equal(mainDetail.ResultGroupNo, replacementDetail.ResultGroupNo);
+    }
+
     private sealed class CapturingPricingEngine : IPricingEngine
     {
         public List<PricingContext> Contexts { get; } = new();
@@ -194,6 +251,33 @@ public sealed class PricingApiServiceTests
                         LimitDimensionCode = windowDimensionCode,
                         OccupyQty = context.InputQty
                     }
+                }
+            });
+        }
+    }
+
+    private sealed class ReplacementPricingEngine : IPricingEngine
+    {
+        public Task<PricingResult> CalculateAsync(PricingContext context, BatchPricingContext? batchContext = null)
+        {
+            return Task.FromResult(new PricingResult
+            {
+                IsSpecialItem = true,
+                InputQty = context.InputQty,
+                ConvertedQty = context.InputQty,
+                FinalQty = 0m,
+                UnitPrice = context.UnitPrice,
+                FinalAmount = 20m,
+                DiscountAmount = 20m,
+                ExceedQty = context.InputQty,
+                MatchedRuleIds = new[] { 101L },
+                ReplaceChildResult = new ReplaceChildResult
+                {
+                    ItemCode = "ITEM_ADD",
+                    ItemName = "替换加收",
+                    Qty = context.InputQty,
+                    UnitPrice = 5m,
+                    Amount = 20m
                 }
             });
         }
@@ -253,6 +337,27 @@ public sealed class PricingApiServiceTests
     {
         public Task<IReadOnlyList<ChargeDiscountDetail>> GetByRequestIdAsync(long requestId) => Task.FromResult((IReadOnlyList<ChargeDiscountDetail>)Array.Empty<ChargeDiscountDetail>());
         public Task<long> InsertAsync(ChargeDiscountDetail entity) => Task.FromResult(0L);
+        public Task UpdateStatusByRequestIdAsync(long requestId, string status) => Task.CompletedTask;
+    }
+
+    private sealed class CapturingChargeDiscountDetailRepository : IChargeDiscountDetailRepository
+    {
+        private long _nextId = 200;
+
+        public List<ChargeDiscountDetail> Inserted { get; } = new();
+
+        public Task<IReadOnlyList<ChargeDiscountDetail>> GetByRequestIdAsync(long requestId) =>
+            Task.FromResult((IReadOnlyList<ChargeDiscountDetail>)Inserted
+                .Where(d => d.RequestId == requestId)
+                .ToList());
+
+        public Task<long> InsertAsync(ChargeDiscountDetail entity)
+        {
+            entity.DiscountId = ++_nextId;
+            Inserted.Add(entity);
+            return Task.FromResult(entity.DiscountId);
+        }
+
         public Task UpdateStatusByRequestIdAsync(long requestId, string status) => Task.CompletedTask;
     }
 

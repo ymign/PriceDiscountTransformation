@@ -41,6 +41,15 @@ public sealed class PricingResult
     public decimal InputQty { get; set; }
 
     /// <summary>
+    /// 双单位换算后的计价数量。
+    /// </summary>
+    /// <remarks>
+    /// 该值保留双单位换算后的数量，用于区分"换算导致数量变化"和"限额导致数量截断"。
+    /// 若未配置换算规则，通常等于 InputQty。
+    /// </remarks>
+    public decimal ConvertedQty { get; set; }
+
+    /// <summary>
     /// 最终可收费数量。
     /// </summary>
     /// <remarks>
@@ -83,6 +92,16 @@ public sealed class PricingResult
     /// 精度保留 2 位小数，四舍五入。
     /// </remarks>
     public decimal DiscountAmount { get; set; }
+
+    /// <summary>
+    /// 超出限额的数量。
+    /// </summary>
+    public decimal ExceedQty { get; set; }
+
+    /// <summary>
+    /// REPLACE 模式下的替换子项信息。
+    /// </summary>
+    public ReplaceChildResult? ReplaceChildResult { get; set; }
 
     /// <summary>
     /// 本次计价的追踪步骤集合。

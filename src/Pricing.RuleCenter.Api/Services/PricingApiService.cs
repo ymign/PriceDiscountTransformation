@@ -978,9 +978,22 @@ public sealed class PricingApiService
         // 当前折价明细表只有一个 RULE_ID 字段。多规则叠加时这里先记录第一条命中规则，
         // 完整动作链仍通过步骤日志和请求响应快照追溯。
         var firstRuleId = result.MatchedRuleIds.FirstOrDefault();
+        var now = DateTime.Now;
+        var resultGroupNo = result.ReplaceChildResult is null
+            ? null
+            : BuildResultGroupNo(requestId, item);
 
         // ========== 第二阶段：保存待确认或最终折价明细 ==========
         // confirm 阶段写 PENDING，commit 后再统一改 CONFIRMED。这样未落账的结果不会进入正式报表。
+        var replacementAmt = result.ReplaceChildResult is null
+            ? 0m
+            : PricingAmountRounder.RoundFinalAmount(result.ReplaceChildResult.Amount);
+        var mainFinalAmt = result.ReplaceChildResult is null
+            ? result.FinalAmount
+            : Math.Max(result.FinalAmount - replacementAmt, 0m);
+        var mainDiscountAmt = PricingAmountRounder.RoundFinalAmount(
+            item.UnitPrice * item.InputQty - mainFinalAmt);
+
         var detail = new ChargeDiscountDetail
         {
             RequestId = requestId,
@@ -991,19 +1004,57 @@ public sealed class PricingApiService
             ItemCode = item.ItemCode,
             ItemName = item.ItemName,
             RuleId = firstRuleId == 0 ? null : firstRuleId,
+            ResultGroupNo = resultGroupNo,
             OriginalQty = item.InputQty,
-            ConvertedQty = result.FinalQty,
+            ConvertedQty = result.ConvertedQty,
             FinalQty = result.FinalQty,
             UnitPrice = result.UnitPrice,
             OriginalAmt = PricingAmountRounder.RoundFinalAmount(item.UnitPrice * item.InputQty),
-            CalculatedAmt = PricingAmountRounder.RoundFinalAmount(result.FinalAmount),
-            FinalAmt = PricingAmountRounder.RoundFinalAmount(result.FinalAmount),
-            DiscountAmt = PricingAmountRounder.RoundFinalAmount(result.DiscountAmount),
+            CalculatedAmt = PricingAmountRounder.RoundFinalAmount(mainFinalAmt),
+            FinalAmt = PricingAmountRounder.RoundFinalAmount(mainFinalAmt),
+            DiscountAmt = mainDiscountAmt,
+            DiscountType = result.ReplaceChildResult is null ? null : "EXCESS_REPLACE",
+            ReasonCode = result.ReplaceChildResult is null ? null : "EXCESS_REPLACE",
+            ReasonDesc = result.ReplaceChildResult is null ? null : BuildReasonDesc(result),
             Status = status,
-            OccurredAt = DateTime.Now
+            OccurredAt = now
         };
 
-        await _discountRepository.InsertAsync(detail);
+        var mainDiscountId = await _discountRepository.InsertAsync(detail);
+
+        if (result.ReplaceChildResult is null)
+        {
+            return;
+        }
+
+        var replacement = result.ReplaceChildResult;
+        var replacementDetail = new ChargeDiscountDetail
+        {
+            RequestId = requestId,
+            ChargeNo = NormalizeString(request.ChargeNo),
+            ChargeDetailNo = NormalizeString(item.ChargeDetailNo),
+            PatientId = request.PatientId,
+            VisitId = request.VisitId,
+            ItemCode = replacement.ItemCode,
+            ItemName = replacement.ItemName,
+            RuleId = firstRuleId == 0 ? null : firstRuleId,
+            ResultGroupNo = resultGroupNo,
+            ParentDiscountId = mainDiscountId,
+            ConvertedQty = replacement.Qty,
+            FinalQty = replacement.Qty,
+            UnitPrice = replacement.UnitPrice,
+            OriginalAmt = 0m,
+            CalculatedAmt = replacementAmt,
+            FinalAmt = replacementAmt,
+            DiscountAmt = -replacementAmt,
+            DiscountType = "EXCESS_REPLACE",
+            ReasonCode = "EXCESS_REPLACE",
+            ReasonDesc = BuildReplacementReasonDesc(item, replacement),
+            Status = status,
+            OccurredAt = now
+        };
+
+        await _discountRepository.InsertAsync(replacementDetail);
     }
 
     private async Task SaveLimitOccupies(long requestId, PricingResult result)
@@ -1051,6 +1102,34 @@ public sealed class PricingApiService
         };
     }
 
+    private static string BuildResultGroupNo(long requestId, PricingCalculateItemRequest item)
+    {
+        var chargeDetailNo = NormalizeString(item.ChargeDetailNo) ?? "NO_DETAIL";
+        var itemRequestNo = NormalizeString(item.ItemRequestNo) ?? "NO_ITEM_REQUEST";
+        var rawKey = $"{item.ItemCode.Trim()}:{chargeDetailNo}:{itemRequestNo}".ToUpperInvariant();
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(rawKey)))[..12];
+        return $"REPLACE:{requestId}:{hash}";
+    }
+
+    private static string BuildReasonDesc(PricingResult result)
+    {
+        if (result.ReplaceChildResult is null)
+        {
+            return $"超出限额数量 {result.ExceedQty}，超出部分归零";
+        }
+
+        return $"超出限额数量 {result.ExceedQty}，替换为 {result.ReplaceChildResult.ItemCode} " +
+               $"{result.ReplaceChildResult.ItemName}，数量 {result.ReplaceChildResult.Qty}，金额 {result.ReplaceChildResult.Amount}";
+    }
+
+    private static string BuildReplacementReasonDesc(
+        PricingCalculateItemRequest item,
+        ReplaceChildResult replacement)
+    {
+        return $"主项目 {item.ItemCode} 超限后替换为 {replacement.ItemCode} " +
+               $"{replacement.ItemName}，数量 {replacement.Qty}，金额 {replacement.Amount}";
+    }
+
     private static PricingCalculateItemResponse BuildItemResponse(
         long requestId,
         PricingCalculateItemRequest item,
@@ -1066,9 +1145,21 @@ public sealed class PricingApiService
             IsSpecialItem = result.IsSpecialItem,
             InputQty = result.InputQty,
             FinalQty = result.FinalQty,
+            ConvertedQty = result.ConvertedQty,
             UnitPrice = result.UnitPrice,
             FinalAmount = PricingAmountRounder.RoundFinalAmount(result.FinalAmount),
             DiscountAmount = PricingAmountRounder.RoundFinalAmount(result.DiscountAmount),
+            ExceedQty = result.ExceedQty,
+            ReplacementItem = result.ReplaceChildResult is null
+                ? null
+                : new PricingReplacementItemResponse
+                {
+                    ItemCode = result.ReplaceChildResult.ItemCode,
+                    ItemName = NormalizeString(result.ReplaceChildResult.ItemName),
+                    Qty = result.ReplaceChildResult.Qty,
+                    UnitPrice = result.ReplaceChildResult.UnitPrice,
+                    Amount = PricingAmountRounder.RoundFinalAmount(result.ReplaceChildResult.Amount)
+                },
             TraceSteps = result.TraceSteps.Select(s => new PricingTraceStepResponse
             {
                 StepNo = s.StepNo,
@@ -1097,7 +1188,10 @@ public sealed class PricingApiService
         // ========== 兜底路径：由折价明细重建响应 ==========
         // 正常情况下不应该走到这里。保留兜底是为了兼容历史数据或响应快照缺失的异常记录。
         var details = await _discountRepository.GetByRequestIdAsync(log.RequestId);
-        var detail = details.FirstOrDefault();
+        var detail = details.FirstOrDefault(d => d.ParentDiscountId is null) ?? details.FirstOrDefault();
+        var replacement = detail is null
+            ? null
+            : details.FirstOrDefault(d => d.ParentDiscountId == detail.DiscountId);
         return new PricingCalculateResponse
         {
             RequestId = log.RequestId,
@@ -1105,8 +1199,39 @@ public sealed class PricingApiService
             InputQty = log.InputQty ?? 0,
             FinalQty = detail?.FinalQty ?? 0,
             UnitPrice = detail?.UnitPrice ?? 0,
-            FinalAmount = detail?.FinalAmt ?? 0,
-            DiscountAmount = detail?.DiscountAmt ?? 0
+            FinalAmount = (detail?.FinalAmt ?? 0) + (replacement?.FinalAmt ?? 0),
+            DiscountAmount = (detail?.DiscountAmt ?? 0) + (replacement?.DiscountAmt ?? 0),
+            Items = detail is null
+                ? Array.Empty<PricingCalculateItemResponse>()
+                : new[]
+                {
+                    new PricingCalculateItemResponse
+                    {
+                        RequestId = log.RequestId,
+                        ItemCode = detail.ItemCode ?? string.Empty,
+                        ItemName = detail.ItemName,
+                        IsSpecialItem = true,
+                        InputQty = detail.OriginalQty ?? 0,
+                        ConvertedQty = detail.ConvertedQty ?? detail.FinalQty ?? 0,
+                        FinalQty = detail.FinalQty ?? 0,
+                        UnitPrice = detail.UnitPrice ?? 0,
+                        FinalAmount = (detail.FinalAmt ?? 0) + (replacement?.FinalAmt ?? 0),
+                        DiscountAmount = (detail.DiscountAmt ?? 0) + (replacement?.DiscountAmt ?? 0),
+                        ExceedQty = replacement?.FinalQty ?? Math.Max((detail.ConvertedQty ?? 0) - (detail.FinalQty ?? 0), 0m),
+                        ReplacementItem = replacement is null
+                            ? null
+                            : new PricingReplacementItemResponse
+                            {
+                                ItemCode = replacement.ItemCode ?? string.Empty,
+                                ItemName = replacement.ItemName,
+                                Qty = replacement.FinalQty ?? 0,
+                                UnitPrice = replacement.UnitPrice ?? 0,
+                                Amount = replacement.FinalAmt ?? 0
+                            }
+                    }
+                },
+            TraceSteps = Array.Empty<PricingTraceStepResponse>(),
+            MatchedRuleIds = detail?.RuleId is long ruleId ? new[] { ruleId } : Array.Empty<long>()
         };
     }
 

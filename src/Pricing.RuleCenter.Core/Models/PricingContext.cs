@@ -154,6 +154,21 @@ public sealed class PricingContext
     public decimal DiscountAmount { get; set; }
 
     /// <summary>
+    /// 超出限额的数量，由 ExceedToZeroExecutor 在处理超限时写入。
+    /// 该值按双单位换算后的计价数量口径计算，不直接拿原始 InputQty 做差。
+    /// 为 0 表示未超限，等于换算后的基准数量表示全部超限。
+    /// 用于追溯展示和折价明细中的超出原因说明。
+    /// </summary>
+    public decimal ExceedQty { get; set; }
+
+    /// <summary>
+    /// REPLACE 模式下的加收项目信息，由 ExceedToZeroExecutor 在超限替换时写入。
+    /// 为空时表示未发生替换（ZERO 或 CEILING 模式，或未超限）。
+    /// 应用服务在生成折价明细时，需将此信息写入 ChargeDiscountDetail.ReasonDesc。
+    /// </summary>
+    public ReplaceChildResult? ReplaceChildResult { get; set; }
+
+    /// <summary>
     /// 本次计价过程中产生的追踪步骤。应用服务会把它持久化为 PR_CHARGE_TRACE_STEP。
     /// </summary>
     public List<TraceStep> TraceSteps { get; set; } = new();
@@ -319,4 +334,35 @@ public sealed class ChildPricingResult
     /// 关联的主项目编码，用于追溯和审计。
     /// </summary>
     public string ParentItemCode { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// 超限替换的加收项目信息，由 ExceedToZeroExecutor 的 REPLACE 模式生成。
+/// </summary>
+/// <remarks>
+/// 当收费数量超出限额且配置为"替换为加收项目"时，超出部分按加收项目单价重新计算。
+/// 该对象记录加收项目的编码、名称、数量和金额，供追溯展示和折价明细使用。
+/// </remarks>
+public sealed class ReplaceChildResult
+{
+    /// <summary>
+    /// 加收项目编码，对应 HIS 物价主数据表中的折价项目编码。
+    /// </summary>
+    public string ItemCode { get; set; } = string.Empty;
+    /// <summary>
+    /// 加收项目名称，用于追溯页面展示。
+    /// </summary>
+    public string? ItemName { get; set; }
+    /// <summary>
+    /// 加收数量，等于超出限额的数量。
+    /// </summary>
+    public decimal Qty { get; set; }
+    /// <summary>
+    /// 加收项目单价，来源为规则配置或权威物价主数据。
+    /// </summary>
+    public decimal UnitPrice { get; set; }
+    /// <summary>
+    /// 加收金额 = 数量 × 单价。
+    /// </summary>
+    public decimal Amount { get; set; }
 }

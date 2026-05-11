@@ -216,10 +216,13 @@ public sealed class PricingEngine : IPricingEngine
         {
             IsSpecialItem = isSpecial,
             InputQty = context.InputQty,
+            ConvertedQty = context.ConvertedQty,
             FinalQty = context.FinalQty,
             UnitPrice = context.UnitPrice,
             FinalAmount = PricingAmountRounder.RoundFinalAmount(context.FinalAmount),
             DiscountAmount = PricingAmountRounder.RoundFinalAmount(context.DiscountAmount),
+            ExceedQty = context.ExceedQty,
+            ReplaceChildResult = context.ReplaceChildResult,
             TraceSteps = context.TraceSteps.ToList(),
             MatchedRuleIds = context.MatchedRules.Select(r => r.RuleId).ToList(),
             LimitOccupies = context.PendingLimitOccupies

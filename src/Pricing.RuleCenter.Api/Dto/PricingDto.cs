@@ -275,6 +275,10 @@ public sealed class PricingCalculateItemResponse
     /// </summary>
     public decimal FinalQty { get; init; }
     /// <summary>
+    /// 双单位换算后的计价数量。
+    /// </summary>
+    public decimal ConvertedQty { get; init; }
+    /// <summary>
     /// 项目单价，confirm 时应与权威物价主数据强校验。
     /// </summary>
     public decimal UnitPrice { get; init; }
@@ -287,6 +291,14 @@ public sealed class PricingCalculateItemResponse
     /// </summary>
     public decimal DiscountAmount { get; init; }
     /// <summary>
+    /// 超出限额的数量。
+    /// </summary>
+    public decimal ExceedQty { get; init; }
+    /// <summary>
+    /// REPLACE 模式下的替换子项信息。
+    /// </summary>
+    public PricingReplacementItemResponse? ReplacementItem { get; init; }
+    /// <summary>
     /// 本条费用计价追踪步骤，用于接口调用方展示或排查。
     /// </summary>
     public IReadOnlyList<PricingTraceStepResponse> TraceSteps { get; init; } = Array.Empty<PricingTraceStepResponse>();
@@ -294,6 +306,33 @@ public sealed class PricingCalculateItemResponse
     /// 本条费用命中的规则主键集合。
     /// </summary>
     public IReadOnlyList<long> MatchedRuleIds { get; init; } = Array.Empty<long>();
+}
+
+/// <summary>
+/// 超限替换子项响应 DTO。
+/// </summary>
+public sealed class PricingReplacementItemResponse
+{
+    /// <summary>
+    /// 替换子项编码。
+    /// </summary>
+    public string ItemCode { get; init; } = string.Empty;
+    /// <summary>
+    /// 替换子项名称。
+    /// </summary>
+    public string? ItemName { get; init; }
+    /// <summary>
+    /// 替换数量。
+    /// </summary>
+    public decimal Qty { get; init; }
+    /// <summary>
+    /// 替换单价。
+    /// </summary>
+    public decimal UnitPrice { get; init; }
+    /// <summary>
+    /// 替换金额。
+    /// </summary>
+    public decimal Amount { get; init; }
 }
 
 /// <summary>
