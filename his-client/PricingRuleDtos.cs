@@ -16,7 +16,7 @@ namespace HIS.Pricing.Client
         /// <summary>满足筛选条件的记录总数（非当前页数量），用于前端计算总页数</summary>
         public int Total { get; set; }
 
-        /// <summary>当前页码，从 0 开始（非从 1 开始），与服务端约定保持一致</summary>
+        /// <summary>当前页码，从 1 开始，与服务端约定保持一致</summary>
         public int PageIndex { get; set; }
 
         /// <summary>每页条数，由请求方传入，服务端透传回来</summary>
@@ -41,7 +41,7 @@ namespace HIS.Pricing.Client
         /// <summary>规则类别，取自字典表 PR_DICT 的 RULE_CATEGORY 类型，如 "DISCOUNT"、"FORMULA"</summary>
         public string RuleCategory { get; set; }
 
-        /// <summary>规则作用范围，取自字典表 PR_DICT 的 RULE_SCOPE 类型，如 "OUTPATIENT"、"ALL"</summary>
+        /// <summary>规则作用范围，取自字典表 PR_DICT 的 RULE_SCOPE 类型，如 "ITEM"、"GROUP"、"SCENE"</summary>
         public string RuleScope { get; set; }
 
         /// <summary>
@@ -57,8 +57,8 @@ namespace HIS.Pricing.Client
         public string GroupCode { get; set; }
 
         /// <summary>
-        /// 优先级，数值越大越优先匹配。
-        /// 同一项目多条规则共存时，引擎按 Priority 降序尝试匹配，首个命中的规则生效。
+        /// 优先级，数值越小越优先匹配。
+        /// 同一项目多条规则共存时，引擎按 Priority 升序尝试匹配，首个命中的规则生效。
         /// </summary>
         public int Priority { get; set; }
 
@@ -79,6 +79,12 @@ namespace HIS.Pricing.Client
 
         /// <summary>生效截止时间，NULL 表示不限制结束时间（永久有效）</summary>
         public DateTime? EffectiveTo { get; set; }
+
+        /// <summary>
+        /// 回滚模式。控制计价服务不可用时是否允许切回旧逻辑；
+        /// 空值等价于 STOP_CHARGE，LEGACY_EQUIVALENT 必须经过等价性确认。
+        /// </summary>
+        public string RollbackMode { get; set; }
 
         /// <summary>备注信息，由维护人员填写，不影响计价逻辑</summary>
         public string Remark { get; set; }
@@ -132,6 +138,9 @@ namespace HIS.Pricing.Client
         /// <summary>生效截止时间，NULL 表示不限</summary>
         public DateTime? EffectiveTo { get; set; }
 
+        /// <summary>回滚模式：STOP_CHARGE、LEGACY_EQUIVALENT、MANUAL_REVIEW</summary>
+        public string RollbackMode { get; set; }
+
         /// <summary>备注</summary>
         public string Remark { get; set; }
 
@@ -172,6 +181,9 @@ namespace HIS.Pricing.Client
 
         /// <summary>生效截止时间</summary>
         public DateTime? EffectiveTo { get; set; }
+
+        /// <summary>回滚模式：STOP_CHARGE、LEGACY_EQUIVALENT、MANUAL_REVIEW</summary>
+        public string RollbackMode { get; set; }
 
         /// <summary>备注</summary>
         public string Remark { get; set; }

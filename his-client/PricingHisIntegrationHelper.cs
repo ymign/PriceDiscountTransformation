@@ -111,19 +111,18 @@ namespace HIS.Pricing.Client
 
         /// <summary>
         /// HIS 落账成功后通知计价服务提交（commit）。
-        /// commit 将 confirm 阶段占用的额度正式消费，状态从 CONFIRMED 流转为 COMMITTED。
+        /// commit 将 confirm 阶段占用的额度正式消费，状态从 CONFIRM_PENDING 流转为 CONFIRMED。
         /// 此操作是三阶段确认（confirm -> commit -> cancel）的第二步。
+        /// 当前服务端生产链路必须回传 HIS 实际落账明细，此兼容重载不适用于生产收费入口。
         /// </summary>
         /// <param name="requestId">confirm 阶段返回的请求 ID</param>
         /// <param name="chargeNo">HIS 落账后的收费单号，用于关联 HIS 侧的收费记录</param>
         /// <returns>API 响应</returns>
+        [Obsolete("生产 commit 必须回传 HIS 实际落账明细，请使用 CommitAfterHisSuccess(long, string, List<PricingCommitActualItemRequest>, decimal?)。")]
         public ApiResponse CommitAfterHisSuccess(long requestId, string chargeNo)
         {
-            return _client.Commit(new PricingCommitRequest
-            {
-                RequestId = requestId,
-                ChargeNo = chargeNo
-            });
+            throw new InvalidOperationException(
+                "当前计价中心要求 commit 回传 HIS 实际落账明细，请使用带 actualItems 参数的 CommitAfterHisSuccess 重载。");
         }
 
         /// <summary>
@@ -141,6 +140,11 @@ namespace HIS.Pricing.Client
             List<PricingCommitActualItemRequest> actualItems,
             decimal? actualTotalAmount)
         {
+            if (actualItems == null || actualItems.Count == 0)
+            {
+                throw new ArgumentException("commit 必须回传 HIS 实际落账明细 actualItems。", "actualItems");
+            }
+
             return _client.Commit(new PricingCommitRequest
             {
                 RequestId = requestId,
@@ -152,7 +156,7 @@ namespace HIS.Pricing.Client
 
         /// <summary>
         /// HIS 落账失败后通知计价服务取消（cancel）。
-        /// cancel 释放 confirm 阶段占用的额度，状态从 CONFIRMED 流转为 CANCELLED。
+        /// cancel 释放 confirm 阶段占用的额度，状态从 CONFIRM_PENDING 流转为 CANCELLED。
         /// 资金安全约束：HIS 落账失败时必须调用此方法，否则额度会被永久占用。
         /// </summary>
         /// <param name="requestId">confirm 阶段返回的请求 ID</param>
@@ -270,20 +274,21 @@ namespace HIS.Pricing.Client
         ///   AND CHARGE_TIME BETWEEN :windowStart AND :windowEnd
         ///   AND STATUS != 'REFUNDED'  -- 排除已退费记录
         ///
-        /// 上线稳定后（通常1-2天）可将此方法返回值固定为 0 并移除旧表查询。
+        /// 当前仓库未收录完整 SQL，默认实现会直接抛出异常，避免上线过渡期误以为已经计入旧收费数据。
+        /// 上线稳定且确认不再需要旧历史兜底后，调用方可不再调用此方法，直接不传 LegacyOccupiedQty。
         /// </summary>
         /// <param name="patientId">患者 ID</param>
         /// <param name="itemCode">项目编码</param>
         /// <param name="windowStart">时间窗口开始（业务收费时间 - 2小时）</param>
         /// <param name="windowEnd">时间窗口结束（业务收费时间）</param>
-        /// <returns>旧系统窗口内已收费数量；查询异常时返回 0（保守策略，不阻断收费）</returns>
+        /// <returns>旧系统窗口内已收费数量</returns>
         public static decimal QueryLegacyOccupiedQty(
             string patientId,
             string itemCode,
             DateTime windowStart,
             DateTime windowEnd)
         {
-            // TODO: 填写旧收费明细表名和字段名后取消注释
+            // TODO: 从 HIS 内网 SQL 配置中提取 Fee.PactUnitItemRate.RestrictingfeePay2 后实现。
             // try
             // {
             //     // 示例：使用 HIS 现有数据库访问方式查询
@@ -295,9 +300,10 @@ namespace HIS.Pricing.Client
             // }
             // catch
             // {
-            //     return 0m; // 查询失败时保守返回0，不阻断正常收费
+            //     throw;
             // }
-            return 0m; // 过渡期结束后保持此处 return 0m 即完成退出
+            throw new NotSupportedException(
+                "QueryLegacyOccupiedQty 尚未接入旧 HIS getRestrictingfee SQL。上线过渡期必须实现旧收费明细查询，或不要调用此方法。");
         }
     }
 

@@ -34,7 +34,7 @@ namespace HIS.Pricing.Client
         /// </summary>
         private readonly int _timeoutMs;
 
-        /// <summary>最大重试次数（含首次请求）。默认 3 次。仅 confirm 接口使用重试。</summary>
+        /// <summary>最大重试次数（含首次请求）。默认 3 次。confirm/commit 等幂等关键接口使用重试。</summary>
         private readonly int _maxRetry;
 
         /// <summary>重试间隔（毫秒）。默认 2000ms。当前使用固定间隔，未实现指数退避。</summary>
@@ -100,18 +100,19 @@ namespace HIS.Pricing.Client
 
         /// <summary>
         /// 提交接口（commit）。HIS 落账成功后调用，将 confirm 阶段占用的额度正式消费。
-        /// 状态流转：CONFIRMED -> COMMITTED。
+        /// 状态流转：CONFIRM_PENDING -> CONFIRMED。
+        /// 当前服务端生产链路要求回传 ActualItems，用于校验 HIS 实际落账明细。
         /// </summary>
         /// <param name="request">提交请求（含 RequestId 和 ChargeNo）</param>
         /// <returns>API 响应</returns>
         public ApiResponse Commit(PricingCommitRequest request)
         {
-            return PostNoData("/api/pricing/calculate/commit", request);
+            return PostNoDataWithRetry("/api/pricing/calculate/commit", request);
         }
 
         /// <summary>
         /// 取消接口（cancel）。HIS 落账失败后调用，释放 confirm 阶段占用的额度。
-        /// 状态流转：CONFIRMED -> CANCELLED。
+        /// 状态流转：CONFIRM_PENDING -> CANCELLED。
         /// 资金安全约束：落账失败必须调用此接口，否则额度被永久占用。
         /// </summary>
         /// <param name="request">取消请求（含 RequestId）</param>
@@ -423,7 +424,7 @@ namespace HIS.Pricing.Client
         /// - 固定间隔 _retryDelayMs 毫秒
         /// - 最后一次失败后抛出 PricingApiException
         ///
-        /// 使用场景：confirm 接口（因超时可能已成功占用额度，幂等重试安全）
+        /// 使用场景：confirm 等返回业务数据且幂等的关键接口。
         /// </summary>
         /// <typeparam name="T">响应数据类型</typeparam>
         /// <param name="path">API 路径</param>
@@ -448,6 +449,36 @@ namespace HIS.Pricing.Client
                     }
                 }
             }
+            throw new PricingApiException("计价服务请求失败，已重试 " + _maxRetry + " 次", lastEx);
+        }
+
+        /// <summary>
+        /// 发送无数据 POST 请求并带重试。
+        /// commit 在 HIS 已落账后必须尽量推进计价中心状态；服务端 commit 按 RequestId 幂等，
+        /// 网络超时重试不会重复落账，只会重复校验同一批 ActualItems。
+        /// </summary>
+        /// <param name="path">API 路径</param>
+        /// <param name="body">请求体</param>
+        /// <returns>API 响应</returns>
+        private ApiResponse PostNoDataWithRetry(string path, object body)
+        {
+            Exception lastEx = null;
+            for (int i = 0; i < _maxRetry; i++)
+            {
+                try
+                {
+                    return PostNoData(path, body);
+                }
+                catch (WebException ex)
+                {
+                    lastEx = ex;
+                    if (i < _maxRetry - 1)
+                    {
+                        Thread.Sleep(_retryDelayMs);
+                    }
+                }
+            }
+
             throw new PricingApiException("计价服务请求失败，已重试 " + _maxRetry + " 次", lastEx);
         }
 
@@ -578,6 +609,12 @@ namespace HIS.Pricing.Client
         /// <summary>就诊 ID（门诊号或住院号）</summary>
         public string VisitId { get; set; }
 
+        /// <summary>就诊类型（可选，如 OUTPATIENT、INPATIENT、EMERGENCY），用于规则条件匹配</summary>
+        public string VisitType { get; set; }
+
+        /// <summary>患者年龄（可选），用于儿童、年龄段等规则条件匹配</summary>
+        public int? PatientAge { get; set; }
+
         /// <summary>就诊序号（可选，部分场景需要）</summary>
         public string EncounterNo { get; set; }
 
@@ -654,6 +691,9 @@ namespace HIS.Pricing.Client
 
         /// <summary>项目名称（展示用，不参与匹配）</summary>
         public string ItemName { get; set; }
+
+        /// <summary>项目分组编码（可选），用于同组互斥、同手术封顶等分组规则</summary>
+        public string ItemGroupCode { get; set; }
 
         /// <summary>
         /// 输入数量。为收费人员录入的原始数量，引擎可能根据换算规则转换为换算后数量。
@@ -773,6 +813,16 @@ namespace HIS.Pricing.Client
         /// <summary>折价金额 = 原价 - 折后价</summary>
         public decimal DiscountAmount { get; set; }
 
+        /// <summary>
+        /// confirm 结果有效期。simulate 响应为空；confirm 后 HIS 必须在有效期内完成落账并调用 commit。
+        /// </summary>
+        public DateTime? ExpireAt { get; set; }
+
+        /// <summary>
+        /// confirm 结果剩余有效秒数。simulate 响应为空。
+        /// </summary>
+        public int? ExpireSeconds { get; set; }
+
         /// <summary>全局级计算步骤（如全局限额校验、同组互斥等）</summary>
         public List<PricingTraceStepResponse> TraceSteps { get; set; }
 
@@ -810,6 +860,9 @@ namespace HIS.Pricing.Client
         /// <summary>最终数量</summary>
         public decimal FinalQty { get; set; }
 
+        /// <summary>双单位换算后的计价数量</summary>
+        public decimal ConvertedQty { get; set; }
+
         /// <summary>单价</summary>
         public decimal UnitPrice { get; set; }
 
@@ -819,11 +872,67 @@ namespace HIS.Pricing.Client
         /// <summary>折价金额</summary>
         public decimal DiscountAmount { get; set; }
 
+        /// <summary>超出限额的数量。超出部分按规则可能为 0 元或替换为子项。</summary>
+        public decimal ExceedQty { get; set; }
+
+        /// <summary>REPLACE 模式下的替换子项信息；无替换时为空。</summary>
+        public PricingReplacementItemResponse ReplacementItem { get; set; }
+
+        /// <summary>ADD_CHILD_ITEM 动作生成的普通加收子项集合。</summary>
+        public List<PricingChildItemResponse> ChildItems { get; set; }
+
         /// <summary>该明细的计算步骤（用于"计算过程链"追溯）</summary>
         public List<PricingTraceStepResponse> TraceSteps { get; set; }
 
         /// <summary>该明细匹配到的规则 ID 列表</summary>
         public List<long> MatchedRuleIds { get; set; }
+    }
+
+    /// <summary>
+    /// 超限替换子项响应 DTO。
+    /// REPLACE 模式下，超出限额的部分不直接按主项目计费，而是按替换子项计费。
+    /// </summary>
+    public sealed class PricingReplacementItemResponse
+    {
+        /// <summary>替换子项编码</summary>
+        public string ItemCode { get; set; }
+
+        /// <summary>替换子项名称</summary>
+        public string ItemName { get; set; }
+
+        /// <summary>替换数量</summary>
+        public decimal Qty { get; set; }
+
+        /// <summary>替换单价</summary>
+        public decimal UnitPrice { get; set; }
+
+        /// <summary>替换金额</summary>
+        public decimal Amount { get; set; }
+    }
+
+    /// <summary>
+    /// 普通子项加收响应 DTO。
+    /// ADD_CHILD_ITEM 动作生成的子项需要 HIS 侧与主项目一并落账，并在 commit 时回传。
+    /// </summary>
+    public sealed class PricingChildItemResponse
+    {
+        /// <summary>子项编码</summary>
+        public string ItemCode { get; set; }
+
+        /// <summary>子项名称</summary>
+        public string ItemName { get; set; }
+
+        /// <summary>子项数量</summary>
+        public decimal Qty { get; set; }
+
+        /// <summary>子项单价</summary>
+        public decimal UnitPrice { get; set; }
+
+        /// <summary>子项金额</summary>
+        public decimal Amount { get; set; }
+
+        /// <summary>是否与主项目共享限额</summary>
+        public bool ShareParentLimit { get; set; }
     }
 
     /// <summary>

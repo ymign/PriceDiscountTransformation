@@ -103,6 +103,9 @@ namespace HIS.Pricing.Client
         /// <summary>是否设置生效截止时间的复选框（未勾选时传 NULL）</summary>
         private CheckBox _chkHasEffectiveTo;
 
+        /// <summary>回滚模式下拉框（STOP_CHARGE / LEGACY_EQUIVALENT / MANUAL_REVIEW）</summary>
+        private ComboBox _cboRollbackMode;
+
         /// <summary>备注文本框</summary>
         private TextBox _txtRemark;
 
@@ -376,10 +379,12 @@ namespace HIS.Pricing.Client
             _dtEffectiveTo.Size = new Size(170, 22);
             panel.Controls.Add(_dtEffectiveTo);
 
-            AddLabel(panel, "备注", 20, 254);
+            _cboRollbackMode = AddComboBox(panel, "回滚模式", 20, 250, 220);
+
+            AddLabel(panel, "备注", 20, 292);
             _txtRemark = new TextBox();
-            _txtRemark.Location = new Point(95, 250);
-            _txtRemark.Size = new Size(570, 90);
+            _txtRemark.Location = new Point(95, 288);
+            _txtRemark.Size = new Size(570, 70);
             _txtRemark.Multiline = true;
             panel.Controls.Add(_txtRemark);
 
@@ -895,6 +900,7 @@ namespace HIS.Pricing.Client
             BindDictCombo(_cboRuleCategory, _ruleCategories, false);
             BindDictCombo(_cboSearchStatus, _ruleStatuses, true);
             BindDictCombo(_cboRuleScope, _ruleScopes, false);
+            BindRollbackModeCombo(_cboRollbackMode);
             BindFormulaCombo();
             LoadDictTypes();
             _gridFormulas.DataSource = _formulas;
@@ -974,6 +980,19 @@ namespace HIS.Pricing.Client
             {
                 combo.SelectedIndex = 0;
             }
+        }
+
+        /// <summary>
+        /// 绑定回滚模式。该字段是资金安全策略，不依赖远端字典，避免字典加载失败时无法保存安全值。
+        /// </summary>
+        /// <param name="combo">目标下拉框</param>
+        private static void BindRollbackModeCombo(ComboBox combo)
+        {
+            combo.Items.Clear();
+            combo.Items.Add(new ComboItem("STOP_CHARGE", "暂停收费"));
+            combo.Items.Add(new ComboItem("LEGACY_EQUIVALENT", "旧逻辑等价"));
+            combo.Items.Add(new ComboItem("MANUAL_REVIEW", "人工复核"));
+            combo.SelectedIndex = 0;
         }
 
         /// <summary>绑定公式数据到公式选择下拉框</summary>
@@ -1141,9 +1160,23 @@ namespace HIS.Pricing.Client
             _txtItemCode.Text = Safe(rule.ItemCode);
             _txtItemName.Text = Safe(rule.ItemName);
             _txtGroupCode.Text = Safe(rule.GroupCode);
-            _numPriority.Value = rule.Priority < _numPriority.Minimum ? _numPriority.Minimum : rule.Priority;
+            if (rule.Priority < _numPriority.Minimum)
+            {
+                _numPriority.Value = _numPriority.Minimum;
+            }
+            else if (rule.Priority > _numPriority.Maximum)
+            {
+                _numPriority.Value = _numPriority.Maximum;
+            }
+            else
+            {
+                _numPriority.Value = rule.Priority;
+            }
             _chkHasEffectiveFrom.Checked = rule.EffectiveFrom.HasValue;
             _chkHasEffectiveTo.Checked = rule.EffectiveTo.HasValue;
+            SetComboValue(
+                _cboRollbackMode,
+                string.IsNullOrEmpty(rule.RollbackMode) ? "STOP_CHARGE" : rule.RollbackMode);
             if (rule.EffectiveFrom.HasValue)
             {
                 _dtEffectiveFrom.Value = rule.EffectiveFrom.Value;
@@ -1174,6 +1207,11 @@ namespace HIS.Pricing.Client
             if (_cboRuleScope.Items.Count > 0)
             {
                 _cboRuleScope.SelectedIndex = 0;
+            }
+
+            if (_cboRollbackMode.Items.Count > 0)
+            {
+                _cboRollbackMode.SelectedIndex = 0;
             }
 
             _chkHasEffectiveFrom.Checked = false;
@@ -1214,6 +1252,7 @@ namespace HIS.Pricing.Client
                 Priority = Convert.ToInt32(_numPriority.Value),
                 EffectiveFrom = _chkHasEffectiveFrom.Checked ? (DateTime?)_dtEffectiveFrom.Value : null,
                 EffectiveTo = _chkHasEffectiveTo.Checked ? (DateTime?)_dtEffectiveTo.Value : null,
+                RollbackMode = GetComboValue(_cboRollbackMode),
                 Remark = EmptyToNull(_txtRemark.Text),
                 CreatedBy = _operatorId
             };
@@ -1233,6 +1272,7 @@ namespace HIS.Pricing.Client
                 Priority = Convert.ToInt32(_numPriority.Value),
                 EffectiveFrom = _chkHasEffectiveFrom.Checked ? (DateTime?)_dtEffectiveFrom.Value : null,
                 EffectiveTo = _chkHasEffectiveTo.Checked ? (DateTime?)_dtEffectiveTo.Value : null,
+                RollbackMode = GetComboValue(_cboRollbackMode),
                 Remark = EmptyToNull(_txtRemark.Text),
                 UpdatedBy = _operatorId
             };
@@ -1295,8 +1335,8 @@ namespace HIS.Pricing.Client
 
         /// <summary>
         /// 获取可编辑版本号。用于保存条件/动作时确定目标版本。
-        /// 优先返回 DRAFT 版本的版本号；若无 DRAFT 则返回最新版本号。
-        /// 无版本时抛出异常（提示先新建草稿版本）。
+        /// 只允许返回 DRAFT 版本的版本号；若无 DRAFT 则抛出异常。
+        /// 已发布版本不可直接编辑或重复发布，必须先创建新的草稿版本。
         /// </summary>
         /// <returns>版本号</returns>
         private int GetEditableVersionNo()
@@ -1321,8 +1361,7 @@ namespace HIS.Pricing.Client
                 return draft.VersionNo;
             }
 
-            // 无 DRAFT 版本时返回最新版本号
-            return _versions[_versions.Count - 1].VersionNo;
+            throw new InvalidOperationException("当前规则没有可编辑的 DRAFT 版本，请先新建草稿版本。");
         }
 
         /// <summary>

@@ -23,6 +23,11 @@ frm.Show();
 
 医院现有菜单注册方式尚未在本仓库确认，因此本目录只提供可加载窗体，不硬编码 HIS 菜单框架。
 
+## 本地构建前置
+
+- 安装 .NET Framework 3.5 reference assemblies / targeting pack。
+- 还原 `packages.config` 中的 Newtonsoft.Json 到仓库根目录 `packages`，或按本院 HIS 工程的 NuGet 包路径调整 `HIS.Pricing.Client.csproj` 的 `HintPath`。
+
 ## 收费入口接入
 
 收费录入界面在保存收费动作前接入：
@@ -51,15 +56,44 @@ if (decision.ShouldOpenPopup)
     }
 
     // HIS 按 result.Response.Items 回填最终数量、金额、折价金额和追溯号。
-    // HIS 落账成功后必须调用 CommitAfterHisSuccess。
-    // HIS 落账失败或操作员取消必须调用 CancelAfterHisFailure。
+    // 如返回 ReplacementItem / ChildItems，HIS 必须把替换子项、加收子项一并落账。
+    // result.Response.ExpireAt / ExpireSeconds 表示 confirm 占额有效期。
+
+    // HIS 本地落账或支付失败时，才能 cancel 释放 confirm 占用。
+    // 一旦 HIS 已经真实落账成功，commit 通知失败不能 cancel，应记录待补偿并重试 commit。
+    if (!hisChargeSaved)
+    {
+        helper.CancelAfterHisFailure(result.RequestId);
+        return;
+    }
+
+    // 这里的 savedDetails 必须来自 HIS 本地真实落账成功后的收费明细，
+    // 不能直接用试算结果拼凑。ChargeDetailNo、ItemCode、PartSeq、FinalQty、FinalAmount
+    // 会被计价中心与 confirm 阶段保存的结果逐项比对。
+    List<PricingCommitActualItemRequest> actualItems = new List<PricingCommitActualItemRequest>();
+    foreach (HisChargeDetail detail in savedDetails)
+    {
+        actualItems.Add(new PricingCommitActualItemRequest
+        {
+            ChargeDetailNo = detail.ChargeDetailNo,
+            ItemCode = detail.ItemCode,
+            PartSeq = detail.PartSeq,
+            FinalQty = detail.Qty,
+            FinalAmount = detail.Amount
+        });
+    }
+
+    helper.CommitAfterHisSuccess(result.RequestId, hisChargeNo, actualItems, hisActualTotalAmount);
 }
 ```
 
 ## 资金安全约束
 
 - `confirm` 超时重试必须复用同一个 `BusinessRequestNo`。
-- `confirm` 成功后，HIS 落账成功调用 `CommitAfterHisSuccess`。
+- `confirm` 成功后，HIS 落账成功调用带 `actualItems` 参数的 `CommitAfterHisSuccess`。
 - HIS 落账失败、支付失败或操作员取消调用 `CancelAfterHisFailure`。
+- HIS 已经落账成功但 `commit` 通知失败时，不允许再调用 `cancel`；应重试 `commit` 或交给对账补偿。
 - `special-flag` 或计价服务不可用时，不允许回退为普通计价。
 - 一次收费动作可传多条 `PricingCalculateRequest.Items`，每条费用明细独立携带 `ItemCode`。
+- `ReplacementItem` 和 `ChildItems` 是需要 HIS 一并落账和回传 commit 的真实收费结果，不是只用于展示的说明文本。
+- 上线过渡期如需计入旧 HIS 历史收费次数，必须先实现 `QueryLegacyOccupiedQty` 中的 `RestrictingfeePay2` SQL；当前默认实现会抛错，避免误按 0 次历史收费放行。

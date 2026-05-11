@@ -97,6 +97,7 @@ namespace HIS.Pricing.Client
 
             _client = client;
             _request = request;
+            EnsureBusinessRequestNo();
             InitializeComponent();
         }
 
@@ -181,6 +182,7 @@ namespace HIS.Pricing.Client
             _btnConfirm = new Button();
             _btnConfirm.Text = "确认收费";
             _btnConfirm.Location = new Point(650, 548);
+            _btnConfirm.Enabled = false;
             _btnConfirm.Click += BtnConfirmClick;
 
             _btnCancel = new Button();
@@ -244,11 +246,24 @@ namespace HIS.Pricing.Client
         {
             try
             {
+                if (_simulateResponse == null)
+                {
+                    MessageBox.Show(this,
+                        "请先完成试算。试算失败或未返回结果时，不允许确认收费。",
+                        "确认计价失败",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return;
+                }
+
+                _btnConfirm.Enabled = false;
+
                 // ========== 第1阶段：确保业务请求号 ==========
                 // BusinessRequestNo 是幂等性保证的关键字段，confirm 接口以
                 // sourceSystem + businessRequestNo + callType 为幂等键。
                 // 若调用方未传入，由辅助类自动生成。
                 EnsureBusinessRequestNo();
+                _lblSummary.Text = BuildSummary();
 
                 // ========== 第2阶段：执行确认计价 ==========
                 // confirm 会占用额度，接口是幂等的——相同 businessRequestNo 重复调用不会重复占用。
@@ -261,6 +276,8 @@ namespace HIS.Pricing.Client
             }
             catch (Exception ex)
             {
+                _btnConfirm.Enabled = _simulateResponse != null;
+
                 // confirm 失败时不关闭弹窗，提示收费人员重试。
                 // 资金安全约束：不允许在 confirm 失败时回退为普通计价。
                 MessageBox.Show(this,
@@ -288,7 +305,9 @@ namespace HIS.Pricing.Client
             try
             {
                 // ========== 第1阶段：禁用试算按钮防止重复点击 ==========
+                _simulateResponse = null;
                 _btnSimulate.Enabled = false;
+                _btnConfirm.Enabled = false;
 
                 // ========== 第2阶段：调用试算接口 ==========
                 // simulate 是幂等的，不占用额度，仅返回计算结果。
@@ -298,12 +317,14 @@ namespace HIS.Pricing.Client
 
                 // ========== 第3阶段：绑定结果到界面 ==========
                 BindResult(_simulateResponse);
+                _btnConfirm.Enabled = true;
             }
             catch (Exception ex)
             {
                 // 试算失败：清空结果，提示不允许按普通价格继续。
                 // 这是"特殊项目"的安全约束——计价服务不可用时必须阻断收费流程。
                 _simulateResponse = null;
+                _btnConfirm.Enabled = false;
                 _gridItems.DataSource = null;
                 _gridTrace.DataSource = null;
                 _txtReason.Text = "试算失败，不允许按普通价格继续收费：" + ex.Message;
@@ -334,9 +355,45 @@ namespace HIS.Pricing.Client
             _lblOriginalAmount.Text = "原价：" + FormatMoney(CalculateOriginalAmount(response));
             _lblFinalAmount.Text = "折后价：" + FormatMoney(response.FinalAmount);
             _lblDiscountAmount.Text = "折价金额：" + FormatMoney(response.DiscountAmount);
-            _gridItems.DataSource = response.Items;
+            _gridItems.DataSource = BuildItemRows(response);
             _gridTrace.DataSource = BuildTraceRows(response);
             _txtReason.Text = BuildReason(response);
+        }
+
+        /// <summary>
+        /// 构建费用明细展示行。避免直接绑定服务端 DTO 中的集合属性，
+        /// 否则替换子项/加收子项会在 DataGridView 中显示为类型名，收费人员无法核对。
+        /// </summary>
+        /// <param name="response">试算响应</param>
+        /// <returns>费用明细展示行列表</returns>
+        private static List<PricingItemDisplayRow> BuildItemRows(PricingCalculateResponse response)
+        {
+            List<PricingItemDisplayRow> rows = new List<PricingItemDisplayRow>();
+            if (response == null || response.Items == null)
+            {
+                return rows;
+            }
+
+            foreach (PricingCalculateItemResponse item in response.Items)
+            {
+                rows.Add(new PricingItemDisplayRow
+                {
+                    ChargeDetailNo = Safe(item.ChargeDetailNo),
+                    ItemCode = Safe(item.ItemCode),
+                    ItemName = Safe(item.ItemName),
+                    InputQty = FormatQty(item.InputQty),
+                    ConvertedQty = FormatQty(item.ConvertedQty),
+                    FinalQty = FormatQty(item.FinalQty),
+                    UnitPrice = FormatMoney(item.UnitPrice),
+                    FinalAmount = FormatMoney(item.FinalAmount),
+                    DiscountAmount = FormatMoney(item.DiscountAmount),
+                    ExceedQty = FormatQty(item.ExceedQty),
+                    ReplacementItem = BuildReplacementSummary(item.ReplacementItem),
+                    ChildItems = BuildChildSummary(item.ChildItems)
+                });
+            }
+
+            return rows;
         }
 
         /// <summary>
@@ -425,6 +482,18 @@ namespace HIS.Pricing.Client
             {
                 foreach (PricingCalculateItemResponse item in response.Items)
                 {
+                    if (item.ReplacementItem != null)
+                    {
+                        reasons.Add(Safe(item.ItemCode) + "：替换子项 "
+                            + BuildReplacementSummary(item.ReplacementItem));
+                    }
+
+                    if (item.ChildItems != null && item.ChildItems.Count > 0)
+                    {
+                        reasons.Add(Safe(item.ItemCode) + "：加收子项 "
+                            + BuildChildSummary(item.ChildItems));
+                    }
+
                     if (item.TraceSteps == null)
                     {
                         continue;
@@ -518,10 +587,93 @@ namespace HIS.Pricing.Client
             return value.ToString("0.00");
         }
 
+        /// <summary>格式化数量，最多保留 4 位小数，避免界面出现多余尾零</summary>
+        private static string FormatQty(decimal value)
+        {
+            return value.ToString("0.####");
+        }
+
+        /// <summary>构建替换子项摘要，用于费用明细网格和折价原因文本</summary>
+        private static string BuildReplacementSummary(PricingReplacementItemResponse replacement)
+        {
+            if (replacement == null)
+            {
+                return string.Empty;
+            }
+
+            return Safe(replacement.ItemCode)
+                + " " + Safe(replacement.ItemName)
+                + " x" + FormatQty(replacement.Qty)
+                + " 金额" + FormatMoney(replacement.Amount);
+        }
+
+        /// <summary>构建加收子项摘要，用于费用明细网格和折价原因文本</summary>
+        private static string BuildChildSummary(List<PricingChildItemResponse> children)
+        {
+            if (children == null || children.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            List<string> parts = new List<string>();
+            foreach (PricingChildItemResponse child in children)
+            {
+                parts.Add(Safe(child.ItemCode)
+                    + " " + Safe(child.ItemName)
+                    + " x" + FormatQty(child.Qty)
+                    + " 金额" + FormatMoney(child.Amount));
+            }
+
+            return string.Join("；", parts.ToArray());
+        }
+
         /// <summary>安全字符串转换，null 转为空字符串，防止界面展示 "null" 字样</summary>
         private static string Safe(string value)
         {
             return value == null ? string.Empty : value;
+        }
+
+        /// <summary>
+        /// 费用明细展示行（内部模型）。
+        /// 将服务端 DTO 展平成 DataGridView 易读字段，便于收费人员核对主项目、超限、替换和加收子项。
+        /// </summary>
+        private sealed class PricingItemDisplayRow
+        {
+            /// <summary>HIS 收费明细单号</summary>
+            public string ChargeDetailNo { get; set; }
+
+            /// <summary>项目编码</summary>
+            public string ItemCode { get; set; }
+
+            /// <summary>项目名称</summary>
+            public string ItemName { get; set; }
+
+            /// <summary>录入数量</summary>
+            public string InputQty { get; set; }
+
+            /// <summary>换算后数量</summary>
+            public string ConvertedQty { get; set; }
+
+            /// <summary>最终计价数量</summary>
+            public string FinalQty { get; set; }
+
+            /// <summary>单价</summary>
+            public string UnitPrice { get; set; }
+
+            /// <summary>最终金额</summary>
+            public string FinalAmount { get; set; }
+
+            /// <summary>折价金额</summary>
+            public string DiscountAmount { get; set; }
+
+            /// <summary>超限数量</summary>
+            public string ExceedQty { get; set; }
+
+            /// <summary>替换子项摘要</summary>
+            public string ReplacementItem { get; set; }
+
+            /// <summary>加收子项摘要</summary>
+            public string ChildItems { get; set; }
         }
 
         /// <summary>
