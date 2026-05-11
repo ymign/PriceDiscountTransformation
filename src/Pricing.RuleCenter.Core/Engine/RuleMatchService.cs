@@ -59,12 +59,17 @@ public sealed class RuleMatchService
     private readonly ConditionEvaluatorFactory _evaluatorFactory;
 
     /// <summary>
+    /// 字典仓储，用于从 PR_DICT 表读取动作执行顺序等可配置数据。
+    /// </summary>
+    private readonly IDictRepository _dictRepository;
+
+    /// <summary>
     /// 匹配日志，用于记录未知评估器、命中数量等运行期诊断信息。
     /// </summary>
     private readonly ILogger<RuleMatchService> _logger;
 
     /// <summary>
-    /// 全局动作执行顺序。这个顺序高于单条规则内的 SortNo，确保所有规则先换算、再公式、再限额、最后折价。
+    /// 默认动作执行顺序。在字典数据尚未加载时使用，确保向后兼容。
     /// </summary>
     /// <remarks>
     /// 顺序设计依据业务计算规则：
@@ -80,21 +85,45 @@ public sealed class RuleMatchService
     ///   <item><description>ADD_CHILD_ITEM — 子项加收</description></item>
     ///   <item><description>DISCOUNT_EXCEED_TO_ZERO — 超出部分归零，必须最后执行</description></item>
     /// </list>
-    /// 新增动作类型必须插入到正确位置，否则会破坏计算顺序。
+    /// 新增动作类型不再需要修改此默认列表——只需在 PR_DICT 表的 ACTION_TYPE_ORDER 类型中插入记录即可。
     /// </remarks>
-    private static readonly string[] ActionTypeOrder =
+    private static readonly Dictionary<string, int> DefaultActionTypeOrder = new(StringComparer.OrdinalIgnoreCase)
     {
-        "CONVERT_QTY",
-        "FORMULA_CALC",
-        "APPLY_MIN_AMOUNT",
-        "APPLY_MAX_AMOUNT",
-        "APPLY_DAY_LIMIT_QTY",
-        "APPLY_TIME_WINDOW_LIMIT",
-        "APPLY_ONCE_LIMIT_QTY",
-        "SAME_GROUP_MUTEX",
-        "ADD_CHILD_ITEM",
-        "DISCOUNT_EXCEED_TO_ZERO"
+        ["CONVERT_QTY"] = 0,
+        ["FORMULA_CALC"] = 1,
+        ["APPLY_MIN_AMOUNT"] = 2,
+        ["APPLY_MAX_AMOUNT"] = 3,
+        ["APPLY_DAY_LIMIT_QTY"] = 4,
+        ["APPLY_TIME_WINDOW_LIMIT"] = 5,
+        ["APPLY_ONCE_LIMIT_QTY"] = 6,
+        ["SAME_GROUP_MUTEX"] = 7,
+        ["ADD_CHILD_ITEM"] = 8,
+        ["DISCOUNT_EXCEED_TO_ZERO"] = 9
     };
+
+    /// <summary>
+    /// 字典类型编码：动作执行顺序。
+    /// 对应 PR_DICT 表中 DICT_TYPE = "ACTION_TYPE_ORDER" 的字典项。
+    /// </summary>
+    private const string ActionTypeOrderDictType = "ACTION_TYPE_ORDER";
+
+    /// <summary>
+    /// 动作执行顺序缓存。键为动作类型编码，值为排序序号（数字越小越先执行）。
+    /// 在 MatchAsync 首次调用时从字典加载，之后使用缓存值。
+    /// 规则发布/停用/回滚时应调用 ClearActionTypeOrderCache 清除缓存，确保下次读取最新顺序。
+    /// </summary>
+    private volatile Dictionary<string, int> _actionTypeOrderCache =
+        new(DefaultActionTypeOrder, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 缓存加载锁，确保多线程并发时只加载一次字典数据。
+    /// </summary>
+    private readonly SemaphoreSlim _cacheLock = new(1, 1);
+
+    /// <summary>
+    /// 标记缓存是否已从字典加载过。false 表示尚未加载，下次 MatchAsync 将尝试从字典读取。
+    /// </summary>
+    private volatile bool _cacheLoaded;
 
     /// <summary>
     /// 初始化规则匹配服务。
@@ -103,18 +132,21 @@ public sealed class RuleMatchService
     /// <param name="conditionRepository">规则条件仓储。</param>
     /// <param name="actionRepository">规则动作仓储。</param>
     /// <param name="evaluatorFactory">条件评估器工厂。</param>
+    /// <param name="dictRepository">字典仓储，用于读取动作执行顺序。</param>
     /// <param name="logger">日志对象。</param>
     public RuleMatchService(
         IRuleHeaderRepository headerRepository,
         IRuleConditionRepository conditionRepository,
         IRuleActionRepository actionRepository,
         ConditionEvaluatorFactory evaluatorFactory,
+        IDictRepository dictRepository,
         ILogger<RuleMatchService> logger)
     {
         _headerRepository = headerRepository;
         _conditionRepository = conditionRepository;
         _actionRepository = actionRepository;
         _evaluatorFactory = evaluatorFactory;
+        _dictRepository = dictRepository;
         _logger = logger;
     }
 
@@ -185,6 +217,10 @@ public sealed class RuleMatchService
         // 多规则叠加时，如果只按每条规则的 SortNo 执行，可能出现先限额后公式的错误顺序。
         // OrderActions 先按全局类别排序，再按同类 SortNo 排序，确保：
         //   换算 → 公式 → 下限 → 上限 → 日限 → 窗限 → 单次限 → 互斥 → 加收 → 归零
+        //
+        // 动作执行顺序从 PR_DICT 字典表读取（DICT_TYPE = "ACTION_TYPE_ORDER"），
+        // 首次调用时加载并缓存，后续使用缓存值。规则发布/停用/回滚时会清除缓存。
+        await EnsureActionTypeOrderLoadedAsync();
         var ordered = OrderActions(allActions);
 
         _logger.LogInformation(
@@ -277,36 +313,186 @@ public sealed class RuleMatchService
     /// <param name="actions">待排序动作集合，可能来自多条命中规则。</param>
     /// <returns>
     /// 排序后的动作集合。排序规则：
-    ///   1. 先按 ActionTypeOrder 定义的全局类别顺序
+    ///   1. 先按 PR_DICT 字典表定义的全局类别顺序
     ///   2. 同类动作内按规则配置的 SortNo 排序
     /// </returns>
     /// <remarks>
     /// 这个排序是资金安全的关键。如果多规则叠加时只按每条规则的 SortNo 执行，
     /// 可能出现"先执行限额截断，再执行公式计算"的错误顺序，导致公式结果被限额误截断。
+    ///
+    /// 动作执行顺序从缓存字典中读取，缓存来源为 PR_DICT 表的 ACTION_TYPE_ORDER 类型。
+    /// 字典未加载时使用默认顺序，确保向后兼容。
     /// </remarks>
-    private static IReadOnlyList<RuleAction> OrderActions(List<RuleAction> actions)
+    private IReadOnlyList<RuleAction> OrderActions(List<RuleAction> actions)
     {
         // 先按全局动作类别排序，再按规则配置的 SortNo 排序。
         // SortNo 只在同类动作内部生效，避免跨类别动作破坏资金计算顺序。
         return actions
-            .OrderBy(a => GetActionTypeOrder(a.ActionType))
+            .OrderBy(a => GetActionTypeSortOrder(a.ActionType))
             .ThenBy(a => a.SortNo)
             .ToList();
     }
 
     /// <summary>
     /// 获取动作类型在全局动作链中的排序序号。
+    ///
+    /// 从缓存的动作执行顺序字典中查找指定动作类型的排序序号。
+    /// 缓存来源为 PR_DICT 表中 DICT_TYPE = "ACTION_TYPE_ORDER" 的字典项，
+    /// 其中 DICT_CODE = 动作类型编码，SORT_NO = 执行顺序。
     /// </summary>
-    /// <param name="actionType">动作类型编码。</param>
+    /// <param name="actionType">动作类型编码（如 "CONVERT_QTY"、"FORMULA_CALC"）。</param>
     /// <returns>
-    /// 动作排序序号（从 0 开始）；未知动作返回 999 作为兜底序号排到最后。
+    /// 动作排序序号（数字越小越先执行）；未知动作返回 999 作为兜底序号排到最后。
     /// </returns>
-    private static int GetActionTypeOrder(string actionType)
+    /// <remarks>
+    /// 未识别的动作排到最后。正常情况下发布校验应阻断未知动作类型；
+    /// 这里保留兜底排序，避免运行期因新动作暂未登记到字典中导致排序异常抛出。
+    ///
+    /// 使用 OrdinalIgnoreCase 比较，确保动作类型编码大小写不敏感。
+    /// </remarks>
+    private int GetActionTypeSortOrder(string actionType)
     {
-        // 未识别的动作排到最后。正常情况下发布校验（PR_RULE_APPROVAL）应阻断未知动作类型；
-        // 这里保留兜底排序，避免运行期因新动作暂未登记导致排序异常抛出。
-        var index = Array.IndexOf(ActionTypeOrder, actionType);
-        return index >= 0 ? index : 999;
+        if (_actionTypeOrderCache.TryGetValue(actionType, out var order))
+        {
+            return order;
+        }
+
+        // 未识别的动作排到最后。运维可通过追溯查询中的警告日志发现未登记的动作类型。
+        _logger.LogWarning("动作类型 {ActionType} 未在 ACTION_TYPE_ORDER 字典中登记，使用兜底排序 999", actionType);
+        return 999;
+    }
+
+    /// <summary>
+    /// 确保动作执行顺序缓存已从字典加载。
+    ///
+    /// 首次调用时从 PR_DICT 表读取 DICT_TYPE = "ACTION_TYPE_ORDER" 的字典项，
+    /// 构建动作类型编码到排序序号的映射字典并缓存。后续调用直接使用缓存值。
+    ///
+    /// 加载策略：
+    ///   - 使用 SemaphoreSlim 保证线程安全，避免并发重复加载。
+    ///   - 加载失败时保留默认顺序（DefaultActionTypeOrder），确保系统可用性。
+    ///   - 加载成功后设置 _cacheLoaded 标记，后续调用跳过数据库查询。
+    /// </summary>
+    private async Task EnsureActionTypeOrderLoadedAsync()
+    {
+        // 快速路径：缓存已加载，直接返回，避免获取锁的开销。
+        if (_cacheLoaded)
+        {
+            return;
+        }
+
+        await _cacheLock.WaitAsync();
+        try
+        {
+            // 双重检查：进入锁之后再次判断，避免并发场景下重复加载。
+            if (_cacheLoaded)
+            {
+                return;
+            }
+
+            await LoadActionTypeOrderAsync();
+        }
+        finally
+        {
+            _cacheLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// 从 PR_DICT 字典表加载动作执行顺序到缓存。
+    ///
+    /// 读取 DICT_TYPE = "ACTION_TYPE_ORDER" 的所有启用字典项，
+    /// 以 DICT_CODE 为动作类型编码、SORT_NO 为排序序号，构建映射字典。
+    ///
+    /// 加载失败时保留当前缓存（可能是默认顺序），记录错误日志但不抛出异常。
+    /// 这确保字典表不可用时计价引擎仍能使用默认顺序正常工作。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 字典项字段映射：
+    /// <list type="bullet">
+    ///   <item><description>DICT_CODE → 动作类型编码（如 "CONVERT_QTY"）</description></item>
+    ///   <item><description>SORT_NO → 执行顺序序号（数字越小越先执行）</description></item>
+    ///   <item><description>IS_ENABLED → 是否参与排序（"N" 时跳过）</description></item>
+    /// </list>
+    /// </para>
+    /// <para>
+    /// 缓存失效时机：
+    ///   - 规则发布、停用、回滚时调用 ClearActionTypeOrderCache 清除缓存。
+    ///   - 字典维护界面修改 ACTION_TYPE_ORDER 类型字典后应清除缓存。
+    /// </para>
+    /// </remarks>
+    private async Task LoadActionTypeOrderAsync()
+    {
+        try
+        {
+            var dictItems = await _dictRepository.GetByTypeAsync(ActionTypeOrderDictType);
+
+            if (dictItems.Count == 0)
+            {
+                // 字典表中没有 ACTION_TYPE_ORDER 数据，使用默认顺序。
+                // 这通常发生在系统首次部署、种子数据尚未初始化时。
+                _logger.LogWarning(
+                    "PR_DICT 中未找到 DICT_TYPE = {DictType} 的字典项，使用默认动作执行顺序",
+                    ActionTypeOrderDictType);
+                _actionTypeOrderCache = new Dictionary<string, int>(DefaultActionTypeOrder, StringComparer.OrdinalIgnoreCase);
+                _cacheLoaded = true;
+                return;
+            }
+
+            var newCache = new Dictionary<string, int>(
+                DefaultActionTypeOrder,
+                StringComparer.OrdinalIgnoreCase);
+            var loadedActionTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var item in dictItems)
+            {
+                // 默认动作顺序是资金安全保底，字典只允许覆盖排序或追加新动作，不能因缺项削弱默认顺序。
+                // 同一动作类型出现重复时保留字典排序后的首个。
+                if (item.IsEnabled != "Y")
+                {
+                    continue;
+                }
+
+                if (loadedActionTypes.Add(item.DictCode))
+                {
+                    newCache[item.DictCode] = item.SortNo;
+                }
+            }
+
+            _actionTypeOrderCache = newCache;
+            _cacheLoaded = true;
+
+            _logger.LogInformation(
+                "已从 PR_DICT 加载动作执行顺序，共 {Count} 个动作类型",
+                newCache.Count);
+        }
+        catch (Exception ex)
+        {
+            // 加载失败时保留当前缓存（可能是默认顺序），记录错误日志但不抛出异常。
+            // 这确保字典表不可用时计价引擎仍能使用默认顺序正常工作。
+            _logger.LogError(ex,
+                "从 PR_DICT 加载动作执行顺序失败，保留当前缓存顺序（可能是默认顺序）");
+        }
+    }
+
+    /// <summary>
+    /// 清除动作执行顺序缓存，强制下次 MatchAsync 从字典重新加载。
+    ///
+    /// 调用时机：
+    ///   - 规则发布（PublishAsync）后，动作顺序可能已调整。
+    ///   - 规则停用（DisableAsync）后，需要刷新缓存。
+    ///   - 规则回滚（RollbackAsync）后，需要刷新缓存。
+    ///   - 字典维护界面修改 ACTION_TYPE_ORDER 类型字典后。
+    ///
+    /// 线程安全：
+    ///   使用 volatile 写入确保多线程可见性。
+    ///   清除后下一个 MatchAsync 调用会通过 EnsureActionTypeOrderLoadedAsync 重新加载。
+    /// </summary>
+    public void ClearActionTypeOrderCache()
+    {
+        _cacheLoaded = false;
+        _logger.LogDebug("动作执行顺序缓存已清除，下次匹配将从字典重新加载");
     }
 
     /// <summary>

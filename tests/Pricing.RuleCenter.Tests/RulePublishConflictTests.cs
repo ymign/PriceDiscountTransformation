@@ -17,7 +17,21 @@ public sealed class RulePublishConflictTests
         var versionRepository = new InMemoryRuleVersionRepository();
         var conditionRepository = new InMemoryRuleConditionRepository();
         var actionRepository = new InMemoryRuleActionRepository();
-        var service = CreateService(headerRepository, versionRepository, conditionRepository, actionRepository);
+        var service = CreateService(
+            headerRepository,
+            versionRepository,
+            conditionRepository,
+            actionRepository,
+            new FixedDictRepository(new[]
+            {
+                new Dict
+                {
+                    DictType = "MUTUALLY_EXCLUSIVE_ACTION_TYPE",
+                    DictCode = "APPLY_MAX_AMOUNT",
+                    SortNo = 10,
+                    IsEnabled = "Y"
+                }
+            }));
 
         headerRepository.Headers.AddRange(new[]
         {
@@ -196,7 +210,8 @@ public sealed class RulePublishConflictTests
         IRuleHeaderRepository headerRepository,
         IRuleVersionRepository versionRepository,
         IRuleConditionRepository conditionRepository,
-        IRuleActionRepository actionRepository) =>
+        IRuleActionRepository actionRepository,
+        IDictRepository? dictRepository = null) =>
         new(
             headerRepository,
             versionRepository,
@@ -204,6 +219,7 @@ public sealed class RulePublishConflictTests
             new EmptyRuleChangeLogRepository(),
             conditionRepository,
             actionRepository,
+            dictRepository ?? new EmptyDictRepository(),
             new MemoryCache(new MemoryCacheOptions()),
             NullLogger<RulePublishService>.Instance);
 
@@ -291,5 +307,41 @@ public sealed class RulePublishConflictTests
     {
         public Task<IReadOnlyList<RuleChangeLog>> GetByRuleIdAsync(long ruleId) => Task.FromResult((IReadOnlyList<RuleChangeLog>)Array.Empty<RuleChangeLog>());
         public Task<long> InsertAsync(RuleChangeLog entity) => Task.FromResult(0L);
+    }
+
+    private sealed class EmptyDictRepository : IDictRepository
+    {
+        public Task<IReadOnlyList<Dict>> GetByTypeAsync(string dictType) =>
+            Task.FromResult((IReadOnlyList<Dict>)Array.Empty<Dict>());
+        public Task<Dict?> GetByIdAsync(long dictId) => Task.FromResult<Dict?>(null);
+        public Task<IReadOnlyList<string>> GetAllTypesAsync() =>
+            Task.FromResult((IReadOnlyList<string>)Array.Empty<string>());
+        public Task<long> InsertAsync(Dict entity) => Task.FromResult(0L);
+        public Task<bool> UpdateAsync(Dict entity) => Task.FromResult(false);
+        public Task<bool> SetEnabledAsync(long dictId, string isEnabled) => Task.FromResult(false);
+        public Task<bool> ExistsAsync(string dictType, string dictCode) => Task.FromResult(false);
+    }
+
+    private sealed class FixedDictRepository : IDictRepository
+    {
+        private readonly IReadOnlyList<Dict> _items;
+
+        public FixedDictRepository(IReadOnlyList<Dict> items)
+        {
+            _items = items;
+        }
+
+        public Task<IReadOnlyList<Dict>> GetByTypeAsync(string dictType) =>
+            Task.FromResult((IReadOnlyList<Dict>)_items
+                .Where(d => d.DictType == dictType && d.IsEnabled == "Y")
+                .OrderBy(d => d.SortNo)
+                .ToList());
+        public Task<Dict?> GetByIdAsync(long dictId) => Task.FromResult<Dict?>(null);
+        public Task<IReadOnlyList<string>> GetAllTypesAsync() =>
+            Task.FromResult((IReadOnlyList<string>)Array.Empty<string>());
+        public Task<long> InsertAsync(Dict entity) => Task.FromResult(0L);
+        public Task<bool> UpdateAsync(Dict entity) => Task.FromResult(false);
+        public Task<bool> SetEnabledAsync(long dictId, string isEnabled) => Task.FromResult(false);
+        public Task<bool> ExistsAsync(string dictType, string dictCode) => Task.FromResult(false);
     }
 }

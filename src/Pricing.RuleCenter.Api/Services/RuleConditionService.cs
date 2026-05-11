@@ -35,6 +35,13 @@ public sealed class RuleConditionService
     private readonly IRuleVersionRepository _versionRepository;
 
     /// <summary>
+    /// 变更日志仓储，用于在条件集合保存时写入审计记录。
+    /// 条件决定了规则的匹配范围（项目、场景、部位、时间等），
+    /// 每次保存都必须记录变更日志，确保条件维度的修改可追溯。
+    /// </summary>
+    private readonly IRuleChangeLogRepository _changeLogRepository;
+
+    /// <summary>
     /// 服务日志，用于记录条件集合保存数量，便于追溯某次保存是否清空了所有条件。
     /// </summary>
     private readonly ILogger<RuleConditionService> _logger;
@@ -44,14 +51,17 @@ public sealed class RuleConditionService
     /// </summary>
     /// <param name="conditionRepository">规则条件仓储。</param>
     /// <param name="versionRepository">规则版本仓储。</param>
+    /// <param name="changeLogRepository">变更日志仓储，用于写入条件保存的审计记录。</param>
     /// <param name="logger">日志对象。</param>
     public RuleConditionService(
         IRuleConditionRepository conditionRepository,
         IRuleVersionRepository versionRepository,
+        IRuleChangeLogRepository changeLogRepository,
         ILogger<RuleConditionService> logger)
     {
         _conditionRepository = conditionRepository;
         _versionRepository = versionRepository;
+        _changeLogRepository = changeLogRepository;
         _logger = logger;
     }
 
@@ -117,6 +127,46 @@ public sealed class RuleConditionService
 
         _logger.LogInformation("保存规则条件 RuleId={RuleId}, VersionNo={VersionNo}, Count={Count}",
             ruleId, versionNo, entities.Count);
+
+        // ========== 第五阶段：写入变更日志 ==========
+        // 条件决定了规则的匹配范围（项目、场景、部位、时间等），
+        // 每次整体替换都必须记录审计日志，确保条件维度的修改可追溯到具体保存操作。
+        await TryWriteChangeLogAsync(ruleId, versionNo, "SAVE_CONDITIONS",
+            $"保存规则条件：共 {entities.Count} 个条件，RuleId={ruleId}，VersionNo={versionNo}");
+    }
+
+    /// <summary>
+    /// 安全写入变更日志，失败时仅记录警告日志，不阻断主业务流程。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 条件保存是规则配置的核心操作，审计日志写入失败不应导致条件保存回滚。
+    /// try-catch 确保即使 PR_RULE_CHANGE_LOG 表不可用，条件配置仍可正常进行。
+    /// </para>
+    /// </remarks>
+    /// <param name="ruleId">规则主键。</param>
+    /// <param name="versionNo">规则版本号。</param>
+    /// <param name="changeType">变更类型编码，如 SAVE_CONDITIONS。</param>
+    /// <param name="changeSummary">人可读的变更摘要，含保存数量和规则/版本标识。</param>
+    private async Task TryWriteChangeLogAsync(long ruleId, int versionNo, string changeType, string changeSummary)
+    {
+        try
+        {
+            await _changeLogRepository.InsertAsync(new RuleChangeLog
+            {
+                RuleId = ruleId,
+                VersionNo = versionNo,
+                ChangeType = changeType,
+                ChangeSummary = changeSummary,
+                ChangedBy = "SYSTEM",
+                ChangedAt = DateTime.Now,
+                SourceSystem = "API"
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "写入变更日志失败 RuleId={RuleId}, ChangeType={ChangeType}", ruleId, changeType);
+        }
     }
 
     /// <summary>

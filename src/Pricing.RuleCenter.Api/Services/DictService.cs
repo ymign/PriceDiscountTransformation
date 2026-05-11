@@ -35,13 +35,20 @@ public sealed class DictService
     private readonly IDictRepository _repository;
 
     /// <summary>
+    /// 变更日志仓储，用于在字典项创建、更新和停用时写入审计记录。
+    /// 字典编码被规则配置引用，任何字典变更都可能影响规则匹配和前端可选项，
+    /// 因此需要通过变更日志保留完整的操作审计链。
+    /// </summary>
+    private readonly IRuleChangeLogRepository _changeLogRepository;
+
+    /// <summary>
     /// 内存缓存，用于缓存字典查询结果，减少数据库访问频率。
     /// 字典数据变化频率极低（仅配置维护时变更），适合较长 TTL 的应用层缓存。
     /// </summary>
     private readonly IMemoryCache _cache;
 
     /// <summary>
-    /// 服务日志，用于记录新增和停用等会影响配置展示的操作。
+    /// 服务日志，用于记录新增、更新和停用等会影响配置展示的操作。
     /// 字典变更会直接影响前端可选项，保留操作线索便于定位"页面选项为什么变化"。
     /// </summary>
     private readonly ILogger<DictService> _logger;
@@ -61,11 +68,17 @@ public sealed class DictService
     /// 初始化字典服务。
     /// </summary>
     /// <param name="repository">字典仓储，用于隔离 PR 字典表的持久化实现。</param>
+    /// <param name="changeLogRepository">变更日志仓储，用于写入字典增删改的审计记录。</param>
     /// <param name="cache">内存缓存，用于缓存字典查询结果。</param>
     /// <param name="logger">日志对象，用于输出配置变更审计线索。</param>
-    public DictService(IDictRepository repository, IMemoryCache cache, ILogger<DictService> logger)
+    public DictService(
+        IDictRepository repository,
+        IRuleChangeLogRepository changeLogRepository,
+        IMemoryCache cache,
+        ILogger<DictService> logger)
     {
         _repository = repository;
+        _changeLogRepository = changeLogRepository;
         _cache = cache;
         _logger = logger;
     }
@@ -173,6 +186,13 @@ public sealed class DictService
         ClearDictCache(request.DictType);
         _logger.LogInformation("新增字典项 {DictType}/{DictCode}, ID={DictId}",
             request.DictType, request.DictCode, id);
+
+        // ========== 第四阶段：写入变更日志 ==========
+        // 字典编码被规则条件和动作引用，新增字典项会扩大配置页面的可选范围，
+        // 必须记录审计日志便于追溯"某个选项是什么时候加入的"。
+        await TryWriteChangeLogAsync("CREATE_DICT",
+            $"新增字典项：类型={request.DictType}，编码={request.DictCode}，名称={request.DictName}");
+
         return id;
     }
 
@@ -195,6 +215,14 @@ public sealed class DictService
 
         await _repository.UpdateAsync(entity);
         ClearDictCache(entity.DictType);
+        _logger.LogInformation("更新字典项 {DictId}, 类型={DictType}, 编码={DictCode}",
+            dictId, entity.DictType, entity.DictCode);
+
+        // ========== 写入变更日志 ==========
+        // 字典名称变更会影响前端显示，排序变更会影响下拉框顺序，
+        // 必须记录审计日志便于追溯配置变更历史。
+        await TryWriteChangeLogAsync("UPDATE_DICT",
+            $"更新字典项：类型={entity.DictType}，编码={entity.DictCode}，新名称={request.DictName}");
     }
 
     /// <summary>
@@ -215,6 +243,47 @@ public sealed class DictService
         await _repository.SetEnabledAsync(dictId, "N");
         ClearDictCache(entity.DictType);
         _logger.LogInformation("停用字典项 {DictId}", dictId);
+
+        // ========== 第三阶段：写入变更日志 ==========
+        // 停用字典项会使前端下拉框不再显示该选项，可能影响规则配置人员的操作，
+        // 必须记录审计日志便于追溯"某个选项是什么时候被移除的"。
+        await TryWriteChangeLogAsync("DELETE_DICT",
+            $"停用字典项：类型={entity.DictType}，编码={entity.DictCode}，名称={entity.DictName}");
+    }
+
+    /// <summary>
+    /// 安全写入变更日志，失败时仅记录警告日志，不阻断主业务流程。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 字典变更是低频配置操作，审计日志写入失败不应导致字典保存或停用回滚。
+    /// try-catch 确保即使 PR_RULE_CHANGE_LOG 表不可用，字典维护仍可正常进行。
+    /// </para>
+    /// <para>
+    /// 字典操作不关联特定规则，因此 RuleId 使用 0、VersionNo 使用 null。
+    /// </para>
+    /// </remarks>
+    /// <param name="changeType">变更类型编码，如 CREATE_DICT、UPDATE_DICT、DELETE_DICT。</param>
+    /// <param name="changeSummary">人可读的变更摘要，含字典类型和编码等关键参数。</param>
+    private async Task TryWriteChangeLogAsync(string changeType, string changeSummary)
+    {
+        try
+        {
+            await _changeLogRepository.InsertAsync(new RuleChangeLog
+            {
+                RuleId = 0,
+                VersionNo = null,
+                ChangeType = changeType,
+                ChangeSummary = changeSummary,
+                ChangedBy = "SYSTEM",
+                ChangedAt = DateTime.Now,
+                SourceSystem = "API"
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "写入变更日志失败 ChangeType={ChangeType}", changeType);
+        }
     }
 
     /// <summary>

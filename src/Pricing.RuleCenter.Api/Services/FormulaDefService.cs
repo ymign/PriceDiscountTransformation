@@ -31,7 +31,14 @@ public sealed class FormulaDefService
     private readonly IFormulaDefRepository _repository;
 
     /// <summary>
-    /// 服务日志，用于记录新增公式和切换启停状态等配置变更。
+    /// 变更日志仓储，用于在公式定义创建、更新和状态切换时写入审计记录。
+    /// 公式定义决定了规则动作的计算能力，任何变更都可能影响计价结果，
+    /// 因此需要通过变更日志保留完整的操作审计链。
+    /// </summary>
+    private readonly IRuleChangeLogRepository _changeLogRepository;
+
+    /// <summary>
+    /// 服务日志，用于记录新增公式、更新定义和切换启停状态等配置变更。
     /// 公式新增会改变规则动作可选项，切换状态会限制或放开配置页面的选择范围。
     /// </summary>
     private readonly ILogger<FormulaDefService> _logger;
@@ -40,10 +47,15 @@ public sealed class FormulaDefService
     /// 初始化公式定义服务。
     /// </summary>
     /// <param name="repository">公式定义仓储，用于隔离 PR_FORMULA_DEF 表的持久化实现。</param>
+    /// <param name="changeLogRepository">变更日志仓储，用于写入公式增删改的审计记录。</param>
     /// <param name="logger">日志对象，用于输出公式新增和状态切换的审计线索。</param>
-    public FormulaDefService(IFormulaDefRepository repository, ILogger<FormulaDefService> logger)
+    public FormulaDefService(
+        IFormulaDefRepository repository,
+        IRuleChangeLogRepository changeLogRepository,
+        ILogger<FormulaDefService> logger)
     {
         _repository = repository;
+        _changeLogRepository = changeLogRepository;
         _logger = logger;
     }
 
@@ -102,6 +114,13 @@ public sealed class FormulaDefService
         var id = await _repository.InsertAsync(entity);
         _logger.LogInformation("新增公式定义 {FormulaCode}, ID={FormulaId}",
             request.FormulaCode, id);
+
+        // ========== 第四阶段：写入变更日志 ==========
+        // 公式定义决定了规则动作的计算能力，新增公式会扩大配置页面的可选范围，
+        // 必须记录审计日志便于追溯"某个公式是什么时候加入系统的"。
+        await TryWriteChangeLogAsync("CREATE_FORMULA",
+            $"新增公式定义：编码={request.FormulaCode}，名称={request.FormulaName}，执行器={request.ExecutorCode}");
+
         return id;
     }
 
@@ -130,6 +149,13 @@ public sealed class FormulaDefService
         entity.Remark = request.Remark;
 
         await _repository.UpdateAsync(entity);
+        _logger.LogInformation("更新公式定义 {FormulaId}, 编码={FormulaCode}", formulaId, entity.FormulaCode);
+
+        // ========== 写入变更日志 ==========
+        // 修改执行器编码会改变运行时的公式计算行为，修改参数结构会影响前端配置页面，
+        // 必须记录审计日志便于追溯公式定义的变更历史。
+        await TryWriteChangeLogAsync("UPDATE_FORMULA",
+            $"更新公式定义：编码={entity.FormulaCode}，名称={request.FormulaName}，执行器={request.ExecutorCode}");
     }
 
     /// <summary>
@@ -150,6 +176,48 @@ public sealed class FormulaDefService
         await _repository.SetEnabledAsync(formulaId, newEnabled);
 
         _logger.LogInformation("切换公式 {FormulaId} 状态为 {Enabled}", formulaId, newEnabled);
+
+        // ========== 第三阶段：写入变更日志 ==========
+        // 状态切换会限制或放开配置页面的公式选择范围，停用可能导致已有规则在下次发布时无法引用该公式，
+        // 必须记录审计日志便于追溯"公式何时被禁用或重新启用"。
+        var stateLabel = newEnabled == "Y" ? "启用" : "停用";
+        await TryWriteChangeLogAsync("TOGGLE_FORMULA",
+            $"{stateLabel}公式定义：编码={entity.FormulaCode}，名称={entity.FormulaName}");
+    }
+
+    /// <summary>
+    /// 安全写入变更日志，失败时仅记录警告日志，不阻断主业务流程。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 公式定义变更是低频配置操作，审计日志写入失败不应导致公式保存或状态切换回滚。
+    /// try-catch 确保即使 PR_RULE_CHANGE_LOG 表不可用，公式维护仍可正常进行。
+    /// </para>
+    /// <para>
+    /// 公式定义操作不关联特定规则，因此 RuleId 使用 0、VersionNo 使用 null。
+    /// </para>
+    /// </remarks>
+    /// <param name="changeType">变更类型编码，如 CREATE_FORMULA、UPDATE_FORMULA、TOGGLE_FORMULA。</param>
+    /// <param name="changeSummary">人可读的变更摘要，含公式编码、名称和执行器等关键参数。</param>
+    private async Task TryWriteChangeLogAsync(string changeType, string changeSummary)
+    {
+        try
+        {
+            await _changeLogRepository.InsertAsync(new RuleChangeLog
+            {
+                RuleId = 0,
+                VersionNo = null,
+                ChangeType = changeType,
+                ChangeSummary = changeSummary,
+                ChangedBy = "SYSTEM",
+                ChangedAt = DateTime.Now,
+                SourceSystem = "API"
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "写入变更日志失败 ChangeType={ChangeType}", changeType);
+        }
     }
 
     /// <summary>

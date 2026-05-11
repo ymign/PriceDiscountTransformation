@@ -36,13 +36,20 @@ public sealed class RuleHeaderService
     private readonly IRuleHeaderRepository _repository;
 
     /// <summary>
+    /// 变更日志仓储，用于在规则主档创建和更新时写入审计记录。
+    /// 每次写操作完成后，通过 InsertAsync 向 PR_RULE_CHANGE_LOG 表追加一条变更摘要，
+    /// 保证规则主档的配置变更可沿"规则变更链"追溯。
+    /// </summary>
+    private readonly IRuleChangeLogRepository _changeLogRepository;
+
+    /// <summary>
     /// 内存缓存，用于缓存生效规则查询结果，减少数据库访问频率。
     /// 生效规则变化频率低（仅发布/停用/回滚时变化），适合应用层缓存。
     /// </summary>
     private readonly IMemoryCache _cache;
 
     /// <summary>
-    /// 服务日志，用于记录规则主档新增等配置变更。
+    /// 服务日志，用于记录规则主档新增和更新等配置变更。
     /// 主档变更会影响规则匹配结果，保留操作线索便于审计追踪。
     /// </summary>
     private readonly ILogger<RuleHeaderService> _logger;
@@ -63,11 +70,17 @@ public sealed class RuleHeaderService
     /// 初始化规则主档服务。
     /// </summary>
     /// <param name="repository">规则主档仓储。</param>
+    /// <param name="changeLogRepository">变更日志仓储，用于写入主档创建和更新的审计记录。</param>
     /// <param name="cache">内存缓存，用于缓存生效规则查询结果。</param>
     /// <param name="logger">日志对象。</param>
-    public RuleHeaderService(IRuleHeaderRepository repository, IMemoryCache cache, ILogger<RuleHeaderService> logger)
+    public RuleHeaderService(
+        IRuleHeaderRepository repository,
+        IRuleChangeLogRepository changeLogRepository,
+        IMemoryCache cache,
+        ILogger<RuleHeaderService> logger)
     {
         _repository = repository;
+        _changeLogRepository = changeLogRepository;
         _cache = cache;
         _logger = logger;
     }
@@ -222,6 +235,14 @@ public sealed class RuleHeaderService
         // 版本草稿由 RuleVersionService 单独创建，保持"主档"和"版本内容"的职责边界清晰。
         var id = await _repository.InsertAsync(entity);
         _logger.LogInformation("新增规则 {RuleCode}, ID={RuleId}", request.RuleCode, id);
+
+        // ========== 第四阶段：写入变更日志 ==========
+        // 主档创建是规则生命周期的起点，必须记录审计日志，便于后续追溯规则来源。
+        // 变更日志写入失败不应阻断主业务流程，因此使用 try-catch 包裹。
+        await TryWriteChangeLogAsync(id, null, "CREATE_RULE",
+            $"创建规则主档：编码={request.RuleCode}，名称={request.RuleName}",
+            request.CreatedBy);
+
         return id;
     }
 
@@ -255,6 +276,58 @@ public sealed class RuleHeaderService
         entity.UpdatedAt = DateTime.Now;
 
         await _repository.UpdateAsync(entity);
+        _logger.LogInformation("更新规则主档 RuleId={RuleId}", ruleId);
+
+        // ========== 第三阶段：写入变更日志 ==========
+        // 主档更新可能影响规则匹配条件（如项目编码、生效时间、优先级等），
+        // 必须记录审计日志便于追溯哪次修改导致了匹配结果变化。
+        await TryWriteChangeLogAsync(ruleId, null, "UPDATE_RULE",
+            $"更新规则主档：名称={request.RuleName}，项目={request.ItemCode}，优先级={request.Priority}",
+            request.UpdatedBy);
+    }
+
+    /// <summary>
+    /// 安全写入变更日志，失败时仅记录警告日志，不阻断主业务流程。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 审计日志是"尽力而为"的辅助功能。如果数据库写入失败（如连接超时、序列耗尽），
+    /// 不应导致规则主档的创建或更新操作回滚，否则会因审计功能的故障影响核心配置流程。
+    /// </para>
+    /// <para>
+    /// 失败后通过 ILogger 输出 WARN 级别日志，运维人员可通过日志监控发现审计丢失，
+    /// 并通过数据库层面的补偿脚本恢复缺失的变更记录。
+    /// </para>
+    /// </remarks>
+    /// <param name="ruleId">规则主键。</param>
+    /// <param name="versionNo">规则版本号（可为空，主档级变更不关联特定版本）。</param>
+    /// <param name="changeType">变更类型编码，如 CREATE_RULE、UPDATE_RULE。</param>
+    /// <param name="changeSummary">人可读的变更摘要，含关键参数便于配置人员理解。</param>
+    /// <param name="changedBy">操作人标识，从请求中获取或默认 SYSTEM。</param>
+    private async Task TryWriteChangeLogAsync(
+        long ruleId,
+        int? versionNo,
+        string changeType,
+        string changeSummary,
+        string? changedBy)
+    {
+        try
+        {
+            await _changeLogRepository.InsertAsync(new RuleChangeLog
+            {
+                RuleId = ruleId,
+                VersionNo = versionNo,
+                ChangeType = changeType,
+                ChangeSummary = changeSummary,
+                ChangedBy = changedBy ?? "SYSTEM",
+                ChangedAt = DateTime.Now,
+                SourceSystem = "API"
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "写入变更日志失败 RuleId={RuleId}, ChangeType={ChangeType}", ruleId, changeType);
+        }
     }
 
     /// <summary>

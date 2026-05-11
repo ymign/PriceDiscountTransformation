@@ -45,6 +45,10 @@ public sealed class RulePublishService
     /// </summary>
     private readonly IRuleActionRepository _actionRepository;
     /// <summary>
+    /// 字典仓储，用于从 PR_DICT 表读取互斥动作类型等可配置数据。
+    /// </summary>
+    private readonly IDictRepository _dictRepository;
+    /// <summary>
     /// 内存缓存，用于在发布/停用/回滚后立即清除生效规则缓存。
     /// </summary>
     private readonly IMemoryCache _cache;
@@ -54,9 +58,26 @@ public sealed class RulePublishService
     private readonly ILogger<RulePublishService> _logger;
 
     /// <summary>
+    /// 互斥动作类型缓存。从 PR_DICT 表中 DICT_TYPE = "MUTUALLY_EXCLUSIVE_ACTION_TYPE" 的字典项加载。
+    /// 在 ValidatePublishConflictsAsync 首次调用时加载，之后使用缓存值。
+    /// 规则发布/停用/回滚或字典维护后应清除缓存，确保下次读取最新互斥规则。
+    /// </summary>
+    private HashSet<string>? _mutuallyExclusiveActionsCache;
+
+    /// <summary>
+    /// 缓存加载锁，确保多线程并发时只加载一次互斥动作类型数据。
+    /// </summary>
+    private readonly SemaphoreSlim _cacheLock = new(1, 1);
+
+    /// <summary>
     /// 生效规则缓存 key 前缀，与 RuleHeaderService 中的定义保持一致。
     /// </summary>
     private const string EffectiveCachePrefix = "rules:effective:";
+
+    /// <summary>
+    /// 字典类型编码：发布互斥动作类型。
+    /// </summary>
+    private const string MutuallyExclusiveActionTypeDictType = "MUTUALLY_EXCLUSIVE_ACTION_TYPE";
 
     /// <summary>
     /// 初始化规则发布服务。
@@ -67,6 +88,7 @@ public sealed class RulePublishService
     /// <param name="changeLogRepository">变更日志仓储。</param>
     /// <param name="conditionRepository">规则条件仓储。</param>
     /// <param name="actionRepository">规则动作仓储。</param>
+    /// <param name="dictRepository">字典仓储，用于读取互斥动作类型配置。</param>
     /// <param name="cache">内存缓存，用于在状态变更后清除生效规则缓存。</param>
     /// <param name="logger">日志对象。</param>
     public RulePublishService(
@@ -76,6 +98,7 @@ public sealed class RulePublishService
         IRuleChangeLogRepository changeLogRepository,
         IRuleConditionRepository conditionRepository,
         IRuleActionRepository actionRepository,
+        IDictRepository dictRepository,
         IMemoryCache cache,
         ILogger<RulePublishService> logger)
     {
@@ -85,6 +108,7 @@ public sealed class RulePublishService
         _changeLogRepository = changeLogRepository;
         _conditionRepository = conditionRepository;
         _actionRepository = actionRepository;
+        _dictRepository = dictRepository;
         _cache = cache;
         _logger = logger;
     }
@@ -360,10 +384,11 @@ public sealed class RulePublishService
                 continue;
             }
 
-            if (HasForbiddenActionConflict(targetProfile.Actions, existingProfile.Actions, out var actionType))
+            var (hasConflict, conflictActionType) = await HasForbiddenActionConflictAsync(targetProfile.Actions, existingProfile.Actions);
+            if (hasConflict)
             {
                 throw new InvalidOperationException(
-                    $"RULE_CONFLICT: 项目 {targetHeader.ItemCode} 在相同场景和生效期内已存在 {actionType} 规则，" +
+                    $"RULE_CONFLICT: 项目 {targetHeader.ItemCode} 在相同场景和生效期内已存在 {conflictActionType} 规则，" +
                     $"RuleId={existingRule.RuleId}");
             }
 
@@ -456,24 +481,159 @@ public sealed class RulePublishService
         return left.Count == 0 || right.Count == 0 || left.Overlaps(right);
     }
 
-    private static bool HasForbiddenActionConflict(
+    /// <summary>
+    /// 检查两组动作类型之间是否存在互斥冲突。
+    ///
+    /// 互斥动作类型从 PR_DICT 字典表读取（DICT_TYPE = "MUTUALLY_EXCLUSIVE_ACTION_TYPE"），
+    /// 首次调用时加载并缓存，后续使用缓存值。
+    ///
+    /// 互斥含义：同一项目在相同场景和生效期内，不允许同时存在某些动作类型的规则。
+    /// 例如：不允许同一项目同时存在两条折价公式规则（FORMULA_CALC 互斥）。
+    /// </summary>
+    /// <param name="left">待发布规则的动作类型集合。</param>
+    /// <param name="right">已发布规则的动作类型集合。</param>
+    /// <param name="actionType">输出参数，返回第一个冲突的动作类型编码。</param>
+    /// <returns>存在互斥冲突返回 <c>true</c>，无冲突返回 <c>false</c>。</returns>
+    /// <remarks>
+    /// 设计变更说明：
+    ///   原实现硬编码 6 个互斥动作类型字符串，新增动作类型必须修改代码。
+    ///   新实现从 PR_DICT 表的 MUTUALLY_EXCLUSIVE_ACTION_TYPE 类型中读取互斥列表，
+    ///   配置人员可通过字典维护界面管理互斥规则，无需修改代码。
+    ///
+    /// 向后兼容：
+    ///   字典数据未加载或为空时，使用默认互斥列表（DefaultMutuallyExclusiveActions），
+    ///   确保系统在种子数据未初始化时仍能正常进行互斥校验。
+    /// </remarks>
+    private async Task<(bool HasConflict, string ActionType)> HasForbiddenActionConflictAsync(
         HashSet<string> left,
-        HashSet<string> right,
-        out string actionType)
+        HashSet<string> right)
     {
-        var forbiddenActions = new[]
-        {
-            "FORMULA_CALC",
-            "APPLY_MIN_AMOUNT",
-            "APPLY_MAX_AMOUNT",
-            "APPLY_DAY_LIMIT_QTY",
-            "APPLY_ONCE_LIMIT_QTY",
-            "APPLY_TIME_WINDOW_LIMIT"
-        };
+        var forbiddenActions = await GetMutuallyExclusiveActionsAsync();
 
-        actionType = forbiddenActions.FirstOrDefault(a => left.Contains(a) && right.Contains(a)) ?? string.Empty;
-        return !string.IsNullOrEmpty(actionType);
+        var actionType = forbiddenActions.FirstOrDefault(a => left.Contains(a) && right.Contains(a)) ?? string.Empty;
+        return (!string.IsNullOrEmpty(actionType), actionType);
     }
+
+    /// <summary>
+    /// 获取互斥动作类型集合。
+    ///
+    /// 从 PR_DICT 字典表读取 DICT_TYPE = "MUTUALLY_EXCLUSIVE_ACTION_TYPE" 的所有启用字典项，
+    /// 返回其 DICT_CODE 集合。首次调用时加载并缓存，后续使用缓存值。
+    /// </summary>
+    /// <returns>互斥动作类型编码集合（不区分大小写）。</returns>
+    /// <remarks>
+    /// <para>
+    /// 默认互斥列表（字典未加载时使用）：
+    /// <list type="bullet">
+    ///   <item><description>FORMULA_CALC — 折价公式：同一项目不能有多套折价公式</description></item>
+    ///   <item><description>APPLY_MIN_AMOUNT — 金额下限：同一项目不能有多套下限规则</description></item>
+    ///   <item><description>APPLY_MAX_AMOUNT — 金额上限：同一项目不能有多套上限规则</description></item>
+    ///   <item><description>APPLY_DAY_LIMIT_QTY — 日数量限制：同一项目不能有多套日限规则</description></item>
+    ///   <item><description>APPLY_ONCE_LIMIT_QTY — 单次数量限制：同一项目不能有多套单次限规则</description></item>
+    ///   <item><description>APPLY_TIME_WINDOW_LIMIT — 时间窗限制：同一项目不能有多套时间窗规则</description></item>
+    /// </list>
+    /// </para>
+    /// <para>
+    /// 注意：CONVERT_QTY（换算规则）允许按不同部位维护不同规则，因此不在互斥列表中。
+    /// </para>
+    /// </remarks>
+    private async Task<HashSet<string>> GetMutuallyExclusiveActionsAsync()
+    {
+        // 快速路径：缓存已加载，直接返回。
+        if (_mutuallyExclusiveActionsCache is not null)
+        {
+            return _mutuallyExclusiveActionsCache;
+        }
+
+        await _cacheLock.WaitAsync();
+        try
+        {
+            // 双重检查：进入锁之后再次判断，避免并发场景下重复加载。
+            if (_mutuallyExclusiveActionsCache is not null)
+            {
+                return _mutuallyExclusiveActionsCache;
+            }
+
+            return await LoadMutuallyExclusiveActionsAsync();
+        }
+        finally
+        {
+            _cacheLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// 从 PR_DICT 字典表加载互斥动作类型到缓存。
+    ///
+    /// 读取 DICT_TYPE = "MUTUALLY_EXCLUSIVE_ACTION_TYPE" 的所有启用字典项，
+    /// 以 DICT_CODE 为动作类型编码构建 HashSet。
+    ///
+    /// 加载失败时使用默认互斥列表，记录错误日志但不抛出异常，
+    /// 确保字典表不可用时发布校验仍能正常工作。
+    /// </summary>
+    private async Task<HashSet<string>> LoadMutuallyExclusiveActionsAsync()
+    {
+        try
+        {
+            var dictItems = await _dictRepository.GetByTypeAsync(MutuallyExclusiveActionTypeDictType);
+
+            if (dictItems.Count == 0)
+            {
+                // 字典表中没有互斥动作类型数据，使用默认列表。
+                _logger.LogWarning(
+                    "PR_DICT 中未找到 DICT_TYPE = {DictType} 的字典项，使用默认互斥动作类型列表",
+                    MutuallyExclusiveActionTypeDictType);
+                _mutuallyExclusiveActionsCache = new HashSet<string>(
+                    DefaultMutuallyExclusiveActions,
+                    StringComparer.OrdinalIgnoreCase);
+                return _mutuallyExclusiveActionsCache;
+            }
+
+            var result = new HashSet<string>(
+                DefaultMutuallyExclusiveActions,
+                StringComparer.OrdinalIgnoreCase);
+
+            foreach (var item in dictItems.Where(d => d.IsEnabled == "Y"))
+            {
+                result.Add(item.DictCode);
+            }
+
+            _mutuallyExclusiveActionsCache = result;
+
+            _logger.LogInformation(
+                "已从 PR_DICT 加载互斥动作类型，共 {Count} 个",
+                result.Count);
+
+            return result;
+        }
+        catch (Exception ex)
+        {
+            // 加载失败时使用默认互斥列表，记录错误日志但不抛出异常。
+            _logger.LogError(ex,
+                "从 PR_DICT 加载互斥动作类型失败，使用默认互斥列表");
+            _mutuallyExclusiveActionsCache = new HashSet<string>(
+                DefaultMutuallyExclusiveActions,
+                StringComparer.OrdinalIgnoreCase);
+            return _mutuallyExclusiveActionsCache;
+        }
+    }
+
+    /// <summary>
+    /// 默认互斥动作类型列表。在字典数据尚未加载时使用，确保向后兼容。
+    /// </summary>
+    /// <remarks>
+    /// 与原硬编码 HasForbiddenActionConflict 方法中的 forbiddenActions 数组保持一致。
+    /// CONVER_TQTY（换算规则）允许按不同部位维护不同规则，因此不在互斥列表中。
+    /// </remarks>
+    private static readonly HashSet<string> DefaultMutuallyExclusiveActions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "FORMULA_CALC",
+        "APPLY_MIN_AMOUNT",
+        "APPLY_MAX_AMOUNT",
+        "APPLY_DAY_LIMIT_QTY",
+        "APPLY_ONCE_LIMIT_QTY",
+        "APPLY_TIME_WINDOW_LIMIT"
+    };
 
     private sealed record RuleConflictProfile(
         IReadOnlyList<RuleConditionScope> ConditionScopes,
@@ -489,16 +649,19 @@ public sealed class RulePublishService
     }
 
     /// <summary>
-    /// 清除生效规则缓存。
+    /// 清除生效规则缓存和互斥动作类型缓存。
     /// </summary>
     /// <remarks>
     /// 发布、停用、回滚操作后必须调用，确保计价引擎在下一次请求时读到最新规则集。
     /// IMemoryCache 不提供按前缀批量删除，因此移除已知 key。
+    ///
+    /// 同时清除互斥动作类型缓存，因为字典数据可能在发布周期内被修改。
     /// </remarks>
     private void ClearEffectiveCache()
     {
         _cache.Remove($"{EffectiveCachePrefix}all");
-        _logger.LogDebug("已清除生效规则缓存");
+        _mutuallyExclusiveActionsCache = null;
+        _logger.LogDebug("已清除生效规则缓存和互斥动作类型缓存");
     }
 
     /// <summary>

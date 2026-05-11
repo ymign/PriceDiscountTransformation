@@ -135,6 +135,7 @@ public sealed class ExceedToZeroExecutorTests
             new EmptyRuleConditionRepository(),
             new FixedRuleActionRepository(actions),
             new ConditionEvaluatorFactory(Array.Empty<IRuleConditionEvaluator>()),
+            new EmptyDictRepository(),
             NullLogger<RuleMatchService>.Instance);
         var pipeline = new ActionExecutionPipeline(
             new ActionExecutorFactory(new IRuleActionExecutor[]
@@ -219,5 +220,18 @@ public sealed class ExceedToZeroExecutorTests
             Task.FromResult(_actions);
         public Task InsertBatchAsync(IReadOnlyList<RuleAction> entities) => Task.CompletedTask;
         public Task DeleteByRuleAndVersionAsync(long ruleId, int versionNo) => Task.CompletedTask;
+    }
+
+    private sealed class EmptyDictRepository : IDictRepository
+    {
+        public Task<IReadOnlyList<Dict>> GetByTypeAsync(string dictType) =>
+            Task.FromResult((IReadOnlyList<Dict>)Array.Empty<Dict>());
+        public Task<Dict?> GetByIdAsync(long dictId) => Task.FromResult<Dict?>(null);
+        public Task<IReadOnlyList<string>> GetAllTypesAsync() =>
+            Task.FromResult((IReadOnlyList<string>)Array.Empty<string>());
+        public Task<long> InsertAsync(Dict entity) => Task.FromResult(0L);
+        public Task<bool> UpdateAsync(Dict entity) => Task.FromResult(false);
+        public Task<bool> SetEnabledAsync(long dictId, string isEnabled) => Task.FromResult(false);
+        public Task<bool> ExistsAsync(string dictType, string dictCode) => Task.FromResult(false);
     }
 }
