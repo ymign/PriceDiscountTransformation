@@ -1,0 +1,1264 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HIS 门诊收费主窗口与费用明细控件流程梳理</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --panel-soft: #f0f3f7;
+      --ink: #1b1f24;
+      --muted: #5b6573;
+      --line: #d7dde6;
+      --blue: #1d5f99;
+      --green: #237a57;
+      --red: #b23a48;
+      --amber: #946100;
+      --violet: #5b4b9a;
+      --code: #0f1720;
+      --shadow: 0 14px 36px rgba(20, 28, 40, .08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+      font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+      line-height: 1.7;
+    }
+
+    a {
+      color: var(--blue);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    code,
+    pre {
+      font-family: Consolas, "Cascadia Mono", monospace;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+      padding: 24px 18px;
+      background: #111827;
+      color: #e5e7eb;
+    }
+
+    .sidebar h1 {
+      margin: 0 0 14px;
+      font-size: 18px;
+      line-height: 1.35;
+    }
+
+    .sidebar p {
+      margin: 0 0 18px;
+      color: #aeb8c6;
+      font-size: 13px;
+    }
+
+    .sidebar nav {
+      display: grid;
+      gap: 6px;
+    }
+
+    .sidebar a {
+      display: block;
+      padding: 8px 10px;
+      color: #dbeafe;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    .sidebar a:hover {
+      background: #1f2937;
+      text-decoration: none;
+    }
+
+    main {
+      padding: 34px clamp(20px, 4vw, 56px) 64px;
+    }
+
+    .hero {
+      padding: 28px 30px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .hero h2 {
+      margin: 0 0 10px;
+      font-size: clamp(28px, 4vw, 44px);
+      line-height: 1.18;
+      letter-spacing: 0;
+    }
+
+    .hero p {
+      max-width: 980px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 18px;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 4px 9px;
+      border-radius: 6px;
+      background: #eef4fb;
+      color: #184e7a;
+      border: 1px solid #cfdeef;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    section {
+      margin-top: 28px;
+      padding: 24px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    section h2 {
+      margin: 0 0 16px;
+      font-size: 24px;
+      line-height: 1.3;
+    }
+
+    h3 {
+      margin: 22px 0 10px;
+      font-size: 18px;
+    }
+
+    .lead {
+      margin: 0 0 16px;
+      color: var(--muted);
+    }
+
+    .grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    .grid.cols-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .grid.cols-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .card {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+    }
+
+    .card h3,
+    .card h4 {
+      margin: 0 0 8px;
+      line-height: 1.35;
+    }
+
+    .card p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .callout {
+      padding: 14px 16px;
+      border-radius: 8px;
+      border: 1px solid #cfd8e5;
+      background: #f8fafc;
+    }
+
+    .callout strong {
+      color: var(--ink);
+    }
+
+    .callout.blue {
+      border-color: #b9d4ef;
+      background: #eef6ff;
+    }
+
+    .callout.green {
+      border-color: #b7decf;
+      background: #effaf5;
+    }
+
+    .callout.amber {
+      border-color: #e8d19a;
+      background: #fff8e8;
+    }
+
+    .callout.red {
+      border-color: #edbec6;
+      background: #fff1f3;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0;
+      font-size: 14px;
+    }
+
+    th,
+    td {
+      padding: 10px 11px;
+      border: 1px solid var(--line);
+      vertical-align: top;
+      text-align: left;
+    }
+
+    th {
+      background: #edf1f6;
+      color: #263445;
+      font-weight: 700;
+    }
+
+    td code {
+      color: #0e3f66;
+      font-weight: 600;
+    }
+
+    pre {
+      overflow: auto;
+      padding: 14px;
+      border-radius: 8px;
+      color: #d7e4f2;
+      background: var(--code);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .window-map {
+      display: grid;
+      grid-template-areas:
+        "top top top"
+        "left main right"
+        "popup popup popup";
+      grid-template-columns: 1fr 2fr 1fr;
+      gap: 10px;
+      margin: 16px 0;
+    }
+
+    .zone {
+      min-height: 92px;
+      padding: 14px;
+      border: 2px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+    }
+
+    .zone b {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 15px;
+    }
+
+    .zone span {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .top { grid-area: top; border-color: #7aa7d8; }
+    .left { grid-area: left; border-color: #91c7ad; }
+    .main { grid-area: main; border-color: #d79a72; }
+    .right { grid-area: right; border-color: #9aa6d9; }
+    .popup { grid-area: popup; border-color: #c588b1; }
+
+    .flow {
+      display: grid;
+      gap: 10px;
+      margin: 16px 0;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr);
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .num {
+      display: grid;
+      place-items: center;
+      min-height: 42px;
+      border-radius: 8px;
+      color: #fff;
+      background: var(--blue);
+      font-weight: 700;
+    }
+
+    .step-body {
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+    }
+
+    .step-body h4 {
+      margin: 0 0 4px;
+      font-size: 15px;
+    }
+
+    .step-body p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .lane {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin: 16px 0;
+    }
+
+    .lane .card {
+      border-top: 4px solid var(--blue);
+    }
+
+    .lane .card:nth-child(2) { border-top-color: var(--green); }
+    .lane .card:nth-child(3) { border-top-color: var(--amber); }
+    .lane .card:nth-child(4) { border-top-color: var(--violet); }
+
+    .checklist {
+      display: grid;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .check {
+      padding: 12px 14px;
+      border-left: 4px solid var(--green);
+      background: #f8fbfa;
+      border-radius: 6px;
+    }
+
+    .check b {
+      display: block;
+      margin-bottom: 3px;
+    }
+
+    .check span {
+      color: var(--muted);
+    }
+
+    details {
+      margin: 12px 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+    }
+
+    summary {
+      cursor: pointer;
+      padding: 12px 14px;
+      font-weight: 700;
+    }
+
+    details > div {
+      padding: 0 14px 14px;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 1100px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        position: static;
+        height: auto;
+      }
+
+      .sidebar nav {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 760px) {
+      main {
+        padding: 18px 12px 38px;
+      }
+
+      section,
+      .hero {
+        padding: 18px;
+      }
+
+      .grid.cols-2,
+      .grid.cols-3,
+      .lane,
+      .window-map {
+        grid-template-columns: 1fr;
+      }
+
+      .window-map {
+        grid-template-areas:
+          "top"
+          "main"
+          "left"
+          "right"
+          "popup";
+      }
+
+      .sidebar nav {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h1>门诊收费主窗口流程地图</h1>
+      <p>围绕 `ucCharge`、珠海 `ucPatientInfo`、珠海 `ucDisplay`、支付弹窗和 `Fee.cs` 资金边界梳理。</p>
+      <nav>
+        <a href="#summary">一眼结论</a>
+        <a href="#controls">控件组成</a>
+        <a href="#boot">初始化装配</a>
+        <a href="#patient">门诊号输入</a>
+        <a href="#detail">加载费用明细</a>
+        <a href="#display">明细控件闭环</a>
+        <a href="#manual">手工录入</a>
+        <a href="#savefee">确认收费</a>
+        <a href="#savecharge">划价保存</a>
+        <a href="#pricing">统一计价边界</a>
+        <a href="#events">事件和数据线</a>
+        <a href="#trouble">排查清单</a>
+      </nav>
+    </aside>
+
+    <main>
+      <div class="hero">
+        <h2>HIS 门诊收费主窗口与费用明细控件流程梳理</h2>
+        <p>这页按实际运行对象、事件触发顺序、关键数据对象和最终落账边界来拆旧代码。目标是看完以后能说清楚：界面从哪里来、患者怎么选中、未结算明细怎么进表格、金额怎么回写、收费最终在哪里落账。</p>
+        <div class="meta">
+          <span class="tag">主窗口：ucCharge.cs</span>
+          <span class="tag">患者控件：珠海 ucPatientInfo</span>
+          <span class="tag">明细控件：珠海 ucDisplay</span>
+          <span class="tag">资金边界：Fee.cs</span>
+        </div>
+      </div>
+
+      <section id="summary">
+        <h2>1. 一眼结论</h2>
+        <div class="grid cols-3">
+          <div class="callout blue">
+            <strong>主窗口只是容器和编排层。</strong><br>
+            `ucCharge` 自己不画患者输入区和费用明细表，它通过接口和参数加载各个控件，再把它们嵌入不同区域。
+          </div>
+          <div class="callout green">
+            <strong>费用明细表来自珠海 `ucDisplay`。</strong><br>
+            关键链路是 `MZ0084` -> `IOutpatientItemInputAndDisplay` -> `ucDisplay` -> `plMain.Controls.Add(...)`。
+          </div>
+          <div class="callout amber">
+            <strong>界面金额不是最终资金边界。</strong><br>
+            `ucDisplay` 做预览和表格金额，最终 confirm/commit/cancel 在 `Fee.cs` 的 `ClinicFee` 落账链路。
+          </div>
+        </div>
+
+        <h3>最短主链路</h3>
+        <pre>输入门诊号/卡号
+  -> 珠海 ucPatientInfo.tbCardNO_KeyDown()
+  -> InputedCardAndEnter
+  -> ucCharge.registerControl_InputedCardAndEnter()
+  -> ucShowPatients 查询并选择 Register
+  -> ucCharge.ucShow_SelectedPatient(register)
+  -> QueryChargedFeeItemListsByClinicNO(register.ID)
+  -> registerControl.FeeDetails 分组
+  -> itemInputControl.ChargeInfoList
+  -> 珠海 ucDisplay.SetChargeInfo()
+  -> SumCost() 刷新左右金额并回写患者控件
+  -> SaveFee()
+  -> popFeeControl_FeeButtonClicked()
+  -> feeIntegrate.ClinicFee(... ChargeTypes.Fee ...)
+  -> Fee.cs confirm / HIS 写库 / commit 或 cancel</pre>
+      </section>
+
+      <section id="controls">
+        <h2>2. 主窗口控件组成</h2>
+        <p class="lead">当前收费窗口可以理解成一个壳，里面按区域挂了患者信息、费用明细、发票预览、金额汇总、支付弹窗和外屏。</p>
+
+        <div class="window-map">
+          <div class="zone top">
+            <b>plTop：患者信息区</b>
+            <span>`registerControl` = 珠海 `ucPatientInfo`</span>
+            <span>负责门诊号/卡号输入、挂号记录、处方序号、费用分组。</span>
+          </div>
+          <div class="zone left">
+            <b>左侧：发票预览</b>
+            <span>`leftControl` = 主工程 `ucInvoicePreview`</span>
+            <span>负责发票号校验、票据预览、收费后刷新。</span>
+          </div>
+          <div class="zone main">
+            <b>plMain：费用明细表</b>
+            <span>`itemInputControl` = 珠海 `ucDisplay`</span>
+            <span>负责未结算明细显示、手工录入、数量/金额调整、折价预览。</span>
+          </div>
+          <div class="zone right">
+            <b>右侧：金额汇总</b>
+            <span>`rightControl` = 主工程 `ucCostDisplay`</span>
+            <span>显示总额、自费、医保、公费、支付变化，并同步外屏。</span>
+          </div>
+          <div class="zone popup">
+            <b>支付弹窗和外围接口</b>
+            <span>`popFeeControl` = 珠海 `frmDealBalance`，`iBankTrans` = `frmBankTrans`，`iMultiScreen` = 外屏 `frmMiltScreen`。</span>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>字段</th>
+              <th>接口</th>
+              <th>当前运行时实例</th>
+              <th>职责</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>registerControl</code></td>
+              <td><code>IOutpatientInfomation</code></td>
+              <td><code>Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientInfomation.ucPatientInfo</code></td>
+              <td>患者输入、挂号信息、处方序号、未结算明细分组。</td>
+            </tr>
+            <tr>
+              <td><code>itemInputControl</code></td>
+              <td><code>IOutpatientItemInputAndDisplay</code></td>
+              <td><code>Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDisplay.ucDisplay</code></td>
+              <td>中间费用明细表、项目录入、金额汇总、折价/统一计价预览。</td>
+            </tr>
+            <tr>
+              <td><code>leftControl</code></td>
+              <td><code>IOutpatientOtherInfomationLeft</code></td>
+              <td><code>Neusoft.HISFC.Components.OutpatientFee.Controls.ucInvoicePreview</code></td>
+              <td>发票号、票据预览、发票有效性校验。</td>
+            </tr>
+            <tr>
+              <td><code>rightControl</code></td>
+              <td><code>IOutpatientOtherInfomationRight</code></td>
+              <td><code>Neusoft.HISFC.Components.OutpatientFee.Controls.ucCostDisplay</code></td>
+              <td>金额展示、患者费用信息展示、外屏数据源。</td>
+            </tr>
+            <tr>
+              <td><code>popFeeControl</code></td>
+              <td><code>IOutpatientPopupFee</code></td>
+              <td><code>Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientPopupFee.frmDealBalance</code></td>
+              <td>支付方式、实收找零、确认收费、划价保存。</td>
+            </tr>
+            <tr>
+              <td><code>iMultiScreen</code></td>
+              <td><code>IMultiScreen</code></td>
+              <td><code>Neusoft.SOC.Local.OutpatientFee.GuangZhou.Gyzl.IMultiScreen.frmMiltScreen</code></td>
+              <td>门诊外屏，窗口标题为“门诊外屏”。</td>
+            </tr>
+            <tr>
+              <td><code>iBankTrans</code></td>
+              <td><code>IBankTrans</code></td>
+              <td><code>Neusoft.HISFC.Components.OutpatientFee.Forms.frmBankTrans</code></td>
+              <td>银行卡交易接口，挂到支付弹窗。</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="boot">
+        <h2>3. 初始化和插件装配</h2>
+        <p class="lead">窗口加载时先读控制参数，再反射加载插件控件，最后把控件嵌入 WinForms 面板。</p>
+
+        <div class="flow">
+          <div class="step">
+            <div class="num">1</div>
+            <div class="step-body">
+              <h4><code>InitControlParams()</code></h4>
+              <p>读取关键控制参数：医保/HIS 总额不一致是否允许收费、是否自动银行卡交易、是否仅账户支付、金额取整、LIS 试管等。</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="num">2</div>
+            <div class="step-body">
+              <h4><code>LoadPulgIns()</code></h4>
+              <p>用 <code>feeIntegrate.GetPlugIns&lt;T&gt;(...)</code> 加载患者、明细、左侧、右侧、支付弹窗；失败则回退主工程默认控件。</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="num">3</div>
+            <div class="step-body">
+              <h4>控件互相注入</h4>
+              <p><code>itemInputControl.LeftControl = leftControl</code>，<code>itemInputControl.RightControl = rightControl</code>，<code>rightControl.MultiScreen = iMultiScreen</code>，<code>popFeeControl.BankTrans = iBankTrans</code>。</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="num">4</div>
+            <div class="step-body">
+              <h4>嵌入主窗口</h4>
+              <p><code>InitRegisterControl()</code> 把患者控件放入 <code>plTop</code>，<code>InitItemInputControl()</code> 把费用明细放入 <code>plMain</code>，左右控件放入底部左右区域。</p>
+            </div>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>接口/参数</th>
+              <th>用途</th>
+              <th>关键代码</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>MZ0084</code> / <code>INTERFACE_ITEM_INPUT</code></td>
+              <td>决定费用明细控件加载哪个 DLL 和哪个类。当前应指向珠海 `ucDisplay`。</td>
+              <td><code>ucCharge.cs:2215-2219</code>，<code>Const.cs:386</code>，<code>Const.cs:432-433</code></td>
+            </tr>
+            <tr>
+              <td><code>GetPlugIns&lt;T&gt;</code></td>
+              <td>读取控制参数，按 <code>dll|namespace.class</code> 反射创建实例。</td>
+              <td><code>Fee.cs:3783-3817</code></td>
+            </tr>
+            <tr>
+              <td><code>MZ9001</code></td>
+              <td>是否自动银行卡交易，赋给 <code>popFeeControl.IsAutoBankTrans</code>。</td>
+              <td><code>ucCharge.cs:685</code>，<code>ucCharge.cs:2254</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="patient">
+        <h2>4. 门诊号/卡号输入到挂号选择</h2>
+        <p class="lead">输入入口不在 `ucCharge`，而在珠海患者控件。主窗口只订阅事件并弹出挂号选择窗口。</p>
+
+        <div class="flow">
+          <div class="step">
+            <div class="num">1</div>
+            <div class="step-body">
+              <h4>收费员在患者控件输入门诊号/卡号</h4>
+              <p><code>ucPatientInfo.tbCardNO_KeyDown()</code> 读取文本、清理旧状态、补齐卡号、处理临时患者入口。</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="num">2</div>
+            <div class="step-body">
+              <h4>触发患者控件事件</h4>
+              <p><code>InputedCardAndEnter(cardNO, orgNO, location, height)</code> 被触发，主窗口在 <code>InitRegisterControl()</code> 中已订阅。</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="num">3</div>
+            <div class="step-body">
+              <h4>主窗口准备挂号弹窗</h4>
+              <p><code>registerControl_InputedCardAndEnter()</code> 清空明细控件，把卡号传给 <code>ucShow.CardNO</code>，由 <code>ucShowPatients</code> 查询挂号。</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="num">4</div>
+            <div class="step-body">
+              <h4>收费员选择挂号记录</h4>
+              <p>多条挂号时弹出 <code>fPopWin</code>；单条记录在部分场景下直接选中。选中后触发 <code>ucShow_SelectedPatient(register)</code>。</p>
+            </div>
+          </div>
+        </div>
+
+        <details open>
+          <summary>挂号弹窗 `ucShowPatients` 做了什么</summary>
+          <div>
+            <table>
+              <thead>
+                <tr>
+                  <th>动作</th>
+                  <th>说明</th>
+                  <th>代码位置</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>查询有效挂号</td>
+                  <td>按卡号和有效挂号天数查询。</td>
+                  <td><code>ucShowPatients.cs:298-320</code></td>
+                </tr>
+                <tr>
+                  <td>合并体检登记</td>
+                  <td>把体检相关患者一起放入选择列表。</td>
+                  <td><code>ucShowPatients.cs:331-340</code></td>
+                </tr>
+                <tr>
+                  <td>按看诊序号查询</td>
+                  <td>参数开启时，允许把输入看成看诊序号。</td>
+                  <td><code>ucShowPatients.cs:350-388</code></td>
+                </tr>
+                <tr>
+                  <td>标记有未收费费用的挂号</td>
+                  <td>调用 <code>QueryChargedFeeItemListsByClinicNO(patient.ID)</code>，有费用的行标绿。</td>
+                  <td><code>ucShowPatients.cs:538-545</code></td>
+                </tr>
+                <tr>
+                  <td>返回选中挂号</td>
+                  <td>双击或回车触发 <code>SelectedPatient(register)</code>。</td>
+                  <td><code>ucShowPatients.cs:585-588</code>，<code>ucShowPatients.cs:650-662</code></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+
+      <section id="detail">
+        <h2>5. 选择挂号后加载未结算费用</h2>
+        <p class="lead">真正把未结算明细加载进费用表格的入口是 `ucCharge.ucShow_SelectedPatient(register)`。</p>
+
+        <div class="lane">
+          <div class="card">
+            <h4>设置患者上下文</h4>
+            <p><code>registerControl.PatientInfo = register</code>，<code>itemInputControl.PatientInfo = register</code>，右侧控件刷新患者信息。</p>
+          </div>
+          <div class="card">
+            <h4>查询未结算明细</h4>
+            <p><code>outpatientManager.QueryChargedFeeItemListsByClinicNO(register.ID)</code> 根据挂号流水号查未收费明细。</p>
+          </div>
+          <div class="card">
+            <h4>患者控件分组</h4>
+            <p><code>registerControl.FeeDetails</code> setter 按 <code>RecipeSequence</code> 分组，生成 <code>FeeDetailsSelected</code>。</p>
+          </div>
+          <div class="card">
+            <h4>推给明细控件</h4>
+            <p><code>itemInputControl.ChargeInfoList = registerControl.FeeDetailsSelected</code>，珠海 <code>ucDisplay</code> 开始显示表格。</p>
+          </div>
+        </div>
+
+        <pre>ucShow_SelectedPatient(register)
+  -> registerControl.PatientInfo = register
+  -> rightControl.SetInfomation(..., "4")
+  -> itemInputControl.PatientInfo = register
+  -> feeItemLists = QueryChargedFeeItemListsByClinicNO(register.ID)
+  -> registerControl.FeeDetails = feeItemLists.Clone()
+  -> registerControl.SetChargeInfo()
+  -> registerControl.FeeDetailsSelected
+  -> itemInputControl.ChargeInfoList = registerControl.FeeDetailsSelected</pre>
+
+        <div class="callout amber">
+          <strong>关键理解：</strong> `ucCharge` 查询到的是当前挂号下全部未结算明细；`ucPatientInfo` 再按处方序号分组并决定当前选中哪一组；`ucDisplay` 只展示当前选中的 `ChargeInfoList`。
+        </div>
+      </section>
+
+      <section id="display">
+        <h2>6. 珠海 `ucDisplay` 的显示和回写闭环</h2>
+        <p class="lead">`ucDisplay` 不是单纯展示控件。它会计算金额、刷新左右控件，并把修改后的明细反向同步给患者控件。</p>
+
+        <div class="flow">
+          <div class="step">
+            <div class="num">1</div>
+            <div class="step-body">
+              <h4><code>ChargeInfoList</code> setter</h4>
+              <p>保存 <code>alChargeInfo</code>，关闭单元格变化处理，调用 <code>SetChargeInfo()</code>，再恢复事件处理。</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="num">2</div>
+            <div class="step-body">
+              <h4><code>SetChargeInfo()</code></h4>
+              <p>清空表格，处理旧折价或 PricingAgent 预览，遍历 <code>FeeItemList</code>，写入 FarPoint 行，并把真实对象放到 <code>Rows[row].Tag</code>。</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="num">3</div>
+            <div class="step-body">
+              <h4><code>SumCost()</code></h4>
+              <p>调用 <code>GetFeeItemList()</code> 计算当前表格金额，刷新 <code>rightControl</code> 和 <code>leftControl</code>，再触发 <code>FeeItemListChanged(alCharge)</code>。</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="num">4</div>
+            <div class="step-body">
+              <h4>主窗口回写患者控件</h4>
+              <p><code>ucCharge.itemInputControl_FeeItemListChanged()</code> 把修改后的明细写给 <code>registerControl.ModifyFeeDetails</code>，再调用 <code>DealModifyDetails()</code> 重新汇总处方金额。</p>
+            </div>
+          </div>
+        </div>
+
+        <pre>registerControl.FeeDetailsSelected
+  -> itemInputControl.ChargeInfoList
+  -> ucDisplay.SetChargeInfo()
+  -> ucDisplay.SumCost()
+  -> rightControl.SetInfomation(...)
+  -> leftControl.RefreshDisplayInfomation(...)
+  -> FeeItemListChanged(alCharge)
+  -> ucCharge.itemInputControl_FeeItemListChanged(al)
+  -> registerControl.ModifyFeeDetails = al.Clone()
+  -> registerControl.DealModifyDetails()</pre>
+
+        <table>
+          <thead>
+            <tr>
+              <th>方法/属性</th>
+              <th>作用</th>
+              <th>代码位置</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>ucDisplay.ChargeInfoList</code></td>
+              <td>接收主窗口传入的当前处方组明细。</td>
+              <td><code>ucDisplay.cs:1234-1252</code></td>
+            </tr>
+            <tr>
+              <td><code>ucDisplay.SetChargeInfo()</code></td>
+              <td>把 <code>FeeItemList</code> 展示成 FarPoint 表格行。</td>
+              <td><code>ucDisplay.cs:2410-2927</code></td>
+            </tr>
+            <tr>
+              <td><code>ucDisplay.SumCost()</code></td>
+              <td>汇总金额并触发左右控件刷新、主窗口回写。</td>
+              <td><code>ucDisplay.cs:4791-4813</code></td>
+            </tr>
+            <tr>
+              <td><code>ucCharge.itemInputControl_FeeItemListChanged()</code></td>
+              <td>把明细控件变化同步回患者控件。</td>
+              <td><code>ucCharge.cs:3625-3634</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="manual">
+        <h2>7. 手工录入项目流程</h2>
+        <p class="lead">如果不是医生已开立的未结算明细，而是收费员手工录入项目，核心落点在珠海 `ucDisplay.SetItem()`。</p>
+
+        <div class="flow">
+          <div class="step">
+            <div class="num">1</div>
+            <div class="step-body">
+              <h4>初始化项目数据</h4>
+              <p><code>ucDisplay.Init()</code> 加载项目列表、执行科室、频次、用法、合同单位、项目选择弹窗。</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="num">2</div>
+            <div class="step-body">
+              <h4>输入助记码或项目编码</h4>
+              <p><code>fpSpread1_EditChange()</code> 把输入文本传给项目选择控件过滤。</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="num">3</div>
+            <div class="step-body">
+              <h4>选中项目后创建费用明细</h4>
+              <p><code>SetItem()</code> 识别药品/非药品/组套/材料，生成 <code>FeeItemList</code> 并写入当前行。</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="num">4</div>
+            <div class="step-body">
+              <h4>刷新金额和预览</h4>
+              <p>启用 PricingAgent 时做统一计价预览；未启用时走旧折价/限价逻辑；最后刷新表格和金额。</p>
+            </div>
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>阶段</th>
+              <th>关键代码</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>初始化项目列表和弹窗</td>
+              <td><code>ucDisplay.cs:6636-6886</code></td>
+            </tr>
+            <tr>
+              <td>输入过滤和项目选择</td>
+              <td><code>ucDisplay.cs:7016-7167</code>，<code>ucDisplay.cs:10344-10370</code></td>
+            </tr>
+            <tr>
+              <td>生成 <code>FeeItemList</code></td>
+              <td><code>ucDisplay.cs:3419-4514</code></td>
+            </tr>
+            <tr>
+              <td>取最终收费明细</td>
+              <td><code>ucDisplay.cs:7995-8157</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="savefee">
+        <h2>8. 确认收费主流程</h2>
+        <p class="lead">`SaveFee()` 是收费前的准备和支付弹窗阶段；真正落账在支付弹窗点击收费后的 `popFeeControl_FeeButtonClicked()`。</p>
+
+        <div class="grid cols-2">
+          <div class="card">
+            <h3><code>SaveFee()</code> 做什么</h3>
+            <p>校验患者、校验明细、取发票号、医保上传和预结算、金额汇总、生成发票数据、打开支付弹窗。</p>
+          </div>
+          <div class="card">
+            <h3><code>popFeeControl_FeeButtonClicked()</code> 做什么</h3>
+            <p>收到弹窗确认收费后，写 HIS 收费数据、医保结算、提交事务、打印发票和导诊单、调用收费后扩展接口、清屏。</p>
+          </div>
+        </div>
+
+        <h3>`SaveFee()` 分段</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>阶段</th>
+              <th>说明</th>
+              <th>代码位置</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>前置校验</td>
+              <td>发票更新时间、患者信息、患者控件合法性、明细控件合法性、发票控件合法性。</td>
+              <td><code>ucCharge.cs:1126-1194</code></td>
+            </tr>
+            <tr>
+              <td>明细业务校验</td>
+              <td>空明细、长者券、处方类型合同单位、儿童附加、同时收费限制、胃肠镜、LIS 试管、停用项目、药品库存。</td>
+              <td><code>ucCharge.cs:1195-1496</code></td>
+            </tr>
+            <tr>
+              <td>发票和医保预结算</td>
+              <td>取正式发票号、开启事务、连接医保、上传明细、医保预结算、汇总金额。</td>
+              <td><code>ucCharge.cs:1498-1845</code></td>
+            </tr>
+            <tr>
+              <td>支付弹窗准备</td>
+              <td>重新加载支付弹窗，写入患者、费用、发票、金额、银行卡交易接口，绑定收费/划价事件。</td>
+              <td><code>ucCharge.cs:1848-2008</code></td>
+            </tr>
+            <tr>
+              <td>取消处理</td>
+              <td>弹窗取消或失败时回滚当前收费准备状态。</td>
+              <td><code>ucCharge.cs:2009-2027</code></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>最终落账分段</h3>
+        <pre>popFeeControl_FeeButtonClicked(balancePays, invoices, invoiceDetails, invoiceFeeDetails)
+  -> 开启事务
+  -> 连接医保接口
+  -> feeIntegrate.ClinicFee(... ChargeTypes.Fee ...)
+  -> 医保上传/结算/提交
+  -> HIS 事务 Commit
+  -> 打印发票、导诊单、电子票据
+  -> afterFee.AfterFee(comFeeItemLists, "0")
+  -> Clear()</pre>
+
+        <div class="callout red">
+          <strong>不要把 `SaveFee()` 理解成已经收费成功。</strong> `SaveFee()` 只是把收费前校验、医保预结算、发票拆分、支付弹窗都准备好。只有支付弹窗触发 `FeeButtonClicked` 并且 `ClinicFee`、医保、事务提交都成功后，才算最终收费成功。
+        </div>
+      </section>
+
+      <section id="savecharge">
+        <h2>9. 划价保存流程</h2>
+        <p class="lead">`SaveCharge()` 是保存划价结果，不进入支付和正式收费。</p>
+
+        <table>
+          <thead>
+            <tr>
+              <th>对比项</th>
+              <th><code>SaveCharge()</code></th>
+              <th><code>SaveFee()</code></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>目的</td>
+              <td>暂存/划价保存</td>
+              <td>确认收费并落账</td>
+            </tr>
+            <tr>
+              <td>是否弹支付窗</td>
+              <td>否</td>
+              <td>是</td>
+            </tr>
+            <tr>
+              <td>医保处理</td>
+              <td>不做正式预结算/结算</td>
+              <td>上传明细、预结算、最终结算</td>
+            </tr>
+            <tr>
+              <td>保存调用</td>
+              <td><code>ClinicFee(ChargeTypes.Save, ...)</code></td>
+              <td><code>ClinicFee(ChargeTypes.Fee, ...)</code></td>
+            </tr>
+            <tr>
+              <td>代码位置</td>
+              <td><code>ucCharge.cs:961-1120</code></td>
+              <td><code>ucCharge.cs:1126-2008</code>，<code>ucCharge.cs:2382-3355</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="pricing">
+        <h2>10. 统一计价和旧折价边界</h2>
+        <p class="lead">物价折价改造要分清两个层次：界面预览层和最终资金层。</p>
+
+        <div class="grid cols-2">
+          <div class="callout blue">
+            <strong>界面预览层：珠海 `ucDisplay`</strong><br>
+            加载医生明细、手工录入项目、修改数量/金额时，可以实时试算并把预览金额写回表格。这里适合提示收费员，但不是最终资金边界。
+          </div>
+          <div class="callout green">
+            <strong>最终资金层：`Fee.cs`</strong><br>
+            `ClinicFee` 生成稳定发票组合号和处方明细号后做 confirm；HIS 写库成功后 commit；失败或回滚时 cancel。
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>位置</th>
+              <th>作用</th>
+              <th>代码锚点</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>ucDisplay.IsPricingAgentEnabled()</code></td>
+              <td>按 HIS 运行目录是否存在 <code>pricing-agent.config</code> 判断启用统一计价预览。</td>
+              <td><code>ucDisplay.cs:31-40</code></td>
+            </tr>
+            <tr>
+              <td><code>RefreshPricingPreviewForCurrentRows()</code></td>
+              <td>对当前选中明细整体试算。</td>
+              <td><code>ucDisplay.cs:272-323</code></td>
+            </tr>
+            <tr>
+              <td><code>ApplyPricingPreviewAmount()</code></td>
+              <td>把预览结果写回 <code>FT.TotCost/OwnCost</code>。</td>
+              <td><code>ucDisplay.cs:97-114</code></td>
+            </tr>
+            <tr>
+              <td><code>Fee.cs ClinicFee</code></td>
+              <td>最终 confirm/commit/cancel 的资金边界。</td>
+              <td><code>Fee.cs:5584-5705</code>，<code>Fee.cs:6544-6548</code>，<code>Fee.cs:2744-2780</code>，<code>Fee.cs:2813-2818</code></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="callout amber">
+          <strong>改造建议：</strong> `ucCharge` 不适合承载复杂折价规则。它是流程编排层，保持收集上下文、调用明细控件、调用集成层落账即可。预览放 `ucDisplay`，最终资金确认放 `Fee.cs`。
+        </div>
+      </section>
+
+      <section id="events">
+        <h2>11. 事件和数据线</h2>
+        <p class="lead">旧代码难读的原因之一，是界面靠事件和属性传递对象。梳理时盯住下面几条线。</p>
+
+        <table>
+          <thead>
+            <tr>
+              <th>线索</th>
+              <th>发送方</th>
+              <th>接收方</th>
+              <th>业务意义</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>InputedCardAndEnter</code></td>
+              <td>珠海 <code>ucPatientInfo</code></td>
+              <td><code>ucCharge.registerControl_InputedCardAndEnter()</code></td>
+              <td>患者卡号/门诊号回车后通知主窗口。</td>
+            </tr>
+            <tr>
+              <td><code>SelectedPatient</code></td>
+              <td><code>ucShowPatients</code></td>
+              <td><code>ucCharge.ucShow_SelectedPatient()</code></td>
+              <td>挂号选择完成，主窗口开始加载未结算明细。</td>
+            </tr>
+            <tr>
+              <td><code>FeeDetails</code></td>
+              <td><code>ucCharge</code></td>
+              <td>珠海 <code>ucPatientInfo</code></td>
+              <td>把挂号下全部未结算明细交给患者控件分组。</td>
+            </tr>
+            <tr>
+              <td><code>ChargeInfoList</code></td>
+              <td><code>ucCharge</code></td>
+              <td>珠海 <code>ucDisplay</code></td>
+              <td>把当前选中的处方组明细交给中间表格展示。</td>
+            </tr>
+            <tr>
+              <td><code>FeeItemListChanged</code></td>
+              <td>珠海 <code>ucDisplay</code></td>
+              <td><code>ucCharge.itemInputControl_FeeItemListChanged()</code></td>
+              <td>表格金额或明细变化后，回写患者控件重新汇总处方金额。</td>
+            </tr>
+            <tr>
+              <td><code>FeeButtonClicked</code></td>
+              <td>珠海 <code>frmDealBalance</code></td>
+              <td><code>ucCharge.popFeeControl_FeeButtonClicked()</code></td>
+              <td>支付弹窗确认收费，主窗口进入最终落账。</td>
+            </tr>
+            <tr>
+              <td><code>ChargeButtonClicked</code></td>
+              <td>珠海 <code>frmDealBalance</code></td>
+              <td><code>ucCharge.popFeeControl_ChargeButtonClicked()</code></td>
+              <td>支付弹窗内选择划价保存，走 <code>SaveCharge()</code>。</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>三个最重要的数据对象</h3>
+        <div class="grid cols-3">
+          <div class="card">
+            <h4><code>Register</code></h4>
+            <p>患者和挂号上下文。由挂号选择窗口返回，贯穿患者控件、明细控件、医保和收费落账。</p>
+          </div>
+          <div class="card">
+            <h4><code>FeeItemList</code></h4>
+            <p>收费明细对象。医生未结算明细和手工录入项目最终都会变成它。</p>
+          </div>
+          <div class="card">
+            <h4><code>Balance / BalancePay</code></h4>
+            <p>发票、结算和支付对象。由 `SaveFee()` 生成并交给支付弹窗，最终落账使用。</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="trouble">
+        <h2>12. 排查清单</h2>
+        <p class="lead">后续梳理或排 bug 时，可以直接按问题类型走下面的检查点。</p>
+
+        <div class="checklist">
+          <div class="check">
+            <b>问题：没有加载珠海费用明细控件</b>
+            <span>先查控制参数 <code>MZ0084</code> 是否指向 <code>SOC.Local.OutpatientFee.ZhuHai.dll|...IOutpatientItemInputAndDisplay.ucDisplay</code>；再查 DLL 是否在 HIS 运行目录。</span>
+          </div>
+          <div class="check">
+            <b>问题：输入门诊号后没有弹挂号选择</b>
+            <span>查 <code>ucPatientInfo.tbCardNO_KeyDown()</code> 是否触发 <code>InputedCardAndEnter</code>；再查 <code>registerControl_InputedCardAndEnter()</code> 是否给 <code>ucShow.CardNO</code> 赋值。</span>
+          </div>
+          <div class="check">
+            <b>问题：弹窗里看不到未收费标识</b>
+            <span>查 <code>ucShowPatients</code> 内部的 <code>QueryChargedFeeItemListsByClinicNO(patient.ID)</code> 返回值；注意这里仅用于标绿辅助，不是最终加载明细的位置。</span>
+          </div>
+          <div class="check">
+            <b>问题：选择挂号后中间费用表为空</b>
+            <span>查 <code>ucShow_SelectedPatient()</code> 中 <code>QueryChargedFeeItemListsByClinicNO(register.ID)</code> 是否返回明细；再查 <code>registerControl.FeeDetailsSelected</code> 是否为空；最后查 <code>ucDisplay.ChargeInfoList</code> setter。</span>
+          </div>
+          <div class="check">
+            <b>问题：金额显示不对或左右金额不同步</b>
+            <span>查 <code>ucDisplay.SumCost()</code> 是否触发，是否调用 <code>rightControl.SetInfomation</code>、<code>leftControl.RefreshDisplayInfomation</code> 和 <code>FeeItemListChanged</code>。</span>
+          </div>
+          <div class="check">
+            <b>问题：界面预览金额和最终落账金额不一致</b>
+            <span>分层排查：界面先看 <code>ucDisplay</code> 的 PricingAgent 预览和旧折价逻辑；最终落账看 <code>Fee.cs</code> 的 confirm 结果和 HIS 写库后 commit/cancel。</span>
+          </div>
+          <div class="check">
+            <b>问题：点击确认收费后失败</b>
+            <span>先分清失败发生在 <code>SaveFee()</code> 前置校验、医保预结算、支付弹窗，还是 <code>popFeeControl_FeeButtonClicked()</code> 的最终写库/医保结算/事务提交。</span>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>13. 源码锚点总表</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>主题</th>
+              <th>位置</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>主窗口初始化顺序</td>
+              <td><code>ucCharge.cs:706-727</code></td>
+            </tr>
+            <tr>
+              <td>插件加载和控件互相注入</td>
+              <td><code>ucCharge.cs:2202-2302</code></td>
+            </tr>
+            <tr>
+              <td>挂号弹窗初始化</td>
+              <td><code>ucCharge.cs:765-778</code></td>
+            </tr>
+            <tr>
+              <td>选择挂号后加载明细</td>
+              <td><code>ucCharge.cs:785-893</code></td>
+            </tr>
+            <tr>
+              <td>患者控件输入事件</td>
+              <td><code>ucPatientInfo.cs:2304-2418</code></td>
+            </tr>
+            <tr>
+              <td>患者控件按处方序号分组</td>
+              <td><code>ucPatientInfo.cs:1938-2074</code></td>
+            </tr>
+            <tr>
+              <td>明细控件接收和展示</td>
+              <td><code>ucDisplay.cs:1234-1252</code>，<code>ucDisplay.cs:2410-2927</code></td>
+            </tr>
+            <tr>
+              <td>明细控件金额汇总和回写</td>
+              <td><code>ucDisplay.cs:4791-4813</code>，<code>ucCharge.cs:3625-3634</code></td>
+            </tr>
+            <tr>
+              <td>确认收费准备</td>
+              <td><code>ucCharge.cs:1126-2008</code></td>
+            </tr>
+            <tr>
+              <td>最终收费落账</td>
+              <td><code>ucCharge.cs:2382-3355</code></td>
+            </tr>
+            <tr>
+              <td>划价保存</td>
+              <td><code>ucCharge.cs:961-1120</code></td>
+            </tr>
+            <tr>
+              <td>最终统一计价资金边界</td>
+              <td><code>Fee.cs:5584-5705</code>，<code>Fee.cs:6544-6548</code>，<code>Fee.cs:2744-2780</code>，<code>Fee.cs:2813-2818</code></td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="small">对应 Markdown 文字版：<code>18-HIS门诊收费主窗口与费用明细控件流程梳理.md</code>。</p>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

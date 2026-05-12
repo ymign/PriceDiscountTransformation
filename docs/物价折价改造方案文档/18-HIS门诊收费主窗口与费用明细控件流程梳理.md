@@ -1,5 +1,28 @@
 # HIS 门诊收费主窗口与费用明细控件流程梳理
 
+> 配套可视化版本：[`18-HIS门诊收费主窗口与费用明细控件流程梳理.html`](18-HIS门诊收费主窗口与费用明细控件流程梳理.html)。
+>
+> 如果只是想快速梳理当前门诊收费主逻辑，建议先打开 HTML 看板，从“控件组成 -> 门诊号输入 -> 加载费用明细 -> 明细控件闭环 -> 确认收费 -> 统一计价边界”顺序看。Markdown 保留更完整的文字说明和源码锚点。
+
+## 0. 快速阅读方法
+
+这份文档按四条线理解即可：
+
+| 线索 | 看什么 | 核心结论 |
+| --- | --- | --- |
+| 界面控件线 | `registerControl`、`itemInputControl`、`leftControl`、`rightControl`、`popFeeControl` | `ucCharge` 是容器，患者信息、费用明细、支付弹窗大多靠插件加载。 |
+| 患者选择线 | `tbCardNO_KeyDown()`、`InputedCardAndEnter`、`ucShowPatients`、`SelectedPatient` | 输入门诊号/卡号后，患者控件发事件，主窗口弹挂号选择，选中后返回 `Register`。 |
+| 费用明细线 | `QueryChargedFeeItemListsByClinicNO(register.ID)`、`FeeDetails`、`FeeDetailsSelected`、`ChargeInfoList` | 主窗口查全部未结算明细，患者控件按处方序号分组，明细控件只展示当前选中组。 |
+| 收费落账线 | `SaveFee()`、`frmDealBalance`、`popFeeControl_FeeButtonClicked()`、`Fee.cs ClinicFee` | `SaveFee()` 只是准备收费和弹支付窗，最终资金边界在 `Fee.cs` 的 confirm/commit/cancel。 |
+
+三个最关键的数据对象：
+
+| 对象 | 从哪里来 | 用到哪里 |
+| --- | --- | --- |
+| `Register` | `ucShowPatients` 选择挂号后返回 | 患者控件、明细控件、医保接口、收费落账全程使用。 |
+| `FeeItemList` | 医生已开立未结算明细，或 `ucDisplay.SetItem()` 手工生成 | 费用表格展示、金额汇总、发票拆分、HIS 收费写库。 |
+| `Balance` / `BalancePay` | `SaveFee()` 发票拆分和支付弹窗生成 | `popFeeControl_FeeButtonClicked()` 最终收费落账、打印和医保结算。 |
+
 ## 1. 分析范围
 
 本文件梳理旧 HIS 门诊收费主窗口 `ucCharge` 与珠海本地费用明细控件 `ucDisplay` 的关联方式、患者门诊号输入后的挂号选择链路、未结算费用加载链路，以及划价/收费保存时的主业务流程。
