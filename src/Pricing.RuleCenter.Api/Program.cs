@@ -21,7 +21,11 @@ builder.Services.AddScoped<RuleHeaderService>();
 builder.Services.AddScoped<RuleVersionService>();
 builder.Services.AddScoped<RuleConditionService>();
 builder.Services.AddScoped<RuleActionService>();
+builder.Services.AddScoped<RulePublishLifecycleRepositories>();
+builder.Services.AddScoped<RulePublishDefinitionRepositories>();
 builder.Services.AddScoped<RulePublishService>();
+builder.Services.AddScoped<PricingApiCalculationDependencies>();
+builder.Services.AddScoped<PricingApiPersistenceRepositories>();
 builder.Services.AddScoped<PricingApiService>();
 builder.Services.AddScoped<TraceQueryService>();
 
@@ -62,6 +66,7 @@ builder.Services.AddScoped<IRuleActionExecutor, ChildItemPercentExecutor>();
 // 引擎核心组件：工厂负责按名称分发执行器，管道负责按优先级串联所有动作执行器。
 builder.Services.AddScoped<ConditionEvaluatorFactory>();
 builder.Services.AddScoped<ActionExecutorFactory>();
+builder.Services.AddScoped<RuleMatchRepositories>();
 builder.Services.AddScoped<RuleMatchService>();
 builder.Services.AddScoped<ActionExecutionPipeline>();
 builder.Services.AddScoped<IPricingEngine, PricingEngine>();

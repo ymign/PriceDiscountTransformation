@@ -21,6 +21,19 @@ namespace Pricing.RuleCenter.Infrastructure.Database;
 /// </summary>
 public static class DictSeedData
 {
+    private sealed record DictSeedItem
+    {
+        public string DictType { get; init; } = string.Empty;
+
+        public string DictCode { get; init; } = string.Empty;
+
+        public string DictName { get; init; } = string.Empty;
+
+        public int SortNo { get; init; }
+
+        public string Remark { get; init; } = string.Empty;
+    }
+
     /// <summary>
     /// 动作执行顺序字典类型编码。
     ///
@@ -75,17 +88,94 @@ public static class DictSeedData
     {
         return new List<Dict>
         {
-            CreateDict(ActionTypeOrderType, "CONVERT_QTY",             "双单位换算",       10,  "双单位换算，公式依赖换算后数量"),
-            CreateDict(ActionTypeOrderType, "FORMULA_CALC",            "公式计算",         20,  "公式计算，结果写入 FormulaAmount 和 FinalAmount"),
-            CreateDict(ActionTypeOrderType, "APPLY_MIN_AMOUNT",        "金额下限",         30,  "金额下限，公式之后才能比较"),
-            CreateDict(ActionTypeOrderType, "APPLY_MAX_AMOUNT",        "金额上限",         40,  "金额上限，公式之后才能比较"),
-            CreateDict(ActionTypeOrderType, "APPLY_DAY_LIMIT_QTY",     "日数量限制",       50,  "日数量限制，需要查询全院累计"),
-            CreateDict(ActionTypeOrderType, "APPLY_TIME_WINDOW_LIMIT", "时间窗数量限制",   60,  "时间窗数量限制（如2小时窗）"),
-            CreateDict(ActionTypeOrderType, "APPLY_ONCE_LIMIT_QTY",    "单次数量限制",     70,  "单次数量限制"),
-            CreateDict(ActionTypeOrderType, "SAME_GROUP_MUTEX",        "同组互斥",         80,  "同组互斥"),
-            CreateDict(ActionTypeOrderType, "SAME_OPERATION_CEILING",  "同手术封顶",       85,  "同手术封顶"),
-            CreateDict(ActionTypeOrderType, "ADD_CHILD_ITEM",          "子项加收",         90,  "子项加收"),
-            CreateDict(ActionTypeOrderType, "DISCOUNT_EXCEED_TO_ZERO", "超出部分归零",     100, "超出部分归零，必须最后执行")
+            CreateDict(new()
+            {
+                DictType = ActionTypeOrderType,
+                DictCode = "CONVERT_QTY",
+                DictName = "双单位换算",
+                SortNo = 10,
+                Remark = "双单位换算，公式依赖换算后数量"
+            }),
+            CreateDict(new()
+            {
+                DictType = ActionTypeOrderType,
+                DictCode = "FORMULA_CALC",
+                DictName = "公式计算",
+                SortNo = 20,
+                Remark = "公式计算，结果写入 FormulaAmount 和 FinalAmount"
+            }),
+            CreateDict(new()
+            {
+                DictType = ActionTypeOrderType,
+                DictCode = "APPLY_MIN_AMOUNT",
+                DictName = "金额下限",
+                SortNo = 30,
+                Remark = "金额下限，公式之后才能比较"
+            }),
+            CreateDict(new()
+            {
+                DictType = ActionTypeOrderType,
+                DictCode = "APPLY_MAX_AMOUNT",
+                DictName = "金额上限",
+                SortNo = 40,
+                Remark = "金额上限，公式之后才能比较"
+            }),
+            CreateDict(new()
+            {
+                DictType = ActionTypeOrderType,
+                DictCode = "APPLY_DAY_LIMIT_QTY",
+                DictName = "日数量限制",
+                SortNo = 50,
+                Remark = "日数量限制，需要查询全院累计"
+            }),
+            CreateDict(new()
+            {
+                DictType = ActionTypeOrderType,
+                DictCode = "APPLY_TIME_WINDOW_LIMIT",
+                DictName = "时间窗数量限制",
+                SortNo = 60,
+                Remark = "时间窗数量限制（如2小时窗）"
+            }),
+            CreateDict(new()
+            {
+                DictType = ActionTypeOrderType,
+                DictCode = "APPLY_ONCE_LIMIT_QTY",
+                DictName = "单次数量限制",
+                SortNo = 70,
+                Remark = "单次数量限制"
+            }),
+            CreateDict(new()
+            {
+                DictType = ActionTypeOrderType,
+                DictCode = "SAME_GROUP_MUTEX",
+                DictName = "同组互斥",
+                SortNo = 80,
+                Remark = "同组互斥"
+            }),
+            CreateDict(new()
+            {
+                DictType = ActionTypeOrderType,
+                DictCode = "SAME_OPERATION_CEILING",
+                DictName = "同手术封顶",
+                SortNo = 85,
+                Remark = "同手术封顶"
+            }),
+            CreateDict(new()
+            {
+                DictType = ActionTypeOrderType,
+                DictCode = "ADD_CHILD_ITEM",
+                DictName = "子项加收",
+                SortNo = 90,
+                Remark = "子项加收"
+            }),
+            CreateDict(new()
+            {
+                DictType = ActionTypeOrderType,
+                DictCode = "DISCOUNT_EXCEED_TO_ZERO",
+                DictName = "超出部分归零",
+                SortNo = 100,
+                Remark = "超出部分归零，必须最后执行"
+            })
         };
     }
 
@@ -110,12 +200,54 @@ public static class DictSeedData
     {
         return new List<Dict>
         {
-            CreateDict(MutuallyExclusiveActionType, "FORMULA_CALC",            "公式计算",         10, "同一项目不能有多套折价公式"),
-            CreateDict(MutuallyExclusiveActionType, "APPLY_MIN_AMOUNT",        "金额下限",         20, "同一项目不能有多套下限规则"),
-            CreateDict(MutuallyExclusiveActionType, "APPLY_MAX_AMOUNT",        "金额上限",         30, "同一项目不能有多套上限规则"),
-            CreateDict(MutuallyExclusiveActionType, "APPLY_DAY_LIMIT_QTY",     "日数量限制",       40, "同一项目不能有多套日限规则"),
-            CreateDict(MutuallyExclusiveActionType, "APPLY_ONCE_LIMIT_QTY",    "单次数量限制",     50, "同一项目不能有多套单次限规则"),
-            CreateDict(MutuallyExclusiveActionType, "APPLY_TIME_WINDOW_LIMIT", "时间窗数量限制",   60, "同一项目不能有多套时间窗规则")
+            CreateDict(new()
+            {
+                DictType = MutuallyExclusiveActionType,
+                DictCode = "FORMULA_CALC",
+                DictName = "公式计算",
+                SortNo = 10,
+                Remark = "同一项目不能有多套折价公式"
+            }),
+            CreateDict(new()
+            {
+                DictType = MutuallyExclusiveActionType,
+                DictCode = "APPLY_MIN_AMOUNT",
+                DictName = "金额下限",
+                SortNo = 20,
+                Remark = "同一项目不能有多套下限规则"
+            }),
+            CreateDict(new()
+            {
+                DictType = MutuallyExclusiveActionType,
+                DictCode = "APPLY_MAX_AMOUNT",
+                DictName = "金额上限",
+                SortNo = 30,
+                Remark = "同一项目不能有多套上限规则"
+            }),
+            CreateDict(new()
+            {
+                DictType = MutuallyExclusiveActionType,
+                DictCode = "APPLY_DAY_LIMIT_QTY",
+                DictName = "日数量限制",
+                SortNo = 40,
+                Remark = "同一项目不能有多套日限规则"
+            }),
+            CreateDict(new()
+            {
+                DictType = MutuallyExclusiveActionType,
+                DictCode = "APPLY_ONCE_LIMIT_QTY",
+                DictName = "单次数量限制",
+                SortNo = 50,
+                Remark = "同一项目不能有多套单次限规则"
+            }),
+            CreateDict(new()
+            {
+                DictType = MutuallyExclusiveActionType,
+                DictCode = "APPLY_TIME_WINDOW_LIMIT",
+                DictName = "时间窗数量限制",
+                SortNo = 60,
+                Remark = "同一项目不能有多套时间窗规则"
+            })
         };
     }
 
@@ -128,16 +260,16 @@ public static class DictSeedData
     /// <param name="sortNo">排序号，数字越小越靠前。</param>
     /// <param name="remark">备注说明。</param>
     /// <returns>字典实体实例。</returns>
-    private static Dict CreateDict(string dictType, string dictCode, string dictName, int sortNo, string remark)
+    private static Dict CreateDict(DictSeedItem seed)
     {
         return new Dict
         {
-            DictType = dictType,
-            DictCode = dictCode,
-            DictName = dictName,
-            SortNo = sortNo,
+            DictType = seed.DictType,
+            DictCode = seed.DictCode,
+            DictName = seed.DictName,
+            SortNo = seed.SortNo,
             IsEnabled = "Y",
-            Remark = remark
+            Remark = seed.Remark
         };
     }
 }

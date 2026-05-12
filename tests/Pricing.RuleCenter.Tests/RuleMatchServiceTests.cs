@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pricing.RuleCenter.Core.Engine;
 using Pricing.RuleCenter.Core.Interfaces;
@@ -34,7 +35,7 @@ public sealed class RuleMatchServiceTests
                 IsEnabled = "Y"
             }
         };
-        var service = new RuleMatchService(
+        var service = CreateRuleMatchService(
             new FixedRuleHeaderRepository(rule),
             new EmptyRuleConditionRepository(),
             new FixedRuleActionRepository(actions),
@@ -71,7 +72,7 @@ public sealed class RuleMatchServiceTests
             new RuleAction { RuleId = 1, VersionNo = 1, ActionType = "SAME_OPERATION_CEILING", SortNo = 10, IsEnabled = "Y" },
             new RuleAction { RuleId = 1, VersionNo = 1, ActionType = "DISCOUNT_EXCEED_TO_ZERO", SortNo = 10, IsEnabled = "Y" }
         };
-        var service = new RuleMatchService(
+        var service = CreateRuleMatchService(
             new FixedRuleHeaderRepository(rule),
             new EmptyRuleConditionRepository(),
             new FixedRuleActionRepository(actions),
@@ -142,7 +143,7 @@ public sealed class RuleMatchServiceTests
                 }
             }
         };
-        var service = new RuleMatchService(
+        var service = CreateRuleMatchService(
             new FixedRuleHeaderRepository(highPriorityRule, lowPriorityRule),
             new EmptyRuleConditionRepository(),
             new FixedRuleActionRepository(actionsByRule),
@@ -192,7 +193,7 @@ public sealed class RuleMatchServiceTests
                 new RuleAction { RuleId = 2, VersionNo = 1, ActionType = "APPLY_MAX_AMOUNT", SortNo = 1, IsEnabled = "Y" }
             }
         };
-        var service = new RuleMatchService(
+        var service = CreateRuleMatchService(
             new FixedRuleHeaderRepository(highPriorityRule, lowPriorityRule),
             new EmptyRuleConditionRepository(),
             new FixedRuleActionRepository(actionsByRule),
@@ -211,6 +212,22 @@ public sealed class RuleMatchServiceTests
             first => Assert.Equal(1, first.RuleId),
             second => Assert.Equal(2, second.RuleId));
     }
+
+    private static RuleMatchService CreateRuleMatchService(
+        IRuleHeaderRepository headerRepository,
+        IRuleConditionRepository conditionRepository,
+        IRuleActionRepository actionRepository,
+        ConditionEvaluatorFactory evaluatorFactory,
+        IDictRepository dictRepository,
+        ILogger<RuleMatchService> logger) =>
+        new(
+            new RuleMatchRepositories(
+                headerRepository,
+                conditionRepository,
+                actionRepository,
+                dictRepository),
+            evaluatorFactory,
+            logger);
 
     private sealed class FixedRuleHeaderRepository : IRuleHeaderRepository
     {

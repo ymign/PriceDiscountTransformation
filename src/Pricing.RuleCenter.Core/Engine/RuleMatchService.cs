@@ -129,25 +129,19 @@ public sealed class RuleMatchService
     /// <summary>
     /// 初始化规则匹配服务。
     /// </summary>
-    /// <param name="headerRepository">规则主档仓储。</param>
-    /// <param name="conditionRepository">规则条件仓储。</param>
-    /// <param name="actionRepository">规则动作仓储。</param>
+    /// <param name="repositories">规则匹配只读仓储集合。</param>
     /// <param name="evaluatorFactory">条件评估器工厂。</param>
-    /// <param name="dictRepository">字典仓储，用于读取动作执行顺序。</param>
     /// <param name="logger">日志对象。</param>
     public RuleMatchService(
-        IRuleHeaderRepository headerRepository,
-        IRuleConditionRepository conditionRepository,
-        IRuleActionRepository actionRepository,
+        RuleMatchRepositories repositories,
         ConditionEvaluatorFactory evaluatorFactory,
-        IDictRepository dictRepository,
         ILogger<RuleMatchService> logger)
     {
-        _headerRepository = headerRepository;
-        _conditionRepository = conditionRepository;
-        _actionRepository = actionRepository;
+        _headerRepository = repositories.HeaderRepository;
+        _conditionRepository = repositories.ConditionRepository;
+        _actionRepository = repositories.ActionRepository;
         _evaluatorFactory = evaluatorFactory;
-        _dictRepository = dictRepository;
+        _dictRepository = repositories.DictRepository;
         _logger = logger;
     }
 
@@ -181,7 +175,7 @@ public sealed class RuleMatchService
             .ToList();
 
         // ========== 第三阶段：逐条评估条件组 ==========
-        // 条件表支持同组 AND、跨组 OR 语义（参见 EvaluateConditions 方法）。
+        // 条件表支持同组 AND、跨组 OR 语义（参见 EvaluateConditionsAsync 方法）。
         // 只要任一条件组全部满足，该规则就命中。这是"OR 组，AND 组内"的经典规则引擎模式。
         var matchedRules = new List<RuleHeader>();
 
@@ -192,7 +186,7 @@ public sealed class RuleMatchService
             var conditions = await _conditionRepository.GetByRuleAndVersionAsync(
                 rule.RuleId, rule.CurrentVersion);
 
-            if (EvaluateConditions(conditions, context))
+            if (await EvaluateConditionsAsync(conditions, context))
             {
                 matchedRules.Add(rule);
             }
@@ -310,7 +304,7 @@ public sealed class RuleMatchService
     ///   <item><description>所有条件都禁用时同样按兜底处理，便于临时关闭附加条件</description></item>
     /// </list>
     /// </remarks>
-    private bool EvaluateConditions(IReadOnlyList<RuleCondition> conditions, PricingContext context)
+    private async Task<bool> EvaluateConditionsAsync(IReadOnlyList<RuleCondition> conditions, PricingContext context)
     {
         // 没有条件的规则视为兜底规则。这样可以配置"只要项目命中就执行"的简单规则。
         // 典型场景：某个项目在所有场景、所有部位都执行相同的折价公式，无需配置额外条件。
@@ -351,7 +345,7 @@ public sealed class RuleMatchService
                     break;
                 }
 
-                if (!evaluator.Evaluate(condition, context))
+                if (!await evaluator.EvaluateAsync(condition, context))
                 {
                     // 组内任一条件不满足，该组判定为不通过，立即短路。
                     allMatch = false;

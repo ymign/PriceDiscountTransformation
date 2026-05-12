@@ -213,13 +213,15 @@ public sealed class RulePublishConflictTests
         IRuleActionRepository actionRepository,
         IDictRepository? dictRepository = null) =>
         new(
-            headerRepository,
-            versionRepository,
-            new EmptyRulePublishRepository(),
-            new EmptyRuleChangeLogRepository(),
-            conditionRepository,
-            actionRepository,
-            dictRepository ?? new EmptyDictRepository(),
+            new RulePublishLifecycleRepositories(
+                headerRepository,
+                versionRepository,
+                new EmptyRulePublishRepository(),
+                new EmptyRuleChangeLogRepository()),
+            new RulePublishDefinitionRepositories(
+                conditionRepository,
+                actionRepository,
+                dictRepository ?? new EmptyDictRepository()),
             new MemoryCache(new MemoryCacheOptions()),
             NullLogger<RulePublishService>.Instance);
 

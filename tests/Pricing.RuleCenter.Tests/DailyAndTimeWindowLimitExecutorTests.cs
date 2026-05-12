@@ -138,12 +138,7 @@ public sealed class DailyAndTimeWindowLimitExecutorTests
 
         public Task<decimal> GetOccupiedQtyAsync(string limitKey, string status) => Task.FromResult(0m);
 
-        public Task<decimal> GetOccupiedQtyAsync(
-            string limitType,
-            string limitDimensionCode,
-            DateTime startTime,
-            DateTime endTime,
-            IReadOnlyCollection<string> statuses) =>
+        public Task<decimal> GetOccupiedQtyAsync(LimitOccupyRangeQuery query) =>
             Task.FromResult(OccupiedQty);
 
         public Task<decimal> GetOccupiedAmtAsync(string limitKey, string status) => Task.FromResult(0m);

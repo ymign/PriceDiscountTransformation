@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Pricing.RuleCenter.Api.Dto;
@@ -141,7 +142,7 @@ public sealed class PricingApiServiceTests
     {
         var engine = new CapturingPricingEngine();
         var requestLogRepository = new InMemoryChargeRequestLogRepository();
-        var service = new PricingApiService(
+        var service = CreatePricingApiService(
             engine,
             new EmptyRuleHeaderRepository(),
             requestLogRepository,
@@ -225,7 +226,7 @@ public sealed class PricingApiServiceTests
     public async Task SimulateAsync_PassesPriorDayAndWindowOccupiesToLaterItems()
     {
         var engine = new LimitCacheCapturingPricingEngine();
-        var service = new PricingApiService(
+        var service = CreatePricingApiService(
             engine,
             new EmptyRuleHeaderRepository(),
             new InMemoryChargeRequestLogRepository(),
@@ -279,7 +280,7 @@ public sealed class PricingApiServiceTests
     public async Task ConfirmAsync_ReturnsAndPersistsReplacementItem()
     {
         var discountRepository = new CapturingChargeDiscountDetailRepository();
-        var service = new PricingApiService(
+        var service = CreatePricingApiService(
             new ReplacementPricingEngine(),
             new EmptyRuleHeaderRepository(),
             new InMemoryChargeRequestLogRepository(),
@@ -336,7 +337,7 @@ public sealed class PricingApiServiceTests
     public async Task ConfirmAsync_ReturnsAndPersistsChildItems()
     {
         var discountRepository = new CapturingChargeDiscountDetailRepository();
-        var service = new PricingApiService(
+        var service = CreatePricingApiService(
             new ChildItemPricingEngine(),
             new EmptyRuleHeaderRepository(),
             new InMemoryChargeRequestLogRepository(),
@@ -396,7 +397,7 @@ public sealed class PricingApiServiceTests
         var requestRepository = new InMemoryChargeRequestLogRepository();
         var discountRepository = new CapturingChargeDiscountDetailRepository();
         var limitRepository = new CapturingLimitOccupyRepository();
-        var service = new PricingApiService(
+        var service = CreatePricingApiService(
             new MixedSpecialPricingEngine(),
             new EmptyRuleHeaderRepository(),
             requestRepository,
@@ -759,7 +760,7 @@ public sealed class PricingApiServiceTests
         IChargeRequestLogRepository requestRepository,
         IChargeDiscountDetailRepository discountRepository,
         ILimitOccupyRepository limitRepository) =>
-        new(
+        CreatePricingApiService(
             new CapturingPricingEngine(),
             new EmptyRuleHeaderRepository(),
             requestRepository,
@@ -773,7 +774,7 @@ public sealed class PricingApiServiceTests
             NullLogger<PricingApiService>.Instance);
 
     private static PricingApiService CreateValidationService() =>
-        new(
+        CreatePricingApiService(
             new CapturingPricingEngine(),
             new EmptyRuleHeaderRepository(),
             new InMemoryChargeRequestLogRepository(),
@@ -785,6 +786,33 @@ public sealed class PricingApiServiceTests
             db: null!,
             Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
             NullLogger<PricingApiService>.Instance);
+
+    private static PricingApiService CreatePricingApiService(
+        IPricingEngine engine,
+        IRuleHeaderRepository headerRepository,
+        IChargeRequestLogRepository requestLogRepository,
+        IChargeDiscountDetailRepository discountRepository,
+        IChargeTraceStepRepository traceStepRepository,
+        ILimitOccupyRepository limitRepository,
+        IChargeReverseLogRepository reverseLogRepository,
+        IPriceMasterRepository priceMasterRepository,
+        SqlSugar.ISqlSugarClient db,
+        IOptions<PricingOptions> options,
+        ILogger<PricingApiService> logger) =>
+        new(
+            new PricingApiCalculationDependencies(
+                engine,
+                headerRepository,
+                priceMasterRepository),
+            new PricingApiPersistenceRepositories(
+                requestLogRepository,
+                discountRepository,
+                traceStepRepository,
+                limitRepository,
+                reverseLogRepository),
+            db,
+            options,
+            logger);
 
     private static PricingCalculateRequest CreateValidCalculateRequest(
         string sourceSystem = "HIS",
@@ -1081,7 +1109,7 @@ public sealed class PricingApiServiceTests
         public (long RequestId, string Status)? LastStatusUpdate { get; private set; }
 
         public Task<decimal> GetOccupiedQtyAsync(string limitKey, string status) => Task.FromResult(0m);
-        public Task<decimal> GetOccupiedQtyAsync(string limitType, string limitDimensionCode, DateTime startTime, DateTime endTime, IReadOnlyCollection<string> statuses) => Task.FromResult(0m);
+        public Task<decimal> GetOccupiedQtyAsync(LimitOccupyRangeQuery query) => Task.FromResult(0m);
         public Task<decimal> GetOccupiedAmtAsync(string limitKey, string status) => Task.FromResult(0m);
         public Task<IReadOnlyList<LimitOccupy>> GetByRequestIdAsync(long requestId) => Task.FromResult((IReadOnlyList<LimitOccupy>)Array.Empty<LimitOccupy>());
         public Task EnsureAndLockAsync(IReadOnlyCollection<string> lockKeys) => Task.CompletedTask;
@@ -1149,7 +1177,7 @@ public sealed class PricingApiServiceTests
         public (long RequestId, string Status)? LastStatusUpdate { get; private set; }
 
         public Task<decimal> GetOccupiedQtyAsync(string limitKey, string status) => Task.FromResult(0m);
-        public Task<decimal> GetOccupiedQtyAsync(string limitType, string limitDimensionCode, DateTime startTime, DateTime endTime, IReadOnlyCollection<string> statuses) => Task.FromResult(0m);
+        public Task<decimal> GetOccupiedQtyAsync(LimitOccupyRangeQuery query) => Task.FromResult(0m);
         public Task<decimal> GetOccupiedAmtAsync(string limitKey, string status) => Task.FromResult(0m);
         public Task<IReadOnlyList<LimitOccupy>> GetByRequestIdAsync(long requestId) => Task.FromResult((IReadOnlyList<LimitOccupy>)Inserted.Where(o => o.RequestId == requestId).ToList());
         public Task EnsureAndLockAsync(IReadOnlyCollection<string> lockKeys) => Task.CompletedTask;
@@ -1183,7 +1211,7 @@ public sealed class PricingApiServiceTests
     private sealed class EmptyLimitOccupyRepository : ILimitOccupyRepository
     {
         public Task<decimal> GetOccupiedQtyAsync(string limitKey, string status) => Task.FromResult(0m);
-        public Task<decimal> GetOccupiedQtyAsync(string limitType, string limitDimensionCode, DateTime startTime, DateTime endTime, IReadOnlyCollection<string> statuses) => Task.FromResult(0m);
+        public Task<decimal> GetOccupiedQtyAsync(LimitOccupyRangeQuery query) => Task.FromResult(0m);
         public Task<decimal> GetOccupiedAmtAsync(string limitKey, string status) => Task.FromResult(0m);
         public Task<IReadOnlyList<LimitOccupy>> GetByRequestIdAsync(long requestId) => Task.FromResult((IReadOnlyList<LimitOccupy>)Array.Empty<LimitOccupy>());
         public Task EnsureAndLockAsync(IReadOnlyCollection<string> lockKeys) => Task.CompletedTask;

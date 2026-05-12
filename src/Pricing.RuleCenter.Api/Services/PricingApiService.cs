@@ -82,38 +82,26 @@ public sealed class PricingApiService
     /// <summary>
     /// 初始化计价接口应用服务。
     /// </summary>
-    /// <param name="engine">计价引擎，负责规则匹配和动作链执行。</param>
-    /// <param name="headerRepository">规则头仓储，用于 special-flag 查询。</param>
-    /// <param name="requestLogRepository">请求日志仓储，用于幂等、状态机和快照保存。</param>
-    /// <param name="discountRepository">折价明细仓储，用于保存最终结果并同步状态。</param>
-    /// <param name="traceStepRepository">计价步骤仓储，用于写入可追溯的过程日志。</param>
-    /// <param name="limitRepository">限额占用仓储，用于锁定和更新累计额度。</param>
-    /// <param name="reverseLogRepository">冲正日志仓储，用于记录 reverse 操作审计。</param>
-    /// <param name="priceMasterRepository">权威物价仓储，用于校验渠道传入单价。</param>
+    /// <param name="calculationDependencies">计价计算侧依赖，包括计价引擎、规则头仓储和权威物价仓储。</param>
+    /// <param name="repositories">计价持久化侧仓储集合，覆盖请求、明细、步骤、限额和冲正日志。</param>
     /// <param name="db">SqlSugar 数据库客户端，用于创建事务边界。</param>
     /// <param name="options">计价配置项，包括过期时间和单价校验开关。</param>
     /// <param name="logger">日志组件，用于记录幂等命中、状态推进和异常上下文。</param>
     public PricingApiService(
-        IPricingEngine engine,
-        IRuleHeaderRepository headerRepository,
-        IChargeRequestLogRepository requestLogRepository,
-        IChargeDiscountDetailRepository discountRepository,
-        IChargeTraceStepRepository traceStepRepository,
-        ILimitOccupyRepository limitRepository,
-        IChargeReverseLogRepository reverseLogRepository,
-        IPriceMasterRepository priceMasterRepository,
+        PricingApiCalculationDependencies calculationDependencies,
+        PricingApiPersistenceRepositories repositories,
         ISqlSugarClient db,
         IOptions<PricingOptions> options,
         ILogger<PricingApiService> logger)
     {
-        _engine = engine;
-        _headerRepository = headerRepository;
-        _requestLogRepository = requestLogRepository;
-        _discountRepository = discountRepository;
-        _traceStepRepository = traceStepRepository;
-        _limitRepository = limitRepository;
-        _reverseLogRepository = reverseLogRepository;
-        _priceMasterRepository = priceMasterRepository;
+        _engine = calculationDependencies.Engine;
+        _headerRepository = calculationDependencies.HeaderRepository;
+        _requestLogRepository = repositories.RequestLogRepository;
+        _discountRepository = repositories.DiscountRepository;
+        _traceStepRepository = repositories.TraceStepRepository;
+        _limitRepository = repositories.LimitRepository;
+        _reverseLogRepository = repositories.ReverseLogRepository;
+        _priceMasterRepository = calculationDependencies.PriceMasterRepository;
         _db = db;
         _options = options.Value;
         _logger = logger;
@@ -123,20 +111,116 @@ public sealed class PricingApiService
         PricingCalculateItemRequest Item,
         PricingResult Result);
 
-    private sealed record CommitExpectedDetail(
-        string? ChargeDetailNo,
-        string ItemCode,
-        int? PartSeq,
-        decimal Qty,
-        decimal Amount,
-        bool RequireChargeDetailNo);
+    private sealed record CommitExpectedDetail
+    {
+        public string? ChargeDetailNo { get; init; }
 
-    private sealed record CommitActualDetail(
-        string? ChargeDetailNo,
-        string ItemCode,
-        int? PartSeq,
-        decimal Qty,
-        decimal Amount);
+        public string ItemCode { get; init; } = string.Empty;
+
+        public int? PartSeq { get; init; }
+
+        public decimal Qty { get; init; }
+
+        public decimal Amount { get; init; }
+
+        public bool RequireChargeDetailNo { get; init; }
+    }
+
+    private sealed record CommitActualDetail
+    {
+        public string? ChargeDetailNo { get; init; }
+
+        public string ItemCode { get; init; } = string.Empty;
+
+        public int? PartSeq { get; init; }
+
+        public decimal Qty { get; init; }
+
+        public decimal Amount { get; init; }
+    }
+
+    private sealed record PricingContextBuildInput
+    {
+        public PricingCalculateRequest Request { get; init; } = null!;
+
+        public PricingCalculateItemRequest Item { get; init; } = null!;
+
+        public string CallType { get; init; } = string.Empty;
+
+        public bool ShouldLockLimits { get; init; }
+
+        public IReadOnlyDictionary<string, decimal>? InRequestOccupiedQtyByLimitDimension { get; init; }
+
+        public IReadOnlyList<LimitOccupy>? InRequestLimitOccupies { get; init; }
+    }
+
+    private sealed record RequestLogSaveInput
+    {
+        public PricingCalculateRequest Request { get; init; } = null!;
+
+        public IReadOnlyList<PricingCalculateItemRequest> Items { get; init; } =
+            Array.Empty<PricingCalculateItemRequest>();
+
+        public IReadOnlyList<ItemPricingCalculation> Calculations { get; init; } =
+            Array.Empty<ItemPricingCalculation>();
+
+        public string CallType { get; init; } = string.Empty;
+
+        public string BusinessStatus { get; init; } = string.Empty;
+
+        public string? Fingerprint { get; init; }
+    }
+
+    private sealed record ReverseRequestLogSaveInput
+    {
+        public PricingReverseRequest Request { get; init; } = null!;
+
+        public ChargeRequestLog OriginalLog { get; init; } = null!;
+
+        public IReadOnlyList<ChargeDiscountDetail> MatchedDetails { get; init; } =
+            Array.Empty<ChargeDiscountDetail>();
+
+        public decimal ReverseQty { get; init; }
+
+        public decimal ReverseAmt { get; init; }
+
+        public DateTime ReverseTime { get; init; }
+    }
+
+    private sealed record DiscountDetailSaveInput
+    {
+        public long RequestId { get; init; }
+
+        public PricingCalculateRequest Request { get; init; } = null!;
+
+        public PricingCalculateItemRequest Item { get; init; } = null!;
+
+        public PricingResult Result { get; init; } = null!;
+
+        public string Status { get; init; } = string.Empty;
+    }
+
+    private sealed record ChildDiscountDetailSaveInput
+    {
+        public long RequestId { get; init; }
+
+        public PricingCalculateRequest Request { get; init; } = null!;
+
+        public PricingCalculateItemRequest Item { get; init; } = null!;
+
+        public IReadOnlyList<ChildPricingResult> ChildPricingResults { get; init; } =
+            Array.Empty<ChildPricingResult>();
+
+        public string? ResultGroupNo { get; init; }
+
+        public long MainDiscountId { get; init; }
+
+        public long FirstRuleId { get; init; }
+
+        public string Status { get; init; } = string.Empty;
+
+        public DateTime Now { get; init; }
+    }
 
     /// <summary>
     /// 执行试算计价。
@@ -173,13 +257,15 @@ public sealed class PricingApiService
         var calculations = new List<ItemPricingCalculation>(items.Count);
         foreach (var item in items)
         {
-            var context = BuildContext(
-                request,
-                item,
-                "SIMULATE",
-                shouldLockLimits: false,
-                inRequestOccupiedQtyByLimitDimension,
-                inRequestLimitOccupies);
+            var context = BuildContext(new PricingContextBuildInput
+            {
+                Request = request,
+                Item = item,
+                CallType = "SIMULATE",
+                ShouldLockLimits = false,
+                InRequestOccupiedQtyByLimitDimension = inRequestOccupiedQtyByLimitDimension,
+                InRequestLimitOccupies = inRequestLimitOccupies
+            });
             var result = await _engine.CalculateAsync(context, batchContext);
             AccumulateInRequestLimits(inRequestOccupiedQtyByLimitDimension, inRequestLimitOccupies, result);
             calculations.Add(new ItemPricingCalculation(item, result));
@@ -187,8 +273,14 @@ public sealed class PricingApiService
 
         // ========== 第三阶段：保存试算追溯 ==========
         // 试算不会进入资金状态机，但保留请求和步骤日志可以支持后续页面解释、问题复盘和影子对账。
-        var requestLog = await SaveRequestLog(
-            request, items, calculations, "SIMULATE", "SIMULATED", fingerprint: null);
+        var requestLog = await SaveRequestLog(new RequestLogSaveInput
+        {
+            Request = request,
+            Items = items,
+            Calculations = calculations,
+            CallType = "SIMULATE",
+            BusinessStatus = "SIMULATED"
+        });
         await SaveTraceSteps(requestLog.RequestId, calculations);
 
         // ========== 第四阶段：保存响应快照 ==========
@@ -299,21 +391,30 @@ public sealed class PricingApiService
             var calculations = new List<ItemPricingCalculation>(items.Count);
             foreach (var item in items)
             {
-                var context = BuildContext(
-                    request,
-                    item,
-                    "CONFIRM",
-                    shouldLockLimits: true,
-                    inRequestOccupiedQtyByLimitDimension,
-                    inRequestLimitOccupies);
+                var context = BuildContext(new PricingContextBuildInput
+                {
+                    Request = request,
+                    Item = item,
+                    CallType = "CONFIRM",
+                    ShouldLockLimits = true,
+                    InRequestOccupiedQtyByLimitDimension = inRequestOccupiedQtyByLimitDimension,
+                    InRequestLimitOccupies = inRequestLimitOccupies
+                });
                 var result = await _engine.CalculateAsync(context, batchContext);
                 AccumulateInRequestLimits(inRequestOccupiedQtyByLimitDimension, inRequestLimitOccupies, result);
                 calculations.Add(new ItemPricingCalculation(item, result));
             }
 
             // 请求日志先落库并拿到 RequestId，后续步骤、折价明细和占额都用它串联。
-            var requestLog = await SaveRequestLog(
-                request, items, calculations, "CONFIRM", "CONFIRM_PENDING", fingerprint);
+            var requestLog = await SaveRequestLog(new RequestLogSaveInput
+            {
+                Request = request,
+                Items = items,
+                Calculations = calculations,
+                CallType = "CONFIRM",
+                BusinessStatus = "CONFIRM_PENDING",
+                Fingerprint = fingerprint
+            });
             await SaveTraceSteps(requestLog.RequestId, calculations);
 
             // confirm 返回后，HIS 会按本次响应落账整批收费明细；commit 阶段也必须能用
@@ -321,8 +422,14 @@ public sealed class PricingApiService
             // 只有特殊规则产生的限额草稿需要写保护占用，普通项目只作为 commit 对账基准保存。
             foreach (var calculation in calculations)
             {
-                await SaveDiscountDetail(
-                    requestLog.RequestId, request, calculation.Item, calculation.Result, "PENDING");
+                await SaveDiscountDetail(new DiscountDetailSaveInput
+                {
+                    RequestId = requestLog.RequestId,
+                    Request = request,
+                    Item = calculation.Item,
+                    Result = calculation.Result,
+                    Status = "PENDING"
+                });
                 if (calculation.Result.IsSpecialItem)
                 {
                     await SaveLimitOccupies(requestLog.RequestId, calculation.Result);
@@ -671,13 +778,15 @@ public sealed class PricingApiService
 
             // ========== 第四阶段：当日退费写负向占额 ==========
             var reverseTime = request.ReverseTime ?? DateTime.Now;
-            var reverseRequestId = await SaveReverseRequestLogAsync(
-                request,
-                log,
-                matchedDetails,
-                reverseQty,
-                reverseAmt,
-                reverseTime);
+            var reverseRequestId = await SaveReverseRequestLogAsync(new ReverseRequestLogSaveInput
+            {
+                Request = request,
+                OriginalLog = log,
+                MatchedDetails = matchedDetails,
+                ReverseQty = reverseQty,
+                ReverseAmt = reverseAmt,
+                ReverseTime = reverseTime
+            });
             await InsertNegativeLimitOccupiesAsync(request, reverseQty, reverseAmt, reverseTime);
 
             // ========== 第五阶段：写冲正审计 ==========
@@ -774,12 +883,14 @@ public sealed class PricingApiService
         }
 
         var actual = actualItems
-            .Select(i => new CommitActualDetail(
-                NormalizeString(i.ChargeDetailNo)?.ToUpperInvariant(),
-                NormalizeString(i.ItemCode)?.ToUpperInvariant() ?? string.Empty,
-                i.PartSeq,
-                i.FinalQty,
-                i.FinalAmount))
+            .Select(i => new CommitActualDetail
+            {
+                ChargeDetailNo = NormalizeString(i.ChargeDetailNo)?.ToUpperInvariant(),
+                ItemCode = NormalizeString(i.ItemCode)?.ToUpperInvariant() ?? string.Empty,
+                PartSeq = i.PartSeq,
+                Qty = i.FinalQty,
+                Amount = i.FinalAmount
+            })
             .ToList();
 
         var usedActualIndexes = new HashSet<int>();
@@ -855,13 +966,15 @@ public sealed class PricingApiService
     {
         return details
             .Where(IsBillableExpectedDetail)
-            .Select(d => new CommitExpectedDetail(
-                NormalizeString(d.ChargeDetailNo)?.ToUpperInvariant(),
-                NormalizeString(d.ItemCode)?.ToUpperInvariant() ?? string.Empty,
-                d.PartSeq,
-                d.FinalQty ?? 0m,
-                d.FinalAmt ?? 0m,
-                RequiresCommitChargeDetailMatch(d)))
+            .Select(d => new CommitExpectedDetail
+            {
+                ChargeDetailNo = NormalizeString(d.ChargeDetailNo)?.ToUpperInvariant(),
+                ItemCode = NormalizeString(d.ItemCode)?.ToUpperInvariant() ?? string.Empty,
+                PartSeq = d.PartSeq,
+                Qty = d.FinalQty ?? 0m,
+                Amount = d.FinalAmt ?? 0m,
+                RequireChargeDetailNo = RequiresCommitChargeDetailMatch(d)
+            })
             .ToList();
     }
 
@@ -1047,14 +1160,14 @@ public sealed class PricingApiService
             .Sum(r => r.ReverseAmt ?? 0);
     }
 
-    private async Task<long> SaveReverseRequestLogAsync(
-        PricingReverseRequest request,
-        ChargeRequestLog originalLog,
-        IReadOnlyList<ChargeDiscountDetail> matchedDetails,
-        decimal reverseQty,
-        decimal reverseAmt,
-        DateTime reverseTime)
+    private async Task<long> SaveReverseRequestLogAsync(ReverseRequestLogSaveInput input)
     {
+        var request = input.Request;
+        var originalLog = input.OriginalLog;
+        var matchedDetails = input.MatchedDetails;
+        var reverseQty = input.ReverseQty;
+        var reverseAmt = input.ReverseAmt;
+        var reverseTime = input.ReverseTime;
         var firstDetail = matchedDetails.FirstOrDefault();
         var reverseRequestLog = new ChargeRequestLog
         {
@@ -1195,21 +1308,17 @@ public sealed class PricingApiService
         }
     }
 
-    private static PricingContext BuildContext(
-        PricingCalculateRequest request,
-        PricingCalculateItemRequest item,
-        string callType,
-        bool shouldLockLimits,
-        IReadOnlyDictionary<string, decimal>? inRequestOccupiedQtyByLimitDimension = null,
-        IReadOnlyList<LimitOccupy>? inRequestLimitOccupies = null)
+    private static PricingContext BuildContext(PricingContextBuildInput input)
     {
+        var request = input.Request;
+        var item = input.Item;
         // ========== 第一阶段：把接口 DTO 转换成引擎上下文 ==========
         // 引擎只关心标准化后的业务字段。这里统一 trim 字符串，并把空字符串折叠为 null，
         // 这样条件匹配和指纹计算不会因为多余空格或空串/null 差异产生不稳定行为。
         return new PricingContext
         {
-            CallType = callType,
-            ShouldLockLimits = shouldLockLimits,
+            CallType = input.CallType,
+            ShouldLockLimits = input.ShouldLockLimits,
             PatientId = request.PatientId.Trim(),
             VisitId = NormalizeString(request.VisitId),
             ItemCode = item.ItemCode.Trim(),
@@ -1230,13 +1339,13 @@ public sealed class PricingApiService
             LegacyOccupiedQty = item.LegacyOccupiedQty ?? 0m,
             ExtraParams = MergeExtraParams(request.ExtraParams, item.ExtraParams),
             InRequestOccupiedQtyByLimitDimension =
-                inRequestOccupiedQtyByLimitDimension?.ToDictionary(
+                input.InRequestOccupiedQtyByLimitDimension?.ToDictionary(
                     item => item.Key,
                     item => item.Value,
                     StringComparer.OrdinalIgnoreCase) ?? new Dictionary<string, decimal>(),
-            InRequestLimitOccupies = inRequestLimitOccupies is null
+            InRequestLimitOccupies = input.InRequestLimitOccupies is null
                 ? Array.Empty<LimitOccupy>()
-                : inRequestLimitOccupies.ToList(),
+                : input.InRequestLimitOccupies.ToList(),
             PricingParts = item.PricingParts?.Select(p => new PricingPartItem
             {
                 PartSeq = p.PartSeq,
@@ -1289,14 +1398,11 @@ public sealed class PricingApiService
         }
     }
 
-    private async Task<ChargeRequestLog> SaveRequestLog(
-        PricingCalculateRequest request,
-        IReadOnlyList<PricingCalculateItemRequest> items,
-        IReadOnlyList<ItemPricingCalculation> calculations,
-        string callType,
-        string businessStatus,
-        string? fingerprint)
+    private async Task<ChargeRequestLog> SaveRequestLog(RequestLogSaveInput input)
     {
+        var request = input.Request;
+        var items = input.Items;
+        var calculations = input.Calculations;
         // ========== 第一阶段：构造请求日志 ==========
         // RequestNo 是技术流水，BusinessRequestNo 是业务幂等号。两者都保存：
         // 前者便于定位一次 HTTP 调用，后者用于判断同一次收费确认动作。
@@ -1304,9 +1410,9 @@ public sealed class PricingApiService
         {
             RequestNo = NormalizeString(request.RequestNo) ?? $"REQ-{DateTime.Now:yyyyMMddHHmmssfff}",
             BusinessRequestNo = NormalizeString(request.BusinessRequestNo),
-            RequestFingerprint = fingerprint,
-            CallType = callType,
-            BusinessStatus = businessStatus,
+            RequestFingerprint = input.Fingerprint,
+            CallType = input.CallType,
+            BusinessStatus = input.BusinessStatus,
             SourceSystem = request.SourceSystem.Trim(),
             SourceTerminal = NormalizeString(request.SourceTerminal),
             PatientId = request.PatientId.Trim(),
@@ -1420,13 +1526,13 @@ public sealed class PricingApiService
         await _traceStepRepository.InsertBatchAsync(entities);
     }
 
-    private async Task SaveDiscountDetail(
-        long requestId,
-        PricingCalculateRequest request,
-        PricingCalculateItemRequest item,
-        PricingResult result,
-        string status)
+    private async Task SaveDiscountDetail(DiscountDetailSaveInput input)
     {
+        var requestId = input.RequestId;
+        var request = input.Request;
+        var item = input.Item;
+        var result = input.Result;
+        var status = input.Status;
         // ========== 第一阶段：选择主命中规则 ==========
         // 当前折价明细表只有一个 RULE_ID 字段。多规则叠加时这里先记录第一条命中规则，
         // 完整动作链仍通过步骤日志和请求响应快照追溯。
@@ -1478,16 +1584,18 @@ public sealed class PricingApiService
 
         if (result.ReplaceChildResult is null)
         {
-            await SaveChildDiscountDetails(
-                requestId,
-                request,
-                item,
-                result,
-                resultGroupNo,
-                mainDiscountId,
-                firstRuleId,
-                status,
-                now);
+            await SaveChildDiscountDetails(new ChildDiscountDetailSaveInput
+            {
+                RequestId = requestId,
+                Request = request,
+                Item = item,
+                ChildPricingResults = result.ChildPricingResults,
+                ResultGroupNo = resultGroupNo,
+                MainDiscountId = mainDiscountId,
+                FirstRuleId = firstRuleId,
+                Status = status,
+                Now = now
+            });
             return;
         }
 
@@ -1520,44 +1628,39 @@ public sealed class PricingApiService
 
         await _discountRepository.InsertAsync(replacementDetail);
 
-        await SaveChildDiscountDetails(
-            requestId,
-            request,
-            item,
-            result,
-            resultGroupNo,
-            mainDiscountId,
-            firstRuleId,
-            status,
-            now);
+        await SaveChildDiscountDetails(new ChildDiscountDetailSaveInput
+        {
+            RequestId = requestId,
+            Request = request,
+            Item = item,
+            ChildPricingResults = result.ChildPricingResults,
+            ResultGroupNo = resultGroupNo,
+            MainDiscountId = mainDiscountId,
+            FirstRuleId = firstRuleId,
+            Status = status,
+            Now = now
+        });
     }
 
-    private async Task SaveChildDiscountDetails(
-        long requestId,
-        PricingCalculateRequest request,
-        PricingCalculateItemRequest item,
-        PricingResult result,
-        string? resultGroupNo,
-        long mainDiscountId,
-        long firstRuleId,
-        string status,
-        DateTime now)
+    private async Task SaveChildDiscountDetails(ChildDiscountDetailSaveInput input)
     {
-        foreach (var child in result.ChildPricingResults)
+        var request = input.Request;
+        var item = input.Item;
+        foreach (var child in input.ChildPricingResults)
         {
             var childAmount = PricingAmountRounder.RoundFinalAmount(child.Amount);
             var childDetail = new ChargeDiscountDetail
             {
-                RequestId = requestId,
+                RequestId = input.RequestId,
                 ChargeNo = NormalizeString(request.ChargeNo),
                 ChargeDetailNo = NormalizeString(item.ChargeDetailNo),
                 PatientId = request.PatientId,
                 VisitId = request.VisitId,
                 ItemCode = child.ItemCode,
                 ItemName = child.ItemName,
-                RuleId = firstRuleId == 0 ? null : firstRuleId,
-                ResultGroupNo = resultGroupNo,
-                ParentDiscountId = mainDiscountId,
+                RuleId = input.FirstRuleId == 0 ? null : input.FirstRuleId,
+                ResultGroupNo = input.ResultGroupNo,
+                ParentDiscountId = input.MainDiscountId,
                 ConvertedQty = child.Qty,
                 FinalQty = child.Qty,
                 UnitPrice = child.UnitPrice,
@@ -1568,8 +1671,8 @@ public sealed class PricingApiService
                 DiscountType = "ADD_CHILD_ITEM",
                 ReasonCode = "ADD_CHILD_ITEM",
                 ReasonDesc = BuildChildReasonDesc(item, child),
-                Status = status,
-                OccurredAt = now
+                Status = input.Status,
+                OccurredAt = input.Now
             };
 
             await _discountRepository.InsertAsync(childDetail);

@@ -75,8 +75,14 @@ public sealed class TimeWindowLimitExecutor : IRuleActionExecutor
 
         // ========== 第四阶段：查询 PENDING + CONFIRMED 累计 ==========
         // PENDING 是并发保护占用，必须计入剩余额度；否则两个未 commit 的 confirm 会同时通过。
-        var occupiedQty = await _limitRepository.GetOccupiedQtyAsync(
-            "TIME_WINDOW", dimensionCode, windowStart, windowEnd, OccupyStatuses);
+        var occupiedQty = await _limitRepository.GetOccupiedQtyAsync(new LimitOccupyRangeQuery
+        {
+            LimitType = "TIME_WINDOW",
+            LimitDimensionCode = dimensionCode,
+            StartTime = windowStart,
+            EndTime = windowEnd,
+            Statuses = OccupyStatuses
+        });
         occupiedQty += GetInRequestOccupiedQty(context, dimensionCode, windowStart, windowEnd);
         // 方案B兜底：加入 HIS 旧系统已收费量，保证上线过渡期数据不断档
         occupiedQty += context.LegacyOccupiedQty;

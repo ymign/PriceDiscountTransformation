@@ -35,6 +35,17 @@ public sealed class ItemMatchEvaluator : IRuleConditionEvaluator
     public string ConditionType => "ITEM_MATCH";
 
     /// <summary>
+    /// 异步评估项目编码条件。当前评估只依赖内存上下文，使用 <see cref="ValueTask{TResult}"/> 避免额外任务分配。
+    /// </summary>
+    /// <param name="condition">规则条件配置。</param>
+    /// <param name="context">计价上下文。</param>
+    /// <returns>项目编码条件满足时返回 <c>true</c>。</returns>
+    public ValueTask<bool> EvaluateAsync(RuleCondition condition, PricingContext context)
+    {
+        return ValueTask.FromResult(Evaluate(condition, context));
+    }
+
+    /// <summary>
     /// 判断请求项目编码是否等于规则条件中的目标项目编码。
     /// </summary>
     /// <param name="condition">

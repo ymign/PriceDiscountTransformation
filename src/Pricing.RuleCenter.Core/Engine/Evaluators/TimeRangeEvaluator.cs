@@ -45,6 +45,17 @@ public sealed class TimeRangeEvaluator : IRuleConditionEvaluator
     public string ConditionType => "TIME_RANGE";
 
     /// <summary>
+    /// 异步评估业务时间范围条件。当前评估只依赖内存上下文，使用 <see cref="ValueTask{TResult}"/> 避免额外任务分配。
+    /// </summary>
+    /// <param name="condition">规则条件配置。</param>
+    /// <param name="context">计价上下文。</param>
+    /// <returns>业务时间落在配置范围内时返回 <c>true</c>。</returns>
+    public ValueTask<bool> EvaluateAsync(RuleCondition condition, PricingContext context)
+    {
+        return ValueTask.FromResult(Evaluate(condition, context));
+    }
+
+    /// <summary>
     /// 判断本次业务收费时间是否落在规则配置的时间范围内。
     /// </summary>
     /// <param name="condition">

@@ -77,33 +77,23 @@ public sealed class RulePublishService
     /// <summary>
     /// 初始化规则发布服务。
     /// </summary>
-    /// <param name="headerRepository">规则主档仓储。</param>
-    /// <param name="versionRepository">规则版本仓储。</param>
-    /// <param name="publishRepository">发布记录仓储。</param>
-    /// <param name="changeLogRepository">变更日志仓储。</param>
-    /// <param name="conditionRepository">规则条件仓储。</param>
-    /// <param name="actionRepository">规则动作仓储。</param>
-    /// <param name="dictRepository">字典仓储，用于读取互斥动作类型配置。</param>
+    /// <param name="lifecycleRepositories">规则发布生命周期仓储集合。</param>
+    /// <param name="definitionRepositories">规则定义仓储集合，用于发布前冲突校验。</param>
     /// <param name="cache">内存缓存，用于在状态变更后清除生效规则缓存。</param>
     /// <param name="logger">日志对象。</param>
     public RulePublishService(
-        IRuleHeaderRepository headerRepository,
-        IRuleVersionRepository versionRepository,
-        IRulePublishRepository publishRepository,
-        IRuleChangeLogRepository changeLogRepository,
-        IRuleConditionRepository conditionRepository,
-        IRuleActionRepository actionRepository,
-        IDictRepository dictRepository,
+        RulePublishLifecycleRepositories lifecycleRepositories,
+        RulePublishDefinitionRepositories definitionRepositories,
         IMemoryCache cache,
         ILogger<RulePublishService> logger)
     {
-        _headerRepository = headerRepository;
-        _versionRepository = versionRepository;
-        _publishRepository = publishRepository;
-        _changeLogRepository = changeLogRepository;
-        _conditionRepository = conditionRepository;
-        _actionRepository = actionRepository;
-        _dictRepository = dictRepository;
+        _headerRepository = lifecycleRepositories.HeaderRepository;
+        _versionRepository = lifecycleRepositories.VersionRepository;
+        _publishRepository = lifecycleRepositories.PublishRepository;
+        _changeLogRepository = lifecycleRepositories.ChangeLogRepository;
+        _conditionRepository = definitionRepositories.ConditionRepository;
+        _actionRepository = definitionRepositories.ActionRepository;
+        _dictRepository = definitionRepositories.DictRepository;
         _cache = cache;
         _logger = logger;
     }

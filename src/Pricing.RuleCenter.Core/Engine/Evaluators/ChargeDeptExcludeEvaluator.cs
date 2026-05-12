@@ -31,6 +31,17 @@ public sealed class ChargeDeptExcludeEvaluator : IRuleConditionEvaluator
     public string ConditionType => "CHARGE_DEPT_EXCLUDE";
 
     /// <summary>
+    /// 异步评估收费科室排除条件。当前评估只依赖内存上下文，使用 <see cref="ValueTask{TResult}"/> 避免额外任务分配。
+    /// </summary>
+    /// <param name="condition">规则条件配置。</param>
+    /// <param name="context">计价上下文。</param>
+    /// <returns>当前科室未被排除时返回 <c>true</c>。</returns>
+    public ValueTask<bool> EvaluateAsync(RuleCondition condition, PricingContext context)
+    {
+        return ValueTask.FromResult(Evaluate(condition, context));
+    }
+
+    /// <summary>
     /// 判断请求上下文的收费科室是否不在排除列表中。
     /// </summary>
     /// <param name="condition">

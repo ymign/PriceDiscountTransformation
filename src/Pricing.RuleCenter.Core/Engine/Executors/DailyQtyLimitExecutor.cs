@@ -71,8 +71,14 @@ public sealed class DailyQtyLimitExecutor : IRuleActionExecutor
 
         // ========== 第四阶段：查询当天待确认和已确认占用 ==========
         // PENDING 必须计入，因为它代表已经返回给渠道、正在等待 HIS 落账的占额。
-        var occupiedQty = await _limitRepository.GetOccupiedQtyAsync(
-            "DAY_QTY", dimensionCode, dayStart, dayEnd, OccupyStatuses);
+        var occupiedQty = await _limitRepository.GetOccupiedQtyAsync(new LimitOccupyRangeQuery
+        {
+            LimitType = "DAY_QTY",
+            LimitDimensionCode = dimensionCode,
+            StartTime = dayStart,
+            EndTime = dayEnd,
+            Statuses = OccupyStatuses
+        });
         occupiedQty += GetInRequestOccupiedQty(context, dimensionCode, dayStart, dayEnd);
 
         // ========== 第五阶段：截断数量和金额 ==========

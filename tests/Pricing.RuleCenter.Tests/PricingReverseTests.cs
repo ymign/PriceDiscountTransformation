@@ -419,14 +419,16 @@ public sealed class PricingReverseTests
         ILimitOccupyRepository limitRepository,
         IChargeReverseLogRepository reverseRepository) =>
         new(
-            new EmptyPricingEngine(),
-            new EmptyRuleHeaderRepository(),
-            requestRepository,
-            discountRepository,
-            new EmptyTraceStepRepository(),
-            limitRepository,
-            reverseRepository,
-            new EmptyPriceMasterRepository(),
+            new PricingApiCalculationDependencies(
+                new EmptyPricingEngine(),
+                new EmptyRuleHeaderRepository(),
+                new EmptyPriceMasterRepository()),
+            new PricingApiPersistenceRepositories(
+                requestRepository,
+                discountRepository,
+                new EmptyTraceStepRepository(),
+                limitRepository,
+                reverseRepository),
             db: null!,
             Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
             NullLogger<PricingApiService>.Instance);
@@ -499,7 +501,7 @@ public sealed class PricingReverseTests
         public List<LimitOccupy> Occupies { get; } = new();
         public List<LimitOccupy> Inserted { get; } = new();
         public Task<decimal> GetOccupiedQtyAsync(string limitKey, string status) => Task.FromResult(0m);
-        public Task<decimal> GetOccupiedQtyAsync(string limitType, string limitDimensionCode, DateTime startTime, DateTime endTime, IReadOnlyCollection<string> statuses) => Task.FromResult(0m);
+        public Task<decimal> GetOccupiedQtyAsync(LimitOccupyRangeQuery query) => Task.FromResult(0m);
         public Task<decimal> GetOccupiedAmtAsync(string limitKey, string status) => Task.FromResult(0m);
         public Task<IReadOnlyList<LimitOccupy>> GetByRequestIdAsync(long requestId) => Task.FromResult((IReadOnlyList<LimitOccupy>)Occupies.Where(o => o.RequestId == requestId).ToList());
         public Task EnsureAndLockAsync(IReadOnlyCollection<string> lockKeys) => Task.CompletedTask;

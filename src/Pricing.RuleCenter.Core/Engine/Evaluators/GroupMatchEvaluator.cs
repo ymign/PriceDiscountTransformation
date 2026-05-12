@@ -67,7 +67,7 @@ public sealed class GroupMatchEvaluator : IRuleConditionEvaluator
     }
 
     /// <summary>
-    /// 判断当前计价项目是否属于规则条件指定的项目组。
+    /// 异步判断当前计价项目是否属于规则条件指定的项目组。
     /// </summary>
     /// <param name="condition">
     /// 规则条件配置。RightValue 保存目标项目组编码（来自 PR_RULE_CONDITION.RIGHT_VALUE 列）。
@@ -81,7 +81,7 @@ public sealed class GroupMatchEvaluator : IRuleConditionEvaluator
     /// ItemCode 为空时返回 <c>false</c>（项目编码是必选维度）。
     /// 项目组不存在时返回 <c>false</c>（配置错误保守处理）。
     /// </returns>
-    public bool Evaluate(RuleCondition condition, PricingContext context)
+    public async ValueTask<bool> EvaluateAsync(RuleCondition condition, PricingContext context)
     {
         // 项目组条件为空时视为不限制项目组，避免可选条件缺失导致规则整体失效。
         if (string.IsNullOrEmpty(condition.RightValue))
@@ -106,13 +106,11 @@ public sealed class GroupMatchEvaluator : IRuleConditionEvaluator
 
         // ========== 完整路径：查询数据库判断项目组归属 ==========
         // 调用方未传入 ItemGroupCode 或与条件不一致时，需要查询数据库。
-        // 同步调用异步方法：评估器接口要求同步返回 bool，此处使用 .GetAwaiter().GetResult()。
-        // 在 ASP.NET Core 请求管道中这是安全的（不会死锁），但应注意性能影响。
+        // 评估接口保持异步，避免在 ASP.NET Core 请求线程上同步等待数据库 I/O。
         try
         {
             // 第一步：按项目组编码查找项目组。
-            var group = _itemGroupRepository.GetByCodeAsync(condition.RightValue)
-                .GetAwaiter().GetResult();
+            var group = await _itemGroupRepository.GetByCodeAsync(condition.RightValue);
 
             if (group == null)
             {
@@ -121,8 +119,7 @@ public sealed class GroupMatchEvaluator : IRuleConditionEvaluator
             }
 
             // 第二步：查询项目组明细，判断当前项目是否属于该组。
-            var details = _itemGroupDetailRepository.GetByGroupIdAsync(group.GroupId)
-                .GetAwaiter().GetResult();
+            var details = await _itemGroupDetailRepository.GetByGroupIdAsync(group.GroupId);
 
             // 按项目编码匹配，不区分大小写。
             var matched = details.Any(d =>

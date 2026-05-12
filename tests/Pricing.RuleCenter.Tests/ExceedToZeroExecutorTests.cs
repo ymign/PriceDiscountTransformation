@@ -130,7 +130,7 @@ public sealed class ExceedToZeroExecutorTests
                 })
             }
         };
-        var ruleMatchService = new RuleMatchService(
+        var ruleMatchService = CreateRuleMatchService(
             new FixedRuleHeaderRepository(rule),
             new EmptyRuleConditionRepository(),
             new FixedRuleActionRepository(actions),
@@ -199,7 +199,7 @@ public sealed class ExceedToZeroExecutorTests
                 })
             }
         };
-        var ruleMatchService = new RuleMatchService(
+        var ruleMatchService = CreateRuleMatchService(
             new FixedRuleHeaderRepository(rule),
             new EmptyRuleConditionRepository(),
             new FixedRuleActionRepository(actions),
@@ -231,6 +231,22 @@ public sealed class ExceedToZeroExecutorTests
         Assert.Equal(30m, child.Amount);
         Assert.Equal(200m, result.FinalAmount);
     }
+
+    private static RuleMatchService CreateRuleMatchService(
+        IRuleHeaderRepository headerRepository,
+        IRuleConditionRepository conditionRepository,
+        IRuleActionRepository actionRepository,
+        ConditionEvaluatorFactory evaluatorFactory,
+        IDictRepository dictRepository,
+        Microsoft.Extensions.Logging.ILogger<RuleMatchService> logger) =>
+        new(
+            new RuleMatchRepositories(
+                headerRepository,
+                conditionRepository,
+                actionRepository,
+                dictRepository),
+            evaluatorFactory,
+            logger);
 
     private sealed class FullLimitExecutor : IRuleActionExecutor
     {

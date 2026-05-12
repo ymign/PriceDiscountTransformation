@@ -35,7 +35,7 @@ public interface IRuleConditionEvaluator
     string ConditionType { get; }
 
     /// <summary>
-    /// 评估指定条件在当前计价上下文中是否满足。
+    /// 异步评估指定条件在当前计价上下文中是否满足。
     ///
     /// 调用时机：计价引擎遍历规则的条件列表时，逐条调用此方法判断是否满足。
     /// 全部条件满足（AND 逻辑）时，该规则进入动作执行阶段。
@@ -54,5 +54,5 @@ public interface IRuleConditionEvaluator
     /// true 表示条件满足，false 表示不满足。
     /// 计价引擎对同一规则的所有条件取 AND，全部满足才执行动作。
     /// </returns>
-    bool Evaluate(RuleCondition condition, PricingContext context);
+    ValueTask<bool> EvaluateAsync(RuleCondition condition, PricingContext context);
 }

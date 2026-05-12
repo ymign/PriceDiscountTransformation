@@ -66,6 +66,19 @@ public sealed class RuleHeaderService
     /// </summary>
     private static readonly TimeSpan EffectiveCacheDuration = TimeSpan.FromMinutes(5);
 
+    private sealed record RuleChangeLogInput
+    {
+        public long RuleId { get; init; }
+
+        public int? VersionNo { get; init; }
+
+        public string ChangeType { get; init; } = string.Empty;
+
+        public string ChangeSummary { get; init; } = string.Empty;
+
+        public string? ChangedBy { get; init; }
+    }
+
     /// <summary>
     /// 初始化规则主档服务。
     /// </summary>
@@ -245,9 +258,13 @@ public sealed class RuleHeaderService
         // ========== 第四阶段：写入变更日志 ==========
         // 主档创建是规则生命周期的起点，必须记录审计日志，便于后续追溯规则来源。
         // 变更日志写入失败不应阻断主业务流程，因此使用 try-catch 包裹。
-        await TryWriteChangeLogAsync(id, null, "CREATE_RULE",
-            $"创建规则主档：编码={request.RuleCode}，名称={request.RuleName}",
-            request.CreatedBy);
+        await TryWriteChangeLogAsync(new RuleChangeLogInput
+        {
+            RuleId = id,
+            ChangeType = "CREATE_RULE",
+            ChangeSummary = $"创建规则主档：编码={request.RuleCode}，名称={request.RuleName}",
+            ChangedBy = request.CreatedBy
+        });
 
         return id;
     }
@@ -287,9 +304,13 @@ public sealed class RuleHeaderService
         // ========== 第三阶段：写入变更日志 ==========
         // 主档更新可能影响规则匹配条件（如项目编码、生效时间、优先级等），
         // 必须记录审计日志便于追溯哪次修改导致了匹配结果变化。
-        await TryWriteChangeLogAsync(ruleId, null, "UPDATE_RULE",
-            $"更新规则主档：名称={request.RuleName}，项目={request.ItemCode}，优先级={request.Priority}",
-            request.UpdatedBy);
+        await TryWriteChangeLogAsync(new RuleChangeLogInput
+        {
+            RuleId = ruleId,
+            ChangeType = "UPDATE_RULE",
+            ChangeSummary = $"更新规则主档：名称={request.RuleName}，项目={request.ItemCode}，优先级={request.Priority}",
+            ChangedBy = request.UpdatedBy
+        });
     }
 
     /// <summary>
@@ -305,34 +326,26 @@ public sealed class RuleHeaderService
     /// 并通过数据库层面的补偿脚本恢复缺失的变更记录。
     /// </para>
     /// </remarks>
-    /// <param name="ruleId">规则主键。</param>
-    /// <param name="versionNo">规则版本号（可为空，主档级变更不关联特定版本）。</param>
-    /// <param name="changeType">变更类型编码，如 CREATE_RULE、UPDATE_RULE。</param>
-    /// <param name="changeSummary">人可读的变更摘要，含关键参数便于配置人员理解。</param>
-    /// <param name="changedBy">操作人标识，从请求中获取或默认 SYSTEM。</param>
-    private async Task TryWriteChangeLogAsync(
-        long ruleId,
-        int? versionNo,
-        string changeType,
-        string changeSummary,
-        string? changedBy)
+    /// <param name="input">规则变更日志写入上下文。</param>
+    private async Task TryWriteChangeLogAsync(RuleChangeLogInput input)
     {
         try
         {
             await _changeLogRepository.InsertAsync(new RuleChangeLog
             {
-                RuleId = ruleId,
-                VersionNo = versionNo,
-                ChangeType = changeType,
-                ChangeSummary = changeSummary,
-                ChangedBy = changedBy ?? "SYSTEM",
+                RuleId = input.RuleId,
+                VersionNo = input.VersionNo,
+                ChangeType = input.ChangeType,
+                ChangeSummary = input.ChangeSummary,
+                ChangedBy = input.ChangedBy ?? "SYSTEM",
                 ChangedAt = DateTime.Now,
                 SourceSystem = "API"
             });
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "写入变更日志失败 RuleId={RuleId}, ChangeType={ChangeType}", ruleId, changeType);
+            _logger.LogWarning(ex, "写入变更日志失败 RuleId={RuleId}, ChangeType={ChangeType}",
+                input.RuleId, input.ChangeType);
         }
     }
 

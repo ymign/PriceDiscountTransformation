@@ -47,18 +47,9 @@ public interface ILimitOccupyRepository
     /// 使用场景：时间窗限制的已占用量查询，需要按限制类型、维度编码、时间范围聚合。
     /// 例如：查询某项目在最近2小时内的累计数量。
     /// </summary>
-    /// <param name="limitType">限制类型（如 "TimeWindow"）。</param>
-    /// <param name="limitDimensionCode">维度编码（如项目编码）。</param>
-    /// <param name="startTime">查询起始时间（含）。</param>
-    /// <param name="endTime">查询结束时间（含）。</param>
-    /// <param name="statuses">占用状态集合（仅统计这些状态的占用记录）。</param>
+    /// <param name="query">时间范围占用查询参数。</param>
     /// <returns>已占用的累计数量（decimal）。</returns>
-    Task<decimal> GetOccupiedQtyAsync(
-        string limitType,
-        string limitDimensionCode,
-        DateTime startTime,
-        DateTime endTime,
-        IReadOnlyCollection<string> statuses);
+    Task<decimal> GetOccupiedQtyAsync(LimitOccupyRangeQuery query);
 
     /// <summary>
     /// 查询指定限额键在指定状态下的已占用金额。

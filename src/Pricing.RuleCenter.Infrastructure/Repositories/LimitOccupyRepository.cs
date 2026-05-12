@@ -91,20 +91,7 @@ public sealed class LimitOccupyRepository : ILimitOccupyRepository
     /// <summary>
     /// 按限额类型、业务维度和业务时间窗口查询净占用数量。
     /// </summary>
-    /// <param name="limitType">
-    /// 限额类型枚举值：
-    ///   - DAY_QTY       — 单日数量限制
-    ///   - TIME_WINDOW   — 时间窗数量限制（如 2 小时窗）
-    ///   - AMOUNT_LIMIT  — 金额限制
-    /// </param>
-    /// <param name="limitDimensionCode">稳定查询维度，如"患者ID+项目编码"的组合编码。</param>
-    /// <param name="startTime">业务时间窗口开始时间（含）。</param>
-    /// <param name="endTime">业务时间窗口结束时间（含）。</param>
-    /// <param name="statuses">
-    /// 需要计入累计的状态集合。调用方通常传 PENDING + CONFIRMED。
-    /// PENDING 必须计入，否则两个渠道并发 confirm 时都会忽略对方尚未 commit 的保护占用，
-    /// 从而突破上限。
-    /// </param>
+    /// <param name="query">限额类型、维度编码、业务时间范围和状态集合。</param>
     /// <returns>窗口内的占用数量合计（decimal）；退费负数记录会自然抵扣。</returns>
     /// <remarks>
     /// 【SQL 语义】等价于：
@@ -120,27 +107,22 @@ public sealed class LimitOccupyRepository : ILimitOccupyRepository
     /// 补缴费、补录和延迟提交都应该按 HIS 业务发生时间参与窗口累计。
     /// 【退费抵扣】退费记录的 OCCUPY_QTY 为负数，SUM 时自然抵扣正数占用。
     /// </remarks>
-    public async Task<decimal> GetOccupiedQtyAsync(
-        string limitType,
-        string limitDimensionCode,
-        DateTime startTime,
-        DateTime endTime,
-        IReadOnlyCollection<string> statuses)
+    public async Task<decimal> GetOccupiedQtyAsync(LimitOccupyRangeQuery query)
     {
         // ========== 第一阶段：固定状态集合 ==========
         // 调用方通常传 PENDING + CONFIRMED。PENDING 必须计入，否则两个渠道并发 confirm 时
         // 都会忽略对方尚未 commit 的保护占用，从而突破上限。
-        var statusArray = statuses.ToArray();
+        var statusArray = query.Statuses.ToArray();
 
         // ========== 第二阶段：按 BUSINESS_CHARGE_TIME 查询 ==========
         // 这里故意不使用 OCCUPIED_AT。补缴费、补录和延迟提交都应该按 HIS 业务发生时间参与窗口累计。
         var result = await _db.Queryable<LimitOccupy>()
             .Where(o =>
-                o.LimitType == limitType &&
-                o.LimitDimensionCode == limitDimensionCode &&
+                o.LimitType == query.LimitType &&
+                o.LimitDimensionCode == query.LimitDimensionCode &&
                 statusArray.Contains(o.Status) &&
-                o.BusinessChargeTime >= startTime &&
-                o.BusinessChargeTime <= endTime)
+                o.BusinessChargeTime >= query.StartTime &&
+                o.BusinessChargeTime <= query.EndTime)
             .SumAsync(o => o.OccupyQty);
         return result;
     }

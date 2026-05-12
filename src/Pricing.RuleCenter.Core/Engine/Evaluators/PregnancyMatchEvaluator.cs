@@ -38,6 +38,17 @@ public sealed class PregnancyMatchEvaluator : IRuleConditionEvaluator
     public string ConditionType => "PREGNANCY_MATCH";
 
     /// <summary>
+    /// 异步评估同胎次条件。当前评估只依赖内存上下文，使用 <see cref="ValueTask{TResult}"/> 避免额外任务分配。
+    /// </summary>
+    /// <param name="condition">规则条件配置。</param>
+    /// <param name="context">计价上下文。</param>
+    /// <returns>胎次条件满足时返回 <c>true</c>。</returns>
+    public ValueTask<bool> EvaluateAsync(RuleCondition condition, PricingContext context)
+    {
+        return ValueTask.FromResult(Evaluate(condition, context));
+    }
+
+    /// <summary>
     /// 判断当前计价项目的胎次标识是否满足规则条件。
     /// </summary>
     /// <param name="condition">
