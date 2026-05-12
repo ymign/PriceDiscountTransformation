@@ -263,6 +263,12 @@ namespace HIS.Pricing.Client
                 // sourceSystem + businessRequestNo + callType 为幂等键。
                 // 若调用方未传入，由辅助类自动生成。
                 EnsureBusinessRequestNo();
+                if (string.IsNullOrEmpty(_request.BusinessRequestNo))
+                {
+                    throw new InvalidOperationException(
+                        "confirm 前必须传入稳定的 BusinessRequestNo；若 HIS 尚未生成收费单号，请先预生成一次收费确认流水。");
+                }
+
                 _lblSummary.Text = BuildSummary();
 
                 // ========== 第2阶段：执行确认计价 ==========
@@ -542,7 +548,7 @@ namespace HIS.Pricing.Client
 
         /// <summary>
         /// 确保 BusinessRequestNo 有值。
-        /// 若调用方未传入，则由辅助类根据 ChargeNo 或时间戳自动生成。
+        /// 若调用方未传入，则只允许由稳定的 ChargeNo 推导；没有稳定业务号时 confirm 必须阻断。
         /// 此字段是 confirm 接口幂等性的关键组成部分。
         /// </summary>
         private void EnsureBusinessRequestNo()

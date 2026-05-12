@@ -176,24 +176,14 @@ namespace HIS.Pricing.Client
         /// 生成策略（按优先级）：
         /// 1. 调用方已传入 -> 直接使用
         /// 2. 有 HIS 收费单号 -> 以 "HIS_CHARGE_" + chargeNo 构造
-        /// 3. 均无 -> 以 "HIS_PENDING_" + 时间戳 + GUID 构造（兜底方案）
+        /// 3. 均无 -> 返回空字符串，由 confirm 前置校验阻断。
         /// </summary>
         /// <param name="existingBusinessRequestNo">调用方已有的业务请求号</param>
         /// <param name="chargeNo">HIS 收费单号</param>
-        /// <returns>保证非空的业务请求号</returns>
+        /// <returns>稳定业务请求号；无法从调用方或收费单号推导时返回空字符串。</returns>
         public static string EnsureBusinessRequestNo(string existingBusinessRequestNo, string chargeNo)
         {
-            if (!string.IsNullOrEmpty(existingBusinessRequestNo))
-            {
-                return existingBusinessRequestNo;
-            }
-
-            if (!string.IsNullOrEmpty(chargeNo))
-            {
-                return "HIS_CHARGE_" + chargeNo;
-            }
-
-            return "HIS_PENDING_" + DateTime.Now.ToString("yyyyMMddHHmmssfff") + "_" + Guid.NewGuid().ToString("N");
+            return PricingBusinessRequestNoHelper.EnsureBusinessRequestNo(existingBusinessRequestNo, chargeNo);
         }
 
         /// <summary>

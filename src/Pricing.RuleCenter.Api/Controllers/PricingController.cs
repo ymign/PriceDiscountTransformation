@@ -27,7 +27,7 @@ namespace Pricing.RuleCenter.Api.Controllers;
 /// <list type="number">
 ///   <item><b>confirm（确认）</b> — 试算通过后调用，占用额度（PR_LIMIT_OCCUPY），写入请求日志（PR_CHARGE_REQUEST_LOG），
 ///         返回 RequestId 供后续 commit/cancel 引用。此阶段必须幂等（键：sourceSystem + businessRequestNo + callType）。</item>
-///   <item><b>commit（提交）</b> — HIS 成功落账后通知计价中心，将请求日志状态从 CONFIRM_PENDING 变更为 COMMITTED，
+///   <item><b>commit（提交）</b> — HIS 成功落账后通知计价中心，将请求日志状态从 CONFIRM_PENDING 变更为 CONFIRMED，
 ///         确认额度占用永久生效。若 HIS 结算失败则调用 cancel 释放。</item>
 ///   <item><b>cancel（取消）</b> — HIS 未成功落账时调用，释放 confirm 阶段占用的额度，
 ///         状态变更为 CANCELLED。当日退费释放数量，隔日退费重收后按重收当天重新校验额度。</item>
@@ -102,12 +102,13 @@ public sealed class PricingController : ControllerBase
     /// <param name="request">
     /// 计价请求体（<see cref="PricingCalculateRequest"/>），包含：
     /// <list type="bullet">
-    ///   <item><c>ItemCode</c> — HIS 收费项目编码（必填）</item>
-    ///   <item><c>Quantity</c> — 收费数量（必填）</item>
-    ///   <item><c>UnitCode</c> — 计价单位编码</item>
+    ///   <item><c>Items</c> — HIS 本次收费动作下的费用明细集合（必填）</item>
+    ///   <item><c>Items[].ItemCode</c> — HIS 收费项目编码（必填）</item>
+    ///   <item><c>Items[].InputQty</c> — 收费数量（必填）</item>
+    ///   <item><c>Items[].Unit</c> — 计价单位编码</item>
     ///   <item><c>SourceSystem</c> — 来源系统标识（HIS/自助机/微信等）</item>
-    ///   <item><c>BusinessTime</c> — 业务收费发生时间（规则生效、2 小时窗口、单日累计的时间基准）</item>
-    ///   <item><c>PricingParts</c> — 多肿物/多部位/多面积明细（复杂输入必须使用此字段，不能压成单个数量）</item>
+    ///   <item><c>BusinessChargeTime</c> — 业务收费发生时间（规则生效、2 小时窗口、单日累计的时间基准）</item>
+    ///   <item><c>Items[].PricingParts</c> — 多肿物/多部位/多面积明细（复杂输入必须使用此字段，不能压成单个数量）</item>
     /// </list>
     /// </param>
     /// <returns>
@@ -191,14 +192,14 @@ public sealed class PricingController : ControllerBase
     /// HTTP 方法：POST &nbsp;|&nbsp; 路由：<c>/api/pricing/calculate/commit</c>
     /// </para>
     /// <para>
-    /// 用途：HIS 结算成功后调用，将请求日志状态从 CONFIRM_PENDING 变更为 COMMITTED，
+    /// 用途：HIS 结算成功后调用，将请求日志状态从 CONFIRM_PENDING 变更为 CONFIRMED，
     /// 确认额度占用永久生效。若 HIS 结算失败，应调用 cancel 而非 commit。
     /// </para>
     /// <para>
     /// 前置条件：必须存在已确认（CONFIRM_PENDING）的请求记录。
     /// </para>
     /// <para>
-    /// 状态变更：PR_CHARGE_REQUEST_LOG.Status: CONFIRM_PENDING → COMMITTED。
+    /// 状态变更：PR_CHARGE_REQUEST_LOG.Status: CONFIRM_PENDING → CONFIRMED。
     /// 同时更新 PR_LIMIT_OCCUPY 中对应占用记录的状态。
     /// </para>
     /// </summary>
@@ -206,7 +207,8 @@ public sealed class PricingController : ControllerBase
     /// 提交请求（<see cref="PricingCommitRequest"/>），必须包含：
     /// <list type="bullet">
     ///   <item><c>RequestId</c> — confirm 阶段返回的请求 ID（必填，用于定位待提交记录）</item>
-    ///   <item><c>HisSettleNo</c> — HIS 结算流水号（可选，用于关联 HIS 账务）</item>
+    ///   <item><c>ChargeNo</c> — HIS 实际收费单号（可选，用于关联 HIS 账务）</item>
+    ///   <item><c>ActualItems</c> — HIS 真实落账明细（必填，用于和 confirm 结果对账）</item>
     /// </list>
     /// </param>
     /// <returns>统一成功响应，无额外业务数据。</returns>
@@ -241,7 +243,6 @@ public sealed class PricingController : ControllerBase
     /// 取消请求（<see cref="PricingCancelRequest"/>），必须包含：
     /// <list type="bullet">
     ///   <item><c>RequestId</c> — confirm 阶段返回的请求 ID（必填，用于定位待取消记录）</item>
-    ///   <item><c>CancelReason</c> — 取消原因（可选，用于审计追溯）</item>
     /// </list>
     /// </param>
     /// <returns>统一成功响应，无额外业务数据。</returns>
@@ -253,18 +254,18 @@ public sealed class PricingController : ControllerBase
     }
 
     /// <summary>
-    /// 【冲正/退费接口】— 针对已 commit 的计价记录做退费或冲销处理。
+    /// 【冲正/退费接口】— 针对已 commit 成功并进入 CONFIRMED 的计价记录做退费或冲销处理。
     /// <para>
     /// HTTP 方法：POST &nbsp;|&nbsp; 路由：<c>/api/pricing/calculate/reverse</c>
     /// </para>
     /// <para>
     /// 用途：患者退费、医嘱撤销等场景下调用。冲正会：
     /// <list type="number">
-    ///   <item>校验原始记录状态必须为 COMMITTED</item>
+    ///   <item>校验原始记录状态必须为 CONFIRMED</item>
     ///   <item>按退费数量释放额度（当日退费释放数量，隔日退费重收后按重收当天重新校验额度）</item>
     ///   <item>部分退费时校验"本次退费 + 历史已退"不超过原有效收费数量</item>
     ///   <item>写入 PR_CHARGE_REVERSE_LOG 退费流水</item>
-    ///   <item>更新 PR_CHARGE_REQUEST_LOG 状态（部分退费 → PARTIAL_REVERSED，全额退费 → FULLY_REVERSED）</item>
+    ///   <item>全额退费时更新 PR_CHARGE_REQUEST_LOG 状态为 REVERSED；部分退费时保留 CONFIRMED 并写冲正日志</item>
     ///   <item>更新 PR_LIMIT_OCCUPY 释放对应额度</item>
     /// </list>
     /// </para>
@@ -275,10 +276,11 @@ public sealed class PricingController : ControllerBase
     /// <param name="request">
     /// 冲正请求（<see cref="PricingReverseRequest"/>），必须包含：
     /// <list type="bullet">
-    ///   <item><c>RequestId</c> — 原始已提交的请求 ID（必填，用于定位待冲正记录）</item>
-    ///   <item><c>ReverseQuantity</c> — 退费数量（必填，不能超过原始收费数量减去历史已退数量）</item>
-    ///   <item><c>BusinessTime</c> — 退费业务时间（必填，用于确定退费日期和额度释放计算）</item>
-    ///   <item><c>ReverseReason</c> — 退费原因（可选，用于审计追溯）</item>
+    ///   <item><c>OriginalRequestId</c> — 原始已提交的请求 ID（必填，用于定位待冲正记录）</item>
+    ///   <item><c>ReverseNo</c> — HIS 稳定退费流水号（必填，用于幂等）</item>
+    ///   <item><c>ReverseQty</c> — 退费数量（可选；为空时按匹配明细全退）</item>
+    ///   <item><c>ReverseTime</c> — 退费业务时间（可选，用于确定退费日期和额度释放计算）</item>
+    ///   <item><c>Reason</c> — 退费原因（可选，用于审计追溯）</item>
     /// </list>
     /// </param>
     /// <returns>统一成功响应，无额外业务数据。</returns>

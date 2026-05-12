@@ -114,12 +114,18 @@ public sealed class PricingApiService
         PricingCalculateItemRequest Item,
         PricingResult Result);
 
-    private sealed record CommitDetailKey(
-        string ChargeDetailNo,
+    private sealed record CommitExpectedDetail(
+        string? ChargeDetailNo,
         string ItemCode,
-        int? PartSeq);
+        int? PartSeq,
+        decimal Qty,
+        decimal Amount,
+        bool RequireChargeDetailNo);
 
-    private sealed record CommitDetailTotals(
+    private sealed record CommitActualDetail(
+        string? ChargeDetailNo,
+        string ItemCode,
+        int? PartSeq,
         decimal Qty,
         decimal Amount);
 
@@ -301,13 +307,17 @@ public sealed class PricingApiService
                 request, items, calculations, "CONFIRM", "CONFIRM_PENDING", fingerprint);
             await SaveTraceSteps(requestLog.RequestId, calculations);
 
-            // 普通项目没有命中特殊规则时仍有请求日志和响应快照，但不写折价明细和占额。
-            // 特殊项目必须写 PENDING 明细与 PENDING 占额，等待 HIS commit/cancel。
-            foreach (var calculation in calculations.Where(c => c.Result.IsSpecialItem))
+            // confirm 返回后，HIS 会按本次响应落账整批收费明细；commit 阶段也必须能用
+            // confirm 快照逐项核对 HIS 的真实落账结果。因此这里保存所有费用明细的计价结果。
+            // 只有特殊规则产生的限额草稿需要写保护占用，普通项目只作为 commit 对账基准保存。
+            foreach (var calculation in calculations)
             {
                 await SaveDiscountDetail(
                     requestLog.RequestId, request, calculation.Item, calculation.Result, "PENDING");
-                await SaveLimitOccupies(requestLog.RequestId, calculation.Result);
+                if (calculation.Result.IsSpecialItem)
+                {
+                    await SaveLimitOccupies(requestLog.RequestId, calculation.Result);
+                }
             }
 
             // 最后保存响应快照。幂等重试优先读取这个快照，保证返回内容和首次 confirm 完全一致。
@@ -718,9 +728,11 @@ public sealed class PricingApiService
                 $"COMMIT_DETAIL_NOT_FOUND: RequestId={request.RequestId} 未找到 confirm 折价明细");
         }
 
-        var expected = BuildExpectedCommitTotals(details);
-        var expectedTotal = PricingAmountRounder.RoundFinalAmount(expected.Values.Sum(v => v.Amount));
-        var actualItems = request.ActualItems ?? Array.Empty<PricingCommitActualItemRequest>();
+        var expected = BuildExpectedCommitDetails(details);
+        var expectedTotal = PricingAmountRounder.RoundFinalAmount(expected.Sum(v => v.Amount));
+        var actualItems = (request.ActualItems ?? Array.Empty<PricingCommitActualItemRequest>())
+            .Where(IsBillableActualItem)
+            .ToList();
         if (actualItems.Count == 0)
         {
             if (request.ActualTotalAmount.HasValue &&
@@ -747,40 +759,69 @@ public sealed class PricingApiService
             }
         }
 
-        var actual = BuildActualCommitTotals(actualItems);
-        var missingKeys = expected.Keys.Where(key => !actual.ContainsKey(key)).ToList();
-        if (missingKeys.Count > 0)
-        {
-            throw new InvalidOperationException(
-                $"COMMIT_DETAIL_MISMATCH: HIS 未回传实际落账明细 {string.Join(", ", missingKeys.Select(FormatCommitKey))}");
-        }
+        var actual = actualItems
+            .Select(i => new CommitActualDetail(
+                NormalizeString(i.ChargeDetailNo)?.ToUpperInvariant(),
+                NormalizeString(i.ItemCode)?.ToUpperInvariant() ?? string.Empty,
+                i.PartSeq,
+                i.FinalQty,
+                i.FinalAmount))
+            .ToList();
 
-        var extraKeys = actual.Keys.Where(key => !expected.ContainsKey(key)).ToList();
-        if (extraKeys.Count > 0)
+        var usedActualIndexes = new HashSet<int>();
+        foreach (var expectedDetail in expected.OrderByDescending(e => e.RequireChargeDetailNo))
         {
-            throw new InvalidOperationException(
-                $"COMMIT_DETAIL_MISMATCH: HIS 回传了 confirm 未产生的落账明细 {string.Join(", ", extraKeys.Select(FormatCommitKey))}");
-        }
-
-        foreach (var pair in expected)
-        {
-            var actualValue = actual[pair.Key];
-            if (Math.Round(actualValue.Qty, 4) != Math.Round(pair.Value.Qty, 4))
+            var candidateIndexes = actual
+                .Select((item, index) => new { item, index })
+                .Where(x => !usedActualIndexes.Contains(x.index))
+                .Where(x => IsSameCommitIdentity(expectedDetail, x.item))
+                .Select(x => x.index)
+                .ToList();
+            if (candidateIndexes.Count == 0)
             {
                 throw new InvalidOperationException(
-                    $"COMMIT_QTY_MISMATCH: {FormatCommitKey(pair.Key)} confirm数量={Math.Round(pair.Value.Qty, 4)}, HIS实际数量={Math.Round(actualValue.Qty, 4)}");
+                    $"COMMIT_DETAIL_MISMATCH: HIS 未回传实际落账明细 {FormatCommitDetail(expectedDetail)}");
             }
 
-            var expectedAmount = PricingAmountRounder.RoundFinalAmount(pair.Value.Amount);
+            var matchedIndex = candidateIndexes.FirstOrDefault(index =>
+                Math.Round(actual[index].Qty, 4) == Math.Round(expectedDetail.Qty, 4) &&
+                PricingAmountRounder.RoundFinalAmount(actual[index].Amount) ==
+                PricingAmountRounder.RoundFinalAmount(expectedDetail.Amount));
+            if (matchedIndex == 0 && !candidateIndexes.Contains(0))
+            {
+                matchedIndex = candidateIndexes[0];
+            }
+
+            var actualValue = actual[matchedIndex];
+            if (Math.Round(actualValue.Qty, 4) != Math.Round(expectedDetail.Qty, 4))
+            {
+                throw new InvalidOperationException(
+                    $"COMMIT_QTY_MISMATCH: {FormatCommitDetail(expectedDetail)} confirm数量={Math.Round(expectedDetail.Qty, 4)}, HIS实际数量={Math.Round(actualValue.Qty, 4)}");
+            }
+
+            var expectedAmount = PricingAmountRounder.RoundFinalAmount(expectedDetail.Amount);
             var actualAmount = PricingAmountRounder.RoundFinalAmount(actualValue.Amount);
             if (actualAmount != expectedAmount)
             {
                 throw new InvalidOperationException(
-                    $"COMMIT_AMOUNT_MISMATCH: {FormatCommitKey(pair.Key)} confirm金额={expectedAmount}, HIS实际金额={actualAmount}");
+                    $"COMMIT_AMOUNT_MISMATCH: {FormatCommitDetail(expectedDetail)} confirm金额={expectedAmount}, HIS实际金额={actualAmount}");
             }
+
+            usedActualIndexes.Add(matchedIndex);
         }
 
-        var actualTotal = PricingAmountRounder.RoundFinalAmount(actual.Values.Sum(v => v.Amount));
+        var extraActuals = actual
+            .Select((item, index) => new { item, index })
+            .Where(x => !usedActualIndexes.Contains(x.index))
+            .Select(x => x.item)
+            .ToList();
+        if (extraActuals.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"COMMIT_DETAIL_MISMATCH: HIS 回传了 confirm 未产生的落账明细 {string.Join(", ", extraActuals.Select(FormatCommitActual))}");
+        }
+
+        var actualTotal = PricingAmountRounder.RoundFinalAmount(actual.Sum(v => v.Amount));
         if (actualTotal != expectedTotal)
         {
             throw new InvalidOperationException(
@@ -795,46 +836,68 @@ public sealed class PricingApiService
         }
     }
 
-    private static Dictionary<CommitDetailKey, CommitDetailTotals> BuildExpectedCommitTotals(
+    private static IReadOnlyList<CommitExpectedDetail> BuildExpectedCommitDetails(
         IReadOnlyList<ChargeDiscountDetail> details)
     {
         return details
-            .GroupBy(d => BuildCommitDetailKey(d.ChargeDetailNo, d.ItemCode, d.PartSeq))
-            .ToDictionary(
-                group => group.Key,
-                group => new CommitDetailTotals(
-                    group.Sum(d => d.FinalQty ?? 0m),
-                    group.Sum(d => d.FinalAmt ?? 0m)));
+            .Where(IsBillableExpectedDetail)
+            .Select(d => new CommitExpectedDetail(
+                NormalizeString(d.ChargeDetailNo)?.ToUpperInvariant(),
+                NormalizeString(d.ItemCode)?.ToUpperInvariant() ?? string.Empty,
+                d.PartSeq,
+                d.FinalQty ?? 0m,
+                d.FinalAmt ?? 0m,
+                RequiresCommitChargeDetailMatch(d)))
+            .ToList();
     }
 
-    private static Dictionary<CommitDetailKey, CommitDetailTotals> BuildActualCommitTotals(
-        IReadOnlyList<PricingCommitActualItemRequest> actualItems)
+    private static bool IsBillableExpectedDetail(ChargeDiscountDetail detail)
     {
-        return actualItems
-            .GroupBy(i => BuildCommitDetailKey(i.ChargeDetailNo, i.ItemCode, i.PartSeq))
-            .ToDictionary(
-                group => group.Key,
-                group => new CommitDetailTotals(
-                    group.Sum(i => i.FinalQty),
-                    group.Sum(i => i.FinalAmount)));
+        return (detail.FinalQty ?? 0m) != 0m ||
+               (detail.FinalAmt ?? 0m) != 0m;
     }
 
-    private static CommitDetailKey BuildCommitDetailKey(
-        string? chargeDetailNo,
-        string? itemCode,
-        int? partSeq)
+    private static bool IsBillableActualItem(PricingCommitActualItemRequest item)
     {
-        return new CommitDetailKey(
-            NormalizeString(chargeDetailNo)?.ToUpperInvariant() ?? string.Empty,
-            NormalizeString(itemCode)?.ToUpperInvariant() ?? string.Empty,
-            partSeq);
+        return item.FinalQty != 0m || item.FinalAmount != 0m;
     }
 
-    private static string FormatCommitKey(CommitDetailKey key)
+    private static bool RequiresCommitChargeDetailMatch(ChargeDiscountDetail detail)
     {
-        var chargeDetailNo = string.IsNullOrWhiteSpace(key.ChargeDetailNo) ? "-" : key.ChargeDetailNo;
-        var itemCode = string.IsNullOrWhiteSpace(key.ItemCode) ? "-" : key.ItemCode;
-        var partSeq = key.PartSeq.HasValue ? key.PartSeq.Value.ToString() : "-";
+        // 替换子项和加收子项由规则中心在 confirm 阶段生成，HIS 落账时通常会生成新的收费明细号。
+        // 这类记录只能按项目编码、片段序号、数量和金额核对，不能强制使用父项目的 ChargeDetailNo。
+        return !detail.ParentDiscountId.HasValue &&
+               !string.IsNullOrWhiteSpace(detail.ChargeDetailNo);
+    }
+
+    private static bool IsSameCommitIdentity(
+        CommitExpectedDetail expected,
+        CommitActualDetail actual)
+    {
+        if (!string.Equals(expected.ItemCode, actual.ItemCode, StringComparison.OrdinalIgnoreCase) ||
+            expected.PartSeq != actual.PartSeq)
+        {
+            return false;
+        }
+
+        return !expected.RequireChargeDetailNo ||
+               string.Equals(expected.ChargeDetailNo, actual.ChargeDetailNo, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string FormatCommitDetail(CommitExpectedDetail detail)
+    {
+        var chargeDetailNo = string.IsNullOrWhiteSpace(detail.ChargeDetailNo) ? "-" : detail.ChargeDetailNo;
+        var itemCode = string.IsNullOrWhiteSpace(detail.ItemCode) ? "-" : detail.ItemCode;
+        var partSeq = detail.PartSeq.HasValue ? detail.PartSeq.Value.ToString() : "-";
+        var matchMode = detail.RequireChargeDetailNo ? "严格明细号" : "HIS实落明细号";
+        return $"ChargeDetailNo={chargeDetailNo}, ItemCode={itemCode}, PartSeq={partSeq}, MatchMode={matchMode}";
+    }
+
+    private static string FormatCommitActual(CommitActualDetail detail)
+    {
+        var chargeDetailNo = string.IsNullOrWhiteSpace(detail.ChargeDetailNo) ? "-" : detail.ChargeDetailNo;
+        var itemCode = string.IsNullOrWhiteSpace(detail.ItemCode) ? "-" : detail.ItemCode;
+        var partSeq = detail.PartSeq.HasValue ? detail.PartSeq.Value.ToString() : "-";
         return $"ChargeDetailNo={chargeDetailNo}, ItemCode={itemCode}, PartSeq={partSeq}";
     }
 
@@ -842,7 +905,10 @@ public sealed class PricingApiService
         IReadOnlyList<ChargeDiscountDetail> details,
         PricingReverseRequest request)
     {
-        var query = details.Where(d => d.Status == "CONFIRMED" || d.Status == "COMMITTED");
+        var confirmedDetails = details
+            .Where(d => d.Status == "CONFIRMED" || d.Status == "COMMITTED")
+            .ToList();
+        var query = confirmedDetails.AsEnumerable();
 
         var chargeDetailNo = NormalizeString(request.ChargeDetailNo);
         if (!string.IsNullOrWhiteSpace(chargeDetailNo))
@@ -863,7 +929,27 @@ public sealed class PricingApiService
             query = query.Where(d => d.PartSeq == request.PartSeq);
         }
 
-        return query.ToList();
+        var matched = query.ToList();
+        var matchedGroupNos = matched
+            .Select(d => NormalizeString(d.ResultGroupNo))
+            .Where(groupNo => groupNo is not null)
+            .Select(groupNo => groupNo!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (matchedGroupNos.Count == 0)
+        {
+            return matched;
+        }
+
+        // 主项目、替换子项、加收子项用 ResultGroupNo 表达同一次计价生成的一组落账结果。
+        // reverse 入口通常只拿到 HIS 退费的主明细；一旦定位到同组任一条，就要把同组明细一起纳入校验，
+        // 否则会出现主项目已退、子项仍保留的资金口径断裂。
+        return confirmedDetails
+            .Where(d =>
+            {
+                var groupNo = NormalizeString(d.ResultGroupNo);
+                return groupNo is not null && matchedGroupNos.Contains(groupNo);
+            })
+            .ToList();
     }
 
     private static bool IsSameReverseRequest(

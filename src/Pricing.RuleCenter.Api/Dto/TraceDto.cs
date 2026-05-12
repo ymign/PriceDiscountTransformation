@@ -108,7 +108,7 @@ public sealed class TraceQueryResponse
     /// <summary>
     /// 业务状态，描述请求在状态机中的当前位置。
     /// 常见值：SIMULATED（已试算）、CONFIRM_PENDING（待确认，已占额度）、
-    /// COMMITTED（已落账）、CANCELLED（已取消，已释放额度）、EXPIRED（已过期，后台清理）、
+    /// CONFIRMED（已落账）、CANCELLED（已取消，已释放额度）、EXPIRED（已过期，后台清理）、
     /// REVERSED（已冲销）。
     /// </summary>
     public string BusinessStatus { get; init; } = string.Empty;
@@ -278,7 +278,7 @@ public sealed class TraceDiscountResponse
 
     /// <summary>
     /// 折扣明细状态，描述该条明细在生命周期中的位置。
-    /// 常见值：ACTIVE（有效，已占额度）、COMMITTED（已落账）、CANCELLED（已取消，已释放额度）、
+    /// 常见值：PENDING（待 HIS 落账）、CONFIRMED（已落账）、CANCELLED（已取消，已释放额度）、
     /// REVERSED（已冲销，已释放额度）。
     /// </summary>
     public string Status { get; init; } = string.Empty;

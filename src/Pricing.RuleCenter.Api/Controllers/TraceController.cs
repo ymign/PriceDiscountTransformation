@@ -73,7 +73,7 @@ public sealed class TraceController : ControllerBase
     ///   <item><c>ItemCode</c> — 收费项目编码筛选（可选）</item>
     ///   <item><c>StartTime</c> — 查询起始时间（可选）</item>
     ///   <item><c>EndTime</c> — 查询结束时间（可选）</item>
-    ///   <item><c>RequestStatus</c> — 请求状态筛选（可选，如 CONFIRM_PENDING/COMMITTED/CANCELLED 等）</item>
+    ///   <item><c>RequestStatus</c> — 请求状态筛选（可选，如 CONFIRM_PENDING/CONFIRMED/CANCELLED 等）</item>
     ///   <item><c>SourceSystem</c> — 来源系统筛选（可选）</item>
     ///   <item><c>BusinessRequestNo</c> — 业务请求号精确查询（可选）</item>
     ///   <item><c>PageNo</c> — 页码（从 1 开始）</item>

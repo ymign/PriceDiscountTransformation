@@ -139,6 +139,71 @@ public sealed class PricingReverseTests
     }
 
     [Fact]
+    public async Task ReverseAsync_IncludesResultGroupChildrenWhenOnlyParentDetailIsRequested()
+    {
+        var requestRepository = new ReverseRequestLogRepository();
+        var discountRepository = new ReverseDiscountDetailRepository();
+        var limitRepository = new ReverseLimitOccupyRepository();
+        var reverseRepository = new ReverseLogRepository();
+        var service = CreateService(requestRepository, discountRepository, limitRepository, reverseRepository);
+
+        requestRepository.Log = new ChargeRequestLog
+        {
+            RequestId = 250,
+            BusinessStatus = "CONFIRMED",
+            SourceSystem = "HIS",
+            ChargeNo = "C250",
+            BusinessChargeTime = new DateTime(2026, 5, 10, 9, 30, 0)
+        };
+        discountRepository.Details.AddRange(new[]
+        {
+            new ChargeDiscountDetail
+            {
+                RequestId = 250,
+                DiscountId = 2501,
+                ChargeDetailNo = "CD250-P",
+                ItemCode = "ITEM_PARENT",
+                ResultGroupNo = "CHILD:250",
+                FinalQty = 2m,
+                FinalAmt = 200m,
+                Status = "CONFIRMED"
+            },
+            new ChargeDiscountDetail
+            {
+                RequestId = 250,
+                DiscountId = 2502,
+                ParentDiscountId = 2501,
+                ChargeDetailNo = "CD250-C",
+                ItemCode = "ITEM_CHILD",
+                ResultGroupNo = "CHILD:250",
+                FinalQty = 1m,
+                FinalAmt = 30m,
+                Status = "CONFIRMED"
+            }
+        });
+
+        await service.ReverseAsync(new PricingReverseRequest
+        {
+            OriginalRequestId = 250,
+            ReverseNo = "R250",
+            ChargeDetailNo = "CD250-P",
+            ItemCode = "ITEM_PARENT",
+            ReverseTime = new DateTime(2026, 5, 10, 11, 0, 0)
+        });
+
+        Assert.Equal("REVERSED", requestRepository.Log.BusinessStatus);
+        Assert.All(discountRepository.Details, detail => Assert.Equal("REVERSED", detail.Status));
+
+        var reverseRequestLog = Assert.Single(requestRepository.Inserted);
+        Assert.Equal(3m, reverseRequestLog.InputQty);
+        Assert.Equal("CHILD:250", reverseRequestLog.ResultGroupNo);
+
+        var reverseLog = Assert.Single(reverseRepository.Inserted);
+        Assert.Equal(3m, reverseLog.ReverseQty);
+        Assert.Equal(230m, reverseLog.ReverseAmt);
+    }
+
+    [Fact]
     public async Task ReverseAsync_RejectsReverseAmountGreaterThanOriginalAmount()
     {
         var requestRepository = new ReverseRequestLogRepository();

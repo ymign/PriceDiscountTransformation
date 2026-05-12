@@ -266,6 +266,93 @@ public sealed class PricingApiServiceTests
     }
 
     [Fact]
+    public async Task ConfirmAsync_PersistsMixedDetailsAndCommitAcceptsFullHisActuals()
+    {
+        var requestRepository = new InMemoryChargeRequestLogRepository();
+        var discountRepository = new CapturingChargeDiscountDetailRepository();
+        var limitRepository = new CapturingLimitOccupyRepository();
+        var service = new PricingApiService(
+            new MixedSpecialPricingEngine(),
+            new EmptyRuleHeaderRepository(),
+            requestRepository,
+            discountRepository,
+            new EmptyChargeTraceStepRepository(),
+            limitRepository,
+            new EmptyChargeReverseLogRepository(),
+            new EmptyPriceMasterRepository(),
+            db: null!,
+            Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
+            NullLogger<PricingApiService>.Instance);
+
+        var response = await service.ConfirmAsync(new PricingCalculateRequest
+        {
+            RequestNo = "REQ-005",
+            BusinessRequestNo = "BR-005",
+            SourceSystem = "HIS",
+            PatientId = "P001",
+            ChargeNo = "C005",
+            BusinessChargeTime = new DateTime(2026, 5, 10, 9, 30, 0),
+            Items = new List<PricingCalculateItemRequest>
+            {
+                new()
+                {
+                    ChargeDetailNo = "CD005-S",
+                    ItemCode = "ITEM_SPECIAL",
+                    ItemName = "特殊项目",
+                    InputQty = 1m,
+                    UnitPrice = 10m
+                },
+                new()
+                {
+                    ChargeDetailNo = "CD005-N",
+                    ItemCode = "ITEM_NORMAL",
+                    ItemName = "普通项目",
+                    InputQty = 2m,
+                    UnitPrice = 10m
+                }
+            }
+        });
+
+        Assert.Equal(2, discountRepository.Inserted.Count);
+        Assert.Contains(discountRepository.Inserted, d => d.ItemCode == "ITEM_SPECIAL" && d.Status == "PENDING");
+        Assert.Contains(discountRepository.Inserted, d => d.ItemCode == "ITEM_NORMAL" && d.Status == "PENDING");
+
+        var occupy = Assert.Single(limitRepository.Inserted);
+        Assert.Equal("ITEM_SPECIAL", occupy.ItemCode);
+        Assert.Equal("PENDING", occupy.Status);
+
+        await service.CommitAsync(new PricingCommitRequest
+        {
+            RequestId = response.RequestId,
+            ChargeNo = "C005-HIS",
+            ActualTotalAmount = 30m,
+            ActualItems = new[]
+            {
+                new PricingCommitActualItemRequest
+                {
+                    ChargeDetailNo = "CD005-S",
+                    ItemCode = "ITEM_SPECIAL",
+                    FinalQty = 1m,
+                    FinalAmount = 10m
+                },
+                new PricingCommitActualItemRequest
+                {
+                    ChargeDetailNo = "CD005-N",
+                    ItemCode = "ITEM_NORMAL",
+                    FinalQty = 2m,
+                    FinalAmount = 20m
+                }
+            }
+        });
+
+        var requestLog = Assert.Single(requestRepository.Inserted);
+        Assert.Equal("CONFIRMED", requestLog.BusinessStatus);
+        Assert.Equal("C005-HIS", requestLog.ChargeNo);
+        Assert.All(discountRepository.Inserted, detail => Assert.Equal("CONFIRMED", detail.Status));
+        Assert.Equal((response.RequestId, "CONFIRMED"), limitRepository.LastStatusUpdate);
+    }
+
+    [Fact]
     public async Task CommitAsync_ConfirmsWhenHisActualsMatchConfirmDetails()
     {
         var requestRepository = new CommitRequestLogRepository(new ChargeRequestLog
@@ -412,6 +499,137 @@ public sealed class PricingApiServiceTests
         Assert.Null(limitRepository.LastStatusUpdate);
     }
 
+    [Fact]
+    public async Task CommitAsync_AllowsChildActualsWithNewHisChargeDetailNo()
+    {
+        var requestRepository = new CommitRequestLogRepository(new ChargeRequestLog
+        {
+            RequestId = 903,
+            BusinessStatus = "CONFIRM_PENDING",
+            SourceSystem = "HIS",
+            RequestAt = DateTime.Now
+        });
+        var discountRepository = new CommitDiscountDetailRepository(new[]
+        {
+            new ChargeDiscountDetail
+            {
+                RequestId = 903,
+                DiscountId = 1001,
+                ChargeDetailNo = "CD903",
+                ItemCode = "ITEM_MAIN",
+                FinalQty = 2m,
+                FinalAmt = 200m,
+                Status = "PENDING"
+            },
+            new ChargeDiscountDetail
+            {
+                RequestId = 903,
+                DiscountId = 1002,
+                ParentDiscountId = 1001,
+                ChargeDetailNo = "CD903",
+                ItemCode = "ITEM_CHILD",
+                FinalQty = 1m,
+                FinalAmt = 30m,
+                Status = "PENDING"
+            }
+        });
+        var limitRepository = new CommitLimitOccupyRepository();
+        var service = CreateCommitService(requestRepository, discountRepository, limitRepository);
+
+        await service.CommitAsync(new PricingCommitRequest
+        {
+            RequestId = 903,
+            ChargeNo = "C903",
+            ActualTotalAmount = 230m,
+            ActualItems = new[]
+            {
+                new PricingCommitActualItemRequest
+                {
+                    ChargeDetailNo = "CD903",
+                    ItemCode = "ITEM_MAIN",
+                    FinalQty = 2m,
+                    FinalAmount = 200m
+                },
+                new PricingCommitActualItemRequest
+                {
+                    ChargeDetailNo = "HIS-CD903-CHILD",
+                    ItemCode = "ITEM_CHILD",
+                    FinalQty = 1m,
+                    FinalAmount = 30m
+                }
+            }
+        });
+
+        Assert.Equal("CONFIRMED", requestRepository.Log.BusinessStatus);
+        Assert.All(discountRepository.Details, detail => Assert.Equal("CONFIRMED", detail.Status));
+    }
+
+    [Fact]
+    public async Task CommitAsync_RejectsChildActualAmountMismatchEvenWithNewHisChargeDetailNo()
+    {
+        var requestRepository = new CommitRequestLogRepository(new ChargeRequestLog
+        {
+            RequestId = 904,
+            BusinessStatus = "CONFIRM_PENDING",
+            SourceSystem = "HIS",
+            RequestAt = DateTime.Now
+        });
+        var discountRepository = new CommitDiscountDetailRepository(new[]
+        {
+            new ChargeDiscountDetail
+            {
+                RequestId = 904,
+                DiscountId = 2001,
+                ChargeDetailNo = "CD904",
+                ItemCode = "ITEM_MAIN",
+                FinalQty = 2m,
+                FinalAmt = 200m,
+                Status = "PENDING"
+            },
+            new ChargeDiscountDetail
+            {
+                RequestId = 904,
+                DiscountId = 2002,
+                ParentDiscountId = 2001,
+                ChargeDetailNo = "CD904",
+                ItemCode = "ITEM_CHILD",
+                FinalQty = 1m,
+                FinalAmt = 30m,
+                Status = "PENDING"
+            }
+        });
+        var limitRepository = new CommitLimitOccupyRepository();
+        var service = CreateCommitService(requestRepository, discountRepository, limitRepository);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CommitAsync(new PricingCommitRequest
+            {
+                RequestId = 904,
+                ChargeNo = "C904",
+                ActualItems = new[]
+                {
+                    new PricingCommitActualItemRequest
+                    {
+                        ChargeDetailNo = "CD904",
+                        ItemCode = "ITEM_MAIN",
+                        FinalQty = 2m,
+                        FinalAmount = 200m
+                    },
+                    new PricingCommitActualItemRequest
+                    {
+                        ChargeDetailNo = "HIS-CD904-CHILD",
+                        ItemCode = "ITEM_CHILD",
+                        FinalQty = 1m,
+                        FinalAmount = 31m
+                    }
+                }
+            }));
+
+        Assert.Contains("COMMIT_AMOUNT_MISMATCH", ex.Message);
+        Assert.Equal("CONFIRM_PENDING", requestRepository.Log.BusinessStatus);
+        Assert.All(discountRepository.Details, detail => Assert.Equal("PENDING", detail.Status));
+    }
+
     private static PricingApiService CreateCommitService(
         IChargeRequestLogRepository requestRepository,
         IChargeDiscountDetailRepository discountRepository,
@@ -542,13 +760,50 @@ public sealed class PricingApiServiceTests
         }
     }
 
+    private sealed class MixedSpecialPricingEngine : IPricingEngine
+    {
+        public Task<PricingResult> CalculateAsync(PricingContext context, BatchPricingContext? batchContext = null)
+        {
+            var amount = context.InputQty * context.UnitPrice;
+            var isSpecial = string.Equals(context.ItemCode, "ITEM_SPECIAL", StringComparison.OrdinalIgnoreCase);
+            return Task.FromResult(new PricingResult
+            {
+                IsSpecialItem = isSpecial,
+                InputQty = context.InputQty,
+                ConvertedQty = context.InputQty,
+                FinalQty = context.InputQty,
+                UnitPrice = context.UnitPrice,
+                FinalAmount = amount,
+                DiscountAmount = 0m,
+                LimitOccupies = isSpecial
+                    ? new[]
+                    {
+                        new LimitOccupy
+                        {
+                            PatientId = context.PatientId,
+                            ItemCode = context.ItemCode,
+                            LimitType = "DAY_QTY",
+                            LimitKey = $"DAY_QTY:{context.PatientId}:{context.ItemCode}:20260510",
+                            LimitDimensionCode = $"{context.PatientId}:{context.ItemCode}:20260510",
+                            OccupyQty = context.InputQty,
+                            OccupyAmt = amount,
+                            OccupyType = "CHARGE",
+                            BusinessChargeTime = context.BusinessChargeTime
+                        }
+                    }
+                    : Array.Empty<LimitOccupy>()
+            });
+        }
+    }
+
     private sealed class InMemoryChargeRequestLogRepository : IChargeRequestLogRepository
     {
         private long _nextId = 100;
 
         public List<ChargeRequestLog> Inserted { get; } = new();
 
-        public Task<ChargeRequestLog?> GetByIdAsync(long requestId) => Task.FromResult<ChargeRequestLog?>(null);
+        public Task<ChargeRequestLog?> GetByIdAsync(long requestId) =>
+            Task.FromResult<ChargeRequestLog?>(Inserted.FirstOrDefault(log => log.RequestId == requestId));
 
         public Task<ChargeRequestLog?> GetByBusinessKeyAsync(
             string sourceSystem, string businessRequestNo, string callType) =>
@@ -564,7 +819,16 @@ public sealed class PricingApiServiceTests
             return Task.FromResult(entity.RequestId);
         }
 
-        public Task UpdateAsync(ChargeRequestLog entity) => Task.CompletedTask;
+        public Task UpdateAsync(ChargeRequestLog entity)
+        {
+            var index = Inserted.FindIndex(log => log.RequestId == entity.RequestId);
+            if (index >= 0)
+            {
+                Inserted[index] = entity;
+            }
+
+            return Task.CompletedTask;
+        }
 
         public Task<(IReadOnlyList<ChargeRequestLog> Items, int Total)> GetPagedAsync(
             string? patientId,
@@ -706,7 +970,46 @@ public sealed class PricingApiServiceTests
             return Task.FromResult(entity.DiscountId);
         }
 
-        public Task UpdateStatusByRequestIdAsync(long requestId, string status) => Task.CompletedTask;
+        public Task UpdateStatusByRequestIdAsync(long requestId, string status)
+        {
+            foreach (var detail in Inserted.Where(d => d.RequestId == requestId))
+            {
+                detail.Status = status;
+            }
+
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class CapturingLimitOccupyRepository : ILimitOccupyRepository
+    {
+        public List<LimitOccupy> Inserted { get; } = new();
+        public (long RequestId, string Status)? LastStatusUpdate { get; private set; }
+
+        public Task<decimal> GetOccupiedQtyAsync(string limitKey, string status) => Task.FromResult(0m);
+        public Task<decimal> GetOccupiedQtyAsync(string limitType, string limitDimensionCode, DateTime startTime, DateTime endTime, IReadOnlyCollection<string> statuses) => Task.FromResult(0m);
+        public Task<decimal> GetOccupiedAmtAsync(string limitKey, string status) => Task.FromResult(0m);
+        public Task<IReadOnlyList<LimitOccupy>> GetByRequestIdAsync(long requestId) => Task.FromResult((IReadOnlyList<LimitOccupy>)Inserted.Where(o => o.RequestId == requestId).ToList());
+        public Task EnsureAndLockAsync(IReadOnlyCollection<string> lockKeys) => Task.CompletedTask;
+
+        public Task<long> InsertAsync(LimitOccupy entity)
+        {
+            Inserted.Add(entity);
+            return Task.FromResult(0L);
+        }
+
+        public Task UpdateStatusAsync(long occupyId, string status) => Task.CompletedTask;
+
+        public Task UpdateStatusByRequestIdAsync(long requestId, string status)
+        {
+            LastStatusUpdate = (requestId, status);
+            foreach (var occupy in Inserted.Where(o => o.RequestId == requestId))
+            {
+                occupy.Status = status;
+            }
+
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class EmptyChargeTraceStepRepository : IChargeTraceStepRepository

@@ -8,6 +8,7 @@
 
 - `PricingApiClient.cs`：基于 `HttpWebRequest` 的同步 HTTP 客户端，不使用 `HttpClient` 和 `async/await`。
 - `PricingApiUrlBuilder.cs`：统一构造后端管理接口 URL，避免查询参数拼接错误。
+- `PricingBusinessRequestNoHelper.cs`：生成稳定 `BusinessRequestNo`，没有稳定收费号时返回空字符串并由 confirm 校验阻断。
 - `PricingRuleDtos.cs`：规则工作台需要的请求/响应 DTO。
 - `PricingSdkOptions.cs`：SDK/Agent 运行配置，封装服务地址、超时、重试和渠道编码。
 - `PricingSdk.cs`：无界面的产品 SDK，封装 special-flag、simulate、confirm、commit、cancel、reverse。
@@ -135,6 +136,8 @@ if (decision.ShouldOpenPopup)
     // 这里的 savedDetails 必须来自 HIS 本地真实落账成功后的收费明细，
     // 不能直接用试算结果拼凑。ChargeDetailNo、ItemCode、PartSeq、FinalQty、FinalAmount
     // 会被计价中心与 confirm 阶段保存的结果逐项比对。
+    // 普通项目和主项目严格匹配 ChargeDetailNo；替换子项、加收子项如果由 HIS 生成新明细号，
+    // 仍必须保证 ItemCode、PartSeq、FinalQty、FinalAmount 与 confirm 结果一致。
     List<PricingCommitActualItemRequest> actualItems = new List<PricingCommitActualItemRequest>();
     foreach (HisChargeDetail detail in savedDetails)
     {
@@ -155,10 +158,12 @@ if (decision.ShouldOpenPopup)
 ## 资金安全约束
 
 - `confirm` 超时重试必须复用同一个 `BusinessRequestNo`。
+- 如果 HIS 尚未生成收费单号或稳定收费确认流水，不能用时间戳/GUID 临时生成 `BusinessRequestNo`；应先预生成稳定业务号，否则 confirm 会阻断。
 - `confirm` 成功后，HIS 落账成功调用带 `actualItems` 参数的 `CommitAfterHisSuccess`。
 - HIS 落账失败、支付失败或操作员取消调用 `CancelAfterHisFailure`。
 - HIS 已经落账成功但 `commit` 通知失败时，不允许再调用 `cancel`；应重试 `commit` 或交给对账补偿。
 - `special-flag` 或计价服务不可用时，不允许回退为普通计价。
 - 一次收费动作可传多条 `PricingCalculateRequest.Items`，每条费用明细独立携带 `ItemCode`。
+- 同一次 confirm 同时包含普通明细和特殊明细时，commit 必须回传全部 HIS 有效落账明细。
 - `ReplacementItem` 和 `ChildItems` 是需要 HIS 一并落账和回传 commit 的真实收费结果，不是只用于展示的说明文本。
 - 上线过渡期如需计入旧 HIS 历史收费次数，必须先实现 `QueryLegacyOccupiedQty` 中的 `RestrictingfeePay2` SQL；当前默认实现会抛错，避免误按 0 次历史收费放行。

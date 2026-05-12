@@ -431,7 +431,7 @@ public sealed class PricingTraceStepResponse
 /// 确认计费提交请求 DTO。
 /// </summary>
 /// <remarks>
-/// commit 用于告诉规则中心 HIS 已经成功落账。成功后 CONFIRM_PENDING 会推进到 COMMITTED，
+/// commit 用于告诉规则中心 HIS 已经成功落账。成功后 CONFIRM_PENDING 会推进到 CONFIRMED，
 /// 保护占额会变成正式占用。
 /// </remarks>
 public sealed class PricingCommitRequest
@@ -465,7 +465,8 @@ public sealed class PricingCommitRequest
 public sealed class PricingCommitActualItemRequest
 {
     /// <summary>
-    /// HIS 实际落账后的收费明细号，必须与 confirm 返回/保存的折价明细一致。
+    /// HIS 实际落账后的收费明细号。普通项目和主项目必须与 confirm 保存的折价明细一致；
+    /// 替换子项、加收子项允许 HIS 落账时生成新的收费明细号。
     /// </summary>
     public string? ChargeDetailNo { get; init; }
 

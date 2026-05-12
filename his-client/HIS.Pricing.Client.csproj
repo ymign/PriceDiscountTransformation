@@ -42,6 +42,7 @@
     <Compile Include="PricingAgent.cs" />
     <Compile Include="PricingApiClient.cs" />
     <Compile Include="PricingApiUrlBuilder.cs" />
+    <Compile Include="PricingBusinessRequestNoHelper.cs" />
     <Compile Include="PricingChargeContext.cs" />
     <Compile Include="PricingHisIntegrationHelper.cs" />
     <Compile Include="PricingRuleDtos.cs" />
