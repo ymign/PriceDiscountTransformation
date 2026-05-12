@@ -1,0 +1,18 @@
+# PricingAgent 产品配置示例
+# 部署时复制为 pricing-agent.config，并放在 HIS.Pricing.Client.dll 同目录。
+
+BaseUrl=http://pricing-rule-center:8080
+SourceSystem=HIS_WY
+DefaultChargeScene=OUTPATIENT
+
+TimeoutMs=10000
+MaxRetry=3
+RetryDelayMs=2000
+
+EnableLocalLog=true
+LogDirectory=
+
+EnableCompensationQueue=true
+CompensationDirectory=
+
+ExpectedProtocolVersion=1.0

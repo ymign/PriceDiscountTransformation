@@ -107,6 +107,17 @@ namespace HIS.Pricing.Client
         }
 
         /// <summary>
+        /// 校验 cancel 请求的最小字段。
+        /// </summary>
+        public static void ValidateCancelRequest(long requestId)
+        {
+            if (requestId <= 0)
+            {
+                throw new InvalidOperationException("cancel 必须传入有效的 RequestId。");
+            }
+        }
+
+        /// <summary>
         /// 校验 reverse 请求的最小幂等字段。
         /// </summary>
         public static void ValidateReverseRequest(PricingReverseRequest request)

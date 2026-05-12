@@ -31,6 +31,9 @@ HIS 不需要把特殊计价界面和规则判断全部写进自己系统，只�
 - `CancelAfterHisFailure`：HIS 落账失败后取消。
 - `ReverseAfterHisRefund`：HIS 退费或冲正后释放额度。
 - `BuildChargeRequest`：把 HIS 轻量上下文转换成计价请求。
+- 读取 `pricing-agent.config`，支持服务地址、院区、超时、日志和补偿目录不改代码切换。
+- 记录本地日志，失败时写入补偿队列，便于现场重试和排错。
+- 调用 `/health` 校验服务端健康状态和协议版本。
 
 SDK 不依赖弹窗，适合自助机、微信、服务端网关、非 WinForms HIS。
 
@@ -45,6 +48,7 @@ SDK 不依赖弹窗，适合自助机、微信、服务端网关、非 WinForms 
 - 弹窗内试算和确认计价。
 - 返回 `PricingAgentChargeResult` 给 HIS。
 - 提供 `OpenRuleWorkbench`，让 HIS 菜单直接打开规则维护工作台。
+- 提供 `OpenDiagnostics`，让现场人员查看版本、日志、补偿队列和服务健康状态。
 
 Agent 适合传统 WinForms/WPF HIS，形态接近“合理用药弹窗”。
 
@@ -86,11 +90,13 @@ HIS 收费保存按钮
 PricingAgent/
   HIS.Pricing.Client.dll
   Newtonsoft.Json.dll
-  PricingAgent.config
+  pricing-agent.config
   README.md
-  samples/
-    WinFormsChargeSample.cs
-    ReverseSample.cs
+  pricing-agent.config.sample
+  deploy/
+    install-pricing-agent.ps1
+    rollback-pricing-agent.ps1
+    README.md
 ```
 
 `PricingAgent.config` 建议包含：
@@ -103,15 +109,13 @@ PricingAgent/
 | `MaxRetry` | confirm/commit 重试次数 |
 | `RetryDelayMs` | 重试间隔 |
 | `DefaultChargeScene` | 默认收费场景 |
+| `EnableLocalLog` | 是否启用本地日志 |
+| `LogDirectory` | 日志目录；为空时使用 DLL 同目录下 `pricing-agent-logs` |
+| `EnableCompensationQueue` | 是否启用本地补偿队列 |
+| `CompensationDirectory` | 补偿目录；为空时使用 DLL 同目录下 `pricing-agent-pending` |
+| `ExpectedProtocolVersion` | 期望服务端协议版本，当前为 `1.0` |
 
-当前仓库已提供代码级 `PricingSdkOptions`，后续如果要做安装包，可再加配置文件读取器和版本检查器。
-
-产品化交付包还应补齐：
-
-- 本地日志目录：记录 special-flag、simulate、confirm、commit、cancel、reverse 的请求号、业务号、耗时和失败原因。
-- 配置文件读取器：支持院区、渠道、服务地址、超时和重试参数不改代码切换。
-- 版本信息：DLL 版本、协议版本、服务端版本检查，避免 HIS 引用旧 DLL 后字段不兼容。
-- 安装和回滚脚本：支持灰度、回退和一键替换。
+当前仓库已提供 `PricingSdkOptions`、`PricingSdkConfigLoader`、`PricingAgentLogger`、`PricingCompensationStore`、`PricingAgentVersion`、诊断窗口和安装/回滚脚本，交付包可以不改代码切换院区和服务地址。
 
 ## 5. 多系统复用方式
 
@@ -152,6 +156,11 @@ PricingAgent/
 ## 8. 当前代码落点
 
 - `his-client/PricingSdkOptions.cs`
+- `his-client/PricingSdkConfigLoader.cs`
+- `his-client/PricingAgentVersion.cs`
+- `his-client/PricingAgentLogger.cs`
+- `his-client/PricingCompensationStore.cs`
+- `his-client/PricingServiceDtos.cs`
 - `his-client/PricingSdk.cs`
 - `his-client/PricingChargeContext.cs`
 - `his-client/PricingCalculateRequestValidator.cs`
@@ -159,8 +168,13 @@ PricingAgent/
 - `his-client/PricingAgent.cs`
 - `his-client/FrmPricingPopup.cs`
 - `his-client/FrmPricingRuleWorkbench.cs`
+- `his-client/FrmPricingAgentDiagnostics.cs`
+- `his-client/pricing-agent.config.sample`
+- `his-client/deploy/install-pricing-agent.ps1`
+- `his-client/deploy/rollback-pricing-agent.ps1`
+- `his-client/deploy/README.md`
 
-这套边界已经能支持“一个 DLL 接入、自己弹窗、结果回传”的产品形态。后续真正做商品化交付时，再补安装包、配置读取、日志落盘、自动更新和授权控制。
+这套边界已经能支持“一个 DLL 接入、自己弹窗、配置文件切换、结果回传、本地日志、失败补偿、现场诊断、脚本安装和回滚”的产品形态。
 
 ## 9. 产品化验收清单
 
@@ -171,11 +185,13 @@ PricingAgent/
 - commit 必须回传 HIS 真实 `actualItems`，不能只传总金额。
 - 替换子项、加收子项允许 HIS 新生成明细号，但项目、片段序号、数量、金额必须一致。
 - WinForms 弹窗能展示费用明细、试算金额、计算步骤和折价原因，确认失败不允许回退普通计价。
+- 配置文件读取和环境切换已落到 `PricingSdkConfigLoader` 和 `pricing-agent.config.sample`。
+- 本地日志落盘已落到 `PricingAgentLogger`，关键接口会记录请求号、业务号、耗时、业务码和 TraceId。
+- commit/cancel/reverse 失败补偿已落到 `PricingCompensationStore`，失败或非成功业务码会写入 JSON 待处理记录。
+- DLL 版本、协议版本和服务端健康检查已落到 `PricingAgentVersion`、`PricingServiceHealthResponse` 和 `/health`。
+- 安装、升级和回滚已提供 PowerShell 脚本和部署手册。
 
-仍需在商品化交付前补齐的能力：
+仍需在医院现场执行的验收项：
 
-- 配置文件读取和环境切换。
-- 本地日志落盘、补偿队列和人工排错页面。
-- DLL 版本、协议版本和服务端版本兼容检查。
-- 安装包、升级包、回滚脚本和医院现场部署手册。
 - 真实 HIS 环境的 UI 走查：字体、分辨率、DPI、双屏、键盘操作和收费员确认流程。
+- HIS 侧真实落账明细映射走查：替换子项、加收子项、部分退费、隔日退费必须用现场数据验证。

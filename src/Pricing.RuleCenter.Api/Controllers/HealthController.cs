@@ -134,6 +134,7 @@ public sealed class HealthController : ControllerBase
 public sealed class HealthResult
 {
     private static readonly DateTime _startedAt = DateTime.Now;
+    private const string PricingProtocolVersion = "1.0";
 
     /// <summary>
     /// 综合健康状态。根据数据库连接状态自动计算：
@@ -171,4 +172,15 @@ public sealed class HealthResult
     /// 用于排查跨时区问题或服务端时钟偏移。
     /// </summary>
     public DateTime ServerTime { get; init; } = DateTime.Now;
+
+    /// <summary>
+    /// 服务端程序版本。默认读取当前 API 程序集版本，供客户端诊断窗口展示。
+    /// </summary>
+    public string ServiceVersion { get; init; } =
+        typeof(HealthResult).Assembly.GetName().Version?.ToString() ?? "unknown";
+
+    /// <summary>
+    /// 计价接口协议版本。PricingAgent SDK 会用该字段判断 DLL 与服务端是否兼容。
+    /// </summary>
+    public string ProtocolVersion { get; init; } = PricingProtocolVersion;
 }

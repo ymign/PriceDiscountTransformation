@@ -26,6 +26,21 @@ namespace HIS.Pricing.Client
         /// <summary>默认收费场景。调用方请求未传 ChargeScene 时使用。</summary>
         public string DefaultChargeScene { get; set; }
 
+        /// <summary>是否启用本地日志。</summary>
+        public bool EnableLocalLog { get; set; }
+
+        /// <summary>本地日志目录。为空时使用程序目录下的 pricing-agent-logs。</summary>
+        public string LogDirectory { get; set; }
+
+        /// <summary>是否启用本地补偿队列。</summary>
+        public bool EnableCompensationQueue { get; set; }
+
+        /// <summary>补偿队列目录。为空时使用程序目录下的 pricing-agent-pending。</summary>
+        public string CompensationDirectory { get; set; }
+
+        /// <summary>期望服务端协议版本。</summary>
+        public string ExpectedProtocolVersion { get; set; }
+
         /// <summary>
         /// 构造默认配置。
         /// 默认值与 PricingApiClient 保持一致，便于旧 HIS 最小改造接入。
@@ -38,6 +53,11 @@ namespace HIS.Pricing.Client
             RetryDelayMs = 2000;
             SourceSystem = "HIS";
             DefaultChargeScene = "OUTPATIENT";
+            EnableLocalLog = true;
+            LogDirectory = string.Empty;
+            EnableCompensationQueue = true;
+            CompensationDirectory = string.Empty;
+            ExpectedProtocolVersion = PricingAgentVersion.ProtocolVersion;
         }
 
         /// <summary>
@@ -67,11 +87,58 @@ namespace HIS.Pricing.Client
         }
 
         /// <summary>
+        /// 校验产品运行时配置。
+        /// </summary>
+        public void ValidateForProductRuntime()
+        {
+            if (EnableLocalLog && string.IsNullOrEmpty(GetNormalizedLogDirectory()))
+            {
+                throw new InvalidOperationException("PricingSdkOptions.LogDirectory 不能为空。");
+            }
+
+            if (EnableCompensationQueue && string.IsNullOrEmpty(GetNormalizedCompensationDirectory()))
+            {
+                throw new InvalidOperationException("PricingSdkOptions.CompensationDirectory 不能为空。");
+            }
+
+            if (string.IsNullOrEmpty(ExpectedProtocolVersion))
+            {
+                throw new InvalidOperationException("PricingSdkOptions.ExpectedProtocolVersion 不能为空。");
+            }
+        }
+
+        /// <summary>
         /// 返回去除首尾空白和尾部斜杠后的 BaseUrl。
         /// </summary>
         public string GetNormalizedBaseUrl()
         {
             return NormalizeBaseUrl(BaseUrl);
+        }
+
+        /// <summary>
+        /// 返回规范化后的日志目录。
+        /// </summary>
+        public string GetNormalizedLogDirectory()
+        {
+            if (!string.IsNullOrEmpty(LogDirectory))
+            {
+                return LogDirectory.Trim();
+            }
+
+            return System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "pricing-agent-logs");
+        }
+
+        /// <summary>
+        /// 返回规范化后的补偿队列目录。
+        /// </summary>
+        public string GetNormalizedCompensationDirectory()
+        {
+            if (!string.IsNullOrEmpty(CompensationDirectory))
+            {
+                return CompensationDirectory.Trim();
+            }
+
+            return System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "pricing-agent-pending");
         }
 
         /// <summary>

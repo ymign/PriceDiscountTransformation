@@ -8,6 +8,11 @@
 
 - `PricingApiClient.cs`：基于 `HttpWebRequest` 的同步 HTTP 客户端，不使用 `HttpClient` 和 `async/await`。
 - `PricingApiUrlBuilder.cs`：统一构造后端管理接口 URL，避免查询参数拼接错误。
+- `PricingAgentVersion.cs`：SDK 版本、协议版本和配置格式版本定义。
+- `PricingServiceDtos.cs`：服务健康检查和协议版本校验 DTO。
+- `PricingSdkConfigLoader.cs`：读取 `pricing-agent.config`，支持服务地址、院区、日志、补偿目录等不改代码切换。
+- `PricingAgentLogger.cs`：本地操作日志，记录 special-flag、simulate、confirm、commit、cancel、reverse 的结果。
+- `PricingCompensationStore.cs`：本地补偿队列，commit/cancel/reverse 失败时落 JSON 文件。
 - `PricingBusinessRequestNoHelper.cs`：生成稳定 `BusinessRequestNo`，没有稳定收费号时返回空字符串并由 confirm 校验阻断。
 - `PricingRuleDtos.cs`：规则工作台需要的请求/响应 DTO。
 - `PricingSdkOptions.cs`：SDK/Agent 运行配置，封装服务地址、超时、重试和渠道编码。
@@ -19,6 +24,9 @@
 - `PricingHisIntegrationHelper.cs`：收费入口接入辅助，封装特殊项目判断、弹窗、commit/cancel。
 - `FrmPricingRuleWorkbench.cs`：特殊计价规则维护工作台。
 - `FrmPricingPopup.cs`：收费前特殊计价弹窗。
+- `FrmPricingAgentDiagnostics.cs`：现场诊断窗口，展示版本、日志、补偿记录和服务健康状态。
+- `pricing-agent.config.sample`：产品配置模板。
+- `deploy/`：安装、升级、回滚脚本和部署手册。
 
 ## 产品化推荐接入
 
@@ -76,6 +84,13 @@ List<PricingCommitActualItemRequest> actualItems = BuildActualItemsFromHisSavedD
 agent.CommitAfterHisSuccess(result.RequestId, hisChargeNo, actualItems, hisActualTotalAmount);
 ```
 
+产品化部署时推荐从配置文件创建：
+
+```csharp
+PricingSdkOptions options = PricingSdkConfigLoader.LoadDefault();
+PricingAgent agent = new PricingAgent(options);
+```
+
 旧工程如暂时不想引入 Agent，也可以继续使用 `PricingHisIntegrationHelper`；该类保留兼容，后续新接入优先使用 `PricingAgent` 或 `PricingSdk`。
 
 ## HIS 菜单接入
@@ -89,7 +104,31 @@ PricingAgent agent = new PricingAgent(options);
 agent.OpenRuleWorkbench(this, currentUserId);
 ```
 
+现场排错菜单可打开诊断窗口：
+
+```csharp
+agent.OpenDiagnostics(this);
+```
+
 医院现有菜单注册方式尚未在本仓库确认，因此本目录只提供可加载窗体，不硬编码 HIS 菜单框架。
+
+## 产品运行文件
+
+`pricing-agent.config` 与 DLL 放在同一目录，模板见 `pricing-agent.config.sample`。空日志目录和补偿目录会默认落在 DLL 同目录下的 `pricing-agent-logs` 和 `pricing-agent-pending`。
+
+```text
+BaseUrl=http://pricing-rule-center:8080
+SourceSystem=HIS_WY
+DefaultChargeScene=OUTPATIENT
+TimeoutMs=10000
+MaxRetry=3
+RetryDelayMs=2000
+EnableLocalLog=true
+LogDirectory=
+EnableCompensationQueue=true
+CompensationDirectory=
+ExpectedProtocolVersion=1.0
+```
 
 ## 本地构建前置
 

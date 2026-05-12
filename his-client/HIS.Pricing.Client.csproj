@@ -37,22 +37,32 @@
     <Reference Include="System.Windows.Forms" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="FrmPricingAgentDiagnostics.cs" />
     <Compile Include="FrmPricingPopup.cs" />
     <Compile Include="FrmPricingRuleWorkbench.cs" />
     <Compile Include="PricingAgent.cs" />
+    <Compile Include="PricingAgentLogger.cs" />
+    <Compile Include="PricingAgentVersion.cs" />
     <Compile Include="PricingApiClient.cs" />
     <Compile Include="PricingApiUrlBuilder.cs" />
     <Compile Include="PricingBusinessRequestNoHelper.cs" />
     <Compile Include="PricingCalculateRequestValidator.cs" />
     <Compile Include="PricingChargeContext.cs" />
+    <Compile Include="PricingCompensationStore.cs" />
     <Compile Include="PricingDecisionDtos.cs" />
     <Compile Include="PricingHisIntegrationHelper.cs" />
     <Compile Include="PricingRuleDtos.cs" />
+    <Compile Include="PricingSdkConfigLoader.cs" />
     <Compile Include="PricingSdk.cs" />
     <Compile Include="PricingSdkOptions.cs" />
+    <Compile Include="PricingServiceDtos.cs" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="deploy\install-pricing-agent.ps1" />
+    <None Include="deploy\README.md" />
+    <None Include="deploy\rollback-pricing-agent.ps1" />
     <None Include="packages.config" />
+    <None Include="pricing-agent.config.sample" />
     <None Include="README.md" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

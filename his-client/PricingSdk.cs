@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 
 namespace HIS.Pricing.Client
 {
@@ -12,6 +13,9 @@ namespace HIS.Pricing.Client
         private readonly PricingApiClient _client;
         private readonly string _sourceSystem;
         private readonly string _defaultChargeScene;
+        private readonly PricingSdkOptions _options;
+        private readonly PricingAgentLogger _logger;
+        private readonly PricingCompensationStore _compensationStore;
 
         /// <summary>
         /// 使用配置创建 SDK。适合产品化交付时从配置文件读取 BaseUrl 后直接初始化。
@@ -24,6 +28,7 @@ namespace HIS.Pricing.Client
             }
 
             options.ValidateForHttpClient();
+            options.ValidateForProductRuntime();
             _client = new PricingApiClient(
                 options.GetNormalizedBaseUrl(),
                 options.TimeoutMs,
@@ -31,6 +36,9 @@ namespace HIS.Pricing.Client
                 options.RetryDelayMs);
             _sourceSystem = !string.IsNullOrEmpty(options.SourceSystem) ? options.SourceSystem : "HIS";
             _defaultChargeScene = !string.IsNullOrEmpty(options.DefaultChargeScene) ? options.DefaultChargeScene : "OUTPATIENT";
+            _options = options;
+            _logger = PricingAgentLogger.Create(options);
+            _compensationStore = PricingCompensationStore.Create(options);
         }
 
         /// <summary>
@@ -52,14 +60,72 @@ namespace HIS.Pricing.Client
             }
 
             _client = client;
+            if (options != null)
+            {
+                options.ValidateForProductRuntime();
+            }
             _sourceSystem = options != null && !string.IsNullOrEmpty(options.SourceSystem) ? options.SourceSystem : "HIS";
             _defaultChargeScene = options != null && !string.IsNullOrEmpty(options.DefaultChargeScene) ? options.DefaultChargeScene : "OUTPATIENT";
+            _options = options;
+            _logger = PricingAgentLogger.Create(options);
+            _compensationStore = PricingCompensationStore.Create(options);
         }
 
         /// <summary>底层 HTTP 客户端，供高级集成场景直接访问。</summary>
         public PricingApiClient Client
         {
             get { return _client; }
+        }
+
+        /// <summary>当前 SDK 运行配置。调用方直接传入 HTTP 客户端时可能为空。</summary>
+        public PricingSdkOptions Options
+        {
+            get { return _options; }
+        }
+
+        /// <summary>本地日志目录。未启用日志时为空。</summary>
+        public string LogDirectory
+        {
+            get { return _logger == null ? null : _logger.LogDirectory; }
+        }
+
+        /// <summary>本地补偿队列目录。未启用补偿队列时为空。</summary>
+        public string CompensationDirectory
+        {
+            get { return _compensationStore == null ? null : _compensationStore.DirectoryPath; }
+        }
+
+        /// <summary>
+        /// 查询服务健康状态并校验协议版本。
+        /// </summary>
+        public ApiResponse<PricingServiceHealthResponse> CheckServiceCompatibility()
+        {
+            Stopwatch watch = Stopwatch.StartNew();
+            try
+            {
+                ApiResponse<PricingServiceHealthResponse> response = _client.GetHealth();
+                watch.Stop();
+                if (response == null || !response.IsSuccess || response.Data == null)
+                {
+                    LogError("health", null, null, null, response == null ? null : response.TraceId,
+                        response == null ? null : (int?)response.Code,
+                        watch.ElapsedMilliseconds,
+                        response == null ? "健康检查无响应。" : response.Message);
+                    return response;
+                }
+
+                PricingAgentVersion.EnsureCompatibleService(
+                    response.Data,
+                    _options == null ? PricingAgentVersion.ProtocolVersion : _options.ExpectedProtocolVersion);
+                LogInfo("health", null, null, null, response.TraceId, response.Code, watch.ElapsedMilliseconds, "服务健康检查通过。");
+                return response;
+            }
+            catch (Exception ex)
+            {
+                watch.Stop();
+                LogError("health", null, null, null, null, null, watch.ElapsedMilliseconds, ex.Message);
+                throw;
+            }
         }
 
         /// <summary>
@@ -73,9 +139,17 @@ namespace HIS.Pricing.Client
                 return SpecialPricingDecision.Blocked("项目编码为空，禁止继续收费。");
             }
 
+            itemCode = itemCode.Trim();
+            Stopwatch watch = Stopwatch.StartNew();
             try
             {
                 ApiResponse<SpecialFlagResponse> response = _client.GetSpecialFlag(itemCode);
+                watch.Stop();
+                LogInfo("special-flag", null, null, null, response == null ? null : response.TraceId,
+                    response == null ? null : (int?)response.Code,
+                    watch.ElapsedMilliseconds,
+                    response == null ? "特殊计价标识查询无响应。" : response.Message);
+
                 if (response == null || !response.IsSuccess || response.Data == null)
                 {
                     return SpecialPricingDecision.BlockAsServiceUnavailable(
@@ -91,6 +165,8 @@ namespace HIS.Pricing.Client
             }
             catch (Exception ex)
             {
+                watch.Stop();
+                LogError("special-flag", null, null, null, null, null, watch.ElapsedMilliseconds, ex.Message);
                 return SpecialPricingDecision.BlockAsServiceUnavailable(
                     "计价服务暂时不可用，禁止按普通计价继续收费：" + ex.Message);
             }
@@ -115,7 +191,7 @@ namespace HIS.Pricing.Client
         public ApiResponse<PricingCalculateResponse> Simulate(PricingCalculateRequest request)
         {
             PrepareCalculateRequest(request);
-            return _client.Simulate(request);
+            return ExecuteWithLog("simulate", request, delegate { return _client.Simulate(request); });
         }
 
         /// <summary>
@@ -125,7 +201,7 @@ namespace HIS.Pricing.Client
         public ApiResponse<PricingCalculateResponse> ConfirmBeforeCharge(PricingCalculateRequest request)
         {
             ValidateConfirmRequest(request);
-            return _client.Confirm(request);
+            return ExecuteWithLog("confirm", request, delegate { return _client.Confirm(request); });
         }
 
         /// <summary>
@@ -144,7 +220,15 @@ namespace HIS.Pricing.Client
             request.ChargeNo = chargeNo;
             request.ActualItems = actualItems;
             request.ActualTotalAmount = actualTotalAmount;
-            return _client.Commit(request);
+            ApiResponse response = ExecuteNoDataWithLog(
+                "commit",
+                request.RequestId.ToString(),
+                chargeNo,
+                null,
+                request,
+                delegate { return _client.Commit(request); });
+            SaveCompensationIfFailed("commit", request.RequestId.ToString(), request, response, null);
+            return response;
         }
 
         /// <summary>
@@ -153,9 +237,18 @@ namespace HIS.Pricing.Client
         /// </summary>
         public ApiResponse CancelAfterHisFailure(long requestId)
         {
+            PricingCalculateRequestValidator.ValidateCancelRequest(requestId);
             PricingCancelRequest request = new PricingCancelRequest();
             request.RequestId = requestId;
-            return _client.Cancel(request);
+            ApiResponse response = ExecuteNoDataWithLog(
+                "cancel",
+                request.RequestId.ToString(),
+                null,
+                null,
+                request,
+                delegate { return _client.Cancel(request); });
+            SaveCompensationIfFailed("cancel", request.RequestId.ToString(), request, response, null);
+            return response;
         }
 
         /// <summary>
@@ -164,7 +257,15 @@ namespace HIS.Pricing.Client
         public ApiResponse ReverseAfterHisRefund(PricingReverseRequest request)
         {
             PricingCalculateRequestValidator.ValidateReverseRequest(request);
-            return _client.Reverse(request);
+            ApiResponse response = ExecuteNoDataWithLog(
+                "reverse",
+                request.OriginalRequestId.ToString(),
+                request.ReverseNo,
+                null,
+                request,
+                delegate { return _client.Reverse(request); });
+            SaveCompensationIfFailed("reverse", request.ReverseNo, request, response, null);
+            return response;
         }
 
         /// <summary>
@@ -213,6 +314,119 @@ namespace HIS.Pricing.Client
         {
             PrepareCalculateRequest(request);
             PricingCalculateRequestValidator.ValidateForConfirm(request);
+        }
+
+        private ApiResponse<T> ExecuteWithLog<T>(
+            string operation,
+            PricingCalculateRequest request,
+            Func<ApiResponse<T>> action)
+        {
+            Stopwatch watch = Stopwatch.StartNew();
+            try
+            {
+                ApiResponse<T> response = action();
+                watch.Stop();
+                LogInfo(operation, null, request.BusinessRequestNo, request.RequestNo,
+                    response == null ? null : response.TraceId,
+                    response == null ? null : (int?)response.Code,
+                    watch.ElapsedMilliseconds,
+                    response == null ? "接口无响应。" : response.Message);
+                return response;
+            }
+            catch (Exception ex)
+            {
+                watch.Stop();
+                LogError(operation, null, request.BusinessRequestNo, request.RequestNo, null, null, watch.ElapsedMilliseconds, ex.Message);
+                throw;
+            }
+        }
+
+        private ApiResponse ExecuteNoDataWithLog(
+            string operation,
+            string requestId,
+            string businessNo,
+            string requestNo,
+            object requestPayload,
+            Func<ApiResponse> action)
+        {
+            Stopwatch watch = Stopwatch.StartNew();
+            try
+            {
+                ApiResponse response = action();
+                watch.Stop();
+                LogInfo(operation, requestId, businessNo, requestNo,
+                    response == null ? null : response.TraceId,
+                    response == null ? null : (int?)response.Code,
+                    watch.ElapsedMilliseconds,
+                    response == null ? "接口无响应。" : response.Message);
+                return response;
+            }
+            catch (Exception ex)
+            {
+                watch.Stop();
+                LogError(operation, requestId, businessNo, requestNo, null, null, watch.ElapsedMilliseconds, ex.Message);
+                SaveCompensationIfFailed(operation, businessNo != null ? businessNo : requestId, requestPayload, null, ex);
+                throw;
+            }
+        }
+
+        private void SaveCompensationIfFailed(
+            string operation,
+            string businessKey,
+            object request,
+            ApiResponse response,
+            Exception exception)
+        {
+            if (_compensationStore == null)
+            {
+                return;
+            }
+
+            if (exception == null && response != null && response.IsSuccess)
+            {
+                return;
+            }
+
+            _compensationStore.SavePending(
+                operation,
+                businessKey,
+                request,
+                response == null ? null : (int?)response.Code,
+                response == null ? null : response.Message,
+                response == null ? null : response.TraceId,
+                exception);
+        }
+
+        private void LogInfo(
+            string operation,
+            string requestId,
+            string businessNo,
+            string requestNo,
+            string traceId,
+            int? code,
+            long elapsedMs,
+            string message)
+        {
+            if (_logger != null)
+            {
+                _logger.Info(operation, requestId, businessNo, requestNo, traceId, code, elapsedMs, message);
+            }
+        }
+
+        private void LogError(
+            string operation,
+            string requestId,
+            string businessNo,
+            string requestNo,
+            string traceId,
+            int? code,
+            long elapsedMs,
+            string message)
+        {
+            if (_logger != null)
+            {
+                _logger.Error(operation, requestId, businessNo, requestNo, traceId, code, elapsedMs, message);
+            }
         }
     }
 }

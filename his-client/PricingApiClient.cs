@@ -64,6 +64,14 @@ namespace HIS.Pricing.Client
         {
         }
 
+        /// <summary>
+        /// 查询计价服务健康状态和协议版本。
+        /// </summary>
+        public ApiResponse<PricingServiceHealthResponse> GetHealth()
+        {
+            return Get<PricingServiceHealthResponse>("/health");
+        }
+
         // ================================================================
         // 计价计算接口（三阶段确认模式）
         // ================================================================

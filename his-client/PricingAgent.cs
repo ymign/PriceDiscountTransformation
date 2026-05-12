@@ -109,6 +109,22 @@ namespace HIS.Pricing.Client
         }
 
         /// <summary>
+        /// 打开 PricingAgent 诊断窗口，用于现场查看版本、日志目录、补偿记录和服务健康状态。
+        /// </summary>
+        public void OpenDiagnostics(IWin32Window owner)
+        {
+            FrmPricingAgentDiagnostics diagnostics = new FrmPricingAgentDiagnostics(_sdk);
+            if (owner == null)
+            {
+                diagnostics.Show();
+            }
+            else
+            {
+                diagnostics.Show(owner);
+            }
+        }
+
+        /// <summary>
         /// HIS 落账成功后提交计价中心状态。
         /// </summary>
         public ApiResponse CommitAfterHisSuccess(

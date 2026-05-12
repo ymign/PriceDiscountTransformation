@@ -58,6 +58,7 @@ namespace HIS.Pricing.Client
             {
                 return SpecialPricingDecision.Blocked("项目编码为空，禁止继续收费。");
             }
+            itemCode = itemCode.Trim();
 
             try
             {

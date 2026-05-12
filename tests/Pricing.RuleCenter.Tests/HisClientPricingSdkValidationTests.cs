@@ -75,6 +75,15 @@ public sealed class HisClientPricingSdkValidationTests
         Assert.Contains("ItemCode", ex.Message);
     }
 
+    [Fact]
+    public void ValidateCancelRequest_RejectsInvalidRequestId()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            PricingCalculateRequestValidator.ValidateCancelRequest(0));
+
+        Assert.Contains("RequestId", ex.Message);
+    }
+
     private static PricingSdk CreateSdk()
     {
         return new PricingSdk(new PricingApiClient("http://pricing-rule-center"));
