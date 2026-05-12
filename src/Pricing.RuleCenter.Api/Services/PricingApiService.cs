@@ -25,6 +25,15 @@ namespace Pricing.RuleCenter.Api.Services;
 public sealed class PricingApiService
 {
     /// <summary>
+    /// 单次统一计价请求允许携带的最大费用明细数。
+    /// </summary>
+    /// <remarks>
+    /// 文档约定批量试算最多 50 条。服务端统一在应用服务层兜底，避免绕过控制器或 SDK 后提交超大批次，
+    /// 导致同一请求持有过多限额锁、生成过多追溯步骤，影响收费高峰期延迟。
+    /// </remarks>
+    private const int MaxCalculateItemCount = 50;
+
+    /// <summary>
     /// 计价引擎依赖，负责规则匹配和动作链执行；应用服务只关心它的输入输出，
     /// 不直接关心具体规则动作如何计算。
     /// </summary>
@@ -358,6 +367,8 @@ public sealed class PricingApiService
     /// </remarks>
     public async Task CommitAsync(PricingCommitRequest request)
     {
+        ValidateCommitRequest(request);
+
         // ========== 第零阶段：记录 commit 请求入口日志 ==========
         _logger.LogInformation(
             "COMMIT 开始 RequestId={RequestId}, ChargeNo={ChargeNo}",
@@ -447,6 +458,8 @@ public sealed class PricingApiService
     /// </remarks>
     public async Task CancelAsync(PricingCancelRequest request)
     {
+        ValidateCancelRequest(request);
+
         // ========== 第零阶段：记录 cancel 请求入口日志 ==========
         _logger.LogInformation(
             "CANCEL 开始 RequestId={RequestId}",
@@ -515,6 +528,9 @@ public sealed class PricingApiService
     /// </remarks>
     public async Task ReverseAsync(PricingReverseRequest request)
     {
+        ValidateReverseRequest(request);
+        var reverseNo = request.ReverseNo!;
+
         // ========== 第零阶段：记录 reverse 请求入口日志 ==========
         _logger.LogInformation(
             "REVERSE 开始 OriginalRequestId={OriginalRequestId}, ItemCode={ItemCode}, ReverseQty={ReverseQty}",
@@ -524,15 +540,10 @@ public sealed class PricingApiService
         // 冲正会同时影响请求状态、折价明细、限额占用和冲正日志。任何一环失败都不能部分提交。
         await ExecuteInTransactionAsync(async () =>
         {
-            if (string.IsNullOrWhiteSpace(request.ReverseNo))
-            {
-                throw new ArgumentException("REVERSE 必须传入稳定的 ReverseNo");
-            }
-
             await _limitRepository.EnsureAndLockAsync(new[]
             {
                 BuildRequestLockKey(request.OriginalRequestId),
-                BuildReverseLockKey(request.OriginalRequestId, request.ReverseNo)
+                BuildReverseLockKey(request.OriginalRequestId, reverseNo)
             });
 
             var log = await _requestLogRepository.GetByIdAsync(request.OriginalRequestId)
@@ -705,13 +716,16 @@ public sealed class PricingApiService
     /// </remarks>
     public async Task<SpecialFlagResponse> GetSpecialFlagAsync(string itemCode)
     {
+        var normalizedItemCode = NormalizeString(itemCode)
+            ?? throw new ArgumentException("项目编码不能为空", nameof(itemCode));
+
         // special-flag 初期直接查数据库，不做本地缓存。规则发布频率低，实时查询可以避免缓存失效不及时。
-        var rules = await _headerRepository.GetByItemCodeAsync(itemCode);
+        var rules = await _headerRepository.GetByItemCodeAsync(normalizedItemCode);
         var published = rules.Where(r => r.Status == "PUBLISHED" && r.IsEnabled == "Y").ToList();
 
         return new SpecialFlagResponse
         {
-            ItemCode = itemCode,
+            ItemCode = normalizedItemCode,
             IsSpecial = published.Count > 0,
             RuleCount = published.Count
         };
@@ -1954,20 +1968,158 @@ public sealed class PricingApiService
     private static IReadOnlyList<PricingCalculateItemRequest> GetRequiredItems(
         PricingCalculateRequest request)
     {
-        if (request.Items is null || request.Items.Count == 0)
+        ArgumentNullException.ThrowIfNull(request);
+
+        // ========== 第一阶段：校验收费动作级必填字段 ==========
+        // 这些字段决定幂等键、限额维度和追溯主线。即使 MVC 模型验证被绕过，
+        // 应用服务也必须自己兜底，避免直接调用服务层时把脏数据写进资金链路。
+        if (string.IsNullOrWhiteSpace(request.SourceSystem))
         {
-            throw new ArgumentException("费用明细不能为空");
+            throw new ArgumentException("来源系统不能为空", nameof(request.SourceSystem));
         }
 
-        foreach (var item in request.Items)
+        if (string.IsNullOrWhiteSpace(request.PatientId))
         {
+            throw new ArgumentException("患者ID不能为空", nameof(request.PatientId));
+        }
+
+        if (request.BusinessChargeTime == default)
+        {
+            throw new ArgumentException("业务收费发生时间不能为空", nameof(request.BusinessChargeTime));
+        }
+
+        if (request.Items is null || request.Items.Count == 0)
+        {
+            throw new ArgumentException("费用明细不能为空", nameof(request.Items));
+        }
+
+        if (request.Items.Count > MaxCalculateItemCount)
+        {
+            throw new ArgumentException($"费用明细不能超过{MaxCalculateItemCount}条", nameof(request.Items));
+        }
+
+        // ========== 第二阶段：校验每条费用明细 ==========
+        // 统一计价请求可以包含多条费用，但每条费用都必须具备独立计价所需的项目、数量和单价。
+        // 复杂输入通过 PricingParts 表达，不能把无效片段数量带入换算执行器。
+        for (var itemIndex = 0; itemIndex < request.Items.Count; itemIndex++)
+        {
+            var item = request.Items[itemIndex]
+                ?? throw new ArgumentException($"费用明细[{itemIndex}]不能为空", nameof(request.Items));
+
             if (string.IsNullOrWhiteSpace(item.ItemCode))
             {
-                throw new ArgumentException("费用明细项目编码不能为空");
+                throw new ArgumentException($"费用明细[{itemIndex}]项目编码不能为空", nameof(request.Items));
+            }
+
+            if (item.InputQty <= 0)
+            {
+                throw new ArgumentException($"费用明细[{itemIndex}]数量必须大于0", nameof(request.Items));
+            }
+
+            if (item.UnitPrice < 0)
+            {
+                throw new ArgumentException($"费用明细[{itemIndex}]单价不能小于0", nameof(request.Items));
+            }
+
+            if (item.BusinessChargeTime.HasValue && item.BusinessChargeTime.Value == default)
+            {
+                throw new ArgumentException($"费用明细[{itemIndex}]业务收费发生时间不能为空", nameof(request.Items));
+            }
+
+            if (item.PricingParts is null)
+            {
+                continue;
+            }
+
+            for (var partIndex = 0; partIndex < item.PricingParts.Count; partIndex++)
+            {
+                var part = item.PricingParts[partIndex]
+                    ?? throw new ArgumentException($"费用明细[{itemIndex}].PricingParts[{partIndex}]不能为空", nameof(request.Items));
+
+                if (part.Qty <= 0)
+                {
+                    throw new ArgumentException($"费用明细[{itemIndex}].PricingParts[{partIndex}]数量必须大于0", nameof(request.Items));
+                }
             }
         }
 
         return request.Items;
+    }
+
+    private static void ValidateCommitRequest(PricingCommitRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (request.RequestId <= 0)
+        {
+            throw new ArgumentException("RequestId必须大于0", nameof(request.RequestId));
+        }
+
+        if (request.ActualTotalAmount.HasValue && request.ActualTotalAmount.Value < 0)
+        {
+            throw new ArgumentException("实际落账总金额不能小于0", nameof(request.ActualTotalAmount));
+        }
+
+        if (request.ActualItems is null)
+        {
+            return;
+        }
+
+        for (var index = 0; index < request.ActualItems.Count; index++)
+        {
+            var item = request.ActualItems[index]
+                ?? throw new ArgumentException($"实际落账明细[{index}]不能为空", nameof(request.ActualItems));
+
+            if (string.IsNullOrWhiteSpace(item.ItemCode))
+            {
+                throw new ArgumentException($"实际落账明细[{index}]项目编码不能为空", nameof(request.ActualItems));
+            }
+
+            if (item.FinalQty < 0)
+            {
+                throw new ArgumentException($"实际落账明细[{index}]数量不能小于0", nameof(request.ActualItems));
+            }
+
+            if (item.FinalAmount < 0)
+            {
+                throw new ArgumentException($"实际落账明细[{index}]金额不能小于0", nameof(request.ActualItems));
+            }
+        }
+    }
+
+    private static void ValidateCancelRequest(PricingCancelRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (request.RequestId <= 0)
+        {
+            throw new ArgumentException("RequestId必须大于0", nameof(request.RequestId));
+        }
+    }
+
+    private static void ValidateReverseRequest(PricingReverseRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (request.OriginalRequestId <= 0)
+        {
+            throw new ArgumentException("OriginalRequestId必须大于0", nameof(request.OriginalRequestId));
+        }
+
+        if (string.IsNullOrWhiteSpace(request.ReverseNo))
+        {
+            throw new ArgumentException("REVERSE 必须传入稳定的 ReverseNo", nameof(request.ReverseNo));
+        }
+
+        if (request.ReverseQty.HasValue && request.ReverseQty.Value <= 0)
+        {
+            throw new ArgumentException("退费数量必须大于0", nameof(request.ReverseQty));
+        }
+
+        if (request.ReverseAmt.HasValue && request.ReverseAmt.Value < 0)
+        {
+            throw new ArgumentException("退费金额不能小于0", nameof(request.ReverseAmt));
+        }
     }
 
     private static string? NormalizeString(string? value)

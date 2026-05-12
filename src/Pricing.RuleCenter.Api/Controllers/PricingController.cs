@@ -30,7 +30,7 @@ namespace Pricing.RuleCenter.Api.Controllers;
 ///   <item><b>commit（提交）</b> — HIS 成功落账后通知计价中心，将请求日志状态从 CONFIRM_PENDING 变更为 CONFIRMED，
 ///         确认额度占用永久生效。若 HIS 结算失败则调用 cancel 释放。</item>
 ///   <item><b>cancel（取消）</b> — HIS 未成功落账时调用，释放 confirm 阶段占用的额度，
-///         状态变更为 CANCELLED。当日退费释放数量，隔日退费重收后按重收当天重新校验额度。</item>
+///         状态变更为 CANCELLED。cancel 不处理已落账退费；已 commit 的收费必须走 reverse。</item>
 /// </list>
 /// </para>
 /// <para>
@@ -77,13 +77,13 @@ public sealed class PricingController : ControllerBase
     }
 
     /// <summary>
-    /// 【试算接口】— 模拟计价，不占用额度，不写入正式流水。
+    /// 【试算接口】— 模拟计价，不占用额度，不写入正式折价明细。
     /// <para>
     /// HTTP 方法：POST &nbsp;|&nbsp; 路由：<c>/api/pricing/calculate/simulate</c>
     /// </para>
     /// <para>
     /// 用途：渠道在收费录入界面实时预览折价金额时调用。试算结果仅用于展示，
-    /// 不产生任何额度占用或请求日志，不会影响后续 confirm 的额度校验。
+    /// 不产生任何额度占用或正式折价明细；服务端会保留请求日志和步骤日志，方便追溯页面解释当时为什么算出该价格。
     /// </para>
     /// <para>
     /// 计算顺序（强制）：
@@ -114,9 +114,10 @@ public sealed class PricingController : ControllerBase
     /// <returns>
     /// 试算结果（<see cref="PricingCalculateResponse"/>），包含：
     /// <list type="bullet">
+    ///   <item><c>Items</c> — 每条费用明细的独立计价结果，多明细落账应优先使用该集合</item>
     ///   <item><c>FinalAmount</c> — 最终折价金额（decimal，2 位小数，四舍五入）</item>
     ///   <item><c>TraceSteps</c> — 计算步骤明细（用于前端展示和问题排查）</item>
-    ///   <item><c>MatchedRuleId</c> — 匹配到的规则 ID（未匹配为 null）</item>
+    ///   <item><c>MatchedRuleIds</c> — 匹配到的规则 ID 集合（未匹配为空集合）</item>
     /// </list>
     /// </returns>
     [HttpPost("calculate/simulate")]
@@ -168,14 +169,13 @@ public sealed class PricingController : ControllerBase
     /// <list type="bullet">
     ///   <item><c>BusinessRequestNo</c> — 业务请求号（幂等键组成部分，建议渠道保证唯一且稳定）</item>
     ///   <item><c>SourceSystem</c> — 来源系统标识（幂等键组成部分）</item>
-    ///   <item><c>CallType</c> — 调用类型（幂等键组成部分）</item>
     /// </list>
     /// </param>
     /// <returns>
     /// 确认计价结果，除试算结果字段外，还包含：
     /// <list type="bullet">
     ///   <item><c>RequestId</c> — 计价请求唯一标识，后续 commit/cancel 必须携带此 ID</item>
-    ///   <item><c>ExpireTime</c> — 确认有效期，超时未 commit 的请求将被后台任务扫描清理</item>
+    ///   <item><c>ExpireAt</c> — 确认有效期，超时未 commit 的请求将被后台任务扫描清理</item>
     /// </list>
     /// </returns>
     [HttpPost("calculate/confirm")]
@@ -312,7 +312,7 @@ public sealed class PricingController : ControllerBase
     /// 特殊项目标识响应（<see cref="SpecialFlagResponse"/>），包含：
     /// <list type="bullet">
     ///   <item><c>IsSpecial</c> — 是否为特殊项目（true/false）</item>
-    ///   <item><c>EffectiveRuleCount</c> — 当前生效的有效规则数量</item>
+    ///   <item><c>RuleCount</c> — 当前生效的有效规则数量</item>
     /// </list>
     /// </returns>
     [HttpGet("items/{itemCode}/special-flag")]

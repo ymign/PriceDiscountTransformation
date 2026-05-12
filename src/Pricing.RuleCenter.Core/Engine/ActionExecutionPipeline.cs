@@ -148,9 +148,9 @@ public sealed class ActionExecutionPipeline
                     throw;
                 }
 
+                // WARN 只适合非资金提示类动作。这里保留错误步骤，方便追溯时看到动作曾经失败。
+                // StepType 设为 "ERROR" 便于追溯查询按类型过滤异常步骤。
                 if (action.OnError == "WARN")
-                    // WARN 只适合非资金提示类动作。这里保留错误步骤，方便追溯时看到动作曾经失败。
-                    // StepType 设为 "ERROR" 便于追溯查询按类型过滤异常步骤。
                 {
                     context.TraceSteps.Add(new TraceStep
                     {

@@ -12,6 +12,131 @@ namespace Pricing.RuleCenter.Tests;
 public sealed class PricingApiServiceTests
 {
     [Fact]
+    public async Task SimulateAsync_RejectsMissingSourceSystem()
+    {
+        var service = CreateValidationService();
+        var request = CreateValidCalculateRequest(sourceSystem: " ");
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.SimulateAsync(request));
+
+        Assert.Contains("来源系统", ex.Message);
+    }
+
+    [Fact]
+    public async Task SimulateAsync_RejectsNonPositiveInputQty()
+    {
+        var service = CreateValidationService();
+        var request = CreateValidCalculateRequest(items: new[]
+        {
+            new PricingCalculateItemRequest
+            {
+                ItemCode = "ITEM001",
+                InputQty = 0m,
+                UnitPrice = 10m
+            }
+        });
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.SimulateAsync(request));
+
+        Assert.Contains("数量必须大于0", ex.Message);
+    }
+
+    [Fact]
+    public async Task SimulateAsync_RejectsTooManyItems()
+    {
+        var service = CreateValidationService();
+        var request = CreateValidCalculateRequest(items: Enumerable.Range(1, 51)
+            .Select(index => new PricingCalculateItemRequest
+            {
+                ItemCode = $"ITEM{index:000}",
+                InputQty = 1m,
+                UnitPrice = 10m
+            })
+            .ToList());
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.SimulateAsync(request));
+
+        Assert.Contains("50", ex.Message);
+    }
+
+    [Fact]
+    public async Task SimulateAsync_RejectsNonPositivePricingPartQty()
+    {
+        var service = CreateValidationService();
+        var request = CreateValidCalculateRequest(items: new[]
+        {
+            new PricingCalculateItemRequest
+            {
+                ItemCode = "ITEM001",
+                InputQty = 1m,
+                UnitPrice = 10m,
+                PricingParts = new[]
+                {
+                    new PricingPartItemRequest
+                    {
+                        PartSeq = 1,
+                        BodyPartCode = "HEAD",
+                        Qty = 0m
+                    }
+                }
+            }
+        });
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.SimulateAsync(request));
+
+        Assert.Contains("PricingParts", ex.Message);
+        Assert.Contains("数量必须大于0", ex.Message);
+    }
+
+    [Fact]
+    public async Task CommitAsync_RejectsInvalidRequestIdBeforeLookup()
+    {
+        var service = CreateValidationService();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.CommitAsync(new PricingCommitRequest { RequestId = 0 }));
+
+        Assert.Contains("RequestId", ex.Message);
+    }
+
+    [Fact]
+    public async Task CancelAsync_RejectsInvalidRequestIdBeforeLookup()
+    {
+        var service = CreateValidationService();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.CancelAsync(new PricingCancelRequest { RequestId = 0 }));
+
+        Assert.Contains("RequestId", ex.Message);
+    }
+
+    [Fact]
+    public async Task ReverseAsync_RejectsInvalidRequestBeforeLookup()
+    {
+        var service = CreateValidationService();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.ReverseAsync(new PricingReverseRequest
+            {
+                OriginalRequestId = 1,
+                ReverseNo = "R001",
+                ReverseAmt = -1m
+            }));
+
+        Assert.Contains("退费金额", ex.Message);
+    }
+
+    [Fact]
+    public async Task GetSpecialFlagAsync_RejectsEmptyItemCode()
+    {
+        var service = CreateValidationService();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.GetSpecialFlagAsync(" "));
+
+        Assert.Contains("项目编码", ex.Message);
+    }
+
+    [Fact]
     public async Task SimulateAsync_CalculatesEveryChargeItem()
     {
         var engine = new CapturingPricingEngine();
@@ -646,6 +771,43 @@ public sealed class PricingApiServiceTests
             db: null!,
             Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
             NullLogger<PricingApiService>.Instance);
+
+    private static PricingApiService CreateValidationService() =>
+        new(
+            new CapturingPricingEngine(),
+            new EmptyRuleHeaderRepository(),
+            new InMemoryChargeRequestLogRepository(),
+            new EmptyChargeDiscountDetailRepository(),
+            new EmptyChargeTraceStepRepository(),
+            new EmptyLimitOccupyRepository(),
+            new EmptyChargeReverseLogRepository(),
+            new EmptyPriceMasterRepository(),
+            db: null!,
+            Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
+            NullLogger<PricingApiService>.Instance);
+
+    private static PricingCalculateRequest CreateValidCalculateRequest(
+        string sourceSystem = "HIS",
+        string patientId = "P001",
+        DateTime? businessChargeTime = null,
+        IReadOnlyList<PricingCalculateItemRequest>? items = null) =>
+        new()
+        {
+            RequestNo = "REQ-VALID",
+            SourceSystem = sourceSystem,
+            PatientId = patientId,
+            BusinessChargeTime = businessChargeTime ?? new DateTime(2026, 5, 10, 9, 30, 0),
+            Items = items ?? new[]
+            {
+                new PricingCalculateItemRequest
+                {
+                    ChargeDetailNo = "CD001",
+                    ItemCode = "ITEM001",
+                    InputQty = 1m,
+                    UnitPrice = 10m
+                }
+            }
+        };
 
     private sealed class CapturingPricingEngine : IPricingEngine
     {

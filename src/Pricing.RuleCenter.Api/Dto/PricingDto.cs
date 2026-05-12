@@ -16,10 +16,10 @@ public sealed class PricingCalculateRequest
     /// </summary>
     public string? RequestNo { get; init; }
 
-    [Required(ErrorMessage = "患者ID不能为空")]
     /// <summary>
     /// 患者标识，是限额累计和追溯查询的重要维度
     /// </summary>
+    [Required(ErrorMessage = "患者ID不能为空")]
     public string PatientId { get; init; } = string.Empty;
 
     /// <summary>
@@ -53,10 +53,10 @@ public sealed class PricingCalculateRequest
     /// </summary>
     public DateTime BusinessChargeTime { get; init; }
 
-    [Required(ErrorMessage = "来源系统不能为空")]
     /// <summary>
     /// 来源系统编码，例如 HIS、自助机或微信公众号
     /// </summary>
+    [Required(ErrorMessage = "来源系统不能为空")]
     public string SourceSystem { get; init; } = string.Empty;
 
     /// <summary>
@@ -83,11 +83,11 @@ public sealed class PricingCalculateRequest
     /// 调用方扩展参数。confirm 幂等指纹会纳入该字段，影响规则匹配或金额的参数必须稳定传入。
     /// </summary>
     public Dictionary<string, object?>? ExtraParams { get; init; }
-    [Required(ErrorMessage = "费用明细不能为空")]
-    [MinLength(1, ErrorMessage = "费用明细至少包含一条")]
     /// <summary>
     /// 本次结算包含的费用明细集合。一次结算可同时传入多条费用，每条费用独立携带项目、数量和单价。
     /// </summary>
+    [Required(ErrorMessage = "费用明细不能为空")]
+    [MinLength(1, ErrorMessage = "费用明细至少包含一条")]
     public IReadOnlyList<PricingCalculateItemRequest> Items { get; init; } = Array.Empty<PricingCalculateItemRequest>();
 }
 
@@ -105,10 +105,11 @@ public sealed class PricingCalculateItemRequest
     /// </summary>
     public string? ChargeDetailNo { get; init; }
 
-    [Required(ErrorMessage = "项目编码不能为空")]
     /// <summary>
     /// 项目编码，是规则匹配、价格校验和限额累计的核心维度。
+    /// 该字段属于费用明细层；统一计价请求根对象不再放单个 ItemCode。
     /// </summary>
+    [Required(ErrorMessage = "项目编码不能为空")]
     public string ItemCode { get; init; } = string.Empty;
 
     /// <summary>
@@ -120,10 +121,10 @@ public sealed class PricingCalculateItemRequest
     /// </summary>
     public string? ItemGroupCode { get; init; }
 
-    [Required(ErrorMessage = "数量不能为空")]
     /// <summary>
     /// 调用方录入的原始数量，金额计算前不得随意覆盖。
     /// </summary>
+    [Required(ErrorMessage = "数量不能为空")]
     public decimal InputQty { get; init; }
 
     /// <summary>
@@ -286,6 +287,7 @@ public sealed class PricingCalculateItemResponse
     public long RequestId { get; init; }
     /// <summary>
     /// 项目编码，是规则匹配、价格校验和限额累计的核心维度。
+    /// 该字段属于单条费用明细响应；多明细请求通过 Items 返回多条结果，响应根对象不再放单个 ItemCode。
     /// </summary>
     public string ItemCode { get; init; } = string.Empty;
     /// <summary>
@@ -436,10 +438,10 @@ public sealed class PricingTraceStepResponse
 /// </remarks>
 public sealed class PricingCommitRequest
 {
-    [Required(ErrorMessage = "请求ID不能为空")]
     /// <summary>
     /// 计价请求日志主键，用于串联请求、步骤、折价明细和限额占用
     /// </summary>
+    [Required(ErrorMessage = "请求ID不能为空")]
     public long RequestId { get; init; }
 
     /// <summary>
@@ -470,10 +472,10 @@ public sealed class PricingCommitActualItemRequest
     /// </summary>
     public string? ChargeDetailNo { get; init; }
 
-    [Required(ErrorMessage = "实际落账项目编码不能为空")]
     /// <summary>
     /// HIS 实际落账项目编码。
     /// </summary>
+    [Required(ErrorMessage = "实际落账项目编码不能为空")]
     public string ItemCode { get; init; } = string.Empty;
 
     /// <summary>
@@ -500,10 +502,10 @@ public sealed class PricingCommitActualItemRequest
 /// </remarks>
 public sealed class PricingCancelRequest
 {
-    [Required(ErrorMessage = "请求ID不能为空")]
     /// <summary>
     /// 计价请求日志主键，用于串联请求、步骤、折价明细和限额占用
     /// </summary>
+    [Required(ErrorMessage = "请求ID不能为空")]
     public long RequestId { get; init; }
 }
 
@@ -516,10 +518,10 @@ public sealed class PricingCancelRequest
 /// </remarks>
 public sealed class PricingReverseRequest
 {
-    [Required(ErrorMessage = "原请求ID不能为空")]
     /// <summary>
     /// 原始确认请求的 RequestId，必须指向已经提交成功的计价记录。
     /// </summary>
+    [Required(ErrorMessage = "原请求ID不能为空")]
     public long OriginalRequestId { get; init; }
 
     /// <summary>
