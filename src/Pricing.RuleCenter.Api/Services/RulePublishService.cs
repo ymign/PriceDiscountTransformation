@@ -638,6 +638,13 @@ public sealed class RulePublishService
         HashSet<string> ChargeScenes,
         HashSet<string> BodyParts)
     {
+        /// <summary>
+        /// 表示未配置收费场景或部位约束的通配作用域。
+        /// </summary>
+        /// <remarks>
+        /// 冲突校验中，空集合不是"无效规则"，而是"适用于所有场景/部位"。因此该实例用于表达旧规则或兜底规则
+        /// 覆盖全部收费入口，避免发布一条看似更细但实际会与通配规则重叠的新规则。
+        /// </remarks>
         public static RuleConditionScope Wildcard { get; } = new(
             new HashSet<string>(StringComparer.OrdinalIgnoreCase),
             new HashSet<string>(StringComparer.OrdinalIgnoreCase));

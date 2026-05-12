@@ -13,7 +13,18 @@ namespace Pricing.RuleCenter.Core.Engine.Executors;
 /// </remarks>
 public sealed class OnceQtyLimitExecutor : IRuleActionExecutor
 {
+    /// <summary>
+    /// 单次限额累计时计入的占用状态。
+    /// </summary>
+    /// <remarks>
+    /// PENDING 代表 confirm 后尚未落账但仍占住保护额度，CONFIRMED 代表已经落账的正式占用。
+    /// 两者都必须计入，否则并发收费或迟到 commit 会突破单次上限。
+    /// </remarks>
     private static readonly string[] OccupyStatuses = { "PENDING", "CONFIRMED" };
+
+    /// <summary>
+    /// 限额占用仓储，用于查询本次收费动作维度下已经占用的数量，并在 confirm 阶段锁定维度。
+    /// </summary>
     private readonly ILimitOccupyRepository _limitRepository;
 
     /// <summary>
@@ -131,10 +142,29 @@ public sealed class OnceQtyLimitExecutor : IRuleActionExecutor
 
     private sealed class OnceQtyParams
     {
+        /// <summary>
+        /// 当前版本推荐使用的单次收费动作最大允许数量。
+        /// </summary>
         public decimal MaxOnceQty { get; set; }
+
+        /// <summary>
+        /// 历史参数名，兼容旧配置中使用 LimitQty 表达单次上限的规则动作。
+        /// </summary>
         public decimal LimitQty { get; set; }
+
+        /// <summary>
+        /// 历史参数名，兼容旧配置中使用 MaxQty 表达单次上限的规则动作。
+        /// </summary>
         public decimal MaxQty { get; set; }
 
+        /// <summary>
+        /// 按兼容优先级解析最终可用的单次上限数量。
+        /// </summary>
+        /// <returns>优先返回 MaxOnceQty，其次 LimitQty，最后 MaxQty；三者都未配置时返回 0。</returns>
+        /// <remarks>
+        /// 规则中心经历过多版参数命名。这里不要求历史规则一次性清洗，而是在执行器入口统一兼容，
+        /// 避免旧动作参数因为字段名不同被当作"未配置上限"直接跳过。
+        /// </remarks>
         public decimal GetMaxOnceQty()
         {
             return MaxOnceQty > 0
