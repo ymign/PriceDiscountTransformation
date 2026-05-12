@@ -318,6 +318,68 @@ namespace Neusoft.HISFC.BizProcess.Integrate
         }
 
         /// <summary>
+        /// 住院收费界面展示前执行统一计价试算。
+        /// </summary>
+        /// <remarks>
+        /// simulate 只用于界面预览：不占用额度、不生成待 commit 状态，也不向 HIS 明细集合追加替换/加收子项。
+        /// 真正保存时仍必须走 <see cref="ConfirmInpatientBeforeSave"/>，以 confirm 返回结果为准落账。
+        /// </remarks>
+        public PricingInpatientPreviewResult SimulateInpatientForDisplay(
+            Neusoft.HISFC.Models.RADT.PatientInfo patient,
+            ArrayList feeDetails,
+            string chargeNo,
+            DateTime chargeTime,
+            string operatorId,
+            string operatorName,
+            string chargeDeptCode)
+        {
+            if (!IsConfigured())
+            {
+                return PricingInpatientPreviewResult.NotConfigured();
+            }
+
+            string error = null;
+            PricingAgent pricingAgent = GetAgent(ref error);
+            if (pricingAgent == null)
+            {
+                return PricingInpatientPreviewResult.Failed(error);
+            }
+
+            Dictionary<string, object> itemMap = new Dictionary<string, object>();
+            PricingCalculateRequest request = BuildInpatientRequest(
+                patient,
+                feeDetails,
+                chargeNo,
+                chargeTime,
+                operatorId,
+                operatorName,
+                chargeDeptCode,
+                itemMap,
+                ref error);
+
+            if (request == null)
+            {
+                return PricingInpatientPreviewResult.Failed(error);
+            }
+
+            try
+            {
+                ApiResponse<PricingCalculateResponse> response = pricingAgent.Sdk.Simulate(request);
+                if (response == null || !response.IsSuccess || response.Data == null)
+                {
+                    return PricingInpatientPreviewResult.Failed(
+                        response == null ? "统一计价试算无响应。" : response.Message);
+                }
+
+                return PricingInpatientPreviewResult.FromResponse(response.Data);
+            }
+            catch (Exception ex)
+            {
+                return PricingInpatientPreviewResult.Failed("统一计价试算失败：" + ex.Message);
+            }
+        }
+
+        /// <summary>
         /// HIS 本地费用明细保存成功后标记待提交请求，并从真实 HIS 明细重建 actualItems。
         /// </summary>
         /// <param name="pending">confirm 阶段登记的待提交对象。</param>
@@ -1598,6 +1660,253 @@ namespace Neusoft.HISFC.BizProcess.Integrate
     /// 单条门诊费用的统一计价预览结果。
     /// </summary>
     public sealed class PricingOutpatientPreviewItem
+    {
+        public string ItemRequestNo;
+        public string ChargeDetailNo;
+        public string ItemCode;
+        public string ItemName;
+        public decimal InputQty;
+        public decimal FinalQty;
+        public decimal UnitPrice;
+        public decimal OriginalAmount;
+        public decimal FinalAmount;
+        public decimal DiscountAmount;
+        public decimal ChildAmount;
+        public bool IsSpecialItem;
+        public string Summary;
+    }
+
+    /// <summary>
+    /// 住院收费界面使用的统一计价预览门面。
+    /// </summary>
+    public static class PricingInpatientPreviewService
+    {
+        /// <summary>
+        /// 对住院费用明细执行 simulate 预览。
+        /// </summary>
+        public static PricingInpatientPreviewResult Simulate(
+            Neusoft.HISFC.Models.RADT.PatientInfo patient,
+            ArrayList feeDetails,
+            string chargeNo,
+            DateTime chargeTime,
+            Employee oper,
+            string fallbackDeptCode,
+            Neusoft.HISFC.BizLogic.Fee.Item itemManager)
+        {
+            if (itemManager == null)
+            {
+                return PricingInpatientPreviewResult.Failed("统一计价试算缺少 HIS 项目业务层。");
+            }
+
+            PricingLegacyChargeBridge bridge = new PricingLegacyChargeBridge(itemManager);
+            return bridge.SimulateInpatientForDisplay(
+                patient,
+                feeDetails,
+                chargeNo,
+                chargeTime,
+                oper == null ? string.Empty : oper.ID,
+                oper == null ? string.Empty : oper.Name,
+                GetOperatorDeptCode(oper, fallbackDeptCode));
+        }
+
+        /// <summary>
+        /// 收费员科室优先取登录操作员科室；为空时回落到界面传入科室。
+        /// </summary>
+        private static string GetOperatorDeptCode(Employee oper, string fallbackDeptCode)
+        {
+            if (oper != null && oper.Dept != null && !string.IsNullOrEmpty(oper.Dept.ID))
+            {
+                return oper.Dept.ID;
+            }
+
+            return fallbackDeptCode;
+        }
+    }
+
+    /// <summary>
+    /// 住院统一计价试算结果。
+    /// </summary>
+    public sealed class PricingInpatientPreviewResult
+    {
+        /// <summary>
+        /// 是否已启用 PricingAgent 配置。
+        /// </summary>
+        public bool Configured;
+
+        /// <summary>
+        /// simulate 是否成功返回可展示结果。
+        /// </summary>
+        public bool Success;
+
+        /// <summary>
+        /// 失败或普通说明。
+        /// </summary>
+        public string Message;
+
+        /// <summary>
+        /// 按请求明细顺序排列的预览结果。
+        /// </summary>
+        public ArrayList Items = new ArrayList();
+
+        /// <summary>
+        /// 创建未启用结果。界面收到该结果时继续走旧展示逻辑。
+        /// </summary>
+        public static PricingInpatientPreviewResult NotConfigured()
+        {
+            return new PricingInpatientPreviewResult
+            {
+                Configured = false,
+                Success = false,
+                Message = "未启用统一计价。"
+            };
+        }
+
+        /// <summary>
+        /// 创建失败结果。界面可以保留原价展示，最终收费 confirm 仍会再次校验并阻断。
+        /// </summary>
+        public static PricingInpatientPreviewResult Failed(string message)
+        {
+            return new PricingInpatientPreviewResult
+            {
+                Configured = true,
+                Success = false,
+                Message = message
+            };
+        }
+
+        /// <summary>
+        /// 从统一计价响应转换为界面预览模型。
+        /// </summary>
+        internal static PricingInpatientPreviewResult FromResponse(PricingCalculateResponse response)
+        {
+            PricingInpatientPreviewResult result = new PricingInpatientPreviewResult();
+            result.Configured = true;
+            result.Success = true;
+            result.Message = "统一计价试算成功。";
+
+            if (response == null || response.Items == null)
+            {
+                return result;
+            }
+
+            foreach (PricingCalculateItemResponse item in response.Items)
+            {
+                if (item == null)
+                {
+                    continue;
+                }
+
+                PricingInpatientPreviewItem preview = new PricingInpatientPreviewItem();
+                preview.ItemRequestNo = item.ItemRequestNo;
+                preview.ChargeDetailNo = item.ChargeDetailNo;
+                preview.ItemCode = item.ItemCode;
+                preview.ItemName = item.ItemName;
+                preview.InputQty = item.InputQty;
+                preview.FinalQty = item.FinalQty;
+                preview.UnitPrice = item.UnitPrice;
+                preview.OriginalAmount = RoundMoney(item.InputQty * item.UnitPrice);
+                preview.FinalAmount = item.FinalAmount;
+                preview.DiscountAmount = item.DiscountAmount;
+                preview.IsSpecialItem = item.IsSpecialItem;
+                preview.ChildAmount = SumChildAmount(item);
+                preview.Summary = BuildSummary(item, preview);
+                result.Items.Add(preview);
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// 按明细顺序获取预览结果。
+        /// </summary>
+        public PricingInpatientPreviewItem GetItem(int index)
+        {
+            if (index < 0 || index >= Items.Count)
+            {
+                return null;
+            }
+
+            return Items[index] as PricingInpatientPreviewItem;
+        }
+
+        private static string BuildSummary(PricingCalculateItemResponse item, PricingInpatientPreviewItem preview)
+        {
+            List<string> parts = new List<string>();
+            parts.Add("统一计价预览");
+            parts.Add("原价" + FormatMoney(preview.OriginalAmount));
+            parts.Add("最终" + FormatMoney(preview.FinalAmount));
+
+            if (preview.DiscountAmount != 0)
+            {
+                parts.Add("折价" + FormatMoney(preview.DiscountAmount));
+            }
+
+            if (preview.InputQty != preview.FinalQty)
+            {
+                parts.Add("数量" + FormatQty(preview.InputQty) + "->" + FormatQty(preview.FinalQty));
+            }
+
+            if (item.ReplacementItem != null && item.ReplacementItem.Qty > 0)
+            {
+                parts.Add("替换子项" + Safe(item.ReplacementItem.ItemCode)
+                    + "/" + FormatMoney(item.ReplacementItem.Amount));
+            }
+
+            if (item.ChildItems != null && item.ChildItems.Count > 0)
+            {
+                parts.Add("加收子项" + FormatMoney(preview.ChildAmount));
+            }
+
+            return string.Join("；", parts.ToArray());
+        }
+
+        private static decimal SumChildAmount(PricingCalculateItemResponse item)
+        {
+            decimal amount = 0;
+            if (item.ReplacementItem != null)
+            {
+                amount += item.ReplacementItem.Amount;
+            }
+
+            if (item.ChildItems != null)
+            {
+                foreach (PricingChildItemResponse child in item.ChildItems)
+                {
+                    if (child != null)
+                    {
+                        amount += child.Amount;
+                    }
+                }
+            }
+
+            return amount;
+        }
+
+        private static string FormatMoney(decimal value)
+        {
+            return RoundMoney(value).ToString("0.00");
+        }
+
+        private static string FormatQty(decimal value)
+        {
+            return value.ToString("0.####");
+        }
+
+        private static decimal RoundMoney(decimal value)
+        {
+            return decimal.Round(value, 2, MidpointRounding.AwayFromZero);
+        }
+
+        private static string Safe(string value)
+        {
+            return value == null ? string.Empty : value;
+        }
+    }
+
+    /// <summary>
+    /// 单条住院费用的统一计价预览结果。
+    /// </summary>
+    public sealed class PricingInpatientPreviewItem
     {
         public string ItemRequestNo;
         public string ChargeDetailNo;

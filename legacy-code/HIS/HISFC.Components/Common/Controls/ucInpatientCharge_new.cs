@@ -197,6 +197,7 @@ namespace Neusoft.HISFC.Components.Common.Controls
         /// </summary>
         private Neusoft.FrameWork.Models.NeuObject recipeDept = null;
         private bool isJudgeQty = true; //是否判断数量
+        private bool isPricingPreviewRefreshing;
         private bool defaultExeDeptIsDeptIn = false;
 
         /// <summary>
@@ -892,6 +893,7 @@ namespace Neusoft.HISFC.Components.Common.Controls
             }
             //SPD套包收费
             ShowPackageScanForm(item, row);
+            this.RefreshPricingPreviewForCurrentRows();
             return 0;
         }
 
@@ -1919,6 +1921,8 @@ namespace Neusoft.HISFC.Components.Common.Controls
                     #endregion
 
                 }
+                this.ApplyPricingPreviewToFeeDetails(this.patientInfo, firstInputFeeItemlistTemp, operTime, employee, employee.Dept == null ? string.Empty : employee.Dept.ID);
+
                 //调用整体收费函数,收取第一次录入的费用
                 //if (this.feeIntergrate.FeeItem(this.patientInfo, ref firstInputFeeItemlist) == -1)
                 if (this.feeIntergrate.FeeItem(this.patientInfo, ref firstInputFeeItemlistTemp) == -1)
@@ -2342,6 +2346,336 @@ namespace Neusoft.HISFC.Components.Common.Controls
         /// <summary>
         /// 显示汇总金额
         /// </summary>
+        private Neusoft.HISFC.BizProcess.Integrate.PricingInpatientPreviewResult GetPricingPreview(
+            PatientInfo patient,
+            ArrayList feeDetails,
+            DateTime chargeTime,
+            Employee oper,
+            string fallbackDeptCode)
+        {
+            if (patient == null || feeDetails == null || feeDetails.Count == 0)
+            {
+                return null;
+            }
+
+            try
+            {
+                return Neusoft.HISFC.BizProcess.Integrate.PricingInpatientPreviewService.Simulate(
+                    patient,
+                    feeDetails,
+                    string.Empty,
+                    chargeTime,
+                    oper,
+                    fallbackDeptCode,
+                    this.itemManager);
+            }
+            catch (Exception ex)
+            {
+                return Neusoft.HISFC.BizProcess.Integrate.PricingInpatientPreviewResult.Failed("统一计价预览失败：" + ex.Message);
+            }
+        }
+
+        private Neusoft.HISFC.BizProcess.Integrate.PricingInpatientPreviewItem GetPricingPreviewItem(
+            Neusoft.HISFC.BizProcess.Integrate.PricingInpatientPreviewResult previewResult,
+            int index)
+        {
+            if (previewResult == null || !previewResult.Configured || !previewResult.Success)
+            {
+                return null;
+            }
+
+            return previewResult.GetItem(index);
+        }
+
+        private void ResetPricingPreviewColor(int row)
+        {
+            if (row < 0 || row >= this.fpDetail_Sheet.RowCount)
+            {
+                return;
+            }
+
+            Color foreColor = this.fpDetail_Sheet.Rows[row].ForeColor;
+            if (foreColor.IsEmpty)
+            {
+                foreColor = Color.Black;
+            }
+
+            this.fpDetail_Sheet.Cells[row, (int)Columns.ItemName].ForeColor = foreColor;
+            this.fpDetail_Sheet.Cells[row, (int)Columns.TotCost].ForeColor = foreColor;
+        }
+
+        private void ClearPricingPreviewMemo(int row)
+        {
+            if (row < 0 || row >= this.fpDetail_Sheet.RowCount)
+            {
+                return;
+            }
+
+            this.fpDetail_Sheet.Cells[row, (int)Columns.ItemName].Note = string.Empty;
+            this.fpDetail_Sheet.Cells[row, (int)Columns.TotCost].Note = string.Empty;
+            this.ResetPricingPreviewColor(row);
+        }
+
+        private void ApplyPricingPreviewAmount(
+            FeeItemList fee,
+            Neusoft.HISFC.BizProcess.Integrate.PricingInpatientPreviewItem previewItem)
+        {
+            if (fee == null || previewItem == null)
+            {
+                return;
+            }
+
+            fee.FT.TotCost = previewItem.FinalAmount;
+            fee.FT.OwnCost = previewItem.FinalAmount;
+            fee.FT.PayCost = 0;
+            fee.FT.PubCost = 0;
+            fee.FT.RebateCost = 0;
+        }
+
+        private void ApplyPricingPreviewAmount(
+            int row,
+            FeeItemList fee,
+            Neusoft.HISFC.BizProcess.Integrate.PricingInpatientPreviewItem previewItem)
+        {
+            this.ApplyPricingPreviewAmount(fee, previewItem);
+            if (row >= 0 && row < this.fpDetail_Sheet.RowCount && previewItem != null)
+            {
+                this.fpDetail_Sheet.SetValue(row, (int)Columns.TotCost, previewItem.FinalAmount, false);
+            }
+        }
+
+        private void ApplyPricingPreviewMemo(int row, Neusoft.HISFC.BizProcess.Integrate.PricingInpatientPreviewItem previewItem)
+        {
+            this.ClearPricingPreviewMemo(row);
+            if (previewItem == null || string.IsNullOrEmpty(previewItem.Summary))
+            {
+                return;
+            }
+
+            this.fpDetail_Sheet.Cells[row, (int)Columns.ItemName].Note = previewItem.Summary;
+            this.fpDetail_Sheet.Cells[row, (int)Columns.ItemName].NoteStyle = FarPoint.Win.Spread.NoteStyle.PopupNote;
+            this.fpDetail_Sheet.Cells[row, (int)Columns.TotCost].Note = previewItem.Summary;
+            this.fpDetail_Sheet.Cells[row, (int)Columns.TotCost].NoteStyle = FarPoint.Win.Spread.NoteStyle.PopupNote;
+
+            if (previewItem.IsSpecialItem
+                || previewItem.DiscountAmount != 0
+                || previewItem.ChildAmount != 0
+                || previewItem.FinalAmount != previewItem.OriginalAmount
+                || previewItem.InputQty != previewItem.FinalQty)
+            {
+                this.fpDetail_Sheet.Cells[row, (int)Columns.ItemName].ForeColor = Color.Blue;
+                this.fpDetail_Sheet.Cells[row, (int)Columns.TotCost].ForeColor = Color.Blue;
+            }
+        }
+
+        private void ApplyPricingPreviewFailureMemo(
+            int row,
+            Neusoft.HISFC.BizProcess.Integrate.PricingInpatientPreviewResult previewResult)
+        {
+            this.ClearPricingPreviewMemo(row);
+            if (previewResult == null || !previewResult.Configured || previewResult.Success)
+            {
+                return;
+            }
+
+            string message = "统一计价预览失败：" + previewResult.Message;
+            this.fpDetail_Sheet.Cells[row, (int)Columns.ItemName].Note = message;
+            this.fpDetail_Sheet.Cells[row, (int)Columns.ItemName].NoteStyle = FarPoint.Win.Spread.NoteStyle.PopupNote;
+            this.fpDetail_Sheet.Cells[row, (int)Columns.TotCost].Note = message;
+            this.fpDetail_Sheet.Cells[row, (int)Columns.TotCost].NoteStyle = FarPoint.Win.Spread.NoteStyle.PopupNote;
+        }
+
+        private PatientInfo GetPricingPreviewPatient(int row, FeeItemList fee)
+        {
+            object patientObject = this.fpDetail_Sheet.Cells[row, (int)Columns.InpatientNO].Tag;
+            if (patientObject is PatientInfo)
+            {
+                return patientObject as PatientInfo;
+            }
+
+            if (fee != null && !string.IsNullOrEmpty(fee.ExtFlag2))
+            {
+                return this.radtIntegrate.GetPatientInfomation(fee.ExtFlag2);
+            }
+
+            return this.patientInfo;
+        }
+
+        private ArrayList CollectPricingPreviewFeeDetails(ArrayList rowIndexes, ArrayList patients, DateTime operTime, Employee employee)
+        {
+            ArrayList feeDetails = new ArrayList();
+            if (rowIndexes == null || patients == null)
+            {
+                return feeDetails;
+            }
+
+            string recipeDeptCode = string.Empty;
+            if (employee != null && employee.Dept != null)
+            {
+                recipeDeptCode = employee.Dept.ID;
+            }
+
+            for (int row = 0; row < this.fpDetail_Sheet.RowCount; row++)
+            {
+                if (this.fpDetail_Sheet.GetText(row, (int)Columns.IsNew) != "1")
+                {
+                    this.ClearPricingPreviewMemo(row);
+                    continue;
+                }
+
+                bool isNew = false;
+                FeeItemList fee = new FeeItemList();
+                int returnValue = this.SetItem(row, PayTypes.Balanced, recipeDeptCode, operTime, ref isNew, ref fee);
+                if (returnValue != 1 || !isNew || fee == null || fee.Item == null || fee.Item.Qty <= 0)
+                {
+                    this.ClearPricingPreviewMemo(row);
+                    continue;
+                }
+
+                PatientInfo patient = this.GetPricingPreviewPatient(row, fee);
+                if (patient == null || string.IsNullOrEmpty(patient.ID))
+                {
+                    this.ClearPricingPreviewMemo(row);
+                    continue;
+                }
+
+                fee.Patient = patient.Clone();
+                rowIndexes.Add(row);
+                patients.Add(patient);
+                feeDetails.Add(fee.Clone());
+            }
+
+            return feeDetails;
+        }
+
+        private void RefreshPricingPreviewForCurrentRows()
+        {
+            if (this.isPricingPreviewRefreshing)
+            {
+                return;
+            }
+
+            Employee employee = this.personManager.GetPersonByID(this.recipeDoctCode);
+            if (employee == null)
+            {
+                return;
+            }
+
+            if (this.recipeDept != null && this.recipeDept.ID != string.Empty)
+            {
+                employee.Dept = this.recipeDept;
+            }
+
+            DateTime operTime = this.inpatientManager.GetDateTimeFromSysDateTime();
+            ArrayList rowIndexes = new ArrayList();
+            ArrayList patients = new ArrayList();
+            ArrayList feeDetails = this.CollectPricingPreviewFeeDetails(rowIndexes, patients, operTime, employee);
+            if (feeDetails.Count == 0)
+            {
+                this.Sum();
+                return;
+            }
+
+            ArrayList groupKeys = new ArrayList();
+            Hashtable groupRows = new Hashtable();
+            Hashtable groupFees = new Hashtable();
+            Hashtable groupPatients = new Hashtable();
+            for (int i = 0; i < feeDetails.Count; i++)
+            {
+                PatientInfo patient = patients[i] as PatientInfo;
+                FeeItemList fee = feeDetails[i] as FeeItemList;
+                string key = patient == null ? string.Empty : patient.ID;
+                if (string.IsNullOrEmpty(key) && fee != null)
+                {
+                    key = fee.ExtFlag2;
+                }
+
+                if (string.IsNullOrEmpty(key))
+                {
+                    this.ApplyPricingPreviewFailureMemo((int)rowIndexes[i], Neusoft.HISFC.BizProcess.Integrate.PricingInpatientPreviewResult.Failed("统一计价试算缺少住院患者信息。"));
+                    continue;
+                }
+
+                if (!groupFees.ContainsKey(key))
+                {
+                    groupKeys.Add(key);
+                    groupRows[key] = new ArrayList();
+                    groupFees[key] = new ArrayList();
+                    groupPatients[key] = patient;
+                }
+
+                ((ArrayList)groupRows[key]).Add(rowIndexes[i]);
+                ((ArrayList)groupFees[key]).Add(fee);
+            }
+
+            string fallbackDeptCode = employee.Dept == null ? string.Empty : employee.Dept.ID;
+            this.isPricingPreviewRefreshing = true;
+            try
+            {
+                foreach (string key in groupKeys)
+                {
+                    ArrayList rows = groupRows[key] as ArrayList;
+                    ArrayList fees = groupFees[key] as ArrayList;
+                    PatientInfo patient = groupPatients[key] as PatientInfo;
+                    Neusoft.HISFC.BizProcess.Integrate.PricingInpatientPreviewResult previewResult =
+                        this.GetPricingPreview(patient, fees, operTime, employee, fallbackDeptCode);
+                    if (previewResult != null
+                        && previewResult.Configured
+                        && previewResult.Success
+                        && previewResult.Items.Count != fees.Count)
+                    {
+                        previewResult = Neusoft.HISFC.BizProcess.Integrate.PricingInpatientPreviewResult.Failed(
+                            "统一计价试算返回明细数量与 HIS 当前住院明细数量不一致。");
+                    }
+
+                    for (int i = 0; i < rows.Count; i++)
+                    {
+                        int row = (int)rows[i];
+                        FeeItemList fee = this.fpDetail_Sheet.GetValue(row, (int)Columns.ItemObject) as FeeItemList;
+                        Neusoft.HISFC.BizProcess.Integrate.PricingInpatientPreviewItem previewItem = this.GetPricingPreviewItem(previewResult, i);
+                        if (previewItem == null)
+                        {
+                            this.ApplyPricingPreviewFailureMemo(row, previewResult);
+                            continue;
+                        }
+
+                        this.ApplyPricingPreviewAmount(row, fee, previewItem);
+                        this.ApplyPricingPreviewMemo(row, previewItem);
+                    }
+                }
+            }
+            finally
+            {
+                this.isPricingPreviewRefreshing = false;
+            }
+
+            this.Sum();
+        }
+
+        private void ApplyPricingPreviewToFeeDetails(
+            PatientInfo patient,
+            ArrayList feeDetails,
+            DateTime operTime,
+            Employee employee,
+            string fallbackDeptCode)
+        {
+            Neusoft.HISFC.BizProcess.Integrate.PricingInpatientPreviewResult previewResult =
+                this.GetPricingPreview(patient, feeDetails, operTime, employee, fallbackDeptCode);
+            if (previewResult == null
+                || !previewResult.Configured
+                || !previewResult.Success
+                || previewResult.Items.Count != feeDetails.Count)
+            {
+                return;
+            }
+
+            for (int i = 0; i < feeDetails.Count; i++)
+            {
+                FeeItemList fee = feeDetails[i] as FeeItemList;
+                Neusoft.HISFC.BizProcess.Integrate.PricingInpatientPreviewItem previewItem = previewResult.GetItem(i);
+                this.ApplyPricingPreviewAmount(fee, previewItem);
+            }
+        }
         protected virtual void Sum()
         {
             int count = this.fpDetail_Sheet.RowCount;
@@ -3117,6 +3451,7 @@ namespace Neusoft.HISFC.Components.Common.Controls
                 return -1;
             }
 
+            this.RefreshPricingPreviewForCurrentRows();
             return 0;
         }
 
@@ -3850,6 +4185,7 @@ namespace Neusoft.HISFC.Components.Common.Controls
 
             //重新计算合计
             this.Sum();
+            this.RefreshPricingPreviewForCurrentRows();
 
             //不让合计行得到焦点
             if (this.fpDetail_Sheet.RowCount >= 2 && this.fpDetail_Sheet.ActiveRowIndex == this.fpDetail_Sheet.RowCount - 1)
@@ -4878,6 +5214,7 @@ namespace Neusoft.HISFC.Components.Common.Controls
 
                     this.fpDetail_Sheet.SetValue(e.Row, (int)Columns.TotCost, price * qty * day, false);
                 }
+                this.RefreshPricingPreviewForCurrentRows();
             }
         }
 
