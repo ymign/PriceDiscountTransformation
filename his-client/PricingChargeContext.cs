@@ -85,7 +85,7 @@ namespace HIS.Pricing.Client
             request.ChargeNo = ChargeNo;
             if (!string.IsNullOrEmpty(BusinessRequestNo) || !string.IsNullOrEmpty(ChargeNo))
             {
-                request.BusinessRequestNo = PricingHisIntegrationHelper.EnsureBusinessRequestNo(BusinessRequestNo, ChargeNo);
+                request.BusinessRequestNo = PricingBusinessRequestNoHelper.EnsureBusinessRequestNo(BusinessRequestNo, ChargeNo);
             }
             request.OperatorId = OperatorId;
             request.OperatorName = OperatorName;
@@ -108,6 +108,7 @@ namespace HIS.Pricing.Client
                 PricingParts = PricingParts
             });
 
+            PricingCalculateRequestValidator.ValidateForCalculate(request);
             return request;
         }
     }

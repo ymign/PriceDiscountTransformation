@@ -68,9 +68,9 @@ namespace HIS.Pricing.Client
         /// </summary>
         public SpecialPricingDecision CheckSpecialPricingRequired(string itemCode)
         {
-            if (string.IsNullOrEmpty(itemCode))
+            if (itemCode == null || itemCode.Trim().Length == 0)
             {
-                return SpecialPricingDecision.AllowOrdinary("项目编码为空，按原流程处理。");
+                return SpecialPricingDecision.Blocked("项目编码为空，禁止继续收费。");
             }
 
             try
@@ -137,10 +137,7 @@ namespace HIS.Pricing.Client
             List<PricingCommitActualItemRequest> actualItems,
             decimal? actualTotalAmount)
         {
-            if (actualItems == null || actualItems.Count == 0)
-            {
-                throw new ArgumentException("commit 必须回传 HIS 实际落账明细 actualItems。", "actualItems");
-            }
+            PricingCalculateRequestValidator.ValidateCommitActuals(requestId, actualItems);
 
             PricingCommitRequest request = new PricingCommitRequest();
             request.RequestId = requestId;
@@ -166,11 +163,7 @@ namespace HIS.Pricing.Client
         /// </summary>
         public ApiResponse ReverseAfterHisRefund(PricingReverseRequest request)
         {
-            if (request == null)
-            {
-                throw new ArgumentNullException("request");
-            }
-
+            PricingCalculateRequestValidator.ValidateReverseRequest(request);
             return _client.Reverse(request);
         }
 
@@ -206,13 +199,10 @@ namespace HIS.Pricing.Client
 
             if (string.IsNullOrEmpty(request.BusinessRequestNo) && !string.IsNullOrEmpty(request.ChargeNo))
             {
-                request.BusinessRequestNo = PricingHisIntegrationHelper.EnsureBusinessRequestNo(null, request.ChargeNo);
+                request.BusinessRequestNo = PricingBusinessRequestNoHelper.EnsureBusinessRequestNo(null, request.ChargeNo);
             }
 
-            if (request.Items == null || request.Items.Count == 0)
-            {
-                throw new InvalidOperationException("PricingCalculateRequest.Items 不能为空。");
-            }
+            PricingCalculateRequestValidator.ValidateForCalculate(request);
         }
 
         /// <summary>
@@ -222,12 +212,7 @@ namespace HIS.Pricing.Client
         public void ValidateConfirmRequest(PricingCalculateRequest request)
         {
             PrepareCalculateRequest(request);
-
-            if (string.IsNullOrEmpty(request.BusinessRequestNo))
-            {
-                throw new InvalidOperationException(
-                    "confirm 前必须传入稳定的 BusinessRequestNo；若 HIS 尚未生成收费单号，请先预生成一次收费确认流水。");
-            }
+            PricingCalculateRequestValidator.ValidateForConfirm(request);
         }
     }
 }

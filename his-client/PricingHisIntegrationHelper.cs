@@ -53,10 +53,10 @@ namespace HIS.Pricing.Client
         /// <returns>特殊计价决策结果，包含是否特殊、是否允许普通计价、是否需要弹窗等信息</returns>
         public SpecialPricingDecision CheckSpecialPricingRequired(string itemCode)
         {
-            // 项目编码为空时按普通流程处理（防御性逻辑，不应发生在正常业务中）
-            if (string.IsNullOrEmpty(itemCode))
+            // 项目编码为空属于接入侧入参错误，产品入口必须阻断，不能当普通项目放行。
+            if (itemCode == null || itemCode.Trim().Length == 0)
             {
-                return SpecialPricingDecision.AllowOrdinary("项目编码为空，按原流程处理。");
+                return SpecialPricingDecision.Blocked("项目编码为空，禁止继续收费。");
             }
 
             try
@@ -246,6 +246,7 @@ namespace HIS.Pricing.Client
                 UnitPrice = unitPrice,
                 BodyPartCode = bodyPartCode
             });
+            PricingCalculateRequestValidator.ValidateForCalculate(request);
             return request;
         }
 
@@ -294,88 +295,6 @@ namespace HIS.Pricing.Client
             // }
             throw new NotSupportedException(
                 "QueryLegacyOccupiedQty 尚未接入旧 HIS getRestrictingfee SQL。上线过渡期必须实现旧收费明细查询，或不要调用此方法。");
-        }
-    }
-
-    /// <summary>
-    /// 特殊计价决策结果。
-    /// 由 CheckSpecialPricingRequired 方法返回，HIS 收费流程据此决定后续行为。
-    ///
-    /// 三种决策：
-    /// - AllowOrdinary：允许普通计价（非特殊项目）
-    /// - RequirePopup：必须打开计价弹窗（特殊项目）
-    /// - BlockAsServiceUnavailable：阻断收费（服务不可用，禁止回退）
-    /// </summary>
-    public sealed class SpecialPricingDecision
-    {
-        /// <summary>是否为特殊计价项目</summary>
-        public bool IsSpecial { get; private set; }
-
-        /// <summary>是否允许按普通计价流程继续收费</summary>
-        public bool AllowOrdinaryPricing { get; private set; }
-
-        /// <summary>是否需要打开特殊计价确认弹窗</summary>
-        public bool ShouldOpenPopup { get; private set; }
-
-        /// <summary>
-        /// 计价服务是否不可用。为 true 时必须阻断收费流程，
-        /// HIS 不得回退为普通计价——这是资金安全硬约束。
-        /// </summary>
-        public bool ServiceUnavailable { get; private set; }
-
-        /// <summary>决策说明信息，可展示给收费人员或记录到日志</summary>
-        public string Message { get; private set; }
-
-        /// <summary>
-        /// 创建"允许普通计价"决策。用于非特殊项目的正常放行。
-        /// </summary>
-        /// <param name="message">决策说明</param>
-        /// <returns>允许普通计价的决策实例</returns>
-        public static SpecialPricingDecision AllowOrdinary(string message)
-        {
-            return new SpecialPricingDecision
-            {
-                IsSpecial = false,
-                AllowOrdinaryPricing = true,
-                ShouldOpenPopup = false,
-                ServiceUnavailable = false,
-                Message = message
-            };
-        }
-
-        /// <summary>
-        /// 创建"需要弹窗"决策。用于特殊项目的收费流程，HIS 必须打开计价确认弹窗。
-        /// </summary>
-        /// <param name="message">决策说明</param>
-        /// <returns>需要弹窗的决策实例</returns>
-        public static SpecialPricingDecision RequirePopup(string message)
-        {
-            return new SpecialPricingDecision
-            {
-                IsSpecial = true,
-                AllowOrdinaryPricing = false,
-                ShouldOpenPopup = true,
-                ServiceUnavailable = false,
-                Message = message
-            };
-        }
-
-        /// <summary>
-        /// 创建"服务不可用阻断"决策。计价服务异常时使用，
-        /// HIS 必须阻断收费流程，不得回退为普通计价。
-        /// </summary>
-        /// <param name="message">决策说明（含错误信息）</param>
-        /// <returns>服务不可用阻断决策实例</returns>
-        public static SpecialPricingDecision BlockAsServiceUnavailable(string message)
-        {
-            return new SpecialPricingDecision
-            {
-                IsSpecial = true,
-                AllowOrdinaryPricing = false,
-                ShouldOpenPopup = false,
-                ServiceUnavailable = true,
-                Message = message
-            };
         }
     }
 

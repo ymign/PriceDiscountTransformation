@@ -23,6 +23,7 @@ HIS 不需要把特殊计价界面和规则判断全部写进自己系统，只�
 
 `PricingSdk` 是无界面的标准接入层，负责：
 
+- 本地基础参数校验：在 special-flag、simulate、confirm 前先阻断空患者、空项目、非正数量等明显接入错误。
 - `CheckSpecialPricingRequired`：查询项目是否需要特殊计价。
 - `Simulate`：试算，不占用额度。
 - `ConfirmBeforeCharge`：收费保存前确认，占用额度。
@@ -105,6 +106,13 @@ PricingAgent/
 
 当前仓库已提供代码级 `PricingSdkOptions`，后续如果要做安装包，可再加配置文件读取器和版本检查器。
 
+产品化交付包还应补齐：
+
+- 本地日志目录：记录 special-flag、simulate、confirm、commit、cancel、reverse 的请求号、业务号、耗时和失败原因。
+- 配置文件读取器：支持院区、渠道、服务地址、超时和重试参数不改代码切换。
+- 版本信息：DLL 版本、协议版本、服务端版本检查，避免 HIS 引用旧 DLL 后字段不兼容。
+- 安装和回滚脚本：支持灰度、回退和一键替换。
+
 ## 5. 多系统复用方式
 
 | 接入方 | 推荐方式 | 说明 |
@@ -146,8 +154,28 @@ PricingAgent/
 - `his-client/PricingSdkOptions.cs`
 - `his-client/PricingSdk.cs`
 - `his-client/PricingChargeContext.cs`
+- `his-client/PricingCalculateRequestValidator.cs`
+- `his-client/PricingDecisionDtos.cs`
 - `his-client/PricingAgent.cs`
 - `his-client/FrmPricingPopup.cs`
 - `his-client/FrmPricingRuleWorkbench.cs`
 
 这套边界已经能支持“一个 DLL 接入、自己弹窗、结果回传”的产品形态。后续真正做商品化交付时，再补安装包、配置读取、日志落盘、自动更新和授权控制。
+
+## 9. 产品化验收清单
+
+当前代码已经具备的底线能力：
+
+- Agent/SDK 在 special-flag 前做本地参数校验，空项目编码、空患者、非正数量不会被当普通项目放行。
+- confirm 必须有稳定 `businessRequestNo`；无收费单号且无业务号时直接阻断。
+- commit 必须回传 HIS 真实 `actualItems`，不能只传总金额。
+- 替换子项、加收子项允许 HIS 新生成明细号，但项目、片段序号、数量、金额必须一致。
+- WinForms 弹窗能展示费用明细、试算金额、计算步骤和折价原因，确认失败不允许回退普通计价。
+
+仍需在商品化交付前补齐的能力：
+
+- 配置文件读取和环境切换。
+- 本地日志落盘、补偿队列和人工排错页面。
+- DLL 版本、协议版本和服务端版本兼容检查。
+- 安装包、升级包、回滚脚本和医院现场部署手册。
+- 真实 HIS 环境的 UI 走查：字体、分辨率、DPI、双屏、键盘操作和收费员确认流程。

@@ -13,6 +13,8 @@
 - `PricingSdkOptions.cs`：SDK/Agent 运行配置，封装服务地址、超时、重试和渠道编码。
 - `PricingSdk.cs`：无界面的产品 SDK，封装 special-flag、simulate、confirm、commit、cancel、reverse。
 - `PricingChargeContext.cs`：单项目收费动作的轻量上下文，用于减少 HIS 侧 DTO 组装代码。
+- `PricingCalculateRequestValidator.cs`：SDK 本地参数校验，阻断空患者、空项目、非正数量等接入错误。
+- `PricingDecisionDtos.cs`：特殊计价决策 DTO，供 SDK、Agent、兼容辅助类复用。
 - `PricingAgent.cs`：产品化 Agent 入口，HIS 调一个接口，Agent 自己判断特殊项目并弹出自己的收费确认窗口。
 - `PricingHisIntegrationHelper.cs`：收费入口接入辅助，封装特殊项目判断、弹窗、commit/cancel。
 - `FrmPricingRuleWorkbench.cs`：特殊计价规则维护工作台。
@@ -159,6 +161,7 @@ if (decision.ShouldOpenPopup)
 
 - `confirm` 超时重试必须复用同一个 `BusinessRequestNo`。
 - 如果 HIS 尚未生成收费单号或稳定收费确认流水，不能用时间戳/GUID 临时生成 `BusinessRequestNo`；应先预生成稳定业务号，否则 confirm 会阻断。
+- Agent/SDK 会在 special-flag 前校验患者、项目、数量、单价等基础字段；入参错误会阻断，不会按普通项目放行。
 - `confirm` 成功后，HIS 落账成功调用带 `actualItems` 参数的 `CommitAfterHisSuccess`。
 - HIS 落账失败、支付失败或操作员取消调用 `CancelAfterHisFailure`。
 - HIS 已经落账成功但 `commit` 通知失败时，不允许再调用 `cancel`；应重试 `commit` 或交给对账补偿。

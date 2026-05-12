@@ -14,8 +14,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\..\his-client\PricingApiClient.cs" Link="HisClient\PricingApiClient.cs" />
     <Compile Include="..\..\his-client\PricingApiUrlBuilder.cs" Link="HisClient\PricingApiUrlBuilder.cs" />
     <Compile Include="..\..\his-client\PricingBusinessRequestNoHelper.cs" Link="HisClient\PricingBusinessRequestNoHelper.cs" />
+    <Compile Include="..\..\his-client\PricingCalculateRequestValidator.cs" Link="HisClient\PricingCalculateRequestValidator.cs" />
+    <Compile Include="..\..\his-client\PricingChargeContext.cs" Link="HisClient\PricingChargeContext.cs" />
+    <Compile Include="..\..\his-client\PricingDecisionDtos.cs" Link="HisClient\PricingDecisionDtos.cs" />
+    <Compile Include="..\..\his-client\PricingRuleDtos.cs" Link="HisClient\PricingRuleDtos.cs" />
+    <Compile Include="..\..\his-client\PricingSdk.cs" Link="HisClient\PricingSdk.cs" />
     <Compile Include="..\..\his-client\PricingSdkOptions.cs" Link="HisClient\PricingSdkOptions.cs" />
   </ItemGroup>
 
@@ -24,7 +30,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
-    <NoWarn>$(NoWarn);NETSDK1138</NoWarn>
+    <NoWarn>$(NoWarn);NETSDK1138;CS8600;CS8603;CS8604;CS8618;CS8625;SYSLIB0014</NoWarn>
     <SuppressTfmSupportBuildWarnings>true</SuppressTfmSupportBuildWarnings>
   </PropertyGroup>
 

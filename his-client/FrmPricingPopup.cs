@@ -124,8 +124,11 @@ namespace HIS.Pricing.Client
             Text = "特殊计价确认";
             StartPosition = FormStartPosition.CenterParent;
             Size = new Size(860, 620);
+            FormBorderStyle = FormBorderStyle.FixedDialog;
             MinimizeBox = false;
             MaximizeBox = false;
+            BackColor = Color.White;
+            Font = new Font("Microsoft YaHei UI", 9F);
 
             _lblSummary = new Label();
             _lblSummary.AutoSize = false;
@@ -138,9 +141,9 @@ namespace HIS.Pricing.Client
             amountGroup.Location = new Point(12, 60);
             amountGroup.Size = new Size(820, 82);
 
-            _lblOriginalAmount = CreateAmountLabel("原价：--", 20);
-            _lblFinalAmount = CreateAmountLabel("折后价：--", 290);
-            _lblDiscountAmount = CreateAmountLabel("折价金额：--", 560);
+            _lblOriginalAmount = CreateAmountLabel("原价：--", 20, Color.DimGray);
+            _lblFinalAmount = CreateAmountLabel("折后价：--", 290, Color.FromArgb(0, 120, 80));
+            _lblDiscountAmount = CreateAmountLabel("折价金额：--", 560, Color.FromArgb(180, 90, 0));
             amountGroup.Controls.Add(_lblOriginalAmount);
             amountGroup.Controls.Add(_lblFinalAmount);
             amountGroup.Controls.Add(_lblDiscountAmount);
@@ -153,6 +156,7 @@ namespace HIS.Pricing.Client
             _gridItems.AllowUserToDeleteRows = false;
             _gridItems.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             _gridItems.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+            ConfigureGrid(_gridItems);
 
             _gridTrace = new DataGridView();
             _gridTrace.Location = new Point(12, 310);
@@ -162,6 +166,7 @@ namespace HIS.Pricing.Client
             _gridTrace.AllowUserToDeleteRows = false;
             _gridTrace.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
             _gridTrace.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
+            ConfigureGrid(_gridTrace);
 
             Label reasonLabel = new Label();
             reasonLabel.Text = "折价原因";
@@ -177,17 +182,20 @@ namespace HIS.Pricing.Client
             _btnSimulate = new Button();
             _btnSimulate.Text = "试算";
             _btnSimulate.Location = new Point(560, 548);
+            _btnSimulate.Size = new Size(80, 28);
             _btnSimulate.Click += BtnSimulateClick;
 
             _btnConfirm = new Button();
             _btnConfirm.Text = "确认收费";
             _btnConfirm.Location = new Point(650, 548);
+            _btnConfirm.Size = new Size(95, 28);
             _btnConfirm.Enabled = false;
             _btnConfirm.Click += BtnConfirmClick;
 
             _btnCancel = new Button();
             _btnCancel.Text = "取消";
             _btnCancel.Location = new Point(755, 548);
+            _btnCancel.Size = new Size(80, 28);
             _btnCancel.Click += BtnCancelClick;
 
             Controls.Add(_lblSummary);
@@ -206,15 +214,34 @@ namespace HIS.Pricing.Client
         /// </summary>
         /// <param name="text">初始文本（如 "原价：--"）</param>
         /// <param name="left">左侧坐标</param>
+        /// <param name="foreColor">金额文字颜色</param>
         /// <returns>配置好的金额标签</returns>
-        private static Label CreateAmountLabel(string text, int left)
+        private static Label CreateAmountLabel(string text, int left, Color foreColor)
         {
             Label label = new Label();
             label.Text = text;
             label.Location = new Point(left, 34);
             label.Size = new Size(230, 26);
-            label.Font = new Font("宋体", 11F, FontStyle.Bold);
+            label.Font = new Font("Microsoft YaHei UI", 11F, FontStyle.Bold);
+            label.ForeColor = foreColor;
             return label;
+        }
+
+        /// <summary>
+        /// 统一表格视觉和交互行为，让收费员更容易扫读明细和计算过程。
+        /// </summary>
+        private static void ConfigureGrid(DataGridView grid)
+        {
+            grid.RowHeadersVisible = false;
+            grid.MultiSelect = false;
+            grid.BackgroundColor = Color.White;
+            grid.BorderStyle = BorderStyle.FixedSingle;
+            grid.GridColor = Color.FromArgb(225, 225, 225);
+            grid.CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal;
+            grid.EnableHeadersVisualStyles = false;
+            grid.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(245, 247, 250);
+            grid.ColumnHeadersDefaultCellStyle.ForeColor = Color.FromArgb(30, 30, 30);
+            grid.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(250, 250, 250);
         }
 
         /// <summary>
