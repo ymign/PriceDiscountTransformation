@@ -216,6 +216,7 @@
     <Compile Include="Fee\InpatientRuleFee.cs" />
     <Compile Include="Fee\MedcareInterfaceProxy.cs" />
     <Compile Include="Fee\MedcareInterfaceProxyBase.cs" />
+    <Compile Include="Fee\Pricing\PricingLegacyChargeBridge.cs" />
     <Compile Include="HealthRecord\Case\Case.cs" />
     <Compile Include="HealthRecord\Case\CaseBill.cs" />
     <Compile Include="HealthRecord\Case\CaseTrack.cs" />
@@ -276,6 +277,12 @@
       <ProductName>.NET Framework 3.5</ProductName>
       <Install>false</Install>
     </BootstrapperPackage>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\his-client\HIS.Pricing.Client.csproj">
+      <Project>{7F10D291-70E2-4C07-8C78-6A33783611E1}</Project>
+      <Name>HIS.Pricing.Client</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>

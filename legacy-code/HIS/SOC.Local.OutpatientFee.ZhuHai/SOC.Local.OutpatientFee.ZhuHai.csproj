@@ -470,6 +470,12 @@
     <None Include="Web References\GHpayService\Service.disco" />
     <None Include="Web References\GHpayService\Service.wsdl" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\HISFC.BizProcess\Integrate\HISFC.BizProcess.Integrate.csproj">
+      <Project>{86C60E4F-2374-4E03-9303-92BB6E1E6949}</Project>
+      <Name>HISFC.BizProcess.Integrate</Name>
+    </ProjectReference>
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.

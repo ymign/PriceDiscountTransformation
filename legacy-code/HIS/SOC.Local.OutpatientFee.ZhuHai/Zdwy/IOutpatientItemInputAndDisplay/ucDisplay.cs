@@ -25,6 +25,328 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             InitializeComponent();
         }
 
+        /// <summary>
+        /// 判断 PricingAgent 是否已在当前 HIS 运行目录启用。
+        /// </summary>
+        private static bool IsPricingAgentEnabled()
+        {
+            try
+            {
+                return System.IO.File.Exists(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "pricing-agent.config"));
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 调用统一计价 simulate，取得门诊收费界面的预览金额和规则摘要。
+        /// </summary>
+        private Neusoft.HISFC.BizProcess.Integrate.PricingOutpatientPreviewResult GetPricingPreview(ArrayList feeDetails)
+        {
+            if (!IsPricingAgentEnabled() || feeDetails == null || feeDetails.Count == 0 || this.rInfo == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                string fallbackDeptCode = string.Empty;
+                if (this.rInfo.DoctorInfo != null
+                    && this.rInfo.DoctorInfo.Templet != null
+                    && this.rInfo.DoctorInfo.Templet.Dept != null)
+                {
+                    fallbackDeptCode = this.rInfo.DoctorInfo.Templet.Dept.ID;
+                }
+
+                Neusoft.HISFC.Models.Base.Employee oper = this.outpatientManager.Operator as Neusoft.HISFC.Models.Base.Employee;
+                return Neusoft.HISFC.BizProcess.Integrate.PricingOutpatientPreviewService.Simulate(
+                    this.rInfo,
+                    feeDetails,
+                    string.Empty,
+                    this.outpatientManager.GetDateTimeFromSysDateTime(),
+                    oper,
+                    fallbackDeptCode,
+                    this.undrugManager);
+            }
+            catch (Exception ex)
+            {
+                return Neusoft.HISFC.BizProcess.Integrate.PricingOutpatientPreviewResult.Failed("统一计价试算失败：" + ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// 按请求明细顺序取得对应的预览结果。
+        /// </summary>
+        private Neusoft.HISFC.BizProcess.Integrate.PricingOutpatientPreviewItem GetPricingPreviewItem(
+            Neusoft.HISFC.BizProcess.Integrate.PricingOutpatientPreviewResult previewResult,
+            int index)
+        {
+            if (previewResult == null || !previewResult.Configured || !previewResult.Success)
+            {
+                return null;
+            }
+
+            return previewResult.GetItem(index);
+        }
+
+        /// <summary>
+        /// 将统一计价预览金额写回当前行的显示金额和费用对象。
+        /// </summary>
+        private void ApplyPricingPreviewAmount(
+            FeeItemList fee,
+            Neusoft.HISFC.BizProcess.Integrate.PricingOutpatientPreviewItem previewItem,
+            ref decimal totDisplayCost)
+        {
+            if (fee == null || previewItem == null)
+            {
+                return;
+            }
+
+            totDisplayCost = previewItem.FinalAmount;
+            fee.FT.TotCost = previewItem.FinalAmount;
+            fee.FT.OwnCost = previewItem.FinalAmount;
+            fee.FT.PayCost = 0;
+            fee.FT.PubCost = 0;
+            // 预览阶段不能写旧 HIS 减免字段，避免后续 ComputCost/GetFeeItemList 再次套用旧折扣逻辑。
+            fee.FT.RebateCost = 0;
+        }
+
+        /// <summary>
+        /// 移除备注中上一轮统一计价预览片段，避免数量、单价变化后留下过期说明。
+        /// </summary>
+        private static string RemovePricingPreviewMemo(string memo)
+        {
+            if (string.IsNullOrEmpty(memo))
+            {
+                return string.Empty;
+            }
+
+            string[] parts = memo.Split(new char[] { '；', ';' }, StringSplitOptions.RemoveEmptyEntries);
+            StringBuilder builder = new StringBuilder();
+            foreach (string part in parts)
+            {
+                string value = part == null ? string.Empty : part.Trim();
+                if (value.Length == 0 || value.IndexOf("统一计价预览") >= 0)
+                {
+                    continue;
+                }
+
+                if (builder.Length > 0)
+                {
+                    builder.Append("；");
+                }
+
+                builder.Append(value);
+            }
+
+            return builder.ToString();
+        }
+
+        /// <summary>
+        /// 清理当前行旧的统一计价预览备注。
+        /// </summary>
+        private void ClearPricingPreviewMemo(int row)
+        {
+            if (row < 0 || row >= this.fpSpread1_Sheet1.RowCount)
+            {
+                return;
+            }
+
+            string memo = this.fpSpread1_Sheet1.Cells[row, (int)Columns.Memo].Text;
+            string cleanedMemo = RemovePricingPreviewMemo(memo);
+            if (memo != cleanedMemo)
+            {
+                this.fpSpread1_Sheet1.Cells[row, (int)Columns.Memo].Text = cleanedMemo;
+            }
+            this.ResetPricingPreviewItemColor(row);
+
+        }
+
+
+        private void ResetPricingPreviewItemColor(int row)
+        {
+            FeeItemList fee = this.fpSpread1_Sheet1.Rows[row].Tag as FeeItemList;
+            if (fee != null && fee.Item != null && fee.Item.Price >= this.priceWarnning)
+            {
+                this.fpSpread1_Sheet1.Cells[row, (int)Columns.ItemName].ForeColor =
+                    Color.FromArgb(this.priceWarinningColor);
+            }
+            else
+            {
+                this.fpSpread1_Sheet1.Cells[row, (int)Columns.ItemName].ForeColor = Color.Black;
+            }
+        }
+
+        /// <summary>
+        /// 在备注列展示统一计价预览摘要，并用颜色标记受统一计价影响的项目。
+        /// </summary>
+        private void ApplyPricingPreviewMemo(int row, Neusoft.HISFC.BizProcess.Integrate.PricingOutpatientPreviewItem previewItem)
+        {
+            this.ClearPricingPreviewMemo(row);
+            if (previewItem == null || string.IsNullOrEmpty(previewItem.Summary))
+            {
+                return;
+            }
+
+            string memo = this.fpSpread1_Sheet1.Cells[row, (int)Columns.Memo].Text;
+            if (memo == null)
+            {
+                memo = string.Empty;
+            }
+
+            if (string.IsNullOrEmpty(memo))
+            {
+                this.fpSpread1_Sheet1.Cells[row, (int)Columns.Memo].Text = previewItem.Summary;
+            }
+            else
+            {
+                this.fpSpread1_Sheet1.Cells[row, (int)Columns.Memo].Text = memo + "；" + previewItem.Summary;
+            }
+
+            if (previewItem.IsSpecialItem || previewItem.DiscountAmount != 0 || previewItem.ChildAmount != 0)
+            {
+                this.fpSpread1_Sheet1.Cells[row, (int)Columns.ItemName].ForeColor = Color.Blue;
+            }
+        }
+
+        /// <summary>
+        /// simulate 失败时界面不落账、不占额，只在备注提示；最终收费前 confirm 会再次校验并阻断。
+        /// </summary>
+        private void ApplyPricingPreviewFailureMemo(
+            int row,
+            Neusoft.HISFC.BizProcess.Integrate.PricingOutpatientPreviewResult previewResult)
+        {
+            this.ClearPricingPreviewMemo(row);
+            if (previewResult == null || !previewResult.Configured || previewResult.Success)
+            {
+                return;
+            }
+
+            string message = "统一计价预览失败：" + previewResult.Message;
+            string memo = this.fpSpread1_Sheet1.Cells[row, (int)Columns.Memo].Text;
+            if (memo == null)
+            {
+                memo = string.Empty;
+            }
+
+            this.fpSpread1_Sheet1.Cells[row, (int)Columns.Memo].Text = string.IsNullOrEmpty(memo) ? message : memo + "；" + message;
+        }
+
+        /// <summary>
+        /// 收集当前收费界面参与本次收费的明细行，保持行号和请求明细顺序一致。
+        /// </summary>
+        private ArrayList CollectPricingPreviewFeeDetails(ArrayList rowIndexes)
+        {
+            ArrayList feeDetails = new ArrayList();
+            if (rowIndexes == null)
+            {
+                return feeDetails;
+            }
+
+            for (int i = 0; i < this.fpSpread1_Sheet1.RowCount; i++)
+            {
+                FeeItemList fee = this.fpSpread1_Sheet1.Rows[i].Tag as FeeItemList;
+                if (fee == null)
+                {
+                    continue;
+                }
+
+                if (this.IsCanSelectItemAndFee && this.fpSpread1_Sheet1.Cells[i, (int)Columns.Select].Text.ToLower() == "false")
+                {
+                    this.ClearPricingPreviewMemo(i);
+                    continue;
+                }
+
+                rowIndexes.Add(i);
+                feeDetails.Add(fee);
+            }
+
+            return feeDetails;
+        }
+
+        /// <summary>
+        /// 按当前收费界面所有已选明细重新试算，确保累计限额、互斥、替换和加收按一次缴费整体计算。
+        /// </summary>
+        private void RefreshPricingPreviewForCurrentRows()
+        {
+            if (!IsPricingAgentEnabled() || this.rInfo == null)
+            {
+                return;
+            }
+
+            ArrayList rowIndexes = new ArrayList();
+            ArrayList feeDetails = this.CollectPricingPreviewFeeDetails(rowIndexes);
+            if (feeDetails.Count == 0)
+            {
+                this.SumCost();
+                return;
+            }
+
+            Neusoft.HISFC.BizProcess.Integrate.PricingOutpatientPreviewResult previewResult = this.GetPricingPreview(feeDetails);
+            if (previewResult != null
+                && previewResult.Configured
+                && previewResult.Success
+                && previewResult.Items.Count != feeDetails.Count)
+            {
+                previewResult = Neusoft.HISFC.BizProcess.Integrate.PricingOutpatientPreviewResult.Failed(
+                    "统一计价试算返回明细数量与 HIS 当前收费明细数量不一致。");
+            }
+
+            bool previousIsDealCellChange = this.isDealCellChange;
+            this.isDealCellChange = false;
+            try
+            {
+                for (int i = 0; i < rowIndexes.Count; i++)
+                {
+                    int row = (int)rowIndexes[i];
+                    FeeItemList fee = feeDetails[i] as FeeItemList;
+                    Neusoft.HISFC.BizProcess.Integrate.PricingOutpatientPreviewItem previewItem = this.GetPricingPreviewItem(previewResult, i);
+                    if (previewItem == null)
+                    {
+                        this.ApplyPricingPreviewFailureMemo(row, previewResult);
+                        continue;
+                    }
+
+                    decimal totDisplayCost = previewItem.FinalAmount;
+                    this.ApplyPricingPreviewAmount(fee, previewItem, ref totDisplayCost);
+                    this.fpSpread1_Sheet1.Cells[row, (int)Columns.Cost].Value = totDisplayCost;
+                    this.ApplyPricingPreviewMemo(row, previewItem);
+                }
+            }
+            finally
+            {
+                this.isDealCellChange = previousIsDealCellChange;
+            }
+
+            this.SumCost();
+        }
+
+        /// <summary>
+        /// 当前行发生会影响计价的变化后，按整次收费重新试算，而不是只试算单行。
+        /// </summary>
+        private void RefreshPricingPreviewForSingleRow(int row, FeeItemList fee)
+        {
+            if (fee == null || row < 0 || row >= this.fpSpread1_Sheet1.RowCount)
+            {
+                return;
+            }
+
+            this.RefreshPricingPreviewForCurrentRows();
+        }
+
+        /// <summary>
+        /// 这些列变化会影响数量、单价或计价单位，需要刷新统一计价预览。
+        /// </summary>
+        private static bool IsPricingPreviewTriggerColumn(int column)
+        {
+            return column == (int)Columns.Amount
+                || column == (int)Columns.Price
+                || column == (int)Columns.Days
+                || column == (int)Columns.DoseOnce
+                || column == (int)Columns.PriceUnit;
+        }
         #region 变量
 
         private bool isTransferTreat = false;
@@ -386,12 +708,12 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
         private Neusoft.FrameWork.Public.ObjectHelper myBillPactHelper = new Neusoft.FrameWork.Public.ObjectHelper();
 
         /// <summary>
-        /// 
+        ///
         /// </summary>
         private Neusoft.FrameWork.Public.ObjectHelper apprItemHelper = new Neusoft.FrameWork.Public.ObjectHelper();
 
         /// <summary>
-        /// 
+        ///
         /// </summary>
         private Neusoft.FrameWork.Public.ObjectHelper specialItemHelper = new Neusoft.FrameWork.Public.ObjectHelper();
 
@@ -1764,7 +2086,8 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                         this.fpSpread1.Focus();
                         this.fpSpread1_Sheet1.SetActiveCell(CurrentRow, (int)Columns.Amount);
                         return -1;
-                    };
+                    }
+                    ;
                 }
             }
             this.AddRow(CurrentRow);
@@ -1860,7 +2183,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
         }
 
         /// <summary>
-        /// 
+        ///
         /// </summary>
         /// <param name="key"></param>
         /// <returns></returns>
@@ -1897,7 +2220,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
         }
 
         /// <summary>
-        /// 
+        ///
         /// </summary>
         /// <param name="key"></param>
         /// <returns></returns>
@@ -1911,7 +2234,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
 
 
         /// <summary>
-        /// 
+        ///
         /// </summary>
         /// <param name="key"></param>
         /// <returns></returns>
@@ -2090,6 +2413,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             ArrayList hsNOREOnlyOneItem = new ArrayList();
             ArrayList hsZTNOREOnlyOneItem = new ArrayList();
             Hashtable hsREOnlyOneItem = new Hashtable();
+            Hashtable hsDFSItem = new Hashtable();
             int rowCount = this.fpSpread1_Sheet1.RowCount;
             int currRow = 0;
             if (this.fpSpread1_Sheet1.RowCount == 0)
@@ -2120,21 +2444,52 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             this.undrugManager.GetPricesz("F00000010768", ref pricece);//获取加收项目价格
             pricece = pricece - pricesz;
             sumPubCost = 0;
+            ArrayList dfslist = this.managerIntegrate.GetConstantList("DFSitemfee");//多发伤患者跳过折价项目
+            foreach (Neusoft.HISFC.Models.Base.Const dic in dfslist)  //获取本次收费已经计算的数量
+            {
+                hsDFSItem.Add(dic.ID, dic);
+            }
             int itemqty = 0;
             int returnRows = 0;//是否为限制收费药品
             decimal LimitNumber = 1;
             //限制药品收费
             int number = 1;
             ArrayList hsREOnlylistItem = new ArrayList();
+            bool pricingAgentEnabled = IsPricingAgentEnabled();
+            if (!pricingAgentEnabled)
+            {
             for (int i = alChargeInfo.Count - 1; i >= 0; i--)
             {
                 string Discount_type = "1";//限制收费类型
-                int TOPPRICE = 0;
+                string RestrictingfeeChargetype = "1";//是否折价
+                decimal TOPPRICE = 0;
                 decimal DISCOUNT_RATE = 0;
                 FeeItemList s = alChargeInfo[i] as FeeItemList;
-                returnRows = this.undrugManager.SetRestrictingfee(s.Item.ID, ref  LimitNumber);
-                Discount_type = this.undrugManager.SetDiscountfee(s.Item.ID, ref  DISCOUNT_RATE, ref  TOPPRICE);
-                if (returnRows > 0 && this.rInfo.DoctorInfo.Templet.Dept.ID!="7021")
+                returnRows = this.undrugManager.SetRestrictingfee(s.Item.ID, ref LimitNumber);
+                Discount_type = this.undrugManager.SetDiscountfee(s.Item.ID, ref DISCOUNT_RATE, ref TOPPRICE);
+
+                if (hsDFSItem.ContainsKey(s.Item.ID) && this.rInfo.MultipleInjury == "1")
+                {
+                    if (this.rInfo.DoctorInfo.Templet.Dept.ID == "1026" || this.rInfo.DoctorInfo.Templet.Dept.ID == "6018")
+                    {
+                        RestrictingfeeChargetype = "0";
+                        if (!string.IsNullOrEmpty(s.Memo.ToString()))
+                        {
+                            if (s.Memo.Substring(0, 1) == "P" || s.Memo.Substring(0, 1) == "N")
+                            {
+                                s.Item.Qty = Convert.ToDecimal(s.Memo.Substring(1));
+                                s.FT.TotCost = Convert.ToDecimal(s.Item.Price * s.Item.Qty);
+                                s.FT.OwnCost = Convert.ToDecimal(s.Item.Price * s.Item.Qty);
+                            }
+                        }
+                        else
+                        {
+                            s.FT.TotCost = Convert.ToDecimal(s.Item.Price * s.Item.Qty); //将价格还原
+                            s.FT.OwnCost = Convert.ToDecimal(s.Item.Price * s.Item.Qty); //将价格还原
+                        }
+                    }
+                }
+                if (returnRows > 0 && this.rInfo.DoctorInfo.Templet.Dept.ID != "7021" && RestrictingfeeChargetype == "1")
                 {
                     this.setRestrictingfee.ConvertRestrictingfeeCharge(PatientInfo.PID.CardNO, s, ref hsREOnlyOneItem, ref hsNOREOnlyOneItem, ref hsREOnlylistItem, number, LimitNumber, ref hsZTNOREOnlyOneItem, this.dsItem, this.rInfo);
                 }
@@ -2158,9 +2513,15 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             {
                 alChargeInfo.Add(ds);
             }
+            }
+
+            Neusoft.HISFC.BizProcess.Integrate.PricingOutpatientPreviewResult pricingPreviewResult = this.GetPricingPreview(alChargeInfo);
+            int pricingPreviewIndex = 0;
 
             foreach (FeeItemList f in alChargeInfo)
             {
+                Neusoft.HISFC.BizProcess.Integrate.PricingOutpatientPreviewItem pricingPreviewItem = this.GetPricingPreviewItem(pricingPreviewResult, pricingPreviewIndex);
+                pricingPreviewIndex++;
                 DataRow rowFind = null;
                 string drugFlag = "0";
 
@@ -2315,13 +2676,18 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
 
                 if (totDisplayCost == 0)
                 {
-                    returnRows = this.undrugManager.SetRestrictingfee(f.Item.ID, ref  LimitNumber);
-                      if (returnRows <= 0)
-                      {
-                          totDisplayCost = Neusoft.FrameWork.Public.String.FormatNumber(f.Item.Price * f.Item.Qty / f.Item.PackQty, 2);
-                      }
+                    if (!pricingAgentEnabled)
+                    {
+                        returnRows = this.undrugManager.SetRestrictingfee(f.Item.ID, ref LimitNumber);
+                    }
+
+                    if (pricingAgentEnabled || returnRows <= 0)
+                    {
+                        totDisplayCost = Neusoft.FrameWork.Public.String.FormatNumber(f.Item.Price * f.Item.Qty / f.Item.PackQty, 2);
+                    }
                 }
 
+                this.ApplyPricingPreviewAmount(f, pricingPreviewItem, ref totDisplayCost);
                 this.SetRowHeader(currRow, f, rowFind);
 
                 //--------------------------------------------------------------
@@ -2476,6 +2842,8 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 this.fpSpread1_Sheet1.Cells[currRow, (int)Columns.IsSend].Value = false;
                 f.IsSend = "0";
                 this.fpSpread1_Sheet1.Cells[currRow, (int)Columns.Memo].Text = f.Memo;
+                this.ApplyPricingPreviewMemo(currRow, pricingPreviewItem);
+                this.ApplyPricingPreviewFailureMemo(currRow, pricingPreviewResult);
                 this.fpSpread1_Sheet1.Cells[currRow, (int)Columns.ItemCode].Text = f.Item.ID;
                 this.fpSpread1_Sheet1.Cells[currRow, (int)Columns.FeeCode].Text = f.Item.MinFee.ID;
                 //this.fpSpread1_Sheet1.Cells[currRow, (int)Columns.ItemType].Text = f.Item.IsPharmacy == true ? "1" : "0";
@@ -4047,18 +4415,48 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 ArrayList hsZTNOREOnlyOneItem = new ArrayList();
                 ArrayList hsNOREOnlyOneItem = new ArrayList();
                 Hashtable hsREOnlyOneItem = new Hashtable();
+                if (!IsPricingAgentEnabled())
+                {
+                Hashtable hsDFSItem = new Hashtable();
+                string RestrictingfeeChargetype = "1";//是否折价
+                ArrayList dfslist = this.managerIntegrate.GetConstantList("DFSitemfee");//多发伤患者跳过折价项目
+                foreach (Neusoft.HISFC.Models.Base.Const dic in dfslist)  //获取本次收费已经计算的数量
+                {
+                    hsDFSItem.Add(dic.ID, dic);
+                }
                 int number = 1;
-                int returnRows= 0;//是否为限制收费药品
+                int returnRows = 0;//是否为限制收费药品
                 decimal LimitNumber = 1;
                 ArrayList hsREOnlylistItem = new ArrayList();
-                string Discount_type = "1";//限制收费类型
-                int TOPPRICE = 0;
-                decimal DISCOUNT_RATE = 0;
-                returnRows = this.undrugManager.SetRestrictingfee(feeItemList.Item.ID, ref  LimitNumber);
-                Discount_type = this.undrugManager.SetDiscountfee(feeItemList.Item.ID, ref  DISCOUNT_RATE, ref  TOPPRICE);
-                if (returnRows > 0 && this.rInfo.DoctorInfo.Templet.Dept.ID != "7021")
+                if (hsDFSItem.ContainsKey(feeItemList.Item.ID) && this.rInfo.MultipleInjury == "1") // 判断是否为多发伤患者排除折价
                 {
-                    this.setRestrictingfee.ConvertRestrictingfeeCharge(PatientInfo.PID.CardNO, feeItemList, ref hsREOnlyOneItem, ref hsNOREOnlyOneItem, ref hsREOnlylistItem, number, LimitNumber, ref hsZTNOREOnlyOneItem, this.dsItem,this.rInfo);
+                    if (this.rInfo.DoctorInfo.Templet.Dept.ID == "1026" || this.rInfo.DoctorInfo.Templet.Dept.ID == "6018")
+                    {
+                        RestrictingfeeChargetype = "0";
+                        if (!string.IsNullOrEmpty(feeItemList.Memo.ToString()))
+                        {
+                            if (feeItemList.Memo.Substring(0, 1) == "P" || feeItemList.Memo.Substring(0, 1) == "N")
+                            {
+                                feeItemList.Item.Qty = Convert.ToDecimal(feeItemList.Memo.Substring(1));
+                                feeItemList.FT.TotCost = Convert.ToDecimal(feeItemList.Item.Price * feeItemList.Item.Qty);
+                                feeItemList.FT.OwnCost = Convert.ToDecimal(feeItemList.Item.Price * feeItemList.Item.Qty);
+                            }
+                        }
+                        else
+                        {
+                            feeItemList.FT.TotCost = Convert.ToDecimal(feeItemList.Item.Price * feeItemList.Item.Qty); //将价格还原
+                            feeItemList.FT.OwnCost = Convert.ToDecimal(feeItemList.Item.Price * feeItemList.Item.Qty); //将价格还原
+                        }
+                    }
+                }
+                string Discount_type = "1";//限制收费类型
+                decimal TOPPRICE = 0;
+                decimal DISCOUNT_RATE = 0;
+                returnRows = this.undrugManager.SetRestrictingfee(feeItemList.Item.ID, ref LimitNumber);
+                Discount_type = this.undrugManager.SetDiscountfee(feeItemList.Item.ID, ref DISCOUNT_RATE, ref TOPPRICE);
+                if (returnRows > 0 && this.rInfo.DoctorInfo.Templet.Dept.ID != "7021" && RestrictingfeeChargetype == "1")
+                {
+                    this.setRestrictingfee.ConvertRestrictingfeeCharge(PatientInfo.PID.CardNO, feeItemList, ref hsREOnlyOneItem, ref hsNOREOnlyOneItem, ref hsREOnlylistItem, number, LimitNumber, ref hsZTNOREOnlyOneItem, this.dsItem, this.rInfo);
                     foreach (FeeItemList ds in hsREOnlylistItem)
                     {
                         feeItemList.FT.TotCost = ds.FT.TotCost;
@@ -4068,6 +4466,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 if (Discount_type == "2")
                 {
                     this.setRestrictingfee.ConvertDiscountfee(feeItemList, DISCOUNT_RATE, TOPPRICE, ref hsREOnlyOneItem, ref hsREOnlylistItem, number);
+                }
                 }
                 this.fpSpread1_Sheet1.Rows[row].Tag = feeItemList;
 
@@ -4135,6 +4534,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 #endregion
 
                 this.SetColumnEnable(row);
+                this.RefreshPricingPreviewForSingleRow(row, feeItemList);
             }
             RefreshItemInfo();
             this.isDealCellChange = true;
@@ -4244,7 +4644,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 }
                 else
                 {
-                    //add by Niuxy修改减免  
+                    //add by Niuxy修改减免
                     ft.RebateCost = Neusoft.FrameWork.Public.String.FormatNumber(f.FT.RebateCost * f.Item.Qty / f.Item.PackQty, 2);
                 }
 
@@ -4278,7 +4678,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 ft.PayCost = 0;
                 ft.PubCost = 0;
                 ft.OwnCost = ft.TotCost;
-                //add by Niuxy修改减免  
+                //add by Niuxy修改减免
                 if (myITruncFee != null)
                 {
                     object[] args = new object[] { ft, f };
@@ -4286,7 +4686,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 }
                 else
                 {
-                    //add by Niuxy修改减免  
+                    //add by Niuxy修改减免
                     ft.RebateCost = Neusoft.FrameWork.Public.String.FormatNumber(f.FT.RebateCost * f.Item.Qty / f.Item.PackQty, 2);
                 }
                 //}
@@ -4483,11 +4883,11 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             decimal orgGroupPrice = 0;
             decimal priceGroup = this.feeIntegrate.GetPrice(f.Item.ID, this.rInfo, age, unitPriceGroup, childPriceGroup, SPPriceGroup, purchasePriceGroup, ref orgGroupPrice);
 
-            decimal rate = f.Item.Price / orgGroupPrice;
-            if (rate == 1)
-            {
-                rate = priceGroup / orgGroupPrice;
-            }
+            //decimal rate = f.Item.Price / orgGroupPrice;
+            //if (rate == 1)
+            // {
+            //     rate = priceGroup / orgGroupPrice;
+            // }
 
             //符合项目明细的加成（减免）比例
             decimal itemRate = 1;
@@ -4546,7 +4946,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 //    price *= rate;
                 //}
 
-                //根据优惠比例重新计算单价------------------------- 
+                //根据优惠比例重新计算单价-------------------------
                 string errMsg = string.Empty;
                 PactItemRate myRate = Function.PactRate(this.rInfo, feeDetail, ref errMsg);
                 if (myRate == null)
@@ -4995,7 +5395,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 //    price *= rate;
                 //}
 
-                //根据优惠比例重新计算单价------------------------- 
+                //根据优惠比例重新计算单价-------------------------
                 string errMsg = string.Empty;
                 PactItemRate myRate = Function.PactRate(this.rInfo, feeDetail, ref errMsg);
                 if (myRate == null)
@@ -5479,7 +5879,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 //    price *= rate;
                 //}
 
-                //根据优惠比例重新计算单价------------------------- 
+                //根据优惠比例重新计算单价-------------------------
                 string errMsg = string.Empty;
                 PactItemRate myRate = Function.PactRate(this.rInfo, feeDetail, ref errMsg);
                 if (myRate == null)
@@ -6188,7 +6588,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                         //string errMsg = string.Empty;
                         //ecoRate.Rate = (Class.Function.PactRate(this.rInfo.Pact.ID, (FeeItemList)this.fpSpread1_Sheet1.Rows[currRow].Tag, ref errMsg)).Rate;
 
-                        //ecoRate.Rate.RebateRate = (1 - ecoRate.Rate.RebateRate) * 100; 
+                        //ecoRate.Rate.RebateRate = (1 - ecoRate.Rate.RebateRate) * 100;
                     }
                     else
                     {
@@ -6660,7 +7060,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             }
             if (drugFlag == "0")//非药品
             {
-                //string exeDept = SetExecDept(itemCode);//{CA82280B-51B6-4462-B63E-43F4ECF456A3}                
+                //string exeDept = SetExecDept(itemCode);//{CA82280B-51B6-4462-B63E-43F4ECF456A3}
                 //if (!string.IsNullOrEmpty(exeDept) && exeDept != "-1")//没有维护多科室时
                 //{
                 //    exeDeptCode = exeDept;
@@ -7712,23 +8112,54 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 FeeItemList f = de.Value as FeeItemList;
                 feeItemLists.Add(f);
             }
+            if (!IsPricingAgentEnabled())
+            {
+            Hashtable hsDFSItem = new Hashtable();
+            ArrayList dfslist = this.managerIntegrate.GetConstantList("DFSitemfee");//多发伤患者跳过折价项目
+            foreach (Neusoft.HISFC.Models.Base.Const dic in dfslist)  //获取本次收费已经计算的数量
+            {
+                hsDFSItem.Add(dic.ID, dic);
+            }
             int number = 1;
             int returnRows = 0;//是否为限制收费药品
             decimal LimitNumber = 1;
             ArrayList hsREOnlylistItem = new ArrayList();
             for (int i = feeItemLists.Count - 1; i >= 0; i--)
             {
-                string  Discount_type = "1";//限制收费类型
-                int TOPPRICE = 0;
+                string RestrictingfeeChargetype = "1";//是否折价
+                string Discount_type = "1";//限制收费类型
+                decimal TOPPRICE = 0;
                 decimal DISCOUNT_RATE = 0;
                 FeeItemList s = feeItemLists[i] as FeeItemList;
-                returnRows = this.undrugManager.SetRestrictingfee(s.Item.ID, ref  LimitNumber);
-                Discount_type = this.undrugManager.SetDiscountfee(s.Item.ID, ref  DISCOUNT_RATE, ref  TOPPRICE);
-                if (returnRows > 0 && this.rInfo.DoctorInfo.Templet.Dept.ID != "7021")
+                if (hsDFSItem.ContainsKey(s.Item.ID) && this.rInfo.MultipleInjury == "1")
+                {
+                    if (this.rInfo.DoctorInfo.Templet.Dept.ID == "1026" || this.rInfo.DoctorInfo.Templet.Dept.ID == "6018")
+                    {
+                        RestrictingfeeChargetype = "0";
+                        if (!string.IsNullOrEmpty(s.Memo.ToString()))
+                        {
+                            if (s.Memo.Substring(0, 1) == "P" || s.Memo.Substring(0, 1) == "N")
+                            {
+                                s.Item.Qty = Convert.ToDecimal(s.Memo.Substring(1));
+                                s.FT.TotCost = Convert.ToDecimal(s.Item.Price * s.Item.Qty);
+                                s.FT.OwnCost = Convert.ToDecimal(s.Item.Price * s.Item.Qty);
+                            }
+                        }
+                        else
+                        {
+                            s.FT.TotCost = Convert.ToDecimal(s.Item.Price * s.Item.Qty); //将价格还原
+                            s.FT.OwnCost = Convert.ToDecimal(s.Item.Price * s.Item.Qty); //将价格还原
+                        }
+                    }
+                }
+                returnRows = this.undrugManager.SetRestrictingfee(s.Item.ID, ref LimitNumber);
+                Discount_type = this.undrugManager.SetDiscountfee(s.Item.ID, ref DISCOUNT_RATE, ref TOPPRICE);
+                if (returnRows > 0 && this.rInfo.DoctorInfo.Templet.Dept.ID != "7021" && RestrictingfeeChargetype == "1")
                 {
                     this.setRestrictingfee.ConvertRestrictingfee(PatientInfo.PID.CardNO, s, ref hsREOnlyOneItem, ref hsNOREOnlyOneItem, ref hsREOnlylistItem, number, LimitNumber);
                 }
-                if (Discount_type == "2") {
+                if (Discount_type == "2")
+                {
                     this.setRestrictingfee.ConvertDiscountfee(s, DISCOUNT_RATE, TOPPRICE, ref hsREOnlyOneItem, ref hsREOnlylistItem, number);
                 }
 
@@ -7747,6 +8178,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             foreach (FeeItemList ds in hsREOnlylistItem)
             {
                 feeItemLists.Add(ds);
+            }
             }
 
             return feeItemLists;
@@ -8580,7 +9012,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                                     //{  //{EE98C7B7-AC32-4b2c-93A5-9A62A33D6457}
                                     //    QueryItem(this.fpSpread1_Sheet1.Cells[currRow, (int)Columns.InputCode].Text, currRow);
                                     //}
-                                    //else 
+                                    //else
                                     //{
                                     //    this.chooseItemControl.GetSelectedItem();
                                     //}
@@ -8898,7 +9330,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
 
                                     this.fpSpread1_Sheet1.Cells[currRow, (int)Columns.Amount].Value = totQty;
                                     this.fpSpread1_Sheet1.Cells[currRow, (int)Columns.Cost].Value = ft.TotCost;
-                                    //{73AA7783-8B97-45f5-B430-0C7311E952C8}  
+                                    //{73AA7783-8B97-45f5-B430-0C7311E952C8}
                                     this.SumCost();
                                     this.fpSpread1_Sheet1.Cells[currRow, (int)Columns.CombNo].Locked = false;
                                     this.fpSpread1_Sheet1.SetActiveCell(currRow, (int)Columns.CombNo, false);
@@ -9676,7 +10108,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
 
                         feeItem.Days = days;
 
-                        //{73AA7783-8B97-45f5-B430-0C7311E952C8}    
+                        //{73AA7783-8B97-45f5-B430-0C7311E952C8}
                         this.hDays = days;
                         // {1FAD3FA2-C7D8-4cac-845F-B9EBECDE2312}
                         totQty = qty * days / ((feeItem.Item as Neusoft.HISFC.Models.Pharmacy.Item).BaseDose == 0 ? 1 : (feeItem.Item as Neusoft.HISFC.Models.Pharmacy.Item).BaseDose);
@@ -9703,7 +10135,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                         feeItem.FT.RebateCost = ft.RebateCost;
                         this.fpSpread1_Sheet1.Cells[e.Row, (int)Columns.Cost].Value = ft.TotCost;
                         this.fpSpread1_Sheet1.Cells[e.Row, (int)Columns.Amount].Value = totQty;
-                        //{73AA7783-8B97-45f5-B430-0C7311E952C8}    
+                        //{73AA7783-8B97-45f5-B430-0C7311E952C8}
                         SumCost();
                         this.isDealCellChange = true;
                     }
@@ -9843,6 +10275,11 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                         {
                             return;
                         }
+                    }
+
+                    if (IsPricingPreviewTriggerColumn(e.Column))
+                    {
+                        this.RefreshPricingPreviewForSingleRow(e.Row, feeItem);
                     }
                 }
             }
@@ -10119,7 +10556,14 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                     feeItem.FT.PubCost = ft.PubCost;
                     feeItem.Item.PriceUnit = ((FarPoint.Win.Spread.CellType.ComboBoxCellType)this.fpSpread1_Sheet1.Cells[e.Row, (int)Columns.PriceUnit].CellType).Items[((FarPoint.Win.FpCombo)e.EditingControl).SelectedIndex];
                     this.fpSpread1_Sheet1.Cells[e.Row, (int)Columns.PriceUnit].Text = feeItem.Item.PriceUnit;
-                    SumCost();
+                    if (IsPricingAgentEnabled())
+                    {
+                        this.RefreshPricingPreviewForSingleRow(e.Row, feeItem);
+                    }
+                    else
+                    {
+                        SumCost();
+                    }
                     if (!this.ContainsFocus && !this.fpSpread1.ContainsFocus)
                     {
                         this.Focus();
@@ -10183,7 +10627,14 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             if (e.Column == (int)Columns.Select)
             {
                 this.selectSameComb(e);
-                this.SumCost();
+                if (IsPricingAgentEnabled())
+                {
+                    this.RefreshPricingPreviewForCurrentRows();
+                }
+                else
+                {
+                    this.SumCost();
+                }
             }
             if (e.Column == (int)Columns.IsSend)
             {
@@ -10406,6 +10857,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 this.fpSpread1.Sheets[0].AddRows(this.fpSpread1.Sheets[0].RowCount, 1);
 
             }
+            this.RefreshPricingPreviewForCurrentRows();
             #endregion
 
         }

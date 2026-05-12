@@ -54,7 +54,7 @@ namespace HIS.Pricing.Client
                 SpecialPricingDecision decision = CheckRequestDecision(request);
                 if (decision.ServiceUnavailable)
                 {
-                    return PricingAgentChargeResult.Blocked(decision.Message);
+                    return PricingAgentChargeResult.CreateBlocked(decision.Message);
                 }
 
                 if (decision.AllowOrdinaryPricing)
@@ -70,14 +70,14 @@ namespace HIS.Pricing.Client
                     return PricingAgentChargeResult.Cancelled("操作员取消特殊计价确认。");
                 }
 
-                return PricingAgentChargeResult.Confirmed(
+                return PricingAgentChargeResult.CreateConfirmed(
                     popup.ConfirmedResponse,
                     popup.ConfirmedRequestId,
                     "特殊计价已确认，HIS 应按返回结果落账。");
             }
             catch (Exception ex)
             {
-                return PricingAgentChargeResult.Blocked("特殊计价 Agent 执行失败：" + ex.Message);
+                return PricingAgentChargeResult.CreateBlocked("特殊计价 Agent 执行失败：" + ex.Message);
             }
         }
 
@@ -187,24 +187,54 @@ namespace HIS.Pricing.Client
     /// </summary>
     public sealed class PricingAgentChargeResult
     {
+        /// <summary>
+        /// Agent 内部状态码。用于 HIS 日志或现场排查，不建议作为金额判断依据。
+        /// </summary>
         public string StatusCode { get; private set; }
 
+        /// <summary>
+        /// 是否允许 HIS 继续本地落账。该字段是调用方最重要的放行开关。
+        /// </summary>
         public bool AllowCharge { get; private set; }
 
+        /// <summary>
+        /// 是否未命中特殊计价，允许 HIS 按普通价格继续处理。
+        /// </summary>
         public bool OrdinaryPricing { get; private set; }
 
+        /// <summary>
+        /// 是否已经完成特殊计价 confirm。为 true 时 HIS 必须按 Response 回填后的结果落账。
+        /// </summary>
         public bool Confirmed { get; private set; }
 
+        /// <summary>
+        /// 是否由操作员主动取消弹窗。该状态不应自动改为普通计价。
+        /// </summary>
         public bool CancelledByUser { get; private set; }
 
+        /// <summary>
+        /// 是否因配置、服务、校验或执行异常被阻断。阻断时 HIS 不应继续收费。
+        /// </summary>
         public bool Blocked { get; private set; }
 
+        /// <summary>
+        /// confirm 成功后由计价中心返回的请求 ID，后续 commit、cancel、reverse 都依赖该值。
+        /// </summary>
         public long RequestId { get; private set; }
 
+        /// <summary>
+        /// confirm 成功后的计价结果，包含主项目、替换子项、加收子项和追踪步骤。
+        /// </summary>
         public PricingCalculateResponse Response { get; private set; }
 
+        /// <summary>
+        /// 面向 HIS 操作日志或错误提示的人类可读说明。
+        /// </summary>
         public string Message { get; private set; }
 
+        /// <summary>
+        /// 创建普通计价结果。该结果表示没有特殊规则需要弹窗，HIS 可以继续原收费流程。
+        /// </summary>
         public static PricingAgentChargeResult Ordinary(string message)
         {
             return new PricingAgentChargeResult
@@ -219,7 +249,10 @@ namespace HIS.Pricing.Client
             };
         }
 
-        public static PricingAgentChargeResult Confirmed(
+        /// <summary>
+        /// 创建特殊计价已确认结果。工厂方法避免与 Confirmed 属性同名，兼容 C# 成员命名规则。
+        /// </summary>
+        public static PricingAgentChargeResult CreateConfirmed(
             PricingCalculateResponse response,
             long requestId,
             string message)
@@ -238,6 +271,9 @@ namespace HIS.Pricing.Client
             };
         }
 
+        /// <summary>
+        /// 创建操作员取消结果。取消只释放本次交互，不代表项目可以按普通计价继续。
+        /// </summary>
         public static PricingAgentChargeResult Cancelled(string message)
         {
             return new PricingAgentChargeResult
@@ -252,7 +288,10 @@ namespace HIS.Pricing.Client
             };
         }
 
-        public static PricingAgentChargeResult Blocked(string message)
+        /// <summary>
+        /// 创建阻断结果。工厂方法避免与 Blocked 属性同名，防止旧框架编译失败。
+        /// </summary>
+        public static PricingAgentChargeResult CreateBlocked(string message)
         {
             return new PricingAgentChargeResult
             {

@@ -398,6 +398,26 @@ namespace Neusoft.HISFC.BizProcess.Integrate
         protected Neusoft.HISFC.BizLogic.Fee.Item itemManager = new Neusoft.HISFC.BizLogic.Fee.Item();
 
         /// <summary>
+        /// 统一计价旧 HIS 适配层。按需创建，未部署 pricing-agent.config 时不会初始化 Agent。
+        /// </summary>
+        private PricingLegacyChargeBridge pricingChargeBridge;
+
+        /// <summary>
+        /// 获取统一计价适配层，用于收费保存前 confirm、事务提交后 commit、事务回滚后 cancel。
+        /// </summary>
+        private PricingLegacyChargeBridge PricingChargeBridge
+        {
+            get
+            {
+                if (this.pricingChargeBridge == null)
+                {
+                    this.pricingChargeBridge = new PricingLegacyChargeBridge(this.itemManager);
+                }
+
+                return this.pricingChargeBridge;
+            }
+        }
+        /// <summary>
         /// /// 发票业务层
         /// </summary>
         protected Neusoft.HISFC.BizLogic.Fee.InvoiceServiceNoEnum invoiceServiceManager = new Neusoft.HISFC.BizLogic.Fee.InvoiceServiceNoEnum();
@@ -1415,7 +1435,30 @@ namespace Neusoft.HISFC.BizProcess.Integrate
             decimal LimitNumber = 1;
             //限制药品收费
             int number = 1;
-            if (transType == TransTypes.Positive)
+            DateTime dtNow = inpatientManager.GetDateTimeFromSysDateTime();
+            PricingConfirmResult pricingConfirmResult = null;
+            // 统一计价只接管正向收费。退费/冲正必须依赖原收费 RequestId，当前旧 HIS 明细没有可靠持久化字段，不能在这里硬接。
+            if (transType == TransTypes.Positive && payType == ChargeTypes.Fee)
+            {
+                Employee pricingOper = inpatientManager.Operator as Employee;
+                string pricingChargeNo = this.GetPricingChargeNo(patient.ID, feeItemLists);
+                pricingConfirmResult = this.PricingChargeBridge.ConfirmInpatientBeforeSave(
+                    null,
+                    patient,
+                    feeItemLists,
+                    pricingChargeNo,
+                    dtNow,
+                    inpatientManager.Operator.ID,
+                    pricingOper == null ? string.Empty : pricingOper.Name,
+                    this.GetPricingOperatorDeptCode(pricingOper, patient.PVisit.PatientLocation.Dept.ID));
+                if (!pricingConfirmResult.AllowCharge)
+                {
+                    this.Err = pricingConfirmResult.Message;
+                    return -1;
+                }
+            }
+
+            if (transType == TransTypes.Positive && (pricingConfirmResult == null || !pricingConfirmResult.Configured))
             {
                 for (int i = feeItemLists.Count - 1; i >= 0; i--)
                 {
@@ -1452,7 +1495,6 @@ namespace Neusoft.HISFC.BizProcess.Integrate
                 }
 
             }
-            DateTime dtNow = inpatientManager.GetDateTimeFromSysDateTime();
             var DBQuery = new HisCallExternalServiceProject.FunctionModule.SPDModule.DBQuery();
             //对明细循环处理
             foreach (Neusoft.HISFC.Models.Fee.Inpatient.FeeItemList feeItemList in feeItemLists)
@@ -2093,6 +2135,11 @@ namespace Neusoft.HISFC.BizProcess.Integrate
 
 
 
+            // 只有 HIS 明细写库成功后，才能用真实明细构造 commit actualItems。
+            if (pricingConfirmResult != null && pricingConfirmResult.PendingCharge != null)
+            {
+                this.PricingChargeBridge.MarkHisSaveSucceeded(pricingConfirmResult.PendingCharge);
+            }
             return 1;
 
         }
@@ -2657,9 +2704,43 @@ namespace Neusoft.HISFC.BizProcess.Integrate
             return pactManager.QueryPactUnitInPatient();
         }
         /// <summary>
-        /// 提交函数
+        /// 从费用明细中获取本次收费的业务号；处方号尚未生成时使用调用方传入的兜底号。
         /// </summary>
-        /// 按着HIS4.5.0.1的commit方式修改
+        private string GetPricingChargeNo(string fallbackNo, ArrayList feeItemLists)
+        {
+            if (feeItemLists != null)
+            {
+                foreach (object obj in feeItemLists)
+                {
+                    Neusoft.HISFC.Models.Fee.FeeItemBase fee = obj as Neusoft.HISFC.Models.Fee.FeeItemBase;
+                    if (fee != null && !string.IsNullOrEmpty(fee.RecipeNO))
+                    {
+                        return fee.RecipeNO;
+                    }
+                }
+            }
+
+            return fallbackNo;
+        }
+
+        /// <summary>
+        /// 获取收费操作员科室编码；操作员上下文缺失时使用业务对象上的科室兜底。
+        /// </summary>
+        private string GetPricingOperatorDeptCode(Employee oper, string fallbackDeptCode)
+        {
+            if (oper != null && oper.Dept != null && !string.IsNullOrEmpty(oper.Dept.ID))
+            {
+                return oper.Dept.ID;
+            }
+
+            return fallbackDeptCode;
+        }
+        /// <summary>
+        /// 提交 HIS 事务，并在事务提交成功后通知统一计价中心 commit。
+        /// </summary>
+        /// <remarks>
+        /// 统一计价 commit 必须放在 HIS 本地事务成功之后；如果医保或 HIS 回滚，则调用 cancel 释放保护占用。
+        /// </remarks>
         public void Commit()
         {
             //this.trans.Commit();
@@ -2673,12 +2754,14 @@ namespace Neusoft.HISFC.BizProcess.Integrate
                 {
                     medcareInterfaceProxy.Rollback();
                     Neusoft.FrameWork.Management.PublicTrans.RollBack();
+                    this.PricingChargeBridge.CancelUncommittedCharges();
                     //this.trans.Rollback();
                 }
                 else
                 {
                     //this.trans.Commit();
                     Neusoft.FrameWork.Management.PublicTrans.Commit();
+                    this.PricingChargeBridge.CommitSavedCharges();
                     //{A6CDF67A-DEBE-4ce6-AC8B-CC0CAB9B1B0E}
                     medcareInterfaceProxy.Disconnect();
                 }
@@ -2687,17 +2770,19 @@ namespace Neusoft.HISFC.BizProcess.Integrate
             {
                 //this.trans.Commit()
                 Neusoft.FrameWork.Management.PublicTrans.Commit();
+                this.PricingChargeBridge.CommitSavedCharges();
             }
             else
             {
                 //this.trans.Commit();
                 Neusoft.FrameWork.Management.PublicTrans.Commit();
+                this.PricingChargeBridge.CommitSavedCharges();
             }
         }
         /// <summary>
-        /// 提交公费接口函数
+        /// 提交医保接口函数
         /// </summary>
-        /// 这里单独给药房退费退药时使用了，其他地方如果需要也可以使用
+        /// 这里单独给药房退费和发药时使用了，如果其他地方需要也可以使用
         public int MedcareInterfaceCommit()
         {
 
@@ -2729,6 +2814,7 @@ namespace Neusoft.HISFC.BizProcess.Integrate
         {
             //this.trans.Rollback();
             Neusoft.FrameWork.Management.PublicTrans.RollBack();
+            this.PricingChargeBridge.CancelUncommittedCharges();
             if (!this.isIgnoreMedcareInterface && medcareInterfaceProxy != null)
             {
                 medcareInterfaceProxy.Rollback();
@@ -5495,6 +5581,7 @@ namespace Neusoft.HISFC.BizProcess.Integrate
             int iReturn = 0;
             //定义处方号
             string recipeNO = string.Empty;
+            PricingConfirmResult pricingConfirmResult = null;
 
             //如果是收费，获得发票信息
             if (type == Neusoft.HISFC.Models.Base.ChargeTypes.Fee)//收费
@@ -5599,6 +5686,21 @@ namespace Neusoft.HISFC.BizProcess.Integrate
                 //重新生成处方号,如果已有处方号,明细不重新赋值.
                 if (!this.SetRecipeNOOutpatient(r, feeDetails, ref errText))
                 {
+                    return false;
+                }
+                // 处方号已生成后再 confirm，确保统一计价请求中的 chargeDetailNo 能稳定关联 HIS 明细。
+                pricingConfirmResult = this.PricingChargeBridge.ConfirmOutpatientBeforeSave(
+                    null,
+                    r,
+                    feeDetails,
+                    invoiceCombNO,
+                    feeTime,
+                    operID,
+                    employee == null ? string.Empty : employee.Name,
+                    this.GetPricingOperatorDeptCode(employee, r.DoctorInfo.Templet.Dept.ID));
+                if (!pricingConfirmResult.AllowCharge)
+                {
+                    errText = pricingConfirmResult.Message;
                     return false;
                 }
 
@@ -6439,6 +6541,11 @@ namespace Neusoft.HISFC.BizProcess.Integrate
             }
 
 
+            // 只有 HIS 明细写库成功后，才能用真实明细构造 commit actualItems。
+            if (pricingConfirmResult != null && pricingConfirmResult.PendingCharge != null)
+            {
+                this.PricingChargeBridge.MarkHisSaveSucceeded(pricingConfirmResult.PendingCharge);
+            }
             return true;
         }
 
@@ -6494,6 +6601,7 @@ namespace Neusoft.HISFC.BizProcess.Integrate
             int iReturn = 0;
             //定义处方号
             string recipeNO = string.Empty;
+            PricingConfirmResult pricingConfirmResult = null;
 
             //如果是收费，获得发票信息
             if (type == Neusoft.HISFC.Models.Base.ChargeTypes.Fee)//收费
@@ -6595,6 +6703,21 @@ namespace Neusoft.HISFC.BizProcess.Integrate
                 //重新生成处方号,如果已有处方号,明细不重新赋值.
                 if (!this.SetRecipeNOOutpatient(r, feeDetails, ref errText))
                 {
+                    return false;
+                }
+                // 处方号已生成后再 confirm，确保统一计价请求中的 chargeDetailNo 能稳定关联 HIS 明细。
+                pricingConfirmResult = this.PricingChargeBridge.ConfirmOutpatientBeforeSave(
+                    null,
+                    r,
+                    feeDetails,
+                    invoiceCombNO,
+                    feeTime,
+                    operID,
+                    employee == null ? string.Empty : employee.Name,
+                    this.GetPricingOperatorDeptCode(employee, r.DoctorInfo.Templet.Dept.ID));
+                if (!pricingConfirmResult.AllowCharge)
+                {
+                    errText = pricingConfirmResult.Message;
                     return false;
                 }
 
@@ -7333,6 +7456,11 @@ namespace Neusoft.HISFC.BizProcess.Integrate
             }
 
 
+            // 只有 HIS 明细写库成功后，才能用真实明细构造 commit actualItems。
+            if (pricingConfirmResult != null && pricingConfirmResult.PendingCharge != null)
+            {
+                this.PricingChargeBridge.MarkHisSaveSucceeded(pricingConfirmResult.PendingCharge);
+            }
             return true;
         }
 
@@ -7378,6 +7506,7 @@ namespace Neusoft.HISFC.BizProcess.Integrate
             int iReturn = 0;
             //定义处方号
             string recipeNO = string.Empty;
+            PricingConfirmResult pricingConfirmResult = null;
 
             //如果是收费，获得发票信息
             if (type == Neusoft.HISFC.Models.Base.ChargeTypes.Fee)//收费
@@ -7463,6 +7592,21 @@ namespace Neusoft.HISFC.BizProcess.Integrate
                 //重新生成处方号,如果已有处方号,明细不重新赋值.
                 if (!this.SetRecipeNOOutpatient(r, feeDetails, ref errText))
                 {
+                    return false;
+                }
+                // 处方号已生成后再 confirm，确保统一计价请求中的 chargeDetailNo 能稳定关联 HIS 明细。
+                pricingConfirmResult = this.PricingChargeBridge.ConfirmOutpatientBeforeSave(
+                    null,
+                    r,
+                    feeDetails,
+                    invoiceCombNO,
+                    feeTime,
+                    operID,
+                    employee == null ? string.Empty : employee.Name,
+                    this.GetPricingOperatorDeptCode(employee, r.DoctorInfo.Templet.Dept.ID));
+                if (!pricingConfirmResult.AllowCharge)
+                {
+                    errText = pricingConfirmResult.Message;
                     return false;
                 }
 
@@ -8613,6 +8757,11 @@ namespace Neusoft.HISFC.BizProcess.Integrate
                 }
             }
 
+            // 只有 HIS 明细写库成功后，才能用真实明细构造 commit actualItems。
+            if (pricingConfirmResult != null && pricingConfirmResult.PendingCharge != null)
+            {
+                this.PricingChargeBridge.MarkHisSaveSucceeded(pricingConfirmResult.PendingCharge);
+            }
             return true;
         }
 
