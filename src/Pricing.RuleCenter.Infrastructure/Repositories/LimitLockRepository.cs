@@ -106,9 +106,20 @@ public sealed class LimitLockRepository : ILimitLockRepository
 
             return true;
         }
-        catch
+        catch (Exception ex)
         {
-            return false;
+            // 【资金安全约束】限额锁是资金安全的关键并发控制点，不能静默吞没数据库异常。
+            // 区分两类异常：
+            //   1. 数据库基础设施异常（连接断开、超时、死锁等）—— 必须向上抛出，
+            //      因为返回 false 会让调用方认为"锁被占用"而跳过限额校验，
+            //      实际上是数据库不可用，跳过校验将导致限额被突破。
+            //   2. 业务级锁竞争异常（理论上 Oracle FOR UPDATE 不会抛业务异常，而是阻塞等待）
+            //
+            // 因此这里将所有异常向上抛出，由调用方决定重试或失败。
+            // 调用方在 confirm 流程中应捕获异常并返回明确错误，而非静默放行。
+            throw new InvalidOperationException(
+                $"获取限额锁失败，LockKey={lockKey}。限额锁是资金安全关键控制点，" +
+                "数据库异常不能静默放行，否则将导致限额被突破。", ex);
         }
     }
 
@@ -127,6 +138,11 @@ public sealed class LimitLockRepository : ILimitLockRepository
     /// </remarks>
     public async Task ReleaseLockAsync(string lockKey)
     {
+        if (string.IsNullOrEmpty(lockKey))
+        {
+            throw new ArgumentNullException(nameof(lockKey), "锁键不能为空，释放限额锁必须指定有效的 LOCK_KEY");
+        }
+
         await _db.Deleteable<LimitLock>()
             .Where(l => l.LockKey == lockKey)
             .ExecuteCommandAsync();

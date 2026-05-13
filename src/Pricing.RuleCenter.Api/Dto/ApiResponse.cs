@@ -61,9 +61,23 @@ public sealed class ApiResponse<T>
     /// <param name="code">
     /// 失败编码，默认 -1（通用业务失败）。
     /// 全局异常过滤器会根据异常类型传入 400（参数校验）、404（路由未匹配）、409（资源冲突/不存在）或 500（系统异常）。
+    /// 推荐使用 <see cref="BizErrorCode"/> 中定义的业务错误码常量。
     /// </param>
     /// <returns>Code 非 0、Data 为 null 的统一失败响应。</returns>
     public static ApiResponse<T> Fail(string message, int code = -1)
+    {
+        return new ApiResponse<T> { Code = code, Message = message };
+    }
+
+    /// <summary>
+    /// 创建带业务错误码的失败响应。
+    /// </summary>
+    /// <param name="code">
+    /// 业务错误码，应使用 <see cref="BizErrorCode"/> 中定义的常量。
+    /// </param>
+    /// <param name="message">面向开发或运维的可读错误描述。</param>
+    /// <returns>Code 非 0、Data 为 null 的统一失败响应。</returns>
+    public static ApiResponse<T> Fail(int code, string message)
     {
         return new ApiResponse<T> { Code = code, Message = message };
     }
@@ -112,9 +126,23 @@ public sealed class ApiResponse
     /// <param name="code">
     /// 失败编码，默认 -1（通用业务失败）。
     /// 全局异常过滤器会根据异常类型传入 400、404、409 或 500。
+    /// 推荐使用 <see cref="BizErrorCode"/> 中定义的业务错误码常量。
     /// </param>
     /// <returns>Code 非 0 的统一失败响应。</returns>
     public static ApiResponse Fail(string message, int code = -1)
+    {
+        return new ApiResponse { Code = code, Message = message };
+    }
+
+    /// <summary>
+    /// 创建带业务错误码的失败响应。
+    /// </summary>
+    /// <param name="code">
+    /// 业务错误码，应使用 <see cref="BizErrorCode"/> 中定义的常量。
+    /// </param>
+    /// <param name="message">面向开发或运维的可读错误描述。</param>
+    /// <returns>Code 非 0 的统一失败响应。</returns>
+    public static ApiResponse Fail(int code, string message)
     {
         return new ApiResponse { Code = code, Message = message };
     }

@@ -16,6 +16,7 @@ namespace Pricing.RuleCenter.Core.Services;
 /// <item>前缀（2 字符）+ 冒号分隔各维度段，段内不允许出现冒号</item>
 /// <item>日期统一使用 yyyyMMdd 格式，小时使用 yyyyMMddHH 格式</item>
 /// <item>patientId / itemCode 等业务键直接拼接，不做 URL 编码</item>
+/// <item>所有键统一转为大写（ToUpperInvariant），确保大小写不敏感匹配时键值一致</item>
 /// </list>
 /// </para>
 /// <para>
@@ -48,7 +49,7 @@ public static class LimitKeyGenerator
     /// <returns>日数量限额键字符串。</returns>
     public static string DayQtyKey(string patientId, string itemCode, DateTime businessDate)
     {
-        return $"DQ:{patientId}:{itemCode}:{businessDate:yyyyMMdd}";
+        return $"DQ:{patientId}:{itemCode}:{businessDate:yyyyMMdd}".ToUpperInvariant();
     }
 
     /// <summary>
@@ -68,7 +69,7 @@ public static class LimitKeyGenerator
     /// <returns>日金额限额键字符串。</returns>
     public static string DayAmountKey(string patientId, string itemCode, DateTime businessDate)
     {
-        return $"DA:{patientId}:{itemCode}:{businessDate:yyyyMMdd}";
+        return $"DA:{patientId}:{itemCode}:{businessDate:yyyyMMdd}".ToUpperInvariant();
     }
 
     /// <summary>
@@ -91,7 +92,7 @@ public static class LimitKeyGenerator
     /// <returns>单次限额键字符串。</returns>
     public static string OnceQtyKey(string sourceSystem, string businessRequestNo, string itemCode)
     {
-        return $"OQ:{sourceSystem}:{businessRequestNo}:{itemCode}";
+        return $"OQ:{sourceSystem}:{businessRequestNo}:{itemCode}".ToUpperInvariant();
     }
 
     /// <summary>
@@ -114,7 +115,7 @@ public static class LimitKeyGenerator
     /// <returns>时间窗限额键字符串。</returns>
     public static string TimeWindowKey(string patientId, string itemCode, DateTime businessHour)
     {
-        return $"TW:{patientId}:{itemCode}:{businessHour:yyyyMMddHH}";
+        return $"TW:{patientId}:{itemCode}:{businessHour:yyyyMMddHH}".ToUpperInvariant();
     }
 
     /// <summary>
@@ -152,7 +153,7 @@ public static class LimitKeyGenerator
     /// <returns>同胎次限额键字符串。</returns>
     public static string SamePregnancyKey(string pregnancyId, string groupCode)
     {
-        return $"PG:{pregnancyId}:{groupCode}";
+        return $"PG:{pregnancyId}:{groupCode}".ToUpperInvariant();
     }
 
     /// <summary>
@@ -172,6 +173,6 @@ public static class LimitKeyGenerator
     /// <returns>同组互斥限额键字符串。</returns>
     public static string SameGroupKey(string groupCode, DateTime businessDate)
     {
-        return $"SG:{groupCode}:{businessDate:yyyyMMdd}";
+        return $"SG:{groupCode}:{businessDate:yyyyMMdd}".ToUpperInvariant();
     }
 }

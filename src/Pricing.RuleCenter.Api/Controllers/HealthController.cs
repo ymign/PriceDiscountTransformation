@@ -49,12 +49,6 @@ public sealed class HealthController : ControllerBase
     private readonly ISqlSugarClient _db;
 
     /// <summary>
-    /// 服务启动时间戳，用于计算服务运行时长和排查意外重启。
-    /// 在控制器实例化时记录，与进程启动时间基本一致。
-    /// </summary>
-    private static readonly DateTime _startedAt = DateTime.Now;
-
-    /// <summary>
     /// 构造函数，通过依赖注入获取 SqlSugar 数据库客户端。
     /// </summary>
     /// <param name="db">SqlSugar 数据库客户端（<see cref="ISqlSugarClient"/>）。</param>

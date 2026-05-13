@@ -84,11 +84,45 @@ public sealed class ExceedToZeroExecutor : IRuleActionExecutor
         switch (exceedAction.ToUpperInvariant())
         {
             case "REPLACE":
-                HandleReplace(context, param!, exceedQty);
+                // REPLACE 和 CEILING 模式需要参数配置，param 为 null 时降级为 ZERO 模式。
+                if (param is null)
+                {
+                    context.TraceSteps.Add(new TraceStep
+                    {
+                        StepNo = context.TraceSteps.Count + 1,
+                        StepType = "LIMIT",
+                        StepDesc = "超限处理降级：REPLACE 模式缺少 ParamsJson 配置，降级为 ZERO 模式",
+                        InputValue = context.FinalAmount,
+                        OutputValue = context.FinalAmount,
+                        ParamsJson = action.ParamsJson
+                    });
+                    HandleZero(context);
+                }
+                else
+                {
+                    HandleReplace(context, param, exceedQty);
+                }
                 break;
 
             case "CEILING":
-                HandleCeiling(context, param!, exceedQty);
+                // CEILING 模式需要 ceilingPrice 参数，param 为 null 时降级为 ZERO 模式。
+                if (param is null)
+                {
+                    context.TraceSteps.Add(new TraceStep
+                    {
+                        StepNo = context.TraceSteps.Count + 1,
+                        StepType = "LIMIT",
+                        StepDesc = "超限处理降级：CEILING 模式缺少 ParamsJson 配置，降级为 ZERO 模式",
+                        InputValue = context.FinalAmount,
+                        OutputValue = context.FinalAmount,
+                        ParamsJson = action.ParamsJson
+                    });
+                    HandleZero(context);
+                }
+                else
+                {
+                    HandleCeiling(context, param, exceedQty);
+                }
                 break;
 
             default: // ZERO

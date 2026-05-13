@@ -1,7 +1,9 @@
 using Microsoft.Extensions.Caching.Memory;
 using Pricing.RuleCenter.Api.Dto;
+using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
+using SqlSugar;
 
 namespace Pricing.RuleCenter.Api.Services;
 
@@ -56,6 +58,11 @@ public sealed class RulePublishService
     /// 服务日志，用于记录状态机入口的关键操作。
     /// </summary>
     private readonly ILogger<RulePublishService> _logger;
+    /// <summary>
+    /// SqlSugar 数据库客户端，用于在发布操作中开启事务保证多表状态变更的原子性。
+    /// 发布操作会同时更新版本状态、主档状态、发布流水和变更日志，必须使用事务包裹。
+    /// </summary>
+    private readonly ISqlSugarClient _db;
 
     /// <summary>
     /// 互斥动作类型缓存。从 PR_DICT 表中 DICT_TYPE = "MUTUALLY_EXCLUSIVE_ACTION_TYPE" 的字典项加载。
@@ -80,11 +87,13 @@ public sealed class RulePublishService
     /// <param name="lifecycleRepositories">规则发布生命周期仓储集合。</param>
     /// <param name="definitionRepositories">规则定义仓储集合，用于发布前冲突校验。</param>
     /// <param name="cache">内存缓存，用于在状态变更后清除生效规则缓存。</param>
+    /// <param name="db">SqlSugar 数据库客户端，用于事务支持。</param>
     /// <param name="logger">日志对象。</param>
     public RulePublishService(
         RulePublishLifecycleRepositories lifecycleRepositories,
         RulePublishDefinitionRepositories definitionRepositories,
         IMemoryCache cache,
+        ISqlSugarClient db,
         ILogger<RulePublishService> logger)
     {
         _headerRepository = lifecycleRepositories.HeaderRepository;
@@ -95,6 +104,7 @@ public sealed class RulePublishService
         _actionRepository = definitionRepositories.ActionRepository;
         _dictRepository = definitionRepositories.DictRepository;
         _cache = cache;
+        _db = db;
         _logger = logger;
     }
 
@@ -127,9 +137,15 @@ public sealed class RulePublishService
     /// <param name="request">发布请求，包含目标版本号、发布人和备注。</param>
     /// <exception cref="KeyNotFoundException">规则主档或目标版本不存在时抛出。</exception>
     /// <exception cref="InvalidOperationException">目标版本不是草稿状态时抛出。</exception>
+    /// <remarks>
+    /// 【事务保护】发布操作涉及多表状态变更（版本状态、主档状态、发布流水、变更日志），
+    /// 必须在同一事务中执行，确保要么全部成功要么全部回滚。否则可能出现：
+    /// - 版本状态已更新但主档未更新 → 计价引擎匹配到不一致的规则
+    /// - 发布流水缺失 → 无法追溯发布历史
+    /// </remarks>
     public async Task PublishAsync(long ruleId, RulePublishRequest request)
     {
-        // ========== 第一阶段：读取主档和目标版本 ==========
+        // ========== 第一阶段：读取主档和目标版本（事务外） ==========
         // 发布必须同时拿到主档和版本。主档提供当前版本号，版本表提供目标版本的状态边界。
         var header = await _headerRepository.GetByIdAsync(ruleId)
             ?? throw new KeyNotFoundException($"规则不存在: {ruleId}");
@@ -137,64 +153,72 @@ public sealed class RulePublishService
         var version = await _versionRepository.GetByRuleAndVersionAsync(ruleId, request.VersionNo)
             ?? throw new KeyNotFoundException($"规则版本不存在: RuleId={ruleId}, VersionNo={request.VersionNo}");
 
-        // ========== 第二阶段：校验目标版本必须是草稿 ==========
+        // ========== 第二阶段：校验目标版本必须是草稿（事务外） ==========
         // 只允许 DRAFT -> PUBLISHED。已经发布、禁用或回滚过的版本不能再次走普通发布入口，
         // 避免发布历史出现同一个版本被多次发布的歧义。
-        if (version.VersionStatus != "DRAFT")
+        if (version.VersionStatus != VersionStatusCodes.Draft)
         {
             throw new InvalidOperationException($"只有草稿版本可以发布, 当前状态: {version.VersionStatus}");
         }
 
         await ValidatePublishConflictsAsync(header, request.VersionNo);
 
-        // ========== 第三阶段：禁用旧生效版本 ==========
-        // 系统同一条规则只允许一个当前版本。旧版本保留为 DISABLED，便于回滚时找到最近的历史版本。
-        var oldVersion = header.CurrentVersion;
-
-        if (oldVersion > 0)
+        // ========== 第三阶段：事务内执行状态变更和流水写入 ==========
+        // 版本状态、主档状态、发布流水、变更日志必须在同一事务中更新。
+        // 如果任何一步失败，整体回滚，避免数据不一致。
+        await ExecuteInTransactionAsync(async () =>
         {
-            await _versionRepository.UpdateStatusAsync(
-                (await _versionRepository.GetByRuleAndVersionAsync(ruleId, oldVersion))!.VersionId,
-                "DISABLED");
-        }
+            var oldVersion = header.CurrentVersion;
 
-        // ========== 第四阶段：发布目标版本并推进主档 ==========
-        // 版本状态和主档 CurrentVersion 必须一起推进，否则计价匹配会看到主档和版本表不一致。
-        await _versionRepository.UpdateStatusAsync(version.VersionId, "PUBLISHED");
+            // 禁用旧生效版本
+            if (oldVersion > 0)
+            {
+                var oldVersionEntity = await _versionRepository.GetByRuleAndVersionAsync(ruleId, oldVersion);
+                if (oldVersionEntity is null)
+                {
+                    _logger.LogWarning("发布规则时未找到旧版本记录 RuleId={RuleId}, OldVersion={OldVersion}", ruleId, oldVersion);
+                }
+                else
+                {
+                    await _versionRepository.UpdateStatusAsync(oldVersionEntity.VersionId, VersionStatusCodes.Disabled);
+                }
+            }
 
-        header.CurrentVersion = request.VersionNo;
-        header.Status = "PUBLISHED";
-        header.UpdatedAt = DateTime.Now;
-        await _headerRepository.UpdateAsync(header);
+            // 发布目标版本并推进主档
+            await _versionRepository.UpdateStatusAsync(version.VersionId, VersionStatusCodes.Published);
 
-        // ========== 第五阶段：写发布流水 ==========
-        // PublishNo 带规则、版本和时间戳，便于和日志、人工发布单进行交叉核对。
-        var publishNo = $"PUB-{ruleId}-{request.VersionNo}-{DateTime.Now:yyyyMMddHHmmss}";
-        await _publishRepository.InsertAsync(new RulePublish
-        {
-            PublishNo = publishNo,
-            RuleId = ruleId,
-            FromVersion = oldVersion > 0 ? oldVersion : null,
-            ToVersion = request.VersionNo,
-            ActionType = "PUBLISH",
-            PublishedBy = request.PublishedBy,
-            PublishedAt = DateTime.Now,
-            Remark = request.Remark
+            header.CurrentVersion = request.VersionNo;
+            header.Status = RuleStatusCodes.Published;
+            header.UpdatedAt = DateTime.Now;
+            await _headerRepository.UpdateAsync(header);
+
+            // 写发布流水
+            var publishNo = $"PUB-{ruleId}-{request.VersionNo}-{DateTime.Now:yyyyMMddHHmmss}";
+            await _publishRepository.InsertAsync(new RulePublish
+            {
+                PublishNo = publishNo,
+                RuleId = ruleId,
+                FromVersion = oldVersion > 0 ? oldVersion : null,
+                ToVersion = request.VersionNo,
+                ActionType = "PUBLISH",
+                PublishedBy = request.PublishedBy,
+                PublishedAt = DateTime.Now,
+                Remark = request.Remark
+            });
+
+            // 写变更摘要
+            await _changeLogRepository.InsertAsync(new RuleChangeLog
+            {
+                RuleId = ruleId,
+                VersionNo = request.VersionNo,
+                ChangeType = "PUBLISH",
+                ChangeSummary = $"发布版本 V{request.VersionNo}",
+                ChangedBy = request.PublishedBy,
+                ChangedAt = DateTime.Now
+            });
         });
 
-        // ========== 第六阶段：写变更摘要 ==========
-        // 变更日志面向配置人员，语义比发布流水更轻，用于页面展示"谁做了什么"。
-        await _changeLogRepository.InsertAsync(new RuleChangeLog
-        {
-            RuleId = ruleId,
-            VersionNo = request.VersionNo,
-            ChangeType = "PUBLISH",
-            ChangeSummary = $"发布版本 V{request.VersionNo}",
-            ChangedBy = request.PublishedBy,
-            ChangedAt = DateTime.Now
-        });
-
-        // ========== 第七阶段：清除生效规则缓存 ==========
+        // ========== 第四阶段：清除生效规则缓存（事务外） ==========
         // 发布改变了当前生效版本，必须立即清除缓存，确保计价引擎读到最新规则集。
         ClearEffectiveCache();
 
@@ -215,55 +239,55 @@ public sealed class RulePublishService
         var header = await _headerRepository.GetByIdAsync(ruleId)
             ?? throw new KeyNotFoundException($"规则不存在: {ruleId}");
 
-        if (header.Status != "PUBLISHED")
+        if (header.Status != RuleStatusCodes.Published)
         {
             throw new InvalidOperationException($"只有已发布的规则可以停用, 当前状态: {header.Status}");
         }
 
-        // ========== 第二阶段：禁用当前版本 ==========
-        // 版本表同步置为 DISABLED，确保后续回滚/审计能够知道它曾经生效但当前已停用。
-        if (header.CurrentVersion > 0)
+        // ========== 第二阶段：事务内执行状态变更和流水写入 ==========
+        await ExecuteInTransactionAsync(async () =>
         {
-            var currentVersion = await _versionRepository.GetByRuleAndVersionAsync(ruleId, header.CurrentVersion);
-            if (currentVersion is not null)
+            // 禁用当前版本
+            if (header.CurrentVersion > 0)
             {
-                await _versionRepository.UpdateStatusAsync(currentVersion.VersionId, "DISABLED");
+                var currentVersion = await _versionRepository.GetByRuleAndVersionAsync(ruleId, header.CurrentVersion);
+                if (currentVersion is not null)
+                {
+                    await _versionRepository.UpdateStatusAsync(currentVersion.VersionId, VersionStatusCodes.Disabled);
+                }
             }
-        }
 
-        // ========== 第三阶段：更新主档启用状态 ==========
-        // 计价匹配通常先看主档是否启用，因此主档 IsEnabled 必须明确置 N。
-        header.Status = "DISABLED";
-        header.IsEnabled = "N";
-        header.UpdatedAt = DateTime.Now;
-        await _headerRepository.UpdateAsync(header);
+            // 更新主档启用状态
+            header.Status = RuleStatusCodes.Disabled;
+            header.IsEnabled = EnableFlag.No;
+            header.UpdatedAt = DateTime.Now;
+            await _headerRepository.UpdateAsync(header);
 
-        // ========== 第四阶段：写停用流水和变更日志 ==========
-        // 停用不改变 CurrentVersion，只表示该版本不再参与匹配；流水中 From/To 都记录当前版本。
-        await _publishRepository.InsertAsync(new RulePublish
-        {
-            PublishNo = $"DIS-{ruleId}-{DateTime.Now:yyyyMMddHHmmss}",
-            RuleId = ruleId,
-            FromVersion = header.CurrentVersion,
-            ToVersion = header.CurrentVersion,
-            ActionType = "DISABLE",
-            PublishedBy = request.PublishedBy,
-            PublishedAt = DateTime.Now,
-            Remark = request.Remark
+            // 写停用流水和变更日志
+            await _publishRepository.InsertAsync(new RulePublish
+            {
+                PublishNo = $"DIS-{ruleId}-{DateTime.Now:yyyyMMddHHmmss}",
+                RuleId = ruleId,
+                FromVersion = header.CurrentVersion,
+                ToVersion = header.CurrentVersion,
+                ActionType = "DISABLE",
+                PublishedBy = request.PublishedBy,
+                PublishedAt = DateTime.Now,
+                Remark = request.Remark
+            });
+
+            await _changeLogRepository.InsertAsync(new RuleChangeLog
+            {
+                RuleId = ruleId,
+                VersionNo = header.CurrentVersion,
+                ChangeType = "DISABLE",
+                ChangeSummary = $"停用规则, 当前版本 V{header.CurrentVersion}",
+                ChangedBy = request.PublishedBy,
+                ChangedAt = DateTime.Now
+            });
         });
 
-        await _changeLogRepository.InsertAsync(new RuleChangeLog
-        {
-            RuleId = ruleId,
-            VersionNo = header.CurrentVersion,
-            ChangeType = "DISABLE",
-            ChangeSummary = $"停用规则, 当前版本 V{header.CurrentVersion}",
-            ChangedBy = request.PublishedBy,
-            ChangedAt = DateTime.Now
-        });
-
-        // ========== 第五阶段：清除生效规则缓存 ==========
-        // 停用后规则不再参与匹配，必须立即清除缓存。
+        // ========== 第三阶段：清除生效规则缓存 ==========
         ClearEffectiveCache();
 
         _logger.LogInformation("停用规则 RuleId={RuleId}", ruleId);
@@ -283,7 +307,7 @@ public sealed class RulePublishService
         var header = await _headerRepository.GetByIdAsync(ruleId)
             ?? throw new KeyNotFoundException($"规则不存在: {ruleId}");
 
-        if (header.Status != "PUBLISHED")
+        if (header.Status != RuleStatusCodes.Published)
         {
             throw new InvalidOperationException($"只有已发布的规则可以回滚, 当前状态: {header.Status}");
         }
@@ -292,54 +316,54 @@ public sealed class RulePublishService
         // 这里选择小于当前版本号且状态为 DISABLED 的最大版本号，表示"最近一次被替换下来的发布版本"。
         var versions = await _versionRepository.GetByRuleIdAsync(ruleId);
         var previousPublished = versions
-            .Where(v => v.VersionNo < header.CurrentVersion && v.VersionStatus == "DISABLED")
+            .Where(v => v.VersionNo < header.CurrentVersion && v.VersionStatus == VersionStatusCodes.Disabled)
             .OrderByDescending(v => v.VersionNo)
             .FirstOrDefault()
             ?? throw new InvalidOperationException("没有可回滚的历史版本");
 
-        // ========== 第三阶段：把当前版本标记为已回滚 ==========
-        // ROLLED_BACK 与 DISABLED 区分开来，方便审计判断该版本是普通被新版本替换，还是被主动撤回。
-        var currentVersion = await _versionRepository.GetByRuleAndVersionAsync(ruleId, header.CurrentVersion);
-        if (currentVersion is not null)
-        {
-            await _versionRepository.UpdateStatusAsync(currentVersion.VersionId, "ROLLED_BACK");
-        }
-
-        // ========== 第四阶段：恢复历史版本为发布状态 ==========
-        // 主档 CurrentVersion 随后会指向该版本，使计价匹配重新使用历史规则内容。
-        await _versionRepository.UpdateStatusAsync(previousPublished.VersionId, "PUBLISHED");
-
+        // ========== 第三阶段：事务内执行状态变更和流水写入 ==========
         var oldVersionNo = header.CurrentVersion;
-        header.CurrentVersion = previousPublished.VersionNo;
-        header.UpdatedAt = DateTime.Now;
-        await _headerRepository.UpdateAsync(header);
-
-        // ========== 第五阶段：记录回滚流水和变更摘要 ==========
-        // 回滚会改变当前生效版本，必须同时写发布流水和变更日志，便于追查某次计价为什么回到旧规则。
-        await _publishRepository.InsertAsync(new RulePublish
+        await ExecuteInTransactionAsync(async () =>
         {
-            PublishNo = $"RB-{ruleId}-{previousPublished.VersionNo}-{DateTime.Now:yyyyMMddHHmmss}",
-            RuleId = ruleId,
-            FromVersion = oldVersionNo,
-            ToVersion = previousPublished.VersionNo,
-            ActionType = "ROLLBACK",
-            PublishedBy = request.PublishedBy,
-            PublishedAt = DateTime.Now,
-            Remark = request.Remark
+            // 把当前版本标记为已回滚
+            var currentVersion = await _versionRepository.GetByRuleAndVersionAsync(ruleId, header.CurrentVersion);
+            if (currentVersion is not null)
+            {
+                await _versionRepository.UpdateStatusAsync(currentVersion.VersionId, VersionStatusCodes.RolledBack);
+            }
+
+            // 恢复历史版本为发布状态
+            await _versionRepository.UpdateStatusAsync(previousPublished.VersionId, VersionStatusCodes.Published);
+
+            header.CurrentVersion = previousPublished.VersionNo;
+            header.UpdatedAt = DateTime.Now;
+            await _headerRepository.UpdateAsync(header);
+
+            // 记录回滚流水和变更摘要
+            await _publishRepository.InsertAsync(new RulePublish
+            {
+                PublishNo = $"RB-{ruleId}-{previousPublished.VersionNo}-{DateTime.Now:yyyyMMddHHmmss}",
+                RuleId = ruleId,
+                FromVersion = oldVersionNo,
+                ToVersion = previousPublished.VersionNo,
+                ActionType = "ROLLBACK",
+                PublishedBy = request.PublishedBy,
+                PublishedAt = DateTime.Now,
+                Remark = request.Remark
+            });
+
+            await _changeLogRepository.InsertAsync(new RuleChangeLog
+            {
+                RuleId = ruleId,
+                VersionNo = previousPublished.VersionNo,
+                ChangeType = "ROLLBACK",
+                ChangeSummary = $"从 V{oldVersionNo} 回滚到 V{previousPublished.VersionNo}",
+                ChangedBy = request.PublishedBy,
+                ChangedAt = DateTime.Now
+            });
         });
 
-        await _changeLogRepository.InsertAsync(new RuleChangeLog
-        {
-            RuleId = ruleId,
-            VersionNo = previousPublished.VersionNo,
-            ChangeType = "ROLLBACK",
-            ChangeSummary = $"从 V{oldVersionNo} 回滚到 V{previousPublished.VersionNo}",
-            ChangedBy = request.PublishedBy,
-            ChangedAt = DateTime.Now
-        });
-
-        // ========== 第六阶段：清除生效规则缓存 ==========
-        // 回滚改变了当前生效版本，必须立即清除缓存。
+        // ========== 第四阶段：清除生效规则缓存 ==========
         ClearEffectiveCache();
 
         _logger.LogInformation("回滚规则 RuleId={RuleId}, 从 V{FromVersion} 到 V{ToVersion}",
@@ -357,7 +381,7 @@ public sealed class RulePublishService
         var sameItemRules = await _headerRepository.GetByItemCodeAsync(targetHeader.ItemCode);
         var publishedRules = sameItemRules
             .Where(r => r.RuleId != targetHeader.RuleId)
-            .Where(r => r.Status == "PUBLISHED" && r.IsEnabled == "Y")
+            .Where(r => r.Status == RuleStatusCodes.Published && r.IsEnabled == EnableFlag.Yes)
             .Where(r => IsEffectiveRangeOverlap(targetHeader, r))
             .ToList();
 
@@ -695,5 +719,41 @@ public sealed class RulePublishService
             ChangedAt = entity.ChangedAt,
             SourceSystem = entity.SourceSystem
         };
+    }
+
+    /// <summary>
+    /// 在数据库事务中执行操作，确保多表状态变更的原子性。
+    /// </summary>
+    /// <param name="action">要执行的操作。</param>
+    /// <remarks>
+    /// 【事务边界】发布、停用、回滚操作会同时更新多张表（版本、主档、发布流水、变更日志），
+    /// 必须在同一事务中执行，确保要么全部成功要么全部回滚。
+    /// 【异常处理】任何异常都会触发回滚并向上抛出，由调用方决定如何处理。
+    /// </remarks>
+    private async Task ExecuteInTransactionAsync(Func<Task> action)
+    {
+        try
+        {
+            if (_db is not null)
+            {
+                await _db.Ado.BeginTranAsync();
+            }
+
+            await action();
+
+            if (_db is not null)
+            {
+                await _db.Ado.CommitTranAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "规则发布事务执行异常，已回滚");
+            if (_db is not null)
+            {
+                await _db.Ado.RollbackTranAsync();
+            }
+            throw;
+        }
     }
 }

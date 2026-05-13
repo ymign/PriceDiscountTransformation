@@ -87,7 +87,10 @@ public sealed class SameGroupMutexExecutor : IRuleActionExecutor
         var processedCount = 0;
         if (context.InRequestOccupiedQtyByLimitDimension.TryGetValue(mutexKey, out var countValue))
         {
-            processedCount = (int)countValue;
+            // 【精度安全】countValue 是 decimal 类型，存储的是累计数量。
+            // 项目计数必须是整数，使用 Floor 取整而非直接强转（强转会截断小数）。
+            // 正常情况下计数应该是整数，但防御性编程要求处理可能的浮点误差。
+            processedCount = (int)Math.Floor(countValue);
         }
 
         // ========== 第四阶段：超出配额时归零数量 ==========

@@ -130,7 +130,22 @@ public sealed class SameOperationCeilingExecutor : IRuleActionExecutor
 
         if (string.IsNullOrEmpty(operationId))
         {
-            throw new InvalidOperationException("SAME_OPERATION_REQUIRED: 同手术封顶规则要求请求携带 operationNo");
+            // 缺少手术标识时不能执行同手术封顶校验。
+            // 这里不抛异常阻断整条计价链路，而是记录追踪步骤后静默跳过。
+            // 原因：非手术场景（如门诊收费）的项目也可能配置了同手术封顶规则，
+            // 但请求中不会携带手术标识。强制抛异常会导致这些场景全部失败。
+            // 正确做法是规则条件中配置 CHARGE_SCENE_MATCH 限定手术场景，
+            // 让非手术场景的项目不命中该规则。
+            context.TraceSteps.Add(new TraceStep
+            {
+                StepNo = context.TraceSteps.Count + 1,
+                StepType = "LIMIT",
+                StepDesc = $"同手术封顶跳过：请求未携带手术标识(operationNo/operationId)，无法执行同手术封顶校验",
+                InputValue = context.FinalAmount,
+                OutputValue = context.FinalAmount,
+                ParamsJson = action.ParamsJson
+            });
+            return;
         }
 
         var groupCode = context.ItemGroupCode ?? context.ItemCode;
