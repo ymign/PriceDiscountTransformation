@@ -1,6 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
 using Pricing.RuleCenter.Api.Dto;
-using Pricing.RuleCenter.Api.Services;
+using Pricing.RuleCenter.Api.Application.Pricing;
+using Pricing.RuleCenter.Api.Application.Rules;
+using Pricing.RuleCenter.Api.Application.Catalog;
+using Pricing.RuleCenter.Api.Application.Trace;
+using Pricing.RuleCenter.Api.Application.Background;
 
 namespace Pricing.RuleCenter.Api.Controllers;
 
@@ -46,13 +50,13 @@ public sealed class RuleConditionController : ControllerBase
     /// <summary>
     /// 规则条件应用服务实例，封装条件集合的查询和保存业务逻辑。
     /// </summary>
-    private readonly RuleConditionService _service;
+    private readonly RuleConditionAppService _service;
 
     /// <summary>
     /// 构造函数，通过依赖注入获取规则条件应用服务。
     /// </summary>
-    /// <param name="service">规则条件应用服务（<see cref="RuleConditionService"/>）。</param>
-    public RuleConditionController(RuleConditionService service)
+    /// <param name="service">规则条件应用服务（<see cref="RuleConditionAppService"/>）。</param>
+    public RuleConditionController(RuleConditionAppService service)
     {
         _service = service;
     }
@@ -117,3 +121,5 @@ public sealed class RuleConditionController : ControllerBase
         return ApiResponse.Ok();
     }
 }
+
+

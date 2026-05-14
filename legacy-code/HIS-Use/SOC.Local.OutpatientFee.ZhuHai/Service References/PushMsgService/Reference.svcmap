@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ReferenceGroup xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" ID="1f56b443-91a1-432f-8826-c0b227d1eb67" xmlns="urn:schemas-microsoft-com:xml-wcfservicemap">
+  <ClientOptions>
+    <GenerateAsynchronousMethods>false</GenerateAsynchronousMethods>
+    <EnableDataBinding>true</EnableDataBinding>
+    <ExcludedTypes />
+    <ImportXmlTypes>false</ImportXmlTypes>
+    <GenerateInternalTypes>false</GenerateInternalTypes>
+    <GenerateMessageContracts>false</GenerateMessageContracts>
+    <NamespaceMappings />
+    <CollectionMappings />
+    <GenerateSerializableTypes>true</GenerateSerializableTypes>
+    <Serializer>Auto</Serializer>
+    <ReferenceAllAssemblies>true</ReferenceAllAssemblies>
+    <ReferencedAssemblies />
+    <ReferencedDataContractTypes />
+    <ServiceContractMappings />
+  </ClientOptions>
+  <MetadataSources>
+    <MetadataSource Address="http://172.16.106.100:8005/PushMsgService.svc" Protocol="http" SourceId="1" />
+  </MetadataSources>
+  <Metadata>
+    <MetadataFile FileName="PushMsgService.wsdl" MetadataType="Wsdl" ID="3acf5060-7c5c-4ab7-a735-b1a0f422ff4e" SourceId="1" SourceUrl="http://172.16.106.100:8005/PushMsgService.svc?wsdl" />
+    <MetadataFile FileName="PushMsgService.xsd" MetadataType="Schema" ID="924b050a-a1ab-4e92-aa54-f3aa5aa91119" SourceId="1" SourceUrl="http://172.16.106.100:8005/PushMsgService.svc?xsd=xsd2" />
+    <MetadataFile FileName="PushMsgService1.xsd" MetadataType="Schema" ID="14e5c9c4-bca8-4933-97b4-d937a460a151" SourceId="1" SourceUrl="http://172.16.106.100:8005/PushMsgService.svc?xsd=xsd1" />
+    <MetadataFile FileName="PushMsgService2.xsd" MetadataType="Schema" ID="f068d078-47e8-4afa-b61d-8b4fa2f1c753" SourceId="1" SourceUrl="http://172.16.106.100:8005/PushMsgService.svc?xsd=xsd0" />
+    <MetadataFile FileName="PushMsgService.disco" MetadataType="Disco" ID="405608fb-aa62-4819-a229-fc1407bd731b" SourceId="1" SourceUrl="http://172.16.106.100:8005/PushMsgService.svc?disco" />
+  </Metadata>
+  <Extensions>
+    <ExtensionFile FileName="configuration.svcinfo" Name="configuration.svcinfo" />
+  </Extensions>
+</ReferenceGroup>

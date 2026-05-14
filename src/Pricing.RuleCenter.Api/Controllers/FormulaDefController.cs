@@ -1,6 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
 using Pricing.RuleCenter.Api.Dto;
-using Pricing.RuleCenter.Api.Services;
+using Pricing.RuleCenter.Api.Application.Pricing;
+using Pricing.RuleCenter.Api.Application.Rules;
+using Pricing.RuleCenter.Api.Application.Catalog;
+using Pricing.RuleCenter.Api.Application.Trace;
+using Pricing.RuleCenter.Api.Application.Background;
 
 namespace Pricing.RuleCenter.Api.Controllers;
 
@@ -39,13 +43,13 @@ public sealed class FormulaDefController : ControllerBase
     /// <summary>
     /// 公式定义应用服务实例，封装公式元数据的 CRUD 业务逻辑。
     /// </summary>
-    private readonly FormulaDefService _service;
+    private readonly FormulaDefAppService _service;
 
     /// <summary>
     /// 构造函数，通过依赖注入获取公式定义应用服务。
     /// </summary>
-    /// <param name="service">公式定义应用服务（<see cref="FormulaDefService"/>）。</param>
-    public FormulaDefController(FormulaDefService service)
+    /// <param name="service">公式定义应用服务（<see cref="FormulaDefAppService"/>）。</param>
+    public FormulaDefController(FormulaDefAppService service)
     {
         _service = service;
     }
@@ -159,3 +163,5 @@ public sealed class FormulaDefController : ControllerBase
         return ApiResponse.Ok();
     }
 }
+
+

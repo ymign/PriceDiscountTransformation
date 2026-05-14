@@ -1,5 +1,9 @@
 using Pricing.RuleCenter.Api.Filters;
-using Pricing.RuleCenter.Api.Services;
+using Pricing.RuleCenter.Api.Application.Pricing;
+using Pricing.RuleCenter.Api.Application.Rules;
+using Pricing.RuleCenter.Api.Application.Catalog;
+using Pricing.RuleCenter.Api.Application.Trace;
+using Pricing.RuleCenter.Api.Application.Background;
 using Pricing.RuleCenter.Core.Engine;
 using Pricing.RuleCenter.Core.Engine.Evaluators;
 using Pricing.RuleCenter.Core.Engine.Executors;
@@ -15,23 +19,23 @@ builder.Services.AddInfrastructure(builder.Configuration);
 
 // ========== 第二阶段：注册应用服务 ==========
 // 应用服务属于 Api 层，负责编排业务用例和事务边界，不属于基础设施层。
-builder.Services.AddScoped<DictService>();
-builder.Services.AddScoped<FormulaDefService>();
-builder.Services.AddScoped<RuleHeaderService>();
-builder.Services.AddScoped<RuleVersionService>();
-builder.Services.AddScoped<RuleConditionService>();
-builder.Services.AddScoped<RuleActionService>();
+builder.Services.AddScoped<DictAppService>();
+builder.Services.AddScoped<FormulaDefAppService>();
+builder.Services.AddScoped<RuleHeaderAppService>();
+builder.Services.AddScoped<RuleVersionAppService>();
+builder.Services.AddScoped<RuleConditionAppService>();
+builder.Services.AddScoped<RuleActionAppService>();
 builder.Services.AddScoped<RulePublishLifecycleRepositories>();
 builder.Services.AddScoped<RulePublishDefinitionRepositories>();
-builder.Services.AddScoped<RulePublishService>();
-builder.Services.AddScoped<PricingApiCalculationDependencies>();
-builder.Services.AddScoped<PricingApiPersistenceRepositories>();
-builder.Services.AddScoped<PricingApiService>();
-builder.Services.AddScoped<TraceQueryService>();
+builder.Services.AddScoped<RulePublishAppService>();
+builder.Services.AddScoped<PricingAppCalculationDependencies>();
+builder.Services.AddScoped<PricingAppPersistenceRepositories>();
+builder.Services.AddScoped<PricingAppService>();
+builder.Services.AddScoped<TraceQueryAppService>();
 
 // ExpireCleanupService 位于 Api 层，在此注册为后台服务。
 // 它是 Singleton BackgroundService，通过 IServiceScopeFactory 创建 Scoped 依赖。
-builder.Services.AddHostedService<ExpireCleanupService>();
+builder.Services.AddHostedService<ExpireCleanupAppService>();
 
 // ========== 第三阶段：注册规则引擎和执行器 ==========
 // 条件执行器负责规则条件匹配（项目、场景、部位、时间等维度）。

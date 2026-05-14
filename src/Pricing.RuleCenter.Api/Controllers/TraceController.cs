@@ -1,6 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
 using Pricing.RuleCenter.Api.Dto;
-using Pricing.RuleCenter.Api.Services;
+using Pricing.RuleCenter.Api.Application.Pricing;
+using Pricing.RuleCenter.Api.Application.Rules;
+using Pricing.RuleCenter.Api.Application.Catalog;
+using Pricing.RuleCenter.Api.Application.Trace;
+using Pricing.RuleCenter.Api.Application.Background;
 
 namespace Pricing.RuleCenter.Api.Controllers;
 
@@ -37,13 +41,13 @@ public sealed class TraceController : ControllerBase
     /// <summary>
     /// 计价追溯查询服务实例，封装请求日志、执行步骤和折价明细的查询业务逻辑。
     /// </summary>
-    private readonly TraceQueryService _service;
+    private readonly TraceQueryAppService _service;
 
     /// <summary>
     /// 构造函数，通过依赖注入获取计价追溯查询服务。
     /// </summary>
-    /// <param name="service">计价追溯查询服务（<see cref="TraceQueryService"/>）。</param>
-    public TraceController(TraceQueryService service)
+    /// <param name="service">计价追溯查询服务（<see cref="TraceQueryAppService"/>）。</param>
+    public TraceController(TraceQueryAppService service)
     {
         _service = service;
     }
@@ -92,3 +96,5 @@ public sealed class TraceController : ControllerBase
         return ApiResponse<PagedResponse<TraceQueryResponse>>.Ok(result);
     }
 }
+
+

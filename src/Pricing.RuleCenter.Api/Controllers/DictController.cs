@@ -1,6 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
 using Pricing.RuleCenter.Api.Dto;
-using Pricing.RuleCenter.Api.Services;
+using Pricing.RuleCenter.Api.Application.Pricing;
+using Pricing.RuleCenter.Api.Application.Rules;
+using Pricing.RuleCenter.Api.Application.Catalog;
+using Pricing.RuleCenter.Api.Application.Trace;
+using Pricing.RuleCenter.Api.Application.Background;
 
 namespace Pricing.RuleCenter.Api.Controllers;
 
@@ -33,13 +37,13 @@ public sealed class DictController : ControllerBase
     /// <summary>
     /// 字典应用服务实例，封装字典数据的 CRUD 业务逻辑。
     /// </summary>
-    private readonly DictService _service;
+    private readonly DictAppService _service;
 
     /// <summary>
     /// 构造函数，通过依赖注入获取字典应用服务。
     /// </summary>
-    /// <param name="service">字典应用服务（<see cref="DictService"/>）。</param>
-    public DictController(DictService service)
+    /// <param name="service">字典应用服务（<see cref="DictAppService"/>）。</param>
+    public DictController(DictAppService service)
     {
         _service = service;
     }
@@ -174,3 +178,5 @@ public sealed class DictController : ControllerBase
         return ApiResponse.Ok();
     }
 }
+
+

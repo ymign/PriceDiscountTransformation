@@ -1,3 +1,7 @@
+using Pricing.RuleCenter.Core.Aggregates.Rules;
+using Pricing.RuleCenter.Core.Aggregates.Charging;
+using Pricing.RuleCenter.Core.Aggregates.Quota;
+using Pricing.RuleCenter.Core.Aggregates.Catalog;
 using Pricing.RuleCenter.Core.Models;
 using SqlSugar;
 
@@ -15,7 +19,7 @@ public static class EntityTypeConfigs
     private static readonly IReadOnlyDictionary<Type, string> PrimaryKeyProperties =
         new Dictionary<Type, string>
         {
-            [typeof(RuleHeader)] = nameof(RuleHeader.RuleId),
+            [typeof(RuleAggregate)] = nameof(RuleAggregate.RuleId),
             [typeof(RuleVersion)] = nameof(RuleVersion.VersionId),
             [typeof(RuleCondition)] = nameof(RuleCondition.ConditionId),
             [typeof(RuleAction)] = nameof(RuleAction.ActionId),
@@ -27,7 +31,7 @@ public static class EntityTypeConfigs
             [typeof(ItemGroupDetail)] = nameof(ItemGroupDetail.DetailId),
             [typeof(LimitLock)] = nameof(LimitLock.LockKey),
             [typeof(LimitOccupy)] = nameof(LimitOccupy.OccupyId),
-            [typeof(ChargeRequestLog)] = nameof(ChargeRequestLog.RequestId),
+            [typeof(ChargeRequest)] = nameof(ChargeRequest.RequestId),
             [typeof(ChargeDiscountDetail)] = nameof(ChargeDiscountDetail.DiscountId),
             [typeof(ChargeTraceStep)] = nameof(ChargeTraceStep.StepId),
             [typeof(ChargeReverseLog)] = nameof(ChargeReverseLog.ReverseId),
@@ -62,29 +66,29 @@ public static class EntityTypeConfigs
     /// <summary>
     /// 配置 PR_RULE_HEADER 表映射。
     /// </summary>
-    public static void ConfigureRuleHeader(SqlSugarClient db)
+    public static void ConfigureRuleAggregate(SqlSugarClient db)
     {
-        db.MappingTables.Add(typeof(RuleHeader).Name, "PR_RULE_HEADER");
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleHeader), PropertyName = nameof(RuleHeader.RuleId), DbColumnName = "RULE_ID" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleHeader), PropertyName = nameof(RuleHeader.RuleCode), DbColumnName = "RULE_CODE" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleHeader), PropertyName = nameof(RuleHeader.RuleName), DbColumnName = "RULE_NAME" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleHeader), PropertyName = nameof(RuleHeader.RuleCategory), DbColumnName = "RULE_CATEGORY" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleHeader), PropertyName = nameof(RuleHeader.RuleScope), DbColumnName = "RULE_SCOPE" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleHeader), PropertyName = nameof(RuleHeader.ItemCode), DbColumnName = "ITEM_CODE" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleHeader), PropertyName = nameof(RuleHeader.ItemName), DbColumnName = "ITEM_NAME" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleHeader), PropertyName = nameof(RuleHeader.GroupCode), DbColumnName = "GROUP_CODE" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleHeader), PropertyName = nameof(RuleHeader.Priority), DbColumnName = "PRIORITY" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleHeader), PropertyName = nameof(RuleHeader.CurrentVersion), DbColumnName = "CURRENT_VERSION" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleHeader), PropertyName = nameof(RuleHeader.Status), DbColumnName = "STATUS" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleHeader), PropertyName = nameof(RuleHeader.IsEnabled), DbColumnName = "IS_ENABLED" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleHeader), PropertyName = nameof(RuleHeader.EffectiveFrom), DbColumnName = "EFFECTIVE_FROM" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleHeader), PropertyName = nameof(RuleHeader.EffectiveTo), DbColumnName = "EFFECTIVE_TO" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleHeader), PropertyName = nameof(RuleHeader.RollbackMode), DbColumnName = "ROLLBACK_MODE" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleHeader), PropertyName = nameof(RuleHeader.Remark), DbColumnName = "REMARK" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleHeader), PropertyName = nameof(RuleHeader.CreatedBy), DbColumnName = "CREATED_BY" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleHeader), PropertyName = nameof(RuleHeader.CreatedAt), DbColumnName = "CREATED_AT" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleHeader), PropertyName = nameof(RuleHeader.UpdatedBy), DbColumnName = "UPDATED_BY" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleHeader), PropertyName = nameof(RuleHeader.UpdatedAt), DbColumnName = "UPDATED_AT" });
+        db.MappingTables.Add(typeof(RuleAggregate).Name, "PR_RULE_HEADER");
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleAggregate), PropertyName = nameof(RuleAggregate.RuleId), DbColumnName = "RULE_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleAggregate), PropertyName = nameof(RuleAggregate.RuleCode), DbColumnName = "RULE_CODE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleAggregate), PropertyName = nameof(RuleAggregate.RuleName), DbColumnName = "RULE_NAME" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleAggregate), PropertyName = nameof(RuleAggregate.RuleCategory), DbColumnName = "RULE_CATEGORY" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleAggregate), PropertyName = nameof(RuleAggregate.RuleScope), DbColumnName = "RULE_SCOPE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleAggregate), PropertyName = nameof(RuleAggregate.ItemCode), DbColumnName = "ITEM_CODE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleAggregate), PropertyName = nameof(RuleAggregate.ItemName), DbColumnName = "ITEM_NAME" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleAggregate), PropertyName = nameof(RuleAggregate.GroupCode), DbColumnName = "GROUP_CODE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleAggregate), PropertyName = nameof(RuleAggregate.Priority), DbColumnName = "PRIORITY" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleAggregate), PropertyName = nameof(RuleAggregate.CurrentVersion), DbColumnName = "CURRENT_VERSION" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleAggregate), PropertyName = nameof(RuleAggregate.Status), DbColumnName = "STATUS" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleAggregate), PropertyName = nameof(RuleAggregate.IsEnabled), DbColumnName = "IS_ENABLED" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleAggregate), PropertyName = nameof(RuleAggregate.EffectiveFrom), DbColumnName = "EFFECTIVE_FROM" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleAggregate), PropertyName = nameof(RuleAggregate.EffectiveTo), DbColumnName = "EFFECTIVE_TO" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleAggregate), PropertyName = nameof(RuleAggregate.RollbackMode), DbColumnName = "ROLLBACK_MODE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleAggregate), PropertyName = nameof(RuleAggregate.Remark), DbColumnName = "REMARK" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleAggregate), PropertyName = nameof(RuleAggregate.CreatedBy), DbColumnName = "CREATED_BY" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleAggregate), PropertyName = nameof(RuleAggregate.CreatedAt), DbColumnName = "CREATED_AT" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleAggregate), PropertyName = nameof(RuleAggregate.UpdatedBy), DbColumnName = "UPDATED_BY" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleAggregate), PropertyName = nameof(RuleAggregate.UpdatedAt), DbColumnName = "UPDATED_AT" });
     }
 
     /// <summary>
@@ -295,37 +299,37 @@ public static class EntityTypeConfigs
     /// <summary>
     /// 配置 PR_CHARGE_REQUEST_LOG 表映射。
     /// </summary>
-    public static void ConfigureChargeRequestLog(SqlSugarClient db)
+    public static void ConfigureChargeRequest(SqlSugarClient db)
     {
-        db.MappingTables.Add(typeof(ChargeRequestLog).Name, "PR_CHARGE_REQUEST_LOG");
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequestLog), PropertyName = nameof(ChargeRequestLog.RequestId), DbColumnName = "REQUEST_ID" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequestLog), PropertyName = nameof(ChargeRequestLog.RequestNo), DbColumnName = "REQUEST_NO" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequestLog), PropertyName = nameof(ChargeRequestLog.BusinessRequestNo), DbColumnName = "BUSINESS_REQUEST_NO" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequestLog), PropertyName = nameof(ChargeRequestLog.RequestFingerprint), DbColumnName = "REQUEST_FINGERPRINT" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequestLog), PropertyName = nameof(ChargeRequestLog.TraceId), DbColumnName = "TRACE_ID" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequestLog), PropertyName = nameof(ChargeRequestLog.CallType), DbColumnName = "CALL_TYPE" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequestLog), PropertyName = nameof(ChargeRequestLog.BusinessStatus), DbColumnName = "BUSINESS_STATUS" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequestLog), PropertyName = nameof(ChargeRequestLog.SourceSystem), DbColumnName = "SOURCE_SYSTEM" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequestLog), PropertyName = nameof(ChargeRequestLog.SourceTerminal), DbColumnName = "SOURCE_TERMINAL" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequestLog), PropertyName = nameof(ChargeRequestLog.PatientId), DbColumnName = "PATIENT_ID" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequestLog), PropertyName = nameof(ChargeRequestLog.VisitId), DbColumnName = "VISIT_ID" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequestLog), PropertyName = nameof(ChargeRequestLog.ChargeScene), DbColumnName = "CHARGE_SCENE" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequestLog), PropertyName = nameof(ChargeRequestLog.ChargeNo), DbColumnName = "CHARGE_NO" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequestLog), PropertyName = nameof(ChargeRequestLog.ChargeDetailNo), DbColumnName = "CHARGE_DETAIL_NO" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequestLog), PropertyName = nameof(ChargeRequestLog.ResultGroupNo), DbColumnName = "RESULT_GROUP_NO" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequestLog), PropertyName = nameof(ChargeRequestLog.ItemCode), DbColumnName = "ITEM_CODE" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequestLog), PropertyName = nameof(ChargeRequestLog.ItemName), DbColumnName = "ITEM_NAME" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequestLog), PropertyName = nameof(ChargeRequestLog.InputQty), DbColumnName = "INPUT_QTY" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequestLog), PropertyName = nameof(ChargeRequestLog.InputUnit), DbColumnName = "INPUT_UNIT" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequestLog), PropertyName = nameof(ChargeRequestLog.BodyPartCode), DbColumnName = "BODY_PART_CODE" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequestLog), PropertyName = nameof(ChargeRequestLog.BusinessChargeTime), DbColumnName = "BUSINESS_CHARGE_TIME" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequestLog), PropertyName = nameof(ChargeRequestLog.PriceVersion), DbColumnName = "PRICE_VERSION" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequestLog), PropertyName = nameof(ChargeRequestLog.RequestJson), DbColumnName = "REQUEST_JSON" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequestLog), PropertyName = nameof(ChargeRequestLog.ResponseJson), DbColumnName = "RESPONSE_JSON" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequestLog), PropertyName = nameof(ChargeRequestLog.RequestAt), DbColumnName = "REQUEST_AT" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequestLog), PropertyName = nameof(ChargeRequestLog.ResponseAt), DbColumnName = "RESPONSE_AT" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequestLog), PropertyName = nameof(ChargeRequestLog.IsSuccess), DbColumnName = "IS_SUCCESS" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequestLog), PropertyName = nameof(ChargeRequestLog.ErrorMessage), DbColumnName = "ERROR_MESSAGE" });
+        db.MappingTables.Add(typeof(ChargeRequest).Name, "PR_CHARGE_REQUEST_LOG");
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.RequestId), DbColumnName = "REQUEST_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.RequestNo), DbColumnName = "REQUEST_NO" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.BusinessRequestNo), DbColumnName = "BUSINESS_REQUEST_NO" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.RequestFingerprint), DbColumnName = "REQUEST_FINGERPRINT" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.TraceId), DbColumnName = "TRACE_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.CallType), DbColumnName = "CALL_TYPE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.BusinessStatus), DbColumnName = "BUSINESS_STATUS" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.SourceSystem), DbColumnName = "SOURCE_SYSTEM" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.SourceTerminal), DbColumnName = "SOURCE_TERMINAL" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.PatientId), DbColumnName = "PATIENT_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.VisitId), DbColumnName = "VISIT_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.ChargeScene), DbColumnName = "CHARGE_SCENE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.ChargeNo), DbColumnName = "CHARGE_NO" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.ChargeDetailNo), DbColumnName = "CHARGE_DETAIL_NO" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.ResultGroupNo), DbColumnName = "RESULT_GROUP_NO" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.ItemCode), DbColumnName = "ITEM_CODE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.ItemName), DbColumnName = "ITEM_NAME" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.InputQty), DbColumnName = "INPUT_QTY" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.InputUnit), DbColumnName = "INPUT_UNIT" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.BodyPartCode), DbColumnName = "BODY_PART_CODE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.BusinessChargeTime), DbColumnName = "BUSINESS_CHARGE_TIME" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.PriceVersion), DbColumnName = "PRICE_VERSION" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.RequestJson), DbColumnName = "REQUEST_JSON" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.ResponseJson), DbColumnName = "RESPONSE_JSON" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.RequestAt), DbColumnName = "REQUEST_AT" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.ResponseAt), DbColumnName = "RESPONSE_AT" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.IsSuccess), DbColumnName = "IS_SUCCESS" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.ErrorMessage), DbColumnName = "ERROR_MESSAGE" });
     }
 
     /// <summary>
@@ -466,7 +470,7 @@ public static class EntityTypeConfigs
     /// </summary>
     public static void ApplyAllConfigs(SqlSugarClient db)
     {
-        ConfigureRuleHeader(db);
+        ConfigureRuleAggregate(db);
         ConfigureRuleVersion(db);
         ConfigureRuleCondition(db);
         ConfigureRuleAction(db);
@@ -479,7 +483,7 @@ public static class EntityTypeConfigs
         ConfigureLimitLock(db);
         ConfigureLimitOccupy(db);
         ConfigurePriceMasterItem(db);
-        ConfigureChargeRequestLog(db);
+        ConfigureChargeRequest(db);
         ConfigureChargeDiscountDetail(db);
         ConfigureChargeTraceStep(db);
         ConfigureChargeReverseLog(db);

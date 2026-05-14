@@ -178,3 +178,5 @@ public sealed class HealthResult
     /// </summary>
     public string ProtocolVersion { get; init; } = PricingProtocolVersion;
 }
+
+

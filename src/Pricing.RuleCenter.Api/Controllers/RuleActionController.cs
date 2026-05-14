@@ -1,6 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
 using Pricing.RuleCenter.Api.Dto;
-using Pricing.RuleCenter.Api.Services;
+using Pricing.RuleCenter.Api.Application.Pricing;
+using Pricing.RuleCenter.Api.Application.Rules;
+using Pricing.RuleCenter.Api.Application.Catalog;
+using Pricing.RuleCenter.Api.Application.Trace;
+using Pricing.RuleCenter.Api.Application.Background;
 
 namespace Pricing.RuleCenter.Api.Controllers;
 
@@ -50,13 +54,13 @@ public sealed class RuleActionController : ControllerBase
     /// <summary>
     /// 规则动作应用服务实例，封装动作链的查询和保存业务逻辑。
     /// </summary>
-    private readonly RuleActionService _service;
+    private readonly RuleActionAppService _service;
 
     /// <summary>
     /// 构造函数，通过依赖注入获取规则动作应用服务。
     /// </summary>
-    /// <param name="service">规则动作应用服务（<see cref="RuleActionService"/>）。</param>
-    public RuleActionController(RuleActionService service)
+    /// <param name="service">规则动作应用服务（<see cref="RuleActionAppService"/>）。</param>
+    public RuleActionController(RuleActionAppService service)
     {
         _service = service;
     }
@@ -121,3 +125,5 @@ public sealed class RuleActionController : ControllerBase
         return ApiResponse.Ok();
     }
 }
+
+

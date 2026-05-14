@@ -1,6 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
 using Pricing.RuleCenter.Api.Dto;
-using Pricing.RuleCenter.Api.Services;
+using Pricing.RuleCenter.Api.Application.Pricing;
+using Pricing.RuleCenter.Api.Application.Rules;
+using Pricing.RuleCenter.Api.Application.Catalog;
+using Pricing.RuleCenter.Api.Application.Trace;
+using Pricing.RuleCenter.Api.Application.Background;
 
 namespace Pricing.RuleCenter.Api.Controllers;
 
@@ -40,13 +44,13 @@ public sealed class RuleVersionController : ControllerBase
     /// <summary>
     /// 规则版本应用服务实例，封装版本查询和草稿创建的业务逻辑。
     /// </summary>
-    private readonly RuleVersionService _service;
+    private readonly RuleVersionAppService _service;
 
     /// <summary>
     /// 构造函数，通过依赖注入获取规则版本应用服务。
     /// </summary>
-    /// <param name="service">规则版本应用服务（<see cref="RuleVersionService"/>）。</param>
-    public RuleVersionController(RuleVersionService service)
+    /// <param name="service">规则版本应用服务（<see cref="RuleVersionAppService"/>）。</param>
+    public RuleVersionController(RuleVersionAppService service)
     {
         _service = service;
     }
@@ -122,3 +126,5 @@ public sealed class RuleVersionController : ControllerBase
         return ApiResponse<long>.Ok(id);
     }
 }
+
+

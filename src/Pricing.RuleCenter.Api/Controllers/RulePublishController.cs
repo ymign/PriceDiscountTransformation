@@ -1,6 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
 using Pricing.RuleCenter.Api.Dto;
-using Pricing.RuleCenter.Api.Services;
+using Pricing.RuleCenter.Api.Application.Pricing;
+using Pricing.RuleCenter.Api.Application.Rules;
+using Pricing.RuleCenter.Api.Application.Catalog;
+using Pricing.RuleCenter.Api.Application.Trace;
+using Pricing.RuleCenter.Api.Application.Background;
 
 namespace Pricing.RuleCenter.Api.Controllers;
 
@@ -23,7 +27,7 @@ namespace Pricing.RuleCenter.Api.Controllers;
 /// </code>
 /// </para>
 /// <para>
-/// 发布前阻断校验（由 <see cref="RulePublishService"/> 执行）：
+/// 发布前阻断校验（由 <see cref="RulePublishAppService"/> 执行）：
 /// <list type="bullet">
 ///   <item>规则重叠校验：同一项目、同一场景、同一生效期不允许重复规则</item>
 ///   <item>动作组冲突校验：同一规则不允许同时存在冲突的动作配置</item>
@@ -38,7 +42,7 @@ namespace Pricing.RuleCenter.Api.Controllers;
 /// </summary>
 /// <remarks>
 /// 发布相关接口会改变规则是否参与计价匹配，控制器只做路由转发，
-/// 状态机约束和缓存失效由 <see cref="RulePublishService"/> 统一执行。
+/// 状态机约束和缓存失效由 <see cref="RulePublishAppService"/> 统一执行。
 /// </remarks>
 [ApiController]
 [Route("api/pricing/rules/{ruleId:long}")]
@@ -47,13 +51,13 @@ public sealed class RulePublishController : ControllerBase
     /// <summary>
     /// 规则发布应用服务实例，封装发布/停用/回滚的状态机逻辑和缓存失效处理。
     /// </summary>
-    private readonly RulePublishService _service;
+    private readonly RulePublishAppService _service;
 
     /// <summary>
     /// 构造函数，通过依赖注入获取规则发布应用服务。
     /// </summary>
-    /// <param name="service">规则发布应用服务（<see cref="RulePublishService"/>）。</param>
-    public RulePublishController(RulePublishService service)
+    /// <param name="service">规则发布应用服务（<see cref="RulePublishAppService"/>）。</param>
+    public RulePublishController(RulePublishAppService service)
     {
         _service = service;
     }
@@ -200,3 +204,5 @@ public sealed class RulePublishController : ControllerBase
         return ApiResponse.Ok();
     }
 }
+
+

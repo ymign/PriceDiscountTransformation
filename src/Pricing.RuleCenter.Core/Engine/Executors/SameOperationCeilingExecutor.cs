@@ -1,7 +1,10 @@
 using Newtonsoft.Json;
 using Pricing.RuleCenter.Core.Interfaces;
-using Pricing.RuleCenter.Core.Models;
+using Pricing.RuleCenter.Core.Interfaces.Quota;
 using Pricing.RuleCenter.Core.Services;
+using Pricing.RuleCenter.Core.Aggregates.Quota;
+using Pricing.RuleCenter.Core.Aggregates.Rules;
+using Pricing.RuleCenter.Core.Models;
 
 namespace Pricing.RuleCenter.Core.Engine.Executors;
 
@@ -149,7 +152,7 @@ public sealed class SameOperationCeilingExecutor : IRuleActionExecutor
         }
 
         var groupCode = context.ItemGroupCode ?? context.ItemCode;
-        var limitKey = LimitKeyGenerator.SameOperationKey(operationId, groupCode);
+        var limitKey = LimitKeyGenerator.GenerateSameOperationKey(operationId, groupCode);
         var dimensionCode = $"{operationId}:{groupCode}".ToUpperInvariant();
 
         if (context.ShouldLockLimits)

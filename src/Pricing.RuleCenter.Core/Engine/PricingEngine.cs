@@ -1,7 +1,8 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Pricing.RuleCenter.Core.Interfaces;
-using Pricing.RuleCenter.Core.Models;
 using Pricing.RuleCenter.Core.Services;
+using Pricing.RuleCenter.Core.Aggregates.Quota;
+using Pricing.RuleCenter.Core.Models;
 
 namespace Pricing.RuleCenter.Core.Engine;
 
@@ -104,8 +105,8 @@ public sealed class PricingEngine : IPricingEngine
         // ========== 第五阶段：计算折价金额并补齐占额草稿 ==========
         // 占额草稿在执行器中只记录维度，最终占用数量和金额要等动作链全部执行完成后才能确定。
         var originalAmount = context.UnitPrice * context.InputQty;
-        context.FinalAmount = PricingAmountRounder.RoundFinalAmount(context.FinalAmount);
-        context.DiscountAmount = PricingAmountRounder.RoundFinalAmount(originalAmount - context.FinalAmount);
+        context.FinalAmount = PricingAmountRounder.RoundFinal(context.FinalAmount);
+        context.DiscountAmount = PricingAmountRounder.RoundFinal(originalAmount - context.FinalAmount);
         foreach (var occupy in context.PendingLimitOccupies)
         {
             occupy.OccupyQty = context.FinalQty;
@@ -219,8 +220,8 @@ public sealed class PricingEngine : IPricingEngine
             ConvertedQty = context.ConvertedQty,
             FinalQty = context.FinalQty,
             UnitPrice = context.UnitPrice,
-            FinalAmount = PricingAmountRounder.RoundFinalAmount(context.FinalAmount),
-            DiscountAmount = PricingAmountRounder.RoundFinalAmount(context.DiscountAmount),
+            FinalAmount = PricingAmountRounder.RoundFinal(context.FinalAmount),
+            DiscountAmount = PricingAmountRounder.RoundFinal(context.DiscountAmount),
             ExceedQty = context.ExceedQty,
             ReplaceChildResult = context.ReplaceChildResult,
             ChildPricingResults = context.ChildPricingResults.ToList(),

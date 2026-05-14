@@ -1,5 +1,8 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
+using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Interfaces;
+using Pricing.RuleCenter.Core.Interfaces.Catalog;
+using Pricing.RuleCenter.Core.Interfaces.Rules;
 using Pricing.RuleCenter.Core.Models;
 
 namespace Pricing.RuleCenter.Core.Engine;
@@ -155,7 +158,7 @@ public sealed class RuleMatchService
     /// 命中的规则集合（按优先级排序），以及按全局顺序排列后的动作集合。
     /// 两个集合的对应关系通过 RuleId + Version 可追溯。
     /// </returns>
-    public async Task<(IReadOnlyList<RuleHeader> Rules, IReadOnlyList<RuleAction> Actions)>
+    public async Task<(IReadOnlyList<RuleAggregate> Rules, IReadOnlyList<RuleAction> Actions)>
         MatchAsync(PricingContext context)
     {
         // ========== 第一阶段：按项目编码取候选规则 ==========
@@ -177,7 +180,7 @@ public sealed class RuleMatchService
         // ========== 第三阶段：逐条评估条件组 ==========
         // 条件表支持同组 AND、跨组 OR 语义（参见 EvaluateConditionsAsync 方法）。
         // 只要任一条件组全部满足，该规则就命中。这是"OR 组，AND 组内"的经典规则引擎模式。
-        var matchedRules = new List<RuleHeader>();
+        var matchedRules = new List<RuleAggregate>();
 
         foreach (var rule in published)
         {
@@ -280,7 +283,7 @@ public sealed class RuleMatchService
         return result;
     }
 
-    private static IReadOnlyDictionary<long, int> BuildRuleOrder(IReadOnlyList<RuleHeader> matchedRules)
+    private static IReadOnlyDictionary<long, int> BuildRuleOrder(IReadOnlyList<RuleAggregate> matchedRules)
     {
         return matchedRules
             .Select((rule, index) => new { rule.RuleId, Order = index })
@@ -567,7 +570,7 @@ public sealed class RuleMatchService
     /// EffectiveTo 为 null 表示无结束时间限制。
     /// 这与业务规则"NULL ≠ 0"一致：NULL 表示"不校验"。
     /// </remarks>
-    private static bool IsInEffectiveRange(RuleHeader rule, DateTime businessTime)
+    private static bool IsInEffectiveRange(RuleAggregate rule, DateTime businessTime)
     {
         // 生效区间按闭区间处理：小于开始时间不生效，大于结束时间不生效。
         // EffectiveFrom/EffectiveTo 为 null 时不设限。

@@ -1,4 +1,7 @@
-﻿namespace Pricing.RuleCenter.Core.Models;
+using Pricing.RuleCenter.Core.Aggregates.Rules;
+using Pricing.RuleCenter.Core.Aggregates.Quota;
+
+namespace Pricing.RuleCenter.Core.Models;
 
 /// <summary>
 /// 计价上下文，承载一次规则计算从输入到输出的全部运行态数据。
@@ -128,7 +131,7 @@ public sealed class PricingContext
     /// <summary>
     /// 已命中的规则主档集合。由规则匹配服务写入，后续用于动作排序和响应中的命中规则列表。
     /// </summary>
-    public IReadOnlyList<RuleHeader> MatchedRules { get; set; } = Array.Empty<RuleHeader>();
+    public IReadOnlyList<RuleAggregate> MatchedRules { get; set; } = Array.Empty<RuleAggregate>();
     /// <summary>
     /// 已按优先级、互斥组和动作顺序整理后的执行动作链。
     /// </summary>

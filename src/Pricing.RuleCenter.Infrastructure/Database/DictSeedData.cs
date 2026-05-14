@@ -1,4 +1,4 @@
-using Pricing.RuleCenter.Core.Models;
+using Pricing.RuleCenter.Core.Aggregates.Catalog;
 
 namespace Pricing.RuleCenter.Infrastructure.Database;
 

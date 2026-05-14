@@ -1,3 +1,5 @@
+using Pricing.RuleCenter.Core.Aggregates.Quota;
+
 namespace Pricing.RuleCenter.Core.Models;
 
 /// <summary>

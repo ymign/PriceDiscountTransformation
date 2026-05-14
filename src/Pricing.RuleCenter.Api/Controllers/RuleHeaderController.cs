@@ -1,6 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
 using Pricing.RuleCenter.Api.Dto;
-using Pricing.RuleCenter.Api.Services;
+using Pricing.RuleCenter.Api.Application.Pricing;
+using Pricing.RuleCenter.Api.Application.Rules;
+using Pricing.RuleCenter.Api.Application.Catalog;
+using Pricing.RuleCenter.Api.Application.Trace;
+using Pricing.RuleCenter.Api.Application.Background;
 
 namespace Pricing.RuleCenter.Api.Controllers;
 
@@ -38,13 +42,13 @@ public sealed class RuleHeaderController : ControllerBase
     /// <summary>
     /// 规则主档应用服务实例，封装规则主档数据的 CRUD 业务逻辑。
     /// </summary>
-    private readonly RuleHeaderService _service;
+    private readonly RuleHeaderAppService _service;
 
     /// <summary>
     /// 构造函数，通过依赖注入获取规则主档应用服务。
     /// </summary>
-    /// <param name="service">规则主档应用服务（<see cref="RuleHeaderService"/>）。</param>
-    public RuleHeaderController(RuleHeaderService service)
+    /// <param name="service">规则主档应用服务（<see cref="RuleHeaderAppService"/>）。</param>
+    public RuleHeaderController(RuleHeaderAppService service)
     {
         _service = service;
     }
@@ -198,3 +202,5 @@ public sealed class RuleHeaderController : ControllerBase
         return ApiResponse.Ok();
     }
 }
+
+

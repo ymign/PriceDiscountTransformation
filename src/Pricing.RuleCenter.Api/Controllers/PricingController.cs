@@ -1,6 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
 using Pricing.RuleCenter.Api.Dto;
-using Pricing.RuleCenter.Api.Services;
+using Pricing.RuleCenter.Api.Application.Pricing;
+using Pricing.RuleCenter.Api.Application.Rules;
+using Pricing.RuleCenter.Api.Application.Catalog;
+using Pricing.RuleCenter.Api.Application.Trace;
+using Pricing.RuleCenter.Api.Application.Background;
 
 namespace Pricing.RuleCenter.Api.Controllers;
 
@@ -18,7 +22,7 @@ namespace Pricing.RuleCenter.Api.Controllers;
 /// <list type="bullet">
 ///   <item>控制器层仅做 HTTP 路由分发和统一响应格式包装，不含任何业务逻辑。</item>
 ///   <item>幂等控制、事务边界、限额占用/释放、状态流转等核心逻辑全部下沉到
-///         <see cref="PricingApiService"/>，保持接口层极薄。</item>
+///         <see cref="PricingAppService"/>，保持接口层极薄。</item>
 ///   <item>所有金额相关的请求/响应字段均使用 <c>decimal</c> 类型，禁止 float/double。</item>
 /// </list>
 /// </para>
@@ -62,16 +66,16 @@ public sealed class PricingController : ControllerBase
     /// 时间窗数量限制、同组互斥、同手术封顶、子项加收、超出归零等全部计价逻辑。
     /// </para>
     /// </summary>
-    private readonly PricingApiService _service;
+    private readonly PricingAppService _service;
 
     /// <summary>
     /// 构造函数，通过依赖注入获取计价应用服务。
     /// </summary>
     /// <param name="service">
-    /// 计价应用服务（<see cref="PricingApiService"/>），
+    /// 计价应用服务（<see cref="PricingAppService"/>），
     /// 由 DI 容器在请求作用域内创建并注入。
     /// </param>
-    public PricingController(PricingApiService service)
+    public PricingController(PricingAppService service)
     {
         _service = service;
     }
@@ -322,3 +326,5 @@ public sealed class PricingController : ControllerBase
         return ApiResponse<SpecialFlagResponse>.Ok(result);
     }
 }
+
+

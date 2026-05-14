@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
+using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Models;
 
 namespace Pricing.RuleCenter.Core.Engine;

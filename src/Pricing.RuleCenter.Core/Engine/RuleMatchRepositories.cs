@@ -1,4 +1,6 @@
 using Pricing.RuleCenter.Core.Interfaces;
+using Pricing.RuleCenter.Core.Interfaces.Rules;
+using Pricing.RuleCenter.Core.Interfaces.Catalog;
 
 namespace Pricing.RuleCenter.Core.Engine;
 

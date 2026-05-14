@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xs:schema xmlns:tns="http://tempuri.org/" elementFormDefault="qualified" targetNamespace="http://tempuri.org/" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:import schemaLocation="http://172.16.106.100:8005/PushMsgService.svc?xsd=xsd2" namespace="http://schemas.microsoft.com/2003/10/Serialization/Arrays" />
+  <xs:element name="PushMsg">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element minOccurs="0" name="HospitalId" type="xs:int" />
+        <xs:element minOccurs="0" name="Source" type="xs:int" />
+        <xs:element minOccurs="0" name="Type" type="xs:int" />
+        <xs:element minOccurs="0" name="Content" nillable="true" type="xs:string" />
+        <xs:element minOccurs="0" name="Data" nillable="true" type="xs:string" />
+        <xs:element minOccurs="0" name="Sid" nillable="true" type="xs:string" />
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="PushMsgResponse">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element minOccurs="0" name="PushMsgResult" nillable="true" type="xs:string" />
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="QrCodeFee">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element minOccurs="0" name="PayType" nillable="true" type="xs:string" />
+        <xs:element minOccurs="0" name="clinicCode" nillable="true" type="xs:string" />
+        <xs:element xmlns:q1="http://schemas.microsoft.com/2003/10/Serialization/Arrays" minOccurs="0" name="recipes" nillable="true" type="q1:ArrayOfstring" />
+        <xs:element minOccurs="0" name="totalAmount" type="xs:double" />
+        <xs:element minOccurs="0" name="authCode" nillable="true" type="xs:string" />
+        <xs:element minOccurs="0" name="outTradeNo" nillable="true" type="xs:string" />
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="QrCodeFeeResponse">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element minOccurs="0" name="QrCodeFeeResult" nillable="true" type="xs:string" />
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="QueryOrder">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element minOccurs="0" name="OutTradeNo" nillable="true" type="xs:string" />
+        <xs:element minOccurs="0" name="TradeNo" nillable="true" type="xs:string" />
+        <xs:element minOccurs="0" name="ClinicCode" nillable="true" type="xs:string" />
+        <xs:element minOccurs="0" name="PayType" nillable="true" type="xs:string" />
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="QueryOrderResponse">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element minOccurs="0" name="QueryOrderResult" nillable="true" type="xs:string" />
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="CancelQrCodeFee">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element minOccurs="0" name="OutTradeNo" nillable="true" type="xs:string" />
+        <xs:element minOccurs="0" name="TradeNo" nillable="true" type="xs:string" />
+        <xs:element minOccurs="0" name="TotalAmount" type="xs:double" />
+        <xs:element minOccurs="0" name="PayType" nillable="true" type="xs:string" />
+        <xs:element minOccurs="0" name="ClinicCode" nillable="true" type="xs:string" />
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="CancelQrCodeFeeResponse">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element minOccurs="0" name="CancelQrCodeFeeResult" nillable="true" type="xs:string" />
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

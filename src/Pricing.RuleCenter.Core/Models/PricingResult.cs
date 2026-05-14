@@ -1,3 +1,5 @@
+using Pricing.RuleCenter.Core.Aggregates.Quota;
+
 namespace Pricing.RuleCenter.Core.Models;
 
 /// <summary>
@@ -10,7 +12,7 @@ namespace Pricing.RuleCenter.Core.Models;
 /// 决定是仅返回试算结果，还是把结果持久化并推进状态机。
 /// </para>
 /// <para>
-/// 在计价链路中的角色：作为核心引擎的输出 DTO，串联 PricingResult → ChargeRequestLog（主表）
+/// 在计价链路中的角色：作为核心引擎的输出 DTO，串联 PricingResult → ChargeRequest（主表）
 /// → ChargeDiscountDetail（折扣明细） → LimitOccupy（限额占用） → ChargeTraceStep（步骤日志）。
 /// </para>
 /// <para>
