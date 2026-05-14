@@ -1,5 +1,6 @@
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
+using Pricing.RuleCenter.Core.Aggregates.Catalog;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using SqlSugar;
 
@@ -91,24 +92,68 @@ public sealed class RuleHeaderRepository : IRuleHeaderRepository
     }
 
     /// <summary>
-    /// 按项目编码读取启用规则主档，按优先级升序排列。
+    /// 按项目编码读取启用规则主档候选，按优先级升序排列。
     /// </summary>
     /// <param name="itemCode">HIS 收费项目编码。</param>
     /// <returns>按 Priority 升序排列的启用规则聚合集合；无记录时返回空集合。</returns>
     /// <remarks>
+    /// 【候选范围】
+    /// <list type="bullet">
+    /// <item><description>ITEM 作用域：PR_RULE_HEADER.ITEM_CODE = itemCode</description></item>
+    /// <item><description>GROUP 作用域：当前项目在 PR_ITEM_GROUP_DETAIL 中所属组对应的 PR_RULE_HEADER.GROUP_CODE</description></item>
+    /// </list>
     /// 【SQL 语义】等价于：
     /// <code>
     /// SELECT * FROM PR_RULE_HEADER
-    /// WHERE ITEM_CODE = :itemCode AND IS_ENABLED = 'Y'
+    /// WHERE IS_ENABLED = 'Y'
+    ///   AND (
+    ///     ITEM_CODE = :itemCode
+    ///     OR (
+    ///       RULE_SCOPE = 'GROUP'
+    ///       AND GROUP_CODE IN (
+    ///         SELECT G.GROUP_CODE
+    ///         FROM PR_ITEM_GROUP_DETAIL D
+    ///         JOIN PR_ITEM_GROUP G ON G.GROUP_ID = D.GROUP_ID
+    ///         WHERE D.ITEM_CODE = :itemCode
+    ///       )
+    ///     )
+    ///   )
     /// ORDER BY PRIORITY ASC
     /// </code>
-    /// 【使用场景】规则配置页面按项目查看关联规则。
+    /// 【使用场景】计价引擎匹配候选规则。
     /// 【优先级语义】Priority 值越小优先级越高，计价引擎按此顺序逐条尝试匹配。
     /// </remarks>
     public async Task<IReadOnlyList<RuleAggregate>> GetByItemCodeAsync(string itemCode)
     {
-        return await _db.Queryable<RuleAggregate>()
-            .Where(r => r.ItemCode == itemCode && r.IsEnabled == "Y")
+        if (string.IsNullOrWhiteSpace(itemCode))
+        {
+            return Array.Empty<RuleAggregate>();
+        }
+
+        var normalizedItemCode = itemCode.Trim();
+
+        var groupCodes = await _db.Queryable<ItemGroupDetail, ItemGroup>((detail, group) => new JoinQueryInfos(
+                JoinType.Inner, detail.GroupId == group.GroupId))
+            .Where((detail, group) =>
+                detail.ItemCode == normalizedItemCode &&
+                detail.IsEnabled == "Y" &&
+                group.IsEnabled == "Y")
+            .Select((detail, group) => group.GroupCode)
+            .Distinct()
+            .ToListAsync();
+
+        var query = _db.Queryable<RuleAggregate>()
+            .Where(r => r.IsEnabled == "Y");
+
+        query = groupCodes.Count == 0
+            ? query.Where(r => r.ItemCode == normalizedItemCode)
+            : query.Where(r =>
+                r.ItemCode == normalizedItemCode ||
+                (r.RuleScope == "GROUP" &&
+                 r.GroupCode != null &&
+                 groupCodes.Contains(r.GroupCode)));
+
+        return await query
             .OrderBy(r => r.Priority)
             .ToListAsync();
     }

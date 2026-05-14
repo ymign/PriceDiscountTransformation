@@ -109,8 +109,7 @@ public sealed class PricingEngine : IPricingEngine
         context.DiscountAmount = PricingAmountRounder.RoundFinal(originalAmount - context.FinalAmount);
         foreach (var occupy in context.PendingLimitOccupies)
         {
-            occupy.OccupyQty = context.FinalQty;
-            occupy.OccupyAmt = context.FinalAmount;
+            ApplyFinalOccupyValues(occupy, context);
             occupy.Status = "PENDING";
             occupy.OccupiedAt = DateTime.Now;
         }
@@ -231,5 +230,38 @@ public sealed class PricingEngine : IPricingEngine
                 .Where(o => o.OccupyQty != 0 || o.OccupyAmt != 0)
                 .ToList()
         };
+    }
+
+    /// <summary>
+    /// 按限额类型把最终计价结果物化到占额草稿。
+    /// </summary>
+    /// <remarks>
+    /// 不同限额类型的“占用口径”并不相同：
+    /// <list type="bullet">
+    /// <item><description>DAY_QTY/TIME_WINDOW/ONCE_QTY 等数量限额，记录最终可收费数量</description></item>
+    /// <item><description>SAME_OPERATION 封顶按金额累计，记录最终金额即可</description></item>
+    /// <item><description>SAME_GROUP 互斥按“已收费项目个数”累计，单条通过即占 1 个名额</description></item>
+    /// </list>
+    /// 因此不能把所有占额都简单写成 FinalQty/FinalAmount。
+    /// </remarks>
+    private static void ApplyFinalOccupyValues(LimitOccupy occupy, PricingContext context)
+    {
+        switch (occupy.LimitType.ToUpperInvariant())
+        {
+            case "SAME_GROUP":
+                occupy.OccupyQty = context.FinalQty > 0 ? 1m : 0m;
+                occupy.OccupyAmt = 0m;
+                break;
+
+            case "SAME_OPERATION":
+                occupy.OccupyQty = 0m;
+                occupy.OccupyAmt = context.FinalAmount;
+                break;
+
+            default:
+                occupy.OccupyQty = context.FinalQty;
+                occupy.OccupyAmt = context.FinalAmount;
+                break;
+        }
     }
 }

@@ -138,4 +138,26 @@ public static class LimitKeyGenerator
     {
         return $"SAME_OP|{patientId}|{operationId}";
     }
+
+    /// <summary>
+    /// 生成同组互斥限额键。
+    /// </summary>
+    /// <param name="patientId">患者标识，不可为空。</param>
+    /// <param name="groupCode">互斥组编码，可来自项目组编码或动作上的 ExclusiveGroup。</param>
+    /// <param name="businessDate">业务收费日期，仅取日期部分。</param>
+    /// <returns>同组互斥限额键，格式：SG:{patientId}:{groupCode}:{yyyyMMdd}</returns>
+    /// <remarks>
+    /// <para>
+    /// 同组互斥的历史口径按患者 + 互斥组 + 业务日期累计，用于对齐旧 HIS 的
+    /// <c>getRestrictingfeeZT</c>/<c>RestrictingfeeTX1</c> 组内互斥行为。
+    /// </para>
+    /// <para>
+    /// 这里的 groupCode 既可以是 PR_ITEM_GROUP.GROUP_CODE，也可以是导入规则动作上的
+    /// EXCLUSIVE_GROUP 常量值。两者都会统一转大写后参与锁定和累计。
+    /// </para>
+    /// </remarks>
+    public static string GenerateSameGroupKey(string patientId, string groupCode, DateTime businessDate)
+    {
+        return $"SG:{patientId}:{groupCode}:{businessDate:yyyyMMdd}";
+    }
 }
