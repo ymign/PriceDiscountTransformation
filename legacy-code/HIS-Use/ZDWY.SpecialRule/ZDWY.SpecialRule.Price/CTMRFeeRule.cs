@@ -14,30 +14,65 @@ using Neusoft.HISFC.Models.Fee.Item;
 
 namespace ZDWY.SpecialRule.Price
 {
+    /// <summary>
+    /// 珠海院区 CT/MR/DR 组套收费规则处理器。
+    /// </summary>
+    /// <remarks>
+    /// 这个类处在旧 HIS 门诊收费与历史折价规则之间，承担两类职责：
+    /// 一类是把 CT、MR、DR 这类“组套录入、明细计费”的项目拆分成真实收费明细；
+    /// 另一类是在拆分完成后，再叠加限制收费、折价收费、首项/次项收费等历史规则。
+    /// 因为这些规则长期沉淀在本地字典、组套定义和收费习惯里，所以这里不是纯算法类，
+    /// 而是“患者上下文 + 价格策略 + 组套规则 + 限次规则”的综合协调点。
+    /// </remarks>
     public class CTMRFeeRule
     {
         #region 属性
         /// <summary>
-        /// 数据库操作类1
+        /// 规则数据访问入口。
+        /// </summary>
+        /// <remarks>
+        /// 负责读取挂号信息、项目基础资料、组套明细、价格参数和限制收费配置。
         /// </summary>
         CTMRFeeRuleDB db = null;
         /// <summary>
-        /// 计算限制收费项目
+        /// 限制收费与折价收费计算器。
+        /// </summary>
+        /// <remarks>
+        /// CT/MR 规则类先负责“拆组套”，真正的限制收费次数判断和折价金额改写，
+        /// 仍然复用 <see cref="Restrictingfee"/> 中的老规则实现。
         /// </summary>
         Restrictingfee setRestrictingfee = new Restrictingfee();
         /// <summary>
-        /// 是否启用ct和mr收费规则
+        /// 是否启用 CT/MR/DR 特殊组套收费规则。
         /// </summary>
         private bool IsUseCtOrMRfeeRule = true;
+        /// <summary>
+        /// 当前收费上下文对应的可收费项目快照。
+        /// </summary>
+        /// <remarks>
+        /// 这里缓存的是一次调用内复用的项目主数据，后续拆组套、取价格、查最小费用时都会使用。
+        /// </remarks>
         DataSet dsItem = new DataSet();
+        /// <summary>
+        /// 查询项目时使用的科室编码。
+        /// </summary>
         private string deptCode = "";
+        /// <summary>
+        /// 最近一次处理失败时的错误文本。
+        /// </summary>
         public string errText = "";
+        /// <summary>
+        /// 当前收费患者的挂号信息快照。
+        /// </summary>
         protected Register rInfo = null;
+        /// <summary>
+        /// 是否处于转诊/转治场景。
+        /// </summary>
         private bool isTransferTreat = false;
         #endregion
 
         /// <summary>
-        /// 构造函数
+        /// 初始化 CT/MR/DR 规则处理器。
         /// </summary>
         public CTMRFeeRule()
         {
@@ -45,13 +80,23 @@ namespace ZDWY.SpecialRule.Price
         }
 
         /// <summary>
-        /// 获得收费信息
+        /// 根据门诊号和原始收费项目列表，生成已经过 CT/MR 组套拆分、限制收费和折价处理后的最终收费明细。
         /// </summary>
-        /// <param name="clincCode"></param>
-        /// <param name="feeItemList"></param>
-        /// <returns></returns>
+        /// <param name="clincCode">门诊流水号，用于回查患者、合同单位和历史已收费记录。</param>
+        /// <param name="feeArryList">前端或调用方传入的原始收费项目集合，里面既可能是普通项目，也可能是组套项目。</param>
+        /// <returns>可直接继续参与收费落账的明细集合；若过程中出现关键数据缺失，则返回 <c>null</c>。</returns>
+        /// <remarks>
+        /// 这个方法是旧门诊折价链路的总入口：
+        /// 1. 先补齐患者和合同单位上下文；
+        /// 2. 再把 CT/DR 等组套项目拆成实际收费明细；
+        /// 3. 接着处理 DR/CT 特有的“只收一次 / 首次收 / 第二次起收”等去重逻辑；
+        /// 4. 最后把限制收费和折价规则作为第二阶段修正，改写费用或将超限部分置零。
+        /// </remarks>
         public ArrayList GetFeeItemList(string clincCode, ArrayList feeArryList)
         {
+            // ========== 第一阶段：初始化本次收费所需的患者与价格上下文 ==========
+            // 限制收费与合同单位折价都依赖患者合同、挂号信息和历史收费记录，
+            // 因此这里必须先把患者快照和项目主数据取全。
             bool isFindDRFirst = false;
             bool isFindCTFirst = false;
             Hashtable hsDROnlyOneItem = new Hashtable();
@@ -66,6 +111,10 @@ namespace ZDWY.SpecialRule.Price
             this.rInfo.Pact = this.db.GetPactUnitInfoByPactCode(this.rInfo.Pact.ID);
             this.rInfo.Pact.PayKind.ID = tempPayKindid;
             this.db.QueryItemList(deptCode, Neusoft.HISFC.Models.Base.ItemKind.All, ref dsItem);
+
+            // ========== 第二阶段：逐条扫描输入项目，补齐开单科室并拆分组套 ==========
+            // 旧 HIS 前端传来的 FeeItemList 不一定补齐了开单科室，因此这里会先补齐 DoctDeptInfo，
+            // 后面限制收费规则在某些场景会依赖这个上下文。
             for (int i = 0; i < feeArryList.Count; i++)
             {
                 if (feeArryList[i] == null || !(feeArryList[i] is FeeItemList))
@@ -91,6 +140,7 @@ namespace ZDWY.SpecialRule.Price
                 }
                 if (f.Item.ItemType == Neusoft.HISFC.Models.Base.EnumItemType.UnDrug && IsUseCtOrMRfeeRule && this.db.IsZTUndrugInfo(f.Item.ID))
                 {
+                    // CT/DR/MR 组套不会直接按录入项目收费，而是先拆成细项，再依据细项规则重新计算。
                     ArrayList alDetail = null;
 
                     var undrugInfo = this.db.GetUndrugByCode(f.Item.ID);
@@ -135,6 +185,12 @@ namespace ZDWY.SpecialRule.Price
                 }
 
             }
+
+            // ========== 第三阶段：处理 DR/CT 特殊“只收一次”与首项去重 ==========
+            // DR 与 CT 组套有一部分规则要求：
+            // - 首次项目收费，后续项目不再重复收；
+            // - 或者某类重建项目整个检查中只允许保留一次。
+            // 因此这里要先把重复明细剔除，再把保留项补回集合。
             for (int i = feeItemLists.Count - 1; i >= 0; i--)
             {
                 FeeItemList f = feeItemLists[i] as FeeItemList;
@@ -164,6 +220,12 @@ namespace ZDWY.SpecialRule.Price
             int returnRows = 0;//是否为限制收费药品
             decimal LimitNumber = 1;
             ArrayList hsREOnlylistItem = new ArrayList();
+
+            // ========== 第四阶段：执行限制收费与折价收费的第二次修正 ==========
+            // 注意这里不是“是否收费”的粗暴判断，而是可能出现三种结果：
+            // 1. 原项目保留原价；
+            // 2. 项目部分数量保留收费，超限数量归零；
+            // 3. 整条项目被改写为折价金额或零金额。
             for (int i = feeItemLists.Count - 1; i >= 0; i--)
             {
                 string Discount_type = "1";//限制收费类型
@@ -172,6 +234,7 @@ namespace ZDWY.SpecialRule.Price
                 FeeItemList s = feeItemLists[i] as FeeItemList;
                 returnRows = this.db.SetRestrictingfee(s.Item.ID, ref  LimitNumber);
                 Discount_type = this.db.SetDiscountfee(s.Item.ID, ref  DISCOUNT_RATE, ref  TOPPRICE);
+                // 按当前业务口径，7021 为体验科室；该科室命中数量限制时不执行数量折价。
                 if (returnRows > 0 && this.rInfo.DoctorInfo.Templet.Dept.ID != "7021")
                 {
                     this.setRestrictingfee.ConvertRestrictingfee(rInfo.PID.CardNO, s, ref hsREOnlyOneItem, ref hsNOREOnlyOneItem, ref hsREOnlylistItem, number, LimitNumber);
@@ -182,6 +245,10 @@ namespace ZDWY.SpecialRule.Price
                 }
                 number++;
             }
+
+            // ========== 第五阶段：用修正后的项目替换原集合中的旧项目 ==========
+            // hsREOnlyOneItem 记录的是“已被重算过的原项目索引键”，
+            // hsREOnlylistItem 记录的是“需要重新放回结果集的最终项目”。
             number = 1;
             for (int i = feeItemLists.Count - 1; i >= 0; i--)
             {
@@ -200,11 +267,16 @@ namespace ZDWY.SpecialRule.Price
         }
 
         /// <summary>
-        /// 获得收费信息(自助机临时屏蔽急诊折价) --自助机专用
+        /// 自助机场景专用的收费明细计算入口。
         /// </summary>
-        /// <param name="clincCode"></param>
-        /// <param name="feeItemList"></param>
-        /// <returns></returns>
+        /// <param name="clincCode">门诊流水号。</param>
+        /// <param name="feeArryList">原始收费项目集合。</param>
+        /// <returns>已拆组套并完成必要限制收费处理后的明细集合。</returns>
+        /// <remarks>
+        /// 与 <see cref="GetFeeItemList(string, ArrayList)"/> 的核心差异在于：
+        /// 自助机曾有“临时屏蔽急诊折价”的历史兼容要求，所以它虽然沿用大部分 CT/MR 规则，
+        /// 但会保留专门入口，避免直接共用门诊收费窗口的完整折价逻辑。
+        /// </remarks>
         public ArrayList GetFeeItemListExcludingEmergencyDiscountZZSB(string clincCode, ArrayList feeArryList)
         {
             bool isFindDRFirst = false;
@@ -363,11 +435,11 @@ namespace ZDWY.SpecialRule.Price
         }
 
         /// <summary>
-        /// 获得收费信息自助机修改
+        /// 另一套历史兼容入口，用于承接旧门诊收费流程对 CT/MR 规则的特殊调用方式。
         /// </summary>
-        /// <param name="clincCode"></param>
-        /// <param name="feeItemList"></param>
-        /// <returns></returns>
+        /// <param name="clincCode">门诊流水号。</param>
+        /// <param name="feeArryList">待处理收费项目集合。</param>
+        /// <returns>按旧规则拆分并修正后的收费明细。</returns>
         public ArrayList GetFeeItemListnew(string clincCode, ArrayList feeArryList)
         {
             bool isFindDRFirst = false;
@@ -501,8 +573,21 @@ namespace ZDWY.SpecialRule.Price
 
             return feeItemLists;
         }
+        /// <summary>
+        /// 按 DR 组套规则把一个录入项目拆分为实际收费明细。
+        /// </summary>
+        /// <param name="f">原始组套收费项目。</param>
+        /// <param name="isFirst">当前是否为本次收费中的第一个 DR 项目。</param>
+        /// <param name="hsOnlyOneItem">用于记录“只收一次”的细项，防止重复收费。</param>
+        /// <param name="drCount">累计 DR 相关项目数量，供第二组起收等规则复用。</param>
+        /// <returns>拆分后的门诊收费明细；若关键主数据缺失则返回 <c>null</c>。</returns>
+        /// <remarks>
+        /// DR 规则的复杂度不在“拆组套”本身，而在“首项收费 / 次项加收 / 明细比例折算 / 合同单位折扣”
+        /// 这些规则要在拆分时一次性合并计算，否则落到后续 UI 或收费保存阶段就会丢失上下文。
+        /// </remarks>
         private ArrayList ConvertDRGroupToDetail(FeeItemList f, bool isFirst, ref Hashtable hsOnlyOneItem, ref decimal drCount)
         {
+            // ========== 第一阶段：拉取组套明细并确保主医嘱号存在 ==========
             ArrayList undrugCombList = this.db.QueryUndrugZTBypackageCode(f.Item.ID);
             ArrayList alTemp = new ArrayList();
             if (undrugCombList == null)
@@ -529,7 +614,9 @@ namespace ZDWY.SpecialRule.Price
                 }
             }
 
-            //有价格打折的
+            // ========== 第二阶段：确定组套本身的价格基线 ==========
+            // 组套拆细后，子项价格不能简单用目录价替代；
+            // 它会受到患者年龄、合同单位价格体系和原组套价格的共同影响。
             DataRow rowFind;
             DataRow[] rowFinds = dsItem.Tables[0].Select("ITEM_CODE = " + "'" + f.Item.ID + "'");
             if (rowFinds == null || rowFinds.Length == 0)
@@ -562,6 +649,8 @@ namespace ZDWY.SpecialRule.Price
            //     rate = priceGroup / orgGroupPrice;
           //  }
 
+            // ========== 第三阶段：先做 DR 特有的数量扫描 ==========
+            // 某些 DR 收费规则不是逐项独立判断，而是先看整次检查里 DR 明细数量，再决定哪些细项应收费。
             foreach (Neusoft.HISFC.Models.Fee.Item.UndrugComb undrugCombo in undrugCombList)
             {
                 if (isFirst && undrugCombo.SortID == 2)
@@ -587,7 +676,8 @@ namespace ZDWY.SpecialRule.Price
                 }
             }
 
-            //符合项目明细的加成（减免）比例
+            // ========== 第四阶段：逐个明细重算价格、数量和费用 ==========
+            // 这里会综合目录价、合同单位折扣、组套细项比例以及首项/次项规则，生成最终 FeeItemList。
             decimal itemRate = 1;
             foreach (Neusoft.HISFC.Models.Fee.Item.UndrugComb undrugCombo in undrugCombList)
             {
@@ -943,8 +1033,20 @@ namespace ZDWY.SpecialRule.Price
         /// </summary>
         /// <param name="f"></param>
         /// <returns></returns>
+        /// <summary>
+        /// 按 CT/MR/PACS 组套规则把一个录入项目拆分为收费明细。
+        /// </summary>
+        /// <param name="f">原始组套收费项目。</param>
+        /// <param name="isFirst">当前是否为本次收费中的第一个 CT 类项目。</param>
+        /// <param name="hsOnlyOneItem">记录三维/四维重建等“整次检查只保留一次”的细项。</param>
+        /// <returns>拆分后的收费明细列表。</returns>
+        /// <remarks>
+        /// 这个方法里最重要的不是“拆”，而是 PACS 项目的历史收费口径：
+        /// 某些重建项在一次检查里只能保留一条，且不同重建之间还有互斥/覆盖关系。
+        /// </remarks>
         private ArrayList ConvertCTGroupToDetail(FeeItemList f, bool isFirst, ref Hashtable hsOnlyOneItem)
         {
+            // ========== 第一阶段：获取组套主数据并准备价格基线 ==========
             ArrayList undrugCombList = this.db.QueryUndrugZTBypackageCode(f.Item.ID);
             ArrayList alTemp = new ArrayList();
             if (undrugCombList == null)
@@ -1004,6 +1106,9 @@ namespace ZDWY.SpecialRule.Price
                 rate = priceGroup / orgGroupPrice;
             }
 
+            // ========== 第二阶段：预处理 PACS“只收一次”类细项 ==========
+            // 这里先不落费用，只是先把三维重建、四维重建等互斥关系标记出来，
+            // 后面正式生成 FeeItemList 时据此决定保留哪条明细。
             foreach (Neusoft.HISFC.Models.Fee.Item.UndrugComb undrugCombo in undrugCombList)
             {
                 DataRow rowFindZT;
@@ -1061,7 +1166,7 @@ namespace ZDWY.SpecialRule.Price
                 #endregion
             }
 
-            //符合项目明细的加成（减免）比例
+            // ========== 第三阶段：逐个细项计算最终收费金额 ==========
             decimal itemRate = 1;
             foreach (Neusoft.HISFC.Models.Fee.Item.UndrugComb undrugCombo in undrugCombList)
             {
@@ -1780,6 +1885,15 @@ namespace ZDWY.SpecialRule.Price
         /// 获取CT/MR收费规则的HashTable
         /// </summary>
         /// <returns></returns>
+        /// <summary>
+        /// 把常数字典中的 CT/MR/DR 组套规则转换为内存查找表。
+        /// </summary>
+        /// <returns>以组套编码为键、规则明细列表为值的哈希表。</returns>
+        /// <remarks>
+        /// 常数字典里的一个配置项会被拆成多个 <see cref="NeuObject"/>，分别承载：
+        /// 收费模式、数量处理方式、项目类型以及关联细项编码。
+        /// 这样后续拆组套时就不需要反复解析字符串配置。
+        /// </remarks>
         private Hashtable GetCTMRHashtabel()
         {
             ArrayList alItemZT = this.db.GetAllList("ItemZT");

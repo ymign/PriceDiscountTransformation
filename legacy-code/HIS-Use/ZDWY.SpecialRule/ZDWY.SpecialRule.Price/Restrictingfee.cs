@@ -14,39 +14,63 @@ using Neusoft.HISFC.Models.Fee.Item;
 
 namespace ZDWY.SpecialRule.Price
 {
+    /// <summary>
+    /// 历史限制收费与折价收费计算器。
+    /// </summary>
+    /// <remarks>
+    /// 该类封装的是珠海旧 HIS 中最核心、也最难迁移的一批收费口径：
+    /// 单项目限次、组套限次、床旁加收限制、胎心监护互斥、分组限次，以及“首项原价、其余折价”的金额改写规则。
+    /// 它不负责界面交互，而专门负责把传入的 <see cref="FeeItemList"/> 改写成最终应收费金额和应保留数量。
+    /// </remarks>
     public class Restrictingfee
     {
         #region 属性
         /// <summary>
-        /// 数据库操作类
+        /// 规则数据访问入口。
         /// </summary>
         CTMRFeeRuleDB db = null;
         /// <summary>
-        /// 是否启用ct和mr收费规则
+        /// 是否启用 CT/MR 组套类特殊收费规则。
         /// </summary>
         private bool IsUseCtOrMRfeeRule = true;
+        /// <summary>
+        /// 当前收费过程缓存的项目主数据。
+        /// </summary>
         DataSet dsItem = new DataSet();
+        /// <summary>
+        /// 项目查询时使用的科室编码。
+        /// </summary>
         private string deptCode = "";
+        /// <summary>
+        /// 最近一次处理失败时的错误说明。
+        /// </summary>
         public string errText = "";
+        /// <summary>
+        /// 当前患者挂号信息快照。
+        /// </summary>
         protected Register rInfo = null;
+        /// <summary>
+        /// 是否处于转诊/转治场景。
+        /// </summary>
         private bool isTransferTreat = false;
         #endregion
 
         /// <summary>
-        /// 构造函数
+        /// 初始化限制收费规则计算器。
         /// </summary>
         public Restrictingfee()
         {
             db = new CTMRFeeRuleDB();
         }
         /// <summary>
-        /// 获得收费信息
+        /// 对输入收费项目执行组套拆分前置处理，返回可继续参与限制收费计算的明细集合。
         /// </summary>
-        /// <param name="clincCode"></param>
-        /// <param name="feeItemList"></param>
-        /// <returns></returns>
+        /// <param name="clincCode">门诊流水号。</param>
+        /// <param name="feeArryList">待处理收费项目集合。</param>
+        /// <returns>完成必要组套转换后的收费明细集合。</returns>
         public ArrayList GetFeeItemList(string clincCode, ArrayList feeArryList)
         {
+            // ========== 第一阶段：加载患者和项目上下文 ==========
             bool isFindDRFirst = false;
             bool isFindCTFirst = false;
             Hashtable hsDROnlyOneItem = new Hashtable();
@@ -59,6 +83,8 @@ namespace ZDWY.SpecialRule.Price
             this.rInfo.Pact = this.db.GetPactUnitInfoByPactCode(this.rInfo.Pact.ID);
             this.rInfo.Pact.PayKind.ID = tempPayKindid;
             this.db.QueryItemList(deptCode, Neusoft.HISFC.Models.Base.ItemKind.All, ref dsItem);
+
+            // ========== 第二阶段：补齐开单科室并做必要的组套展开 ==========
             for (int i = 0; i < feeArryList.Count; i++)
             {
                 if (feeArryList[i] == null || !(feeArryList[i] is FeeItemList))
@@ -126,6 +152,8 @@ namespace ZDWY.SpecialRule.Price
                 }
 
             }
+
+            // ========== 第三阶段：对 DR/CT 特殊只收一次规则做集合级清洗 ==========
             for (int i = feeItemLists.Count - 1; i >= 0; i--)
             {
                 FeeItemList f = feeItemLists[i] as FeeItemList;
@@ -155,9 +183,27 @@ namespace ZDWY.SpecialRule.Price
             return feeItemLists;
         }
 
-        //明细单独项目限制收费计算规则
+        /// <summary>
+        /// 对单个门诊明细项目执行限制收费计算。
+        /// </summary>
+        /// <param name="CARD_NO">患者卡号，用于查询历史已收费次数。</param>
+        /// <param name="f">当前待处理收费明细。</param>
+        /// <param name="hsREOnlyOneItem">记录本轮已被重算并准备替换的项目。</param>
+        /// <param name="hsNOREOnlyOneItem">记录本次收费中仍保留原收费资格的项目，用于后续项目做互斥与累计判断。</param>
+        /// <param name="hsREOnlylistItem">记录本轮运算后应重新回写到结果集的项目。</param>
+        /// <param name="number">当前项目在原集合中的逻辑序号，用于构造唯一键。</param>
+        /// <param name="LimitNumber">该项目配置的最大允许收费次数或数量。</param>
+        /// <remarks>
+        /// 这里的“限制收费”不是简单地全收或全不收，而是会结合：
+        /// 1. 历史已收费次数；
+        /// 2. 本次收费中已经保留的同类项目；
+        /// 3. 床旁、胎心、分组收费等互斥关系；
+        /// 4. 当前项目数量是否部分超限。
+        /// 因此结果既可能是整条归零，也可能是数量截断后部分收费。
+        /// </remarks>
         public void ConvertRestrictingfee(string CARD_NO, FeeItemList f, ref Hashtable hsREOnlyOneItem, ref ArrayList hsNOREOnlyOneItem, ref ArrayList hsREOnlylistItem, decimal number, decimal LimitNumber)
         {
+            // ========== 第一阶段：准备限制收费规则所需的分组与互斥字典 ==========
             decimal Price = 0;
             string feecode = "";
             string GroupNumber = "";//组套组号
@@ -167,7 +213,9 @@ namespace ZDWY.SpecialRule.Price
             Hashtable hsTXItem = new Hashtable();
             Hashtable hsTXxzItem = new Hashtable();
             Hashtable hsZTItem = new Hashtable();
+            // Astrictpackagefee：组套内豁免项，不参与折价/历史次数扣减。
             ArrayList alfeecpxz = this.db.GetList("Astrictpackagefee");
+            // RestrictingfeeZT：分组互斥规则，MARK/Memo 记录组号，同组只能收费一次。
             ArrayList alfeezt = this.db.GetList("RestrictingfeeZT");
             foreach (Neusoft.HISFC.Models.Base.Const dizt in alfeezt)  //获取分组收费项目
             {
@@ -182,6 +230,10 @@ namespace ZDWY.SpecialRule.Price
                 hsTXxzItem.Add(dicxz.ID, dicxz);
 
             }
+
+            // ========== 第二阶段：先查询历史已收费次数 ==========
+            // 如果项目属于分组收费，则历史次数也必须按分组维度回查，
+            // 否则会把同编码但不同分组的收费错误地累计在一起。
             if (hsTXxzItem.ContainsKey(f.UndrugComb.ID))
             {
                 feetype = 0;
@@ -197,6 +249,7 @@ namespace ZDWY.SpecialRule.Price
             Decimal Limitsum = LimitNumber - feetype;//计算是否次项目还可以收费有没有超越收费次数
             if (Limitsum <= 0)
             {
+                // 历史次数已经耗尽，当前项目整条保留但金额归零，方便前端继续展示收费痕迹。
                 //f.Item.Price = Convert.ToDecimal(Price * f.Item.Qty) - Convert.ToDecimal(Price * f.Item.Qty);
                 f.FT.TotCost = Convert.ToDecimal(f.Item.Price * f.Item.Qty) - Convert.ToDecimal(f.Item.Price * f.Item.Qty);
                 f.FT.OwnCost = Convert.ToDecimal(f.Item.Price * f.Item.Qty) - Convert.ToDecimal(f.Item.Price * f.Item.Qty);
@@ -206,7 +259,12 @@ namespace ZDWY.SpecialRule.Price
             }
             else
             {
+                // ========== 第三阶段：叠加“本次收费过程中的已占用额度” ==========
+                // 历史收费次数足够并不代表当前项目一定能收，
+                // 因为同一次收费里的前序项目可能已经占掉了剩余额度。
+                // RestrictingfeeCP：床旁加收项目限制。
                 ArrayList alfeecp = this.db.GetList("RestrictingfeeCP");
+                // RestrictingfeeTX1：胎心监护项目限制/互斥。
                 ArrayList alfeetx = this.db.GetList("RestrictingfeeTX1");
                 foreach (Neusoft.HISFC.Models.Base.Const dic in alfeecp)  //获取本次收费已经计算的数量
                 {
@@ -259,6 +317,7 @@ namespace ZDWY.SpecialRule.Price
                 Limitsum = Limitsum - feeqty;
                 if (Limitsum <= 0)
                 {
+                    // 本次收费中的前序项目已经把剩余额度耗尽，当前项目金额归零。
                     f.FT.TotCost = Convert.ToDecimal(f.Item.Price * f.Item.Qty) - Convert.ToDecimal(f.Item.Price * f.Item.Qty);
                     f.FT.OwnCost = Convert.ToDecimal(f.Item.Price * f.Item.Qty) - Convert.ToDecimal(f.Item.Price * f.Item.Qty);
                     f.Memo = "P" + Convert.ToDecimal(f.Item.Qty);
@@ -267,6 +326,7 @@ namespace ZDWY.SpecialRule.Price
                 }
                 else if ((Limitsum - f.Item.Qty) <= 0)
                 {
+                    // 还有额度，但不足以覆盖当前整条数量，因此只保留剩余额度对应的数量和金额。
                     //f.Item.Price =  Convert.ToDecimal(Price * Limitsum);
                     f.FT.TotCost = Convert.ToDecimal(f.Item.Price * Limitsum);
                     f.FT.OwnCost = Convert.ToDecimal(f.Item.Price * Limitsum);
@@ -278,6 +338,7 @@ namespace ZDWY.SpecialRule.Price
                 }
                 else
                 {
+                    // 当前项目完全在可收费范围内，保留原有数量与金额。
                     if (f.FT.TotCost > 0 && f.FT.OwnCost > 0)
                     {
                         f.UndrugComb.Memo = GroupNumber;
@@ -294,13 +355,32 @@ namespace ZDWY.SpecialRule.Price
             }
         }
 
-        //组套汇总项目限制收费计算规则
+        /// <summary>
+        /// 对门诊组套汇总项目执行限制收费计算。
+        /// </summary>
+        /// <param name="CARD_NO">患者卡号。</param>
+        /// <param name="f">组套汇总收费项目。</param>
+        /// <param name="hsREOnlyOneItem">记录本轮已被重算的汇总项目。</param>
+        /// <param name="hsNOREOnlyOneItem">记录本次收费中已保留的普通收费明细。</param>
+        /// <param name="hsREOnlylistItem">记录本轮需要回写的最终项目。</param>
+        /// <param name="number">当前项目逻辑序号。</param>
+        /// <param name="LimitNumber">组套或明细项目的收费上限。</param>
+        /// <param name="hsZTNOREOnlyOneItem">记录本次收费中已保留的组套拆分明细，用于跨组套累计。</param>
+        /// <param name="dsItes">项目主数据快照。</param>
+        /// <param name="rInfo">患者挂号信息。</param>
+        /// <remarks>
+        /// 组套项目不能直接拿汇总数量做限次，因为真正的限制收费通常落在组套明细层。
+        /// 这里会先把组套拆细，然后逐个细项判断历史次数、本次已占额度和组套内互斥关系，
+        /// 最后再把可收费金额重新汇总回原组套项目。
+        /// </remarks>
         public void ConvertRestrictingfeeCharge(string CARD_NO, FeeItemList f, ref Hashtable hsREOnlyOneItem, ref ArrayList hsNOREOnlyOneItem, ref ArrayList hsREOnlylistItem, decimal number, decimal LimitNumber, ref ArrayList hsZTNOREOnlyOneItem, DataSet dsItes, Register rInfo)
         {
             /// <summary>
             /// 门诊费用业务层
             /// </summary>
             Neusoft.HISFC.BizLogic.Fee.Outpatient outpatientManager = new Neusoft.HISFC.BizLogic.Fee.Outpatient();
+
+            // ========== 第一阶段：准备组套限制收费所需的基础上下文 ==========
             decimal Price = 0;
             decimal orgPrice = 0;
             decimal Pricecot = 0;
@@ -325,8 +405,11 @@ namespace ZDWY.SpecialRule.Price
             DataRow[] rowFinds = dtItemSerch.Tables[0].Select("ITEM_CODE = " + "'" + f.Item.ID + "'");
             rowFind = rowFinds[0];
             string drugFlag = rowFind["DRUG_FLAG"].ToString();
+            // RestrictingfeeCP：床旁加收项目限制。
             ArrayList alfeecp = this.db.GetList("RestrictingfeeCP");
+            // RestrictingfeeTX1：胎心监护项目限制/互斥。
             ArrayList alfeetx = this.db.GetList("RestrictingfeeTX1");
+            // RestrictingfeeZT：止血/同组项目互斥，按组号累计历史次数。
             ArrayList alfeezt = this.db.GetList("RestrictingfeeZT");
             foreach (Neusoft.HISFC.Models.Base.Const dic in alfeecp)  //获取床旁项目
             {
@@ -346,6 +429,9 @@ namespace ZDWY.SpecialRule.Price
             }
             if (drugFlag == "2")
             {
+                // ========== 第二阶段：汇总项目按明细拆分后逐项重算 ==========
+                // drugFlag == 2 表示这里本质是“汇总表现、明细收费”的组套项目，
+                // 所以必须先拆细，再逐个明细判断剩余额度，最后把结果汇总回总项目。
                 DateTime nowTime = this.db.GetDateTimeFromSysDateTime();
                 int age = (int)((new TimeSpan(nowTime.Ticks - rInfo.Birthday.Ticks)).TotalDays / 365);
                 alDetail = ConvertGroupToDetail1(f);
@@ -469,6 +555,7 @@ namespace ZDWY.SpecialRule.Price
                     }
                     else
                     {
+                        // 当前细项本身不受限制收费控制，直接按计算价累计即可。
                         sumPricecot += Convert.ToDecimal(Price * undrugCombo.Qty);
                     }
                     feeqty = 0;
@@ -482,6 +569,7 @@ namespace ZDWY.SpecialRule.Price
             }
             else
             {
+                // ========== 第三阶段：普通项目路径，直接按单项限次逻辑判断 ==========
                 feetype = this.db.getRestrictingfee(CARD_NO, f.Item.ID, ref feecode);
                 if (hsZTItem.ContainsKey(f.Item.ID))
                 {
@@ -610,7 +698,13 @@ namespace ZDWY.SpecialRule.Price
 
         }
 
-        //住院明细单独项目限制收费计算规则
+        /// <summary>
+        /// 对住院明细项目执行限制收费计算。
+        /// </summary>
+        /// <remarks>
+        /// 逻辑与门诊版 <see cref="ConvertRestrictingfee"/> 基本一致，
+        /// 区别主要在于输入对象类型与住院收费集合的回写方式不同。
+        /// </remarks>
         public void ConvertRestrictingfeeZY(string CARD_NO, Neusoft.HISFC.Models.Fee.Inpatient.FeeItemList f, ref Hashtable hsREOnlyOneItem, ref ArrayList hsNOREOnlyOneItem, ref ArrayList hsREOnlylistItem, decimal number, decimal LimitNumber)
         {
             decimal Price = 0;
@@ -747,6 +841,19 @@ namespace ZDWY.SpecialRule.Price
             }
         }
 
+        /// <summary>
+        /// 对门诊项目执行“首项原价、其余按折扣率收费”的折价计算。
+        /// </summary>
+        /// <param name="f">待折价的门诊收费项目。</param>
+        /// <param name="DISCOUNT_RATE">折扣率，通常表示后续数量的收费比例。</param>
+        /// <param name="TOPPRICE">封顶金额；小于等于 0 表示不封顶。</param>
+        /// <param name="hsREOnlyOneItem">记录本轮已重算项目。</param>
+        /// <param name="hsREOnlylistItem">记录需回写结果集的最终项目。</param>
+        /// <param name="number">当前项目逻辑序号。</param>
+        /// <remarks>
+        /// 历史口径是“第一单位原价，其余单位按折扣率收费”，
+        /// 并且在需要时再叠加一个总金额封顶值。
+        /// </remarks>
         public void ConvertDiscountfee(FeeItemList f, decimal DISCOUNT_RATE, int TOPPRICE, ref Hashtable hsREOnlyOneItem, ref ArrayList hsREOnlylistItem, decimal number)
         {
             if (TOPPRICE > 0)
@@ -771,6 +878,9 @@ namespace ZDWY.SpecialRule.Price
             }
         }
 
+        /// <summary>
+        /// 对住院项目执行与门诊一致的折价金额改写逻辑。
+        /// </summary>
         public void ConvertDiscountfeeZY(Neusoft.HISFC.Models.Fee.Inpatient.FeeItemList f, decimal DISCOUNT_RATE, int TOPPRICE, ref Hashtable hsREOnlyOneItem, ref ArrayList hsREOnlylistItem, decimal number)
         {
             if (TOPPRICE > 0)

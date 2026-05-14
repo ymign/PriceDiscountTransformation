@@ -18,6 +18,17 @@ using Neusoft.HISFC.Models.Fee.Item;
 
 namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDisplay
 {
+    /// <summary>
+    /// 门诊收费录入主控件。
+    /// </summary>
+    /// <remarks>
+    /// 这个控件既承担收费项目录入、明细展示、组套拆分、价格刷新，也承担提交前的最终收费明细组织。
+    /// 其中与本次物价折价改造最相关的，是它仍然直接调用了 <c>ZDWY.SpecialRule</c> 里的历史限制收费/折价逻辑：
+    /// 1. 项目回显到表格时做一次限制收费修正；
+    /// 2. 单项录入落格时立刻回算限制收费金额；
+    /// 3. 最终导出收费明细前再次执行组套拆分与限次处理。
+    /// 这些链路解释清楚后，后续替换为新的规则中心才有明确迁移边界。
+    /// </remarks>
     public partial class ucDisplay : UserControl, Neusoft.HISFC.BizProcess.Integrate.FeeInterface.IOutpatientItemInputAndDisplay, Neusoft.FrameWork.WinForms.Forms.IInterfaceContainer
     {
         public ucDisplay()
@@ -320,8 +331,13 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
         /// </summary>
         Neusoft.HISFC.BizLogic.Manager.UndrugztManager ztManager = new Neusoft.HISFC.BizLogic.Manager.UndrugztManager();
         /// <summary>
-        /// 计算限制收费项目
+        /// 历史限制收费/折价规则计算器。
         /// </summary>
+        /// <remarks>
+        /// 这里是 <c>ucDisplay</c> 与 <c>ZDWY.SpecialRule</c> 的直接耦合点。
+        /// 旧 HIS 不仅在最终收费提交前依赖它，甚至在界面显示和单项录入时也会即时调用，
+        /// 以保证用户看到的金额已经是“按老规则修正后的金额”。
+        /// </remarks>
         ZDWY.SpecialRule.Price.Restrictingfee setRestrictingfee = new ZDWY.SpecialRule.Price.Restrictingfee();
 
         #endregion
@@ -2084,8 +2100,16 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
         /// <summary>
         /// 显示患者的划价信息
         /// </summary>
+        /// <remarks>
+        /// 这一步不是简单的数据绑定。
+        /// 旧 HIS 要求操作员在收费录入界面里就能直接看到“被限次后归零”或“部分保留后重算”的金额，
+        /// 所以这里会在真正落格前先调用 <see cref="setRestrictingfee"/> 做一次前置修正。
+        /// </remarks>
         private void SetChargeInfo()
         {
+            // ========== 第一阶段：清空界面并准备可写入的起始行 ==========
+            // 这里先处理 Spread 行定位，而不是立即写数据，
+            // 是因为旧控件允许最后一行作为“待输入空行”存在，需要保留这个交互约定。
             this.Clear();
             ArrayList hsNOREOnlyOneItem = new ArrayList();
             ArrayList hsZTNOREOnlyOneItem = new ArrayList();
@@ -2126,6 +2150,9 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             //限制药品收费
             int number = 1;
             ArrayList hsREOnlylistItem = new ArrayList();
+            // ========== 第二阶段：在真正显示前，先按历史限制收费规则修正金额 ==========
+            // 这里操作的是 alChargeInfo 本身，目的不是生成最终提交集合，
+            // 而是让界面上立刻展示“超限后金额归零 / 部分收费后金额变更”的结果。
             for (int i = alChargeInfo.Count - 1; i >= 0; i--)
             {
                 DataRow rowFind;
@@ -2134,12 +2161,16 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 rowFind = rowFinds[0];
                 string itemType = rowFind["DRUG_FLAG"].ToString();
                 returnRows = this.undrugManager.SetRestrictingfee(s.Item.ID, ref  LimitNumber);
+                // 按当前业务口径，7021 为体验科室；该科室命中数量限制时不执行数量折价。
                 if (returnRows > 0 && this.rInfo.DoctorInfo.Templet.Dept.ID!="7021")
                 {
                     this.setRestrictingfee.ConvertRestrictingfeeCharge(PatientInfo.PID.CardNO, s, ref hsREOnlyOneItem, ref hsNOREOnlyOneItem, ref hsREOnlylistItem, number, itemType, LimitNumber, ref hsZTNOREOnlyOneItem);
                 }
                 number++;
             }
+            // ========== 第三阶段：用规则重算后的项目替换掉原始待显示项目 ==========
+            // hsREOnlyOneItem 标记哪些原项目已被规则引擎接管，
+            // hsREOnlylistItem 中保存的才是最终应该显示给收费员的项目对象。
             number = 1;
             for (int i = alChargeInfo.Count - 1; i >= 0; i--)
             {
@@ -2155,6 +2186,9 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 alChargeInfo.Add(ds);
             }
 
+            // ========== 第四阶段：逐行把项目写回收费表格 ==========
+            // 到这里每个 FeeItemList 都已经带着历史折价/限次后的金额，
+            // 后面做的主要是目录信息补全、单价显示和医保相关列的回填。
             foreach (FeeItemList f in alChargeInfo)
             {
                 DataRow rowFind = null;
@@ -3032,9 +3066,17 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
         /// <param name="row"></param>
         /// <param name="amount"></param>
         /// <param name="saleprice"></param>
-        /// <param name="unitFlag">针对组套维护的包装单位 1 最小单位 2 包装单位 其他值 未知,不处理</param>
+        /// <param name="unitFlag">针对组套维护的包装单位，1 表示最小单位，2 表示包装单位，其它值按未知兼容。</param>
+        /// <remarks>
+        /// 这是收费项目被选中或手工录入后的核心落格入口。
+        /// 它不仅负责把目录项目写入当前行，还会在落格时同步执行价格刷新、适应症处理、
+        /// 限制收费金额回算等历史业务动作，因此是界面录入链路里的关键方法。
+        /// </remarks>
         private void SetItem(string itemCode, string drugFlag, string exeDeptCode, int row, decimal amount, decimal saleprice, string unitFlag)
         {
+            // ========== 第一阶段：校验收费上下文是否完整 ==========
+            // 某些手工输入场景允许未选患者先录项目，但当前配置下如果要求校验患者上下文，
+            // 就必须在这里提前拦截，避免后面的价格与限次计算拿不到科室、合同或患者信息。
             if (isInputItemsNoSpe)
             {
                 if (this.rInfo == null)
@@ -3057,6 +3099,9 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             }
             this.isDealCellChange = false;
 
+            // ========== 第二阶段：先按本地缓存定位项目，再刷新一份最新价格快照 ==========
+            // 旧收费窗口允许目录价格被后台维护后即时生效，
+            // 因此落格时不能完全信任初始化时缓存的 dsItem，需要再向业务层查询一次最新价格。
             DataRow findRow;
             DataRow[] rowFinds = this.dsItem.Tables[0].Select("ITEM_CODE = " + "'" + itemCode + "' and drug_flag = '" + drugFlag + "'");
 
@@ -3121,6 +3166,9 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             }
             #endregion
 
+            // ========== 第三阶段：针对材料、药品等多映射场景做精确匹配 ==========
+            // 同一个项目编码在旧系统里可能因为执行科室、单价、药品标识不同而映射到多条目录记录，
+            // 所以必须在这里把真正应该落格的那一条找准。
             //如果是物资项目，进行精确查找,因为可能存在多库存项目
             //{40DFDC91-0EC1-4cd4-81BC-0EAE4DE1D3AB}
             if (findRow["DRUG_FLAG"].ToString() == "6")
@@ -4029,6 +4077,9 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 }
 
                 #endregion
+                // ========== 第四阶段：单项录入完成后，立刻按限制收费规则重算一次金额 ==========
+                // 这里不能等到“最终收费提交”时再统一处理，
+                // 否则收费员在录入当下看到的金额会与最后落账金额不一致，容易引发人工误判。
                 ArrayList hsZTNOREOnlyOneItem = new ArrayList();
                 ArrayList hsNOREOnlyOneItem = new ArrayList();
                 Hashtable hsREOnlyOneItem = new Hashtable();
@@ -4037,6 +4088,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 decimal LimitNumber = 1;
                 ArrayList hsREOnlylistItem = new ArrayList();
                 returnRows = this.undrugManager.SetRestrictingfee(feeItemList.Item.ID, ref  LimitNumber);
+                // 按当前业务口径，7021 为体验科室；该科室命中数量限制时不执行数量折价。
                 if (returnRows > 0 && this.rInfo.DoctorInfo.Templet.Dept.ID != "7021")
                 {
                     this.setRestrictingfee.ConvertRestrictingfeeCharge(PatientInfo.PID.CardNO, feeItemList, ref hsREOnlyOneItem, ref hsNOREOnlyOneItem, ref hsREOnlylistItem, number, itemType, LimitNumber, ref hsZTNOREOnlyOneItem);
@@ -4222,7 +4274,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 }
                 else
                 {
-                    //add by Niuxy修改减免  
+                    //add by Niuxy修改减免
                     ft.RebateCost = Neusoft.FrameWork.Public.String.FormatNumber(f.FT.RebateCost * f.Item.Qty / f.Item.PackQty, 2);
                 }
 
@@ -4256,7 +4308,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 ft.PayCost = 0;
                 ft.PubCost = 0;
                 ft.OwnCost = ft.TotCost;
-                //add by Niuxy修改减免  
+                //add by Niuxy修改减免
                 if (myITruncFee != null)
                 {
                     object[] args = new object[] { ft, f };
@@ -4264,7 +4316,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 }
                 else
                 {
-                    //add by Niuxy修改减免  
+                    //add by Niuxy修改减免
                     ft.RebateCost = Neusoft.FrameWork.Public.String.FormatNumber(f.FT.RebateCost * f.Item.Qty / f.Item.PackQty, 2);
                 }
                 //}
@@ -4524,7 +4576,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 //    price *= rate;
                 //}
 
-                //根据优惠比例重新计算单价------------------------- 
+                //根据优惠比例重新计算单价-------------------------
                 string errMsg = string.Empty;
                 PactItemRate myRate = Function.PactRate(this.rInfo, feeDetail, ref errMsg);
                 if (myRate == null)
@@ -4973,7 +5025,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 //    price *= rate;
                 //}
 
-                //根据优惠比例重新计算单价------------------------- 
+                //根据优惠比例重新计算单价-------------------------
                 string errMsg = string.Empty;
                 PactItemRate myRate = Function.PactRate(this.rInfo, feeDetail, ref errMsg);
                 if (myRate == null)
@@ -5457,7 +5509,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 //    price *= rate;
                 //}
 
-                //根据优惠比例重新计算单价------------------------- 
+                //根据优惠比例重新计算单价-------------------------
                 string errMsg = string.Empty;
                 PactItemRate myRate = Function.PactRate(this.rInfo, feeDetail, ref errMsg);
                 if (myRate == null)
@@ -7561,9 +7613,14 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
         /// <summary>
         /// 获得收费信息
         /// </summary>
-        /// <returns></returns>
+        /// <returns>已经过组套拆分、特殊 CT/DR 去重以及限制收费修正的收费明细列表。</returns>
+        /// <remarks>
+        /// 这是从 UI 世界进入“可提交收费数据”的最后一道整理工序。
+        /// 经过这个方法返回的数据，才是旧 HIS 真正认为可以继续用于收费保存/结算的对象集合。
+        /// </remarks>
         public ArrayList GetFeeItemList()
         {
+            // ========== 第一阶段：从表格行收集 FeeItemList，并补齐开单科室 ==========
             bool isFindDRFirst = false;
             bool isFindCTFirst = false;
             Hashtable hsDROnlyOneItem = new Hashtable();
@@ -7657,6 +7714,9 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 }
             }
             itenqty = 0;//将标识重置
+            // ========== 第二阶段：处理 DR/CT 组套拆分后的“只收一次”去重 ==========
+            // 这里的去重不是 UI 去重，而是收费语义去重：
+            // 某些 DR/CT 细项在一次检查中只能保留一条收费明细。
             for (int i = feeItemLists.Count - 1; i >= 0; i--)
             {
                 FeeItemList f = feeItemLists[i] as FeeItemList;
@@ -7686,17 +7746,23 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             int returnRows = 0;//是否为限制收费药品
             decimal LimitNumber = 1;
             ArrayList hsREOnlylistItem = new ArrayList();
+            // ========== 第三阶段：在最终提交前，再执行一次限制收费修正 ==========
+            // 这一轮是最关键的兜底。
+            // 即便前面显示阶段或单项录入阶段已经做过回算，最终提交前仍要以当前完整集合再判断一次，
+            // 防止收费员在后续增删项目后造成剩余额度变化。
             for (int i = feeItemLists.Count - 1; i >= 0; i--)
             {
 
                 FeeItemList s = feeItemLists[i] as FeeItemList;
                 returnRows = this.undrugManager.SetRestrictingfee(s.Item.ID, ref  LimitNumber);
+                // 按当前业务口径，7021 为体验科室；该科室命中数量限制时不执行数量折价。
                 if (returnRows > 0 && this.rInfo.DoctorInfo.Templet.Dept.ID != "7021")
                 {
                     this.setRestrictingfee.ConvertRestrictingfee(PatientInfo.PID.CardNO, s, ref hsREOnlyOneItem, ref hsNOREOnlyOneItem, ref hsREOnlylistItem, number, LimitNumber);
                 }
                 number++;
             }
+            // ========== 第四阶段：用重算后的项目替换原始项目，形成最终返回结果 ==========
             number = 1;
             for (int i = feeItemLists.Count - 1; i >= 0; i--)
             {

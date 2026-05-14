@@ -12,9 +12,28 @@ using Neusoft.HISFC.Models.Fee.Item;
 
 namespace ZDWY.SpecialRule.Price.DB
 {
+    /// <summary>
+    /// CT/MR/限制收费历史规则的数据访问层。
+    /// </summary>
+    /// <remarks>
+    /// 该类直接连接旧 HIS 数据库与 SQL 模板，负责读取项目目录、组套明细、
+    /// 历史已收费次数、合同单位价格、限制收费字典等规则数据。
+    /// 上层规则类大量依赖它返回的“宽松模型”，因此这里不仅是 Repository，
+    /// 也是旧系统收费口径向内存对象转换的适配层。
+    /// </remarks>
     public class CTMRFeeRuleDB : Neusoft.FrameWork.Management.Database
     {
         #region HIS底层公用模块(量大慎用 配合实体生成工具使用)
+        /// <summary>
+        /// 执行 SQL 并返回首条映射结果。
+        /// </summary>
+        /// <typeparam name="T">目标实体类型。</typeparam>
+        /// <param name="sql">已经格式化完成的 SQL 语句。</param>
+        /// <returns>首条记录对应的实体；无结果时返回 <typeparamref name="T"/> 的新实例。</returns>
+        /// <remarks>
+        /// 旧系统大量查询都默认“有就取第一条，没有就给空对象”，
+        /// 因此这里刻意不返回 <c>null</c>，以兼容上层既有调用方式。
+        /// </remarks>
         private T GetModelTForSql<T>(string sql) where T : new()
         {
             List<T> list = GetListTForSql<T>(sql);
@@ -23,6 +42,15 @@ namespace ZDWY.SpecialRule.Price.DB
             return list[0];
         }
 
+        /// <summary>
+        /// 执行 SQL 并把结果集映射为实体列表。
+        /// </summary>
+        /// <typeparam name="T">目标实体类型。</typeparam>
+        /// <param name="sql">已经格式化完成的 SQL 语句。</param>
+        /// <returns>映射后的实体列表；查询失败时返回空集合或 <c>null</c>。</returns>
+        /// <remarks>
+        /// 这个工具方法主要服务于本文件中的若干轻量实体查询，避免每个查询都手写 Reader 解析。
+        /// </remarks>
         private List<T> GetListTForSql<T>(string sql) where T : new()
         {
             try
@@ -50,6 +78,17 @@ namespace ZDWY.SpecialRule.Price.DB
 
         }
 
+        /// <summary>
+        /// 通过反射把 <see cref="DataTable"/> 按列名映射到目标实体列表。
+        /// </summary>
+        /// <typeparam name="T">目标实体类型。</typeparam>
+        /// <param name="dt">待转换的数据表。</param>
+        /// <returns>转换后的实体列表。</returns>
+        /// <remarks>
+        /// 这里的类型转换非常“宽松”：
+        /// 只要列名能对上属性名，就尽量按照常见基础类型完成转换。
+        /// 这是为了兼容旧 HIS 中字段类型并不完全规范、但查询又必须尽量成功的现实情况。
+        /// </remarks>
         private List<T> DataTableConvertToList<T>(DataTable dt) where T : new()
         {
             List<T> list = new List<T>();
@@ -1065,6 +1104,22 @@ namespace ZDWY.SpecialRule.Price.DB
             return price * rate;
         }
 
+        /// <summary>
+        /// 按患者、项目和院区价格口径计算最终收费单价。
+        /// </summary>
+        /// <param name="itemCode">项目编码。</param>
+        /// <param name="register">患者挂号信息。</param>
+        /// <param name="UnitPrice">标准单价。</param>
+        /// <param name="ChildPrice">儿童价。</param>
+        /// <param name="SPPrice">特诊价或倍率参数。</param>
+        /// <param name="PurchasePrice">购入价，供部分特殊口径使用。</param>
+        /// <param name="orgPrice">返回原始基准价，供上层继续按比例换算。</param>
+        /// <returns>按当前院区与患者条件判定后的最终单价。</returns>
+        /// <remarks>
+        /// 这里浓缩了旧 HIS 多年叠加出来的价格分支：
+        /// 校区门诊、材料费、医疗服务项目、药品零差价、中成药例外、儿童价等，
+        /// 最终都在这一处收敛，因此是整个折价链路的关键底座。
+        /// </remarks>
         public decimal GetPrice(string itemCode, Neusoft.HISFC.Models.Registration.Register register, decimal UnitPrice, decimal ChildPrice, decimal SPPrice, decimal PurchasePrice, ref decimal orgPrice)
         {
             decimal num;
@@ -1075,6 +1130,9 @@ namespace ZDWY.SpecialRule.Price.DB
             string ISChildPrice = "";//是否需要收取儿童价
             if (Neusoft.FrameWork.Management.Connection.Hospital.ID != "CORE_HIS50")//校区门诊
             {
+                // ========== 第一阶段：校区门诊走特殊价格口径 ==========
+                // 老系统里校区门诊对非药品与药品采用不同定价策略，
+                // 还要额外判断材料费、医疗服务项目和学校价格字段。
                 #region MyRegion
                 System.Collections.Hashtable hsFeeCode = GetFeeCodeHs("11");
 
@@ -1095,6 +1153,8 @@ namespace ZDWY.SpecialRule.Price.DB
                     Neusoft.FrameWork.Models.NeuObject obj = new Neusoft.FrameWork.Models.NeuObject();
                     if (GetItemFeeCodeAndSchoolPrice(itemCode, ref obj) < 0 || hsFeeCode.Count < 0)
                     {
+                        // 元数据取不到时，回退到旧逻辑，优先使用标准价 / 特诊价倍率，
+                        // 这样至少不会因为辅助字段缺失导致整个收费失败。
                         if (SPPrice == 0m || SPPrice.ToString() == "")//表的字段是UNIT_PRICE2特诊价
                         {
                             return UnitPrice;
@@ -1106,10 +1166,12 @@ namespace ZDWY.SpecialRule.Price.DB
                     }
                     if (hsFeeCode.Contains(obj.ID))//材料费
                     {
+                        // 材料费沿用儿童价字段承载的平台价格，这是历史数据结构的兼容做法。
                         return ChildPrice;//儿童价，表数据是unit_price1，HERP通过平台把价格传过来
                     }
                     else//医疗服务项目
                     {
+                        // 医疗服务项目优先取院区价格；缺失时才回退到标准价 * 特诊倍率。
                         if (string.IsNullOrEmpty(obj.Memo))
                         {
                             return UnitPrice * SPPrice;
@@ -1120,6 +1182,7 @@ namespace ZDWY.SpecialRule.Price.DB
                 }
                 else//药品
                 {
+                    // ========== 第二阶段：药品分支处理零差价与例外类型 ==========
                     Neusoft.HISFC.Models.Pharmacy.Item item = this.GetPharmacyInfoForCode(itemCode);
                     //中成药，中草药，二类疫苗 不走零差价
                     //zzf 2020-09-09 疫苗走零差价了
@@ -1518,12 +1581,15 @@ namespace ZDWY.SpecialRule.Price.DB
             return 1;
         }
         /// <summary>
-        /// 获取是否为限制收费项目
+        /// 判断项目是否配置了限制收费规则，并返回限制上限。
         /// </summary>
-        /// <param name="pactCode"></param>
-        /// <param name="itemCode"></param>
-        /// <param name="minCode"></param>
-        /// <returns></returns>
+        /// <remarks>
+        /// 结合当前仓库中的迁移资料，这批 <c>Restrictingfee</c> 常数主要承载“2 小时窗口内连续收费的数量上限”。
+        /// 这里返回的 <paramref name="LimitNumber"/> 对应字典中的最大收费数量；具体时间窗过滤仍在历史 SQL 中完成。
+        /// </remarks>
+        /// <param name="itemcode">项目编码。</param>
+        /// <param name="LimitNumber">返回配置中的限制次数或限制数量。</param>
+        /// <returns>大于 0 表示项目存在限制收费配置；否则视为未配置。</returns>
         public int SetRestrictingfee(string itemcode, ref decimal LimitNumber)
         {
             int returnRows = 0;
@@ -1556,12 +1622,12 @@ namespace ZDWY.SpecialRule.Price.DB
             return returnRows;
         }
         /// <summary>
-        /// 查询是否为限制项目及限制参数
+        /// 查询项目是否配置了折价收费规则及其参数。
         /// </summary>
-        /// <param name="pactCode"></param>
-        /// <param name="itemCode"></param>
-        /// <param name="minCode"></param>
-        /// <returns></returns>
+        /// <param name="itemcode">项目编码。</param>
+        /// <param name="DISCOUNT_RATE">返回折扣率。</param>
+        /// <param name="TOPPRICE">返回封顶金额。</param>
+        /// <returns>折价类型标识；默认 <c>"1"</c> 表示无折价，<c>"2"</c> 表示需要执行折价收费。</returns>
         public string SetDiscountfee(string itemcode, ref decimal DISCOUNT_RATE, ref int TOPPRICE)
         {
             string Discount_type = "1";
@@ -1595,7 +1661,13 @@ namespace ZDWY.SpecialRule.Price.DB
             }
             return Discount_type;
         }
-        //查询是否存在已缴费的项目，并获取限制收费项目F码
+        /// <summary>
+        /// 查询患者历史上同项目已收费次数，并返回对应的限制收费 F 码。
+        /// </summary>
+        /// <param name="CARD_NO">患者卡号。</param>
+        /// <param name="itemCode">项目编码。</param>
+        /// <param name="Feecode">返回限制收费口径对应的 F 码。</param>
+        /// <returns>历史已收费次数。</returns>
         public int getRestrictingfee(string CARD_NO, string itemCode, ref string Feecode)
         {
             int feetype = 0;
@@ -1617,7 +1689,14 @@ namespace ZDWY.SpecialRule.Price.DB
             this.Reader.Close();
             return feetype;
         }
-        //查询是否存在已缴费分组收费的项目
+        /// <summary>
+        /// 按分组收费口径查询患者历史已收费次数。
+        /// </summary>
+        /// <param name="CARD_NO">患者卡号。</param>
+        /// <param name="itemCode">项目编码。</param>
+        /// <param name="GroupNumber">组套分组号。</param>
+        /// <param name="Feecode">返回限制收费口径对应的 F 码。</param>
+        /// <returns>该分组维度下历史已收费次数。</returns>
         public int getRestrictingfeeZT(string CARD_NO, string itemCode, string GroupNumber, ref string Feecode)
         {
             int feetype = 0;
@@ -1639,7 +1718,11 @@ namespace ZDWY.SpecialRule.Price.DB
             this.Reader.Close();
             return feetype;
         }
-        //获取限制收费项目F码
+        /// <summary>
+        /// 根据项目编码反查限制收费口径对应的 F 码。
+        /// </summary>
+        /// <param name="itemCode">项目编码或组套编码。</param>
+        /// <param name="Feecode">返回的限制收费 F 码。</param>
         public void getRestrictingfeecode(string itemCode, ref string Feecode)
         {
             string sql = @" 
@@ -1661,10 +1744,18 @@ namespace ZDWY.SpecialRule.Price.DB
             this.Reader.Close();
         }
         /// <summary>
-        /// 根据类型获得常数所有在用的列
+        /// 根据常数字典类型读取全部在用配置。
         /// </summary>
-        /// <param name="type"></param>
-        /// <returns></returns>
+        /// <param name="type">
+        /// 字典类型，例如：
+        /// Restrictingfee（数量上限）、
+        /// RestrictingfeeZT（同组互斥）、
+        /// RestrictingfeeCP（床旁限制）、
+        /// RestrictingfeeTX1（胎心监护限制）、
+        /// Astrictpackagefee（组套豁免项）、
+        /// ItemZT（CT/MR/DR 组套拆分规则）。
+        /// </param>
+        /// <returns>对应类型的在用常数集合。</returns>
         public ArrayList GetList(string type)
         {
             string strSql = "";
