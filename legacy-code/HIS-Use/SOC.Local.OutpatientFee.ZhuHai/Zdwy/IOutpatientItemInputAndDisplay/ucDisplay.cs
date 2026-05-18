@@ -2111,6 +2111,9 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             // 这里先处理 Spread 行定位，而不是立即写数据，
             // 是因为旧控件允许最后一行作为“待输入空行”存在，需要保留这个交互约定。
             this.Clear();
+            // hsNOREOnlyOneItem：本次显示价重算后，仍然保留收费资格的普通项目。
+            // hsZTNOREOnlyOneItem：本次显示价重算后，组套拆分子项里被保留下来的部分。
+            // hsREOnlyOneItem / hsREOnlylistItem：被限制收费逻辑接管、需要替换原显示结果的项目。
             ArrayList hsNOREOnlyOneItem = new ArrayList();
             ArrayList hsZTNOREOnlyOneItem = new ArrayList();
             Hashtable hsREOnlyOneItem = new Hashtable();
@@ -2161,6 +2164,8 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 rowFind = rowFinds[0];
                 string itemType = rowFind["DRUG_FLAG"].ToString();
                 returnRows = this.undrugManager.SetRestrictingfee(s.Item.ID, ref  LimitNumber);
+                // 这里跑的是“显示口径”的限制收费，不是最终提交。
+                // 目的只是让收费员在列表里立刻看到超限后金额变化，避免保存前后价格跳变。
                 // 按当前业务口径，7021 为体验科室；该科室命中数量限制时不执行数量折价。
                 if (returnRows > 0 && this.rInfo.DoctorInfo.Templet.Dept.ID!="7021")
                 {
@@ -2177,12 +2182,14 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 FeeItemList s = alChargeInfo[i] as FeeItemList;
                 if (hsREOnlyOneItem.ContainsKey(s.Item.ID + number))
                 {
+                    // 原项目一旦被重算逻辑接管，就先删掉旧版本，后面再把新版本补回去。
                     alChargeInfo.RemoveAt(i);
                 }
                 number++;
             }
             foreach (FeeItemList ds in hsREOnlylistItem)
             {
+                // 加回来的就是已经带着限制收费结果的最终显示对象。
                 alChargeInfo.Add(ds);
             }
 
@@ -2246,6 +2253,8 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                     userCode = rowFind["User_Code"].ToString(); //自定义编码
                     try
                     {
+                        // 显示阶段仍然要按年龄区分成人价/儿童价。
+                        // 这是界面兜底逻辑，用来补齐那些前面尚未带完整单价的项目。
                         DateTime nowDate = this.outpatientManager.GetDateTimeFromSysDateTime();
                         int age = (int)((new TimeSpan(nowDate.Ticks - this.rInfo.Birthday.Ticks)).TotalDays / 365);
 
@@ -2276,6 +2285,8 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                     }
                     if (f.Item.Price == 0)
                     {
+                        // 只有原对象没带价格时才兜底回填，
+                        // 防止把前面折价/限次已经算好的价格覆盖掉。
                         f.Item.Price = price;
                         f.OrgPrice = f.Item.Price;
                         f.Item.ChildPrice = f.Item.Price;
@@ -2286,6 +2297,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 f.SpecialPrice = f.Item.Price;
                 if (this.rInfo.Pact.Name == "公费")
                 {
+                    // 公费显示口径不能只看 TotCost，还要拆自费/公费并受公费上限控制。
                     Neusoft.HISFC.Models.Base.PactItemRate pactRate = null;
 
                     pactRate = this.pactUnitItemRateManager.GetOnePactUnitItemRateGY(rInfo.Name, rInfo.IDCard, 1);
@@ -2325,6 +2337,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 }
                 if (this.undrugManager.SetUltrasound(f.Item.ID))
                 {
+                    // 彩超类项目存在“首项/后续项差额”口径，所以这里要靠 itemqty 判断当前是第几个。
                     if (itemqty > 0)
                     {
                         totDisplayCost = f.Item.Price - pricece;  //减去价格差额
@@ -2337,6 +2350,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                     returnRows = this.undrugManager.SetRestrictingfee(f.Item.ID, ref  LimitNumber);
                       if (returnRows <= 0)
                       {
+                          // 如果不是限制收费项目，但前面又没算出显示金额，就回退到普通“单价 × 数量”显示。
                           totDisplayCost = Neusoft.FrameWork.Public.String.FormatNumber(f.Item.Price * f.Item.Qty / f.Item.PackQty, 2);
                       }
                 }
@@ -3209,6 +3223,9 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             //如果找到项目
             if (findRow != null)
             {
+                // ========== 第四阶段：根据目录记录构造当前行的 FeeItemList 对象 ==========
+                // 这一段不是只给表格单元格赋值，而是同时在内存里重建一份完整的收费对象，
+                // 后面显示刷新、限制收费回算、最终保存都依赖这份对象。
                 decimal price = 0;		//单价
 
                 decimal pactQty = 0;	//包装数量
@@ -3230,6 +3247,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 //非药品
                 if (itemType == "0")
                 {
+                    // 非药品是最常见路径，直接构造 Undrug 对象，不视为组套。
                     feeItemList.Item = new Neusoft.HISFC.Models.Fee.Item.Undrug();
                     //feeItemList.Item.IsPharmacy = false;
                     feeItemList.Item.ItemType = EnumItemType.UnDrug;
@@ -3238,6 +3256,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 //药品
                 if (itemType == "1")
                 {
+                    // 药品项目要走药品对象，后面频次、用法、剂量、包装单位都按药品口径处理。
                     feeItemList.Item = new Neusoft.HISFC.Models.Pharmacy.Item();
                     //feeItemList.Item.IsPharmacy = true;
                     feeItemList.Item.ItemType = EnumItemType.Drug;
@@ -3247,6 +3266,8 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 //组合项目
                 if (itemType == "2")
                 {
+                    // 这里的 2 不是“普通非药品”，而是“组合项目/组套主项”。
+                    // 后面不会直接收费，而是要继续拆成子项。
                     //feeItemList.Item.IsPharmacy = false;
                     feeItemList.Item.ItemType = EnumItemType.UnDrug;
                     feeItemList.IsGroup = true;
@@ -3279,6 +3300,8 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 //组套
                 if (itemType == "3")//组套
                 {
+                    // 传统组合项目这里不是落一条主项收费，而是弹次数输入后，递归把每个组套子项重新调用 SetItem 落到表格里。
+                    // 也就是说，SetItem 在这里同时承担“单项录入入口”和“组套递归展开入口”两种角色。
                     ArrayList groupDetails = this.managerIntegrate.QueryGroupDetailByGroupCode(itemCode);
                     if (groupDetails == null)
                     {
@@ -3310,6 +3333,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                             detail.deptCode = exeDeptCode;
                         }
                         //{40DFDC91-0EC1-4cd4-81BC-0EAE4DE1D3AB}
+                        // 这里再次调用 SetItem，相当于把组套里的每个子项当成一条独立收费明细重新走完整录入流程。
                         this.SetItem(detail.itemCode, drugflag, detail.deptCode, actIndex, detail.qty * times, 0, detail.unitFlag);
                         actIndex = GetNewRow();
                         if (actIndex == -1)
@@ -3327,6 +3351,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 //{40DFDC91-0EC1-4cd4-81BC-0EAE4DE1D3AB}
                 if (itemType == "6")
                 {
+                    // 物资项目和药品/非药品都不同，走材料收费对象。
                     feeItemList.Item = new Neusoft.HISFC.Models.FeeStuff.MaterialItem();
                     feeItemList.Item.ItemType = EnumItemType.MatItem;
                 }
@@ -3396,6 +3421,8 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 //if (feeItemList.Item.IsPharmacy)
                 if (feeItemList.Item.ItemType == EnumItemType.Drug)
                 {
+                    // ========== 第五阶段A：药品口径下的默认值补齐 ==========
+                    // 药品要补的内容明显多于非药品：付数、频次、用法、剂量、包装/最小单位等都在这一段处理。
                     //如果是草药
                     if (feeItemList.Item.SysClass.ID.ToString() == "PCC")
                     {
@@ -3448,6 +3475,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                     #region 妇幼先改，后加控制参数  控制参数是MZ0057. 后改
                     if (!this.isDoseOnceCanNull)
                     {
+                        // 没有放开“剂量可空”时，旧系统会强行从目录默认频次/用法/剂量里带一份进来。
                         //频次(药品)
                         freqCode = findRow["FREQ_CODE"].ToString();
                         if (freqCode == string.Empty)
@@ -3519,6 +3547,8 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 //if (!feeItemList.Item.IsPharmacy)
                 if (feeItemList.Item.ItemType != EnumItemType.Drug)
                 {
+                    // ========== 第五阶段B：非药品按系统类别着色 ==========
+                    // 这一段看起来只是 UI 颜色，但实际是收费员区分项目类型的重要视觉提示。
                     string idCode = feeItemList.Item.SysClass.ID.ToString();
 
                     Neusoft.FrameWork.Models.NeuObject obj = this.managerIntegrate.GetConstansObj("MZUSAGECODE", idCode);
@@ -3598,6 +3628,8 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
 
                 if (this.rInfo != null)
                 {
+                    // 开单医生、开单科室直接从当前患者挂号上下文带入，
+                    // 这样后面无论是显示、保存还是限制收费，都能拿到完整的处方归属信息。
                     feeItemList.RecipeOper.ID = this.rInfo.DoctorInfo.Templet.Doct.ID;
                     feeItemList.RecipeOper.Name = this.rInfo.DoctorInfo.Templet.Doct.Name;
                     //{33607355-C383-4271-B46C-0FBBAC251382} 开方医生所属科室编码
@@ -3627,6 +3659,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
 
                 if ("T".Equals(departManager.GetDeptmentById(curOperDept.ID).DeptType.ID))
                 {
+                    // 当前登录科室是医技时，费用来源记为 2，和门诊收费员直接收费的来源做区分。
                     feeItemList.FTSource = "2";
                 }
                 else
@@ -3638,6 +3671,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 //{CA82280B-51B6-4462-B63E-43F4ECF456A3}
                 if (drugFlag == "0")//非药品
                 {
+                    // 非药品的执行科室既可能来自目录默认值，也可能需要按当前输入上下文重新确定。
                     if (dsItem.Tables[0].Columns.Contains("FUNCTIONCLASS"))
                     {
                         (feeItemList.Item as Neusoft.HISFC.Models.Fee.Item.Undrug).ItemPriceType = findRow["FUNCTIONCLASS"].ToString();
@@ -3660,6 +3694,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
 
                 if (drugFlag == "1")
                 {
+                    // 药品执行科室基本按药房/库存口径走，直接用目录映射结果即可。
                     ArrayList alExecDept = null;
                     Neusoft.FrameWork.Models.NeuObject dept = this.managerIntegrate.GetDepartment(exeDept);
                     this.fpSpread1_Sheet1.Cells[row, (int)Columns.ExeDept].Text = dept.Name;
@@ -3673,6 +3708,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 }
                 else
                 {
+                    // 非药品则优先用规则缓存帮忙算默认执行科室，算不到时再退回全部科室列表。
                     ArrayList alExecDept = null;
 
                     string defaultExecDept = string.Empty;
@@ -4088,12 +4124,17 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 decimal LimitNumber = 1;
                 ArrayList hsREOnlylistItem = new ArrayList();
                 returnRows = this.undrugManager.SetRestrictingfee(feeItemList.Item.ID, ref  LimitNumber);
+                // 这里是“单条录入即回算”的口径：
+                // 收费员刚录入一条项目时，就要马上把限制收费后的金额回写到当前行，
+                // 否则界面上看到的单价/金额会和后面 SetChargeInfo 或最终保存阶段不一致。
                 // 按当前业务口径，7021 为体验科室；该科室命中数量限制时不执行数量折价。
                 if (returnRows > 0 && this.rInfo.DoctorInfo.Templet.Dept.ID != "7021")
                 {
                     this.setRestrictingfee.ConvertRestrictingfeeCharge(PatientInfo.PID.CardNO, feeItemList, ref hsREOnlyOneItem, ref hsNOREOnlyOneItem, ref hsREOnlylistItem, number, itemType, LimitNumber, ref hsZTNOREOnlyOneItem);
                     foreach (FeeItemList ds in hsREOnlylistItem)
                     {
+                        // 这里只回写当前录入行最关心的几个值：价格、总金额、自费金额。
+                        // 其他扩展属性仍挂在 feeItemList 对象上，后续整页刷新时会继续补齐显示列。
                         feeItemList.Item.Price = ds.Item.Price;
                         feeItemList.FT.TotCost = ds.FT.TotCost;
                         feeItemList.FT.OwnCost = ds.FT.OwnCost;
@@ -4449,12 +4490,25 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
         }
 
         /// <summary>
-        /// 把组套拆分成明细
+        /// 按普通组套定义，把一个组套主项拆成真正可收费的明细项目。
         /// </summary>
-        /// <param name="f"></param>
-        /// <returns></returns>
+        /// <param name="f">
+        /// 当前界面上看到的组套主项。
+        /// 它本身通常只是汇总显示项，真正收费要落到拆出来的子项明细上。
+        /// </param>
+        /// <returns>
+        /// 返回拆分后的收费明细集合。
+        /// 如果组套定义、项目主数据或价格资料异常，则返回 null，并把失败原因写入 <c>errText</c>。
+        /// </returns>
+        /// <remarks>
+        /// 这是普通组套拆分入口，不负责限制收费判断。
+        /// 它的职责是把组套主项还原成完整的 <see cref="FeeItemList"/> 子项集合，供后续界面显示、限制收费和最终收费保存继续使用。
+        /// </remarks>
         private ArrayList ConvertGroupToDetail(FeeItemList f)
         {
+            // ========== 第一阶段：读取普通组套定义 ==========
+            // 这里处理的是普通非药品组套。
+            // 目标不是保留组套主项，而是把它还原成真正参与收费的子项明细。
             ArrayList undrugCombList = this.undrugPackAgeManager.QueryUndrugPackagesBypackageCode(f.Item.ID);
             ArrayList alTemp = new ArrayList();
             if (undrugCombList == null)
@@ -4477,6 +4531,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             FeeItemList feeDetail = null;
             if (f.Order.ID == null || f.Order.ID == string.Empty)
             {
+                // 每个拆出来的子项都要挂在同一笔医嘱流水下，所以主项先得有稳定的 Order.ID。
                 f.Order.ID = this.orderIntegrate.GetNewOrderID();
                 if (f.Order.ID == null || f.Order.ID == string.Empty)
                 {
@@ -4521,6 +4576,9 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
 
             //符合项目明细的加成（减免）比例
             decimal itemRate = 1;
+            // ========== 第二阶段：逐个子项重建收费明细 ==========
+            // 这一段的工作不是“查出组套明细就返回”，
+            // 而是把每个明细重新构造成完整 FeeItemList，并重新计算它的实际单价、数量、金额和待遇属性。
             foreach (Neusoft.HISFC.Models.Fee.Item.UndrugComb undrugCombo in undrugCombList)
             {
                 DataRow rowFindZT;
@@ -4538,6 +4596,8 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 feeCode = rowFindZT["FEE_CODE"].ToString();
                 try
                 {
+                    // 普通组套子项的价格不能直接信任目录默认价，
+                    // 还要结合患者年龄、合同单位、组套内比例、转诊场景再重算一次。
 
                     decimal unitPrice = NConvert.ToDecimal(rowFindZT["UNIT_PRICE"]);
                     decimal childPrice = NConvert.ToDecimal(rowFindZT["CHILD_PRICE"]);
@@ -4549,6 +4609,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
 
                     if (isTransferTreat == true)
                     {
+                        // 转诊/转治场景下，旧逻辑直接采用目录单价，不再走完整组套价格算法。
                         decimal orgPrice = price;
                         itemRate = 1;// feeIntegrate.GetItemRateForZT(f.Item.ID, undrugCombo.ID);
                         price = unitPrice;// this.feeIntegrate.GetPrice(undrugCombo.ID, this.rInfo, age, unitPrice, childPrice, SPPrice, purchasePrice, ref orgPrice, itemRate);
@@ -4556,6 +4617,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                     }
                     else
                     {
+                        // 正常场景下按旧 HIS 价格算法重算子项单价。
                         decimal orgPrice = price;
                         itemRate = feeIntegrate.GetItemRateForZT(f.Item.ID, undrugCombo.ID);
                         price = this.feeIntegrate.GetPrice(undrugCombo.ID, this.rInfo, age, unitPrice, childPrice, SPPrice, purchasePrice, ref orgPrice, itemRate);
@@ -4587,6 +4649,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
 
                 price *= 1 - myRate.Rate.RebateRate;
                 //--------------------------------------------------
+                // 子项最终数量 = 主项数量 × 组套定义中的子项倍数。
                 count = NConvert.ToDecimal(f.Item.Qty) * undrugCombo.Qty;
 
                 //组套拆分成明细的时候，也保存两位小数
@@ -4598,6 +4661,8 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 feeDetail.Item.Name = rowFindZT["ITEM_NAME"].ToString();
                 if (this.undrugManager.SetUltrasound(f.Item.ID))
                 {
+                    // 彩超组套有“主项/加收项”口径。
+                    // 命中指定子项名称时，会把它改名成加收项目，并把单价按差额口径调整。
                     if (feeDetail.Item.Name == "四肢血管彩色多普勒超声")
                     {
                         if (itenqty > 0)
@@ -4645,6 +4710,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
 
                 if (this.rInfo.Pact.Name == "公费")
                 {
+                    // 公费场景下，拆出来的子项要重新拆 own/pub 金额，并继续受公费累计上限控制。
                     Neusoft.HISFC.Models.Base.PactItemRate pactRate = null;
                     pactRate = this.pactUnitItemRateManager.GetOnePactUnitItemRateGY(rInfo.Name, rInfo.IDCard, 1);
                     if (sumPubCost < 200)
@@ -4707,6 +4773,8 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 feeDetail.FeePack = f.FeePack;
                 if (this.rInfo.Pact.PayKind.ID == "03")
                 {
+                    // 协议/公费口径下，子项还要继承主项的 ItemRateFlag / NewItemRate 这类待遇属性，
+                    // 否则主项拆开后会丢失原来的医保归属信息。
                     Neusoft.HISFC.Models.Base.PactItemRate pactRate = null;
 
                     if (pactRate == null)
@@ -4779,6 +4847,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             {
                 if (f.FT.RebateCost > 0)//有减免
                 {
+                    // 主项带的减免金额不会自动分摊到子项，所以这里按子项 ownCost 比例重新拆开。
                     if (this.rInfo.Pact.PayKind.ID != "01")
                     {
                         MessageBox.Show(Language.Msg("暂时不允许非自费患者减免!"));
@@ -4825,6 +4894,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             {
                 if (f.SpecialPrice > 0)//有特殊自费
                 {
+                    // 特殊自费金额这里统一挂到价格最高的子项上，尽量保持和主项原金额结构接近。
                     decimal tempPrice = 0m;
                     string id = string.Empty;
                     foreach (FeeItemList feeTemp in alTemp)
@@ -4851,6 +4921,8 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             {
                 if (Neusoft.FrameWork.Function.NConvert.ToDecimal(f.FT.User03) > 0)//有特殊自费
                 {
+                    // FT.User03 在这套旧代码里也被当作一种主项级别的附加金额处理。
+                    // 所以这里继续沿用“挂到价格最高子项”的策略。
                     decimal tempPrice = 0m;
                     string id = string.Empty;
                     foreach (FeeItemList feeTemp in alTemp)
@@ -4877,15 +4949,32 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
         }
 
         /// <summary>
-        /// 把组套拆分成明细
+        /// 按 DR 特殊收费规则，把组套主项拆成可收费明细。
         /// </summary>
-        /// <param name="f"></param>
-        /// <param name="isFirst"></param>
-        /// <param name="hsOnlyOneItem"></param>
-        /// <param name="drCount"></param>
-        /// <returns></returns>
+        /// <param name="f">当前待拆分的 DR 组套主项。</param>
+        /// <param name="isFirst">
+        /// 当前这组 DR 项是否按“首项”口径处理。
+        /// 旧规则里常见“第一组收费、第二组起收费”的差异，这个标志就是给这些规则分支用的。
+        /// </param>
+        /// <param name="hsOnlyOneItem">
+        /// 记录“只收一次”或“已经占位”的特殊子项。
+        /// 这样后面再次遇到同类子项时，能知道该跳过还是该保留。
+        /// </param>
+        /// <param name="drCount">
+        /// DR 相关差异收费的累计计数器。
+        /// 在拆分过程中会不断更新，供后续某些 DR 子项的收费公式继续使用。
+        /// </param>
+        /// <returns>
+        /// 返回按 DR 特殊口径拆好的收费明细集合。
+        /// 失败时返回 null。
+        /// </returns>
+        /// <remarks>
+        /// 它和普通组套拆分的核心区别是：DR 子项是否参与收费，不只看组套定义，还要看当前是不是首项、是否命中“第二组起收”等特殊规则。
+        /// </remarks>
         private ArrayList ConvertDRGroupToDetail(FeeItemList f, bool isFirst, ref Hashtable hsOnlyOneItem, ref decimal drCount)
         {
+            // ========== 第一阶段：读取 DR 组套定义 ==========
+            // DR 特殊组套和普通组套最大的区别，是它有“第一项收费/第二项起收费/只收一次”等额外规则。
             ArrayList undrugCombList = this.undrugPackAgeManager.QueryUndrugZTBypackageCode(f.Item.ID);
             ArrayList alTemp = new ArrayList();
             if (undrugCombList == null)
@@ -4949,16 +5038,20 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             {
                 if (isFirst && undrugCombo.SortID == 2)
                 {
+                    // 当前是第一个 DR 项时，标记为“第二组起收”的子项不参与这一轮。
                     //如果是第一个DR项目，并且细项是第二组起收的继续循环
                     continue;
                 }
                 else if (!isFirst && undrugCombo.SortID == 1)
                 {
+                    // 当前不是第一个 DR 项时，标记为“第一组收费”的子项要跳过。
                     //如果不是第一个DR项目，并且细项是第一组收的继续循环
                     continue;
                 }
                 if (undrugCombo.SpellCode != "0")
                 {
+                    // drCount 在这里统计的是需要参与 DR 差异收费口径的数量基数，
+                    // 后面某些加收或只收一次规则会继续依赖这个累计值。
                     DataRow rowFindZT;
                     DataRow[] rowFindZTs = dsItem.Tables[0].Select("ITEM_CODE = " + "'" + undrugCombo.ID + "'");
                     rowFindZT = rowFindZTs[0];
@@ -4972,15 +5065,18 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
 
             //符合项目明细的加成（减免）比例
             decimal itemRate = 1;
+            // ========== 第二阶段：真正生成 DR 子项收费明细 ==========
             foreach (Neusoft.HISFC.Models.Fee.Item.UndrugComb undrugCombo in undrugCombList)
             {
                 if (isFirst && undrugCombo.SortID == 2)
                 {
+                    // 和上面同理：首项时跳过“第二组起收”的规则子项。
                     //如果是第一个DR项目，并且细项是第二组起收的继续循环
                     continue;
                 }
                 else if (!isFirst && undrugCombo.SortID == 1)
                 {
+                    // 非首项时跳过“第一组收费”的规则子项。
                     //如果不是第一个DR项目，并且细项是第一组收的继续循环
                     continue;
                 }
@@ -4999,6 +5095,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 feeCode = rowFindZT["FEE_CODE"].ToString();
                 try
                 {
+                    // DR 子项价格也要重新按年龄、合同单位和组套比例计算，不能直接照搬目录价。
                     decimal unitPrice = NConvert.ToDecimal(rowFindZT["UNIT_PRICE"]);
                     decimal childPrice = NConvert.ToDecimal(rowFindZT["CHILD_PRICE"]);
                     decimal SPPrice = NConvert.ToDecimal(rowFindZT["SP_PRICE"]);
@@ -5036,6 +5133,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
 
                 price *= 1 - myRate.Rate.RebateRate;
                 //--------------------------------------------------
+                // DR 子项数量同样来自“主项数量 × 子项倍数”。
                 count = NConvert.ToDecimal(f.Item.Qty) * undrugCombo.Qty;
 
                 //组套拆分成明细的时候，也保存两位小数
@@ -5119,6 +5217,8 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 feeDetail.FeePack = f.FeePack;
                 if (this.rInfo.Pact.PayKind.ID == "03")
                 {
+                    // DR 子项在协议/公费场景下，也要把待遇属性一并继承下来，
+                    // 否则主项拆分后，子项会失去原本的记账/自费/特殊标志。
                     Neusoft.HISFC.Models.Base.PactItemRate pactRate = null;
 
                     if (pactRate == null)
@@ -5323,12 +5423,28 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
         }
 
         /// <summary>
-        /// 把组套拆分成明细
+        /// 按 CT 特殊收费规则，把组套主项拆成可收费明细。
         /// </summary>
-        /// <param name="f"></param>
-        /// <returns></returns>
+        /// <param name="f">当前待拆分的 CT 组套主项。</param>
+        /// <param name="isFirst">
+        /// 当前这组 CT 项是否按“首项”口径处理。
+        /// 某些 CT 规则会区分首项与后续项的收费方式。
+        /// </param>
+        /// <param name="hsOnlyOneItem">
+        /// CT/PACS “只收一次”规则的占位表。
+        /// 例如三维/四维重建这类项目，需要先登记谁占位、谁被后续同类项目挤掉。
+        /// </param>
+        /// <returns>
+        /// 返回按 CT 特殊口径拆好的收费明细集合。
+        /// 失败时返回 null。
+        /// </returns>
+        /// <remarks>
+        /// 它和普通组套拆分的区别不只是价格算法，还包含 PACS “只收一次”、三维/四维互斥等旧 HIS 特有规则。
+        /// </remarks>
         private ArrayList ConvertCTGroupToDetail(FeeItemList f, bool isFirst, ref Hashtable hsOnlyOneItem)
         {
+            // ========== 第一阶段：读取 CT 组套定义 ==========
+            // CT 特殊组套除了普通拆分，还额外存在 PACS 新模式下“只收一次”“三维/四维互斥”等规则。
             ArrayList undrugCombList = this.undrugPackAgeManager.QueryUndrugZTBypackageCode(f.Item.ID);
             ArrayList alTemp = new ArrayList();
             if (undrugCombList == null)
@@ -5404,6 +5520,8 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
 
                 if (undrugCombo.SortID == 3)
                 {
+                    // SortID == 3 代表 PACS 的“只收一次”口径。
+                    // 这里先登记哪些子项已经占位，后面正式生成明细时再决定谁保留、谁淘汰。
                     if (hsOnlyOneItem.ContainsKey(undrugCombo.ID))
                     {
                         continue;
@@ -5413,6 +5531,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                         string itemName = rowFindZT["ITEM_NAME"].ToString();
                         if (itemName.Contains("三维重建"))
                         {
+                            // 三维和四维之间有优先级，先遇到三维时只是临时占位。
                             if (!hsOnlyOneItem.ContainsValue("四维"))
                             {
                                 hsOnlyOneItem.Add(undrugCombo.ID, "三维");
@@ -5424,6 +5543,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                         }
                         else if (itemName.Contains("四维重建"))
                         {
+                            // 一旦出现四维，就把前面临时占位的三维判成淘汰。
                             Hashtable hsTemp = hsOnlyOneItem.Clone() as Hashtable;
                             foreach (DictionaryEntry de in hsTemp)
                             {
@@ -5437,6 +5557,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                         }
                         else
                         {
+                            // 其他只收一次子项只需要记录“已占位”。
                             hsOnlyOneItem.Add(undrugCombo.ID, "其他");
                         }
                     }
@@ -5447,6 +5568,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
 
             //符合项目明细的加成（减免）比例
             decimal itemRate = 1;
+            // ========== 第二阶段：真正生成 CT 子项收费明细 ==========
             foreach (Neusoft.HISFC.Models.Fee.Item.UndrugComb undrugCombo in undrugCombList)
             {
                 //if (undrugCombo.SortID == 3)
@@ -5483,6 +5605,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 feeCode = rowFindZT["FEE_CODE"].ToString();
                 try
                 {
+                    // CT 子项价格同样不是默认价直用，而是按旧 HIS 的合同单位/年龄/组套比例算法重算。
                     decimal unitPrice = NConvert.ToDecimal(rowFindZT["UNIT_PRICE"]);
                     decimal childPrice = NConvert.ToDecimal(rowFindZT["CHILD_PRICE"]);
                     decimal SPPrice = NConvert.ToDecimal(rowFindZT["SP_PRICE"]);
@@ -5520,6 +5643,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
 
                 price *= 1 - myRate.Rate.RebateRate;
                 //--------------------------------------------------
+                // CT 子项数量 = 主项数量 × 当前子项配置倍数。
                 count = NConvert.ToDecimal(f.Item.Qty) * undrugCombo.Qty;
 
                 //组套拆分成明细的时候，也保存两位小数
@@ -7038,16 +7162,20 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
         /// <returns>成功 划价明细 失败 null</returns>
         public ArrayList GetFeeItemListForCharge()
         {
+            // 这个方法只负责把当前界面上“允许收费提交”的项目对象提出来。
+            // 它不做组套拆分、不做限制收费重算，也不改金额，只是从 UI 行对象里收集可提交数据。
             ArrayList alFeeItemList = new ArrayList();
 
             for (int i = 0; i < this.fpSpread1_Sheet1.RowCount; i++)
             {
                 if (this.fpSpread1_Sheet1.Rows[i].Tag == null || !(this.fpSpread1_Sheet1.Rows[i].Tag is FeeItemList))
                 {
+                    // 空白行、小计行、说明行都没有 FeeItemList，不参与实际收费提交。
                     continue;
                 }//{EE98C7B7-AC32-4b2c-93A5-9A62A33D6457}
                 if (this.IsCanSelectItemAndFee && this.fpSpread1_Sheet1.Cells[i, (int)Columns.Select].Text.ToLower() == "false")
                 {
+                    // 开启勾选收费模式时，未勾选项目不进入提交集合。
                     continue;
                 }//{EE98C7B7-AC32-4b2c-93A5-9A62A33D6457}结束
 
@@ -7063,6 +7191,8 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
         /// <returns>成功 划价明细 失败 null</returns>
         public ArrayList GetFeeItemListForCharge(bool isGroupDetail)
         {
+            // 这个重载当前属于保留接口。
+            // 原本看起来是想按“是否返回组套明细”分支，但现有实现已被整体注释掉，所以现在恒返回空集合。
             ArrayList alFeeItemList = new ArrayList();
 
             //for (int i = 0; i < this.fpSpread1_Sheet1.RowCount; i++)
@@ -7636,10 +7766,12 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             {
                 if (this.fpSpread1_Sheet1.Rows[i].Tag == null || !(this.fpSpread1_Sheet1.Rows[i].Tag is FeeItemList))
                 {
+                    // 没有绑定收费对象的行，不是真正的收费明细，直接跳过。
                     continue;
                 }//{EE98C7B7-AC32-4b2c-93A5-9A62A33D6457}
                 if (this.IsCanSelectItemAndFee && this.fpSpread1_Sheet1.Cells[i, (int)Columns.Select].Text.ToLower() == "false")
                 {
+                    // 勾选收费模式下，未勾选项目不参与最终收费。
                     continue;
                 }//{EE98C7B7-AC32-4b2c-93A5-9A62A33D6457}结束
 
@@ -7650,6 +7782,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                     //增加开方医生所在科室
                     if (!string.IsNullOrEmpty(f.RecipeOper.ID) && string.IsNullOrEmpty(f.DoctDeptInfo.ID))
                     {
+                        // 后续价格和规则判断有时依赖开单科室，所以这里先把医生科室补齐。
                         if (hsDoct.ContainsKey(f.RecipeOper.ID))
                         {
                             f.DoctDeptInfo.ID = hsDoct[f.RecipeOper.ID].ToString();
@@ -7667,6 +7800,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
 
                     if (f.IsGroup)
                     {
+                        // 组套主项不能直接提交收费，要先拆成真实收费子项。
                         //ArrayList alDetail = ConvertGroupToDetail(f);
                         ArrayList alDetail = null;
                         if (this.IsUseNewUndrugZT)
@@ -7677,17 +7811,20 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                                 string type = (alItem[0] as NeuObject).User02;
                                 if (type == "DR")
                                 {
+                                    // DR 组套走专用拆分逻辑，并带“首项”状态。
                                     alDetail = ConvertDRGroupToDetail(f, !isFindDRFirst, ref hsDROnlyOneItem, ref drCount);
                                     isFindDRFirst = true;
                                 }
                                 else if (type == "CT")
                                 {
+                                    // CT 组套走 CT 专用拆分逻辑，也要知道前面是否已经出现过首项。
                                     alDetail = ConvertCTGroupToDetail(f, !isFindCTFirst, ref hsCTOnlyOneItem);
                                     isFindCTFirst = true;
                                 }
                             }
                             else
                             {
+                                // 不属于 CT/MR 特殊规则表的组套，按普通组套拆分。
                                 alDetail = ConvertGroupToDetail(f);
                             }
                         }
@@ -7709,6 +7846,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                     }
                     else
                     {
+                        // 非组套项目直接作为普通收费明细参与后续流程。
                         feeItemLists.Add(((FeeItemList)this.fpSpread1_Sheet1.Rows[i].Tag));
                     }
                 }
@@ -7722,23 +7860,27 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 FeeItemList f = feeItemLists[i] as FeeItemList;
                 if (hsDROnlyOneItem.ContainsKey(f.Item.ID))
                 {
+                    // DR 特殊项目里，同类收费只能保留一条，重复项在这里清掉。
                     feeItemLists.RemoveAt(i);
                 }
                 if (hsCTOnlyOneItem.ContainsKey(f.Item.ID))
                 {
                     if (hsCTOnlyOneItem[f.Item.ID].ToString() != "true")
                     {
+                        // 第一次遇到允许保留的 CT 项时，把状态改成 true。
                         hsCTOnlyOneItem.Remove(f.Item.ID);
                         hsCTOnlyOneItem.Add(f.Item.ID, "true");
                     }
                     else
                     {
+                        // 已经保留过一条后，再出现同类 CT 项就直接移除。
                         feeItemLists.RemoveAt(i);
                     }
                 }
             }
             foreach (DictionaryEntry de in hsDROnlyOneItem)
             {
+                // 前面暂存的合法 DR 项统一补回最终收费集合。
                 FeeItemList f = de.Value as FeeItemList;
                 feeItemLists.Add(f);
             }
@@ -7755,6 +7897,8 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
 
                 FeeItemList s = feeItemLists[i] as FeeItemList;
                 returnRows = this.undrugManager.SetRestrictingfee(s.Item.ID, ref  LimitNumber);
+                // 提交前必须再做一次限制收费修正。
+                // 原因是收费员在显示阶段之后还可能继续增删项目，前面算出的剩余额度不一定还成立。
                 // 按当前业务口径，7021 为体验科室；该科室命中数量限制时不执行数量折价。
                 if (returnRows > 0 && this.rInfo.DoctorInfo.Templet.Dept.ID != "7021")
                 {
@@ -7769,12 +7913,14 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 FeeItemList s = feeItemLists[i] as FeeItemList;
                 if (hsREOnlyOneItem.ContainsKey(s.Item.ID + number))
                 {
+                    // 被重算逻辑接管的原对象先删掉，后面再补回重算后的版本。
                     feeItemLists.RemoveAt(i);
                 }
                 number++;
             }
             foreach (FeeItemList ds in hsREOnlylistItem)
             {
+                // 最终补回的就是已经带着最新限制收费结果的收费对象。
                 feeItemLists.Add(ds);
             }
 
@@ -8256,6 +8402,8 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             #region 公医自付比例获取
             if (this.rInfo.Pact.Name == "公费")
             {
+                // 这里不是重新算金额，而是把“公医项目最终采用的自付比例”补回到对象和缓存里。
+                // 这样后续界面刷新、再编辑或保存时，仍然能知道当前项目最后用了哪套公医比例。
 
                 Neusoft.HISFC.Models.Base.PactItemRate pactRate = null;
 
@@ -10440,12 +10588,24 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
         }
 
         /// <summary>
-        /// 明细把组套拆
+        /// 把已经拆开的收费明细，再按组套主项重新汇总成展示对象。
         /// </summary>
-        /// <param name="f"></param>
-        /// <returns></returns>
+        /// <param name="f">
+        /// 已经拆成明细的收费列表。
+        /// 这些对象里有些明细带着 <c>UndrugComb.ID</c>，表示它原本属于某个组套主项。
+        /// </param>
+        /// <returns>
+        /// 返回重新按组套主项汇总后的列表。
+        /// 对没有组套主项归属的普通明细，则原样保留。
+        /// </returns>
+        /// <remarks>
+        /// 这个方法和前面的“组套拆分成明细”是反方向：
+        /// 前者是为了真实收费和规则判断，这里则更偏向界面展示或特定场景下把明细再还原成主项视角。
+        /// </remarks>
         private ArrayList ConvertDetailToGroup(ArrayList f)
         {
+            // al1 用来保证同一个组套主项只汇总一次；
+            // b1 则是最终要返回的“主项视角”列表。
             Hashtable al1 = new Hashtable();
 
             ArrayList b1 = new ArrayList();
@@ -10455,12 +10615,15 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
 
                 if (al1.Contains(al.UndrugComb.ID))
                 {
+                    // 同一个组套主项已经汇总过一次后，后面的明细不再重复生成主项。
                     continue;
                 }
                 else
                 {
                     if (al.UndrugComb.ID != "")
                     {
+                        // 这里直接把当前明细对象改写成主项视角：
+                        // 把编码、名称、价格都切回组套主项，用来形成“显示型”的汇总项目。
                         al1.Add(al.UndrugComb.ID, al);
                         al.Item.Price = this.undrugPackAgeManager.GetUndrugCombPrice(al.UndrugComb.ID);
                         al.Item.ID = al.UndrugComb.ID;
@@ -10472,6 +10635,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                     }
                     else
                     {
+                        // 没有组套归属的普通明细，原样保留。
 
                         b1.Add(al);
                     }
