@@ -5438,7 +5438,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 feeItem.Order.ID = this.orderIntegrate.GetNewOrderID();
                 if (feeItem.Order.ID == null || feeItem.Order.ID == string.Empty)
                 {
-                    this.errText = "??????????????!";
+                    this.errText = "获得医嘱流水号出错!";
                     return false;
                 }
             }
@@ -5579,7 +5579,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             {
                 if (this.rInfo.Pact.PayKind.ID != "01")
                 {
-                    MessageBox.Show(Language.Msg("????????????????????!"));
+                    MessageBox.Show(Language.Msg("暂时不允许非自费患者减免!"));
                     return false;
                 }
 
