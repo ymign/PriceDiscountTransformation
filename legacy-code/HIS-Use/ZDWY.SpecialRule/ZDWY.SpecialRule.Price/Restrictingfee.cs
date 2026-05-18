@@ -1032,15 +1032,9 @@ namespace ZDWY.SpecialRule.Price
             // ========== 第二阶段：确保主项已经具备后续拆分所需的基础上下文 ==========
             // 组套拆分后的每个子项都要继承主项上的部分业务信息，
             // 例如医嘱流水号、患者信息、开单人、费用来源等，所以这里先保证主项自身是完整的。
-            if (f.Order.ID == null || f.Order.ID == string.Empty)
+            if (!this.EnsureOrderId(f))
             {
-                f.Order.ID = this.db.GetNewOrderID();
-                if (f.Order.ID == null || f.Order.ID == string.Empty)
-                {
-                    this.errText = "获得医嘱流水号出错!";
-
-                    return null;
-                }
+                return null;
             }
 
             //有价格打折的
@@ -1293,86 +1287,8 @@ namespace ZDWY.SpecialRule.Price
 
                 feeDetail.Item.IsNeedBespeak = NConvert.ToBoolean(rowFindZT["NEEDBESPEAK"].ToString());
 
-                feeDetail.Order.ID = f.Order.ID;
-
-                feeDetail.UndrugComb.ID = f.Item.ID;
-                feeDetail.UndrugComb.Name = f.Item.Name;
-                feeDetail.UndrugComb.Qty = f.Item.Qty;
-
-                feeDetail.Order.Combo.ID = f.Order.Combo.ID;
-                feeDetail.Item.IsMaterial = f.Item.IsMaterial;
-                feeDetail.RecipeSequence = f.RecipeSequence;
-                feeDetail.FTSource = f.FTSource;
-                feeDetail.FeePack = f.FeePack;
-                if (this.rInfo.Pact.PayKind.ID == "03")
-                {
-                    // 公费/协议场景下，拆出来的子项还要重新补 ItemRateFlag。
-                    // 否则主项原本的待遇属性在拆分后会丢失，后续结算会和主项口径不一致。
-                    Neusoft.HISFC.Models.Base.PactItemRate pactRate = null;
-
-                    if (pactRate == null)
-                    {
-                        pactRate = this.db.GetOnepPactUnitItemRateByItem(this.rInfo.Pact.ID, feeDetail.Item.ID);
-                    }
-                    if (pactRate != null)
-                    {
-                        if (pactRate.Rate.PayRate != this.rInfo.Pact.Rate.PayRate)
-                        {
-                            if (pactRate.Rate.PayRate == 1)//自费
-                            {
-                                feeDetail.ItemRateFlag = "1";
-                            }
-                            else
-                            {
-                                //feeDetail.ItemRateFlag = "3";
-                                feeDetail.ItemRateFlag = "2";
-                            }
-                        }
-                        else
-                        {
-                            feeDetail.ItemRateFlag = "2";
-
-                        }
-                        if (f.ItemRateFlag == "3")
-                        {
-                            feeDetail.OrgItemRate = f.OrgItemRate;
-                            feeDetail.NewItemRate = f.NewItemRate;
-                            //feeDetail.ItemRateFlag = "2";//DEL 30
-                            feeDetail.ItemRateFlag = "3";
-                        }
-                    }
-                    else
-                    {
-                        if (f.ItemRateFlag == "3")
-                        {
-                            //DEL 30
-                            ////if (rowFindZT["ZF"].ToString() != "1")
-                            ////{
-                            ////    feeDetail.OrgItemRate = f.OrgItemRate;
-                            ////    feeDetail.NewItemRate = f.NewItemRate;
-                            ////    feeDetail.ItemRateFlag = "2";
-                            ////}
-                            feeDetail.OrgItemRate = f.OrgItemRate;
-                            feeDetail.NewItemRate = f.NewItemRate;
-                            feeDetail.ItemRateFlag = "3";
-                        }
-                        else
-                        {
-                            feeDetail.OrgItemRate = f.OrgItemRate;
-                            feeDetail.NewItemRate = f.NewItemRate;
-                            feeDetail.ItemRateFlag = f.ItemRateFlag;
-                        }
-                    }
-                }
-
-                //复合项目的用法赋给明细项目
-                feeDetail.Order.Usage = f.Order.Usage;
-                //使用原来的处方号
-                //feeDetail.RecipeNO = f.RecipeNO;
-                feeDetail.Order.ApplyNo = f.Order.ApplyNo;
-                feeDetail.Order.Sample.ID = f.Order.Sample.ID;
-                feeDetail.Order.Sample.Name = f.Order.Sample.Name;
-                feeDetail.Order.CheckPartRecord = f.Order.CheckPartRecord;
+                this.CopyParentContextToDetail(f, feeDetail);
+                this.ApplyPactItemRateForDetail(f, feeDetail);
 
                 alTemp.Add(feeDetail);
             }
@@ -1380,108 +1296,9 @@ namespace ZDWY.SpecialRule.Price
             // ========== 第四阶段：把主项上的减免、特殊自费等附加信息重新挂回拆分后的子项 ==========
             // 旧 HIS 的很多金额信息是先挂在主项上的。
             // 主项一旦被拆开，如果不把这些附加金额重新分配到子项上，后续收费落账金额就会和原界面显示对不上。
-            if (alTemp.Count > 0)
+            if (!this.ApplyParentAdjustmentsToDetails(f, alTemp))
             {
-                if (f.FT.RebateCost > 0)//有减免
-                {
-                    if (this.rInfo.Pact.PayKind.ID != "01")
-                    {
-                        this.errText = "暂时不允许非自费患者减免!";
-                        return null;
-                    }
-                    //decimal rebateRate =
-                    //    Neusoft.FrameWork.Public.String.FormatNumber(
-                    //    f.FT.RebateCost / (f.FT.OwnCost + f.FT.RebateCost), 2);
-                    //decimal tempFix = 0;
-                    //decimal tempRebateCost = 0;
-                    //foreach (FeeItemList feeTemp in alTemp)
-                    //{
-                    //    feeTemp.FT.RebateCost = (feeTemp.FT.OwnCost + feeTemp.FT.RebateCost) * rebateRate;
-                    //    tempRebateCost += feeTemp.FT.RebateCost;
-                    //    feeTemp.FT.OwnCost = feeTemp.FT.OwnCost - feeTemp.FT.RebateCost;
-                    //    feeTemp.FT.TotCost = feeTemp.FT.TotCost - feeTemp.FT.RebateCost;
-                    //}
-                    //tempFix = f.FT.RebateCost - tempRebateCost;
-                    //FeeItemList fFix = alTemp[0] as FeeItemList;
-                    //fFix.FT.RebateCost = fFix.FT.RebateCost + tempFix;
-                    //fFix.FT.OwnCost = fFix.FT.OwnCost - tempFix;
-                    //fFix.FT.TotCost = fFix.FT.TotCost - tempFix;
-                    //减免单独算
-                    // 这里不是把主项减免平均分摊，而是按各子项 ownCost 的占比重新分配。
-                    // 最后再把四舍五入造成的差额补回到第一条子项，保证拆分前后总减免金额一致。
-                    decimal rebateRate =
-                        Neusoft.FrameWork.Public.String.FormatNumber(f.FT.RebateCost / f.FT.OwnCost, 2);
-                    decimal tempFix = 0;
-                    decimal tempRebateCost = 0;
-                    foreach (FeeItemList feeTemp in alTemp)
-                    {
-                        feeTemp.FT.RebateCost = (feeTemp.FT.OwnCost) * rebateRate;
-                        tempRebateCost += feeTemp.FT.RebateCost;
-                        //feeTemp.FT.OwnCost = feeTemp.FT.OwnCost - feeTemp.FT.RebateCost;
-                        //feeTemp.FT.TotCost = feeTemp.FT.TotCost - feeTemp.FT.RebateCost;
-                    }
-                    tempFix = f.FT.RebateCost - tempRebateCost;
-                    FeeItemList fFix = alTemp[0] as FeeItemList;
-                    fFix.FT.RebateCost = fFix.FT.RebateCost + tempFix;
-                    //fFix.FT.OwnCost = fFix.FT.OwnCost - tempFix;
-                    //fFix.FT.TotCost = fFix.FT.TotCost - tempFix;
-                }
-            }
-            if (alTemp.Count > 0)
-            {
-                if (f.SpecialPrice > 0)//有特殊自费
-                {
-                    // 主项如果带了特殊自费金额，这里选择“价格最高的那个子项”来承接，
-                    // 这样做的目的通常是尽量保持主项拆分后的金额结构接近原收费口径。
-                    decimal tempPrice = 0m;
-                    string id = string.Empty;
-                    foreach (FeeItemList feeTemp in alTemp)
-                    {
-                        if (feeTemp.Item.Price > tempPrice)
-                        {
-                            id = feeTemp.Item.ID;
-                            tempPrice = feeTemp.Item.Price;
-                        }
-                    }
-
-                    foreach (FeeItemList fee in alTemp)
-                    {
-                        if (fee.Item.ID == id)
-                        {
-                            fee.SpecialPrice = f.SpecialPrice;
-
-                            break;
-                        }
-                    }
-                }
-            }
-            if (alTemp.Count > 0)
-            {
-                if (Neusoft.FrameWork.Function.NConvert.ToDecimal(f.FT.User03) > 0)//有特殊自费
-                {
-                    // FT.User03 这里也沿用“挂到价格最高子项”的策略。
-                    // 虽然字段名不直观，但旧系统显然把它也当作一种主项级别的附加金额来处理。
-                    decimal tempPrice = 0m;
-                    string id = string.Empty;
-                    foreach (FeeItemList feeTemp in alTemp)
-                    {
-                        if (feeTemp.Item.Price > tempPrice)
-                        {
-                            id = feeTemp.Item.ID;
-                            tempPrice = feeTemp.Item.Price;
-                        }
-                    }
-
-                    foreach (FeeItemList fee in alTemp)
-                    {
-                        if (fee.Item.ID == id)
-                        {
-                            fee.FT.User03 = f.FT.User03;
-
-                            break;
-                        }
-                    }
-                }
+                return null;
             }
             return alTemp;
         }
@@ -1524,15 +1341,9 @@ namespace ZDWY.SpecialRule.Price
             // ========== 第二阶段：补齐组套主项的收费基础数据 ==========
             // 后面生成的每个子项都要继承主项上的患者、处方、执行信息，
             // 所以在真正拆分前，先确保主项自身已经具备完整的医嘱流水和价格上下文。
-            if (f.Order.ID == null || f.Order.ID == string.Empty)
+            if (!this.EnsureOrderId(f))
             {
-                f.Order.ID = this.db.GetNewOrderID();
-                if (f.Order.ID == null || f.Order.ID == string.Empty)
-                {
-                    this.errText = "获得医嘱流水号出错!";
-
-                    return null;
-                }
+                return null;
             }
 
             //有价格打折的
@@ -1714,86 +1525,8 @@ namespace ZDWY.SpecialRule.Price
 
                 feeDetail.Item.IsNeedBespeak = NConvert.ToBoolean(rowFindZT["NEEDBESPEAK"].ToString());
 
-                feeDetail.Order.ID = f.Order.ID;
-
-                feeDetail.UndrugComb.ID = f.Item.ID;
-                feeDetail.UndrugComb.Name = f.Item.Name;
-                feeDetail.UndrugComb.Qty = f.Item.Qty;
-
-                feeDetail.Order.Combo.ID = f.Order.Combo.ID;
-                feeDetail.Item.IsMaterial = f.Item.IsMaterial;
-                feeDetail.RecipeSequence = f.RecipeSequence;
-                feeDetail.FTSource = f.FTSource;
-                feeDetail.FeePack = f.FeePack;
-                if (this.rInfo.Pact.PayKind.ID == "03")
-                {
-                    // 主项如果是协议/公费口径，拆出来的子项也要补上同类标志。
-                    // 否则主项拆分前后在待遇归属上会出现断层。
-                    Neusoft.HISFC.Models.Base.PactItemRate pactRate = null;
-
-                    if (pactRate == null)
-                    {
-                        pactRate = this.db.GetOnepPactUnitItemRateByItem(this.rInfo.Pact.ID, feeDetail.Item.ID);
-                    }
-                    if (pactRate != null)
-                    {
-                        if (pactRate.Rate.PayRate != this.rInfo.Pact.Rate.PayRate)
-                        {
-                            if (pactRate.Rate.PayRate == 1)//自费
-                            {
-                                feeDetail.ItemRateFlag = "1";
-                            }
-                            else
-                            {
-                                //feeDetail.ItemRateFlag = "3";
-                                feeDetail.ItemRateFlag = "2";
-                            }
-                        }
-                        else
-                        {
-                            feeDetail.ItemRateFlag = "2";
-
-                        }
-                        if (f.ItemRateFlag == "3")
-                        {
-                            feeDetail.OrgItemRate = f.OrgItemRate;
-                            feeDetail.NewItemRate = f.NewItemRate;
-                            //feeDetail.ItemRateFlag = "2";//DEL 30
-                            feeDetail.ItemRateFlag = "3";
-                        }
-                    }
-                    else
-                    {
-                        if (f.ItemRateFlag == "3")
-                        {
-                            //DEL 30
-                            ////if (rowFindZT["ZF"].ToString() != "1")
-                            ////{
-                            ////    feeDetail.OrgItemRate = f.OrgItemRate;
-                            ////    feeDetail.NewItemRate = f.NewItemRate;
-                            ////    feeDetail.ItemRateFlag = "2";
-                            ////}
-                            feeDetail.OrgItemRate = f.OrgItemRate;
-                            feeDetail.NewItemRate = f.NewItemRate;
-                            feeDetail.ItemRateFlag = "3";
-                        }
-                        else
-                        {
-                            feeDetail.OrgItemRate = f.OrgItemRate;
-                            feeDetail.NewItemRate = f.NewItemRate;
-                            feeDetail.ItemRateFlag = f.ItemRateFlag;
-                        }
-                    }
-                }
-
-                //复合项目的用法赋给明细项目
-                feeDetail.Order.Usage = f.Order.Usage;
-                //使用原来的处方号
-                //feeDetail.RecipeNO = f.RecipeNO;
-                feeDetail.Order.ApplyNo = f.Order.ApplyNo;
-                feeDetail.Order.Sample.ID = f.Order.Sample.ID;
-                feeDetail.Order.Sample.Name = f.Order.Sample.Name;
-                feeDetail.Order.CheckPartRecord = f.Order.CheckPartRecord;
+                this.CopyParentContextToDetail(f, feeDetail);
+                this.ApplyPactItemRateForDetail(f, feeDetail);
 
                 alTemp.Add(feeDetail);
             }
@@ -1801,102 +1534,9 @@ namespace ZDWY.SpecialRule.Price
             // ========== 第四阶段：把主项级别的附加金额重新分配回子项 ==========
             // 例如减免金额、特殊自费金额等，数据库原本未必按子项维护，
             // 所以拆完以后要重新找一个合适的子项承接，保证最终收费结果和主项原语义一致。
-            if (alTemp.Count > 0)
+            if (!this.ApplyParentAdjustmentsToDetails(f, alTemp))
             {
-                if (f.FT.RebateCost > 0)//有减免
-                {
-                    if (this.rInfo.Pact.PayKind.ID != "01")
-                    {
-                        this.errText = "暂时不允许非自费患者减免";
-                        return null;
-                    }
-                    //decimal rebateRate =
-                    //    Neusoft.FrameWork.Public.String.FormatNumber(
-                    //    f.FT.RebateCost / (f.FT.OwnCost + f.FT.RebateCost), 2);
-                    //decimal tempFix = 0;
-                    //decimal tempRebateCost = 0;
-                    //foreach (FeeItemList feeTemp in alTemp)
-                    //{
-                    //    feeTemp.FT.RebateCost = (feeTemp.FT.OwnCost + feeTemp.FT.RebateCost) * rebateRate;
-                    //    tempRebateCost += feeTemp.FT.RebateCost;
-                    //    feeTemp.FT.OwnCost = feeTemp.FT.OwnCost - feeTemp.FT.RebateCost;
-                    //    feeTemp.FT.TotCost = feeTemp.FT.TotCost - feeTemp.FT.RebateCost;
-                    //}
-                    //tempFix = f.FT.RebateCost - tempRebateCost;
-                    //FeeItemList fFix = alTemp[0] as FeeItemList;
-                    //fFix.FT.RebateCost = fFix.FT.RebateCost + tempFix;
-                    //fFix.FT.OwnCost = fFix.FT.OwnCost - tempFix;
-                    //fFix.FT.TotCost = fFix.FT.TotCost - tempFix;
-                    //减免单独算
-                    decimal rebateRate =
-                        Neusoft.FrameWork.Public.String.FormatNumber(f.FT.RebateCost / f.FT.OwnCost, 2);
-                    decimal tempFix = 0;
-                    decimal tempRebateCost = 0;
-                    foreach (FeeItemList feeTemp in alTemp)
-                    {
-                        feeTemp.FT.RebateCost = (feeTemp.FT.OwnCost) * rebateRate;
-                        tempRebateCost += feeTemp.FT.RebateCost;
-                        //feeTemp.FT.OwnCost = feeTemp.FT.OwnCost - feeTemp.FT.RebateCost;
-                        //feeTemp.FT.TotCost = feeTemp.FT.TotCost - feeTemp.FT.RebateCost;
-                    }
-                    tempFix = f.FT.RebateCost - tempRebateCost;
-                    FeeItemList fFix = alTemp[0] as FeeItemList;
-                    fFix.FT.RebateCost = fFix.FT.RebateCost + tempFix;
-                    //fFix.FT.OwnCost = fFix.FT.OwnCost - tempFix;
-                    //fFix.FT.TotCost = fFix.FT.TotCost - tempFix;
-                }
-            }
-            if (alTemp.Count > 0)
-            {
-                if (f.SpecialPrice > 0)//有特殊自费
-                {
-                    decimal tempPrice = 0m;
-                    string id = string.Empty;
-                    foreach (FeeItemList feeTemp in alTemp)
-                    {
-                        if (feeTemp.Item.Price > tempPrice)
-                        {
-                            id = feeTemp.Item.ID;
-                            tempPrice = feeTemp.Item.Price;
-                        }
-                    }
-
-                    foreach (FeeItemList fee in alTemp)
-                    {
-                        if (fee.Item.ID == id)
-                        {
-                            fee.SpecialPrice = f.SpecialPrice;
-
-                            break;
-                        }
-                    }
-                }
-            }
-            if (alTemp.Count > 0)
-            {
-                if (Neusoft.FrameWork.Function.NConvert.ToDecimal(f.FT.User03) > 0)//有特殊自费
-                {
-                    decimal tempPrice = 0m;
-                    string id = string.Empty;
-                    foreach (FeeItemList feeTemp in alTemp)
-                    {
-                        if (feeTemp.Item.Price > tempPrice)
-                        {
-                            id = feeTemp.Item.ID;
-                            tempPrice = feeTemp.Item.Price;
-                        }
-                    }
-
-                    foreach (FeeItemList fee in alTemp)
-                    {
-                        if (fee.Item.ID == id)
-                        {
-                            fee.FT.User03 = f.FT.User03;
-
-                            break;
-                        }
-                    }
-                }
+                return null;
             }
             return alTemp;
         }
@@ -1934,6 +1574,213 @@ namespace ZDWY.SpecialRule.Price
             Neusoft.HISFC.Models.Base.PactItemRate pRate = new Neusoft.HISFC.Models.Base.PactItemRate();
             pRate.Rate.RebateRate = 0;
             return pRate;
+        }
+
+        /// <summary>
+        /// 确保组套主项已经具备稳定的医嘱流水号，便于后续所有拆分子项共用同一笔来源单据。
+        /// </summary>
+        /// <param name="feeItem">当前待拆分的组套主项。</param>
+        /// <returns>
+        /// true 表示当前主项已经拥有可用的 <c>Order.ID</c>；
+        /// false 表示申请流水号失败，调用方应立即终止拆分流程。
+        /// </returns>
+        /// <remarks>
+        /// 这一步虽然只是补一个字符串字段，但它决定了拆分后的子项是否还能被上游视为“同一笔医嘱”的组成部分。
+        /// 因此失败时不能继续凑合往下走，而必须原地返回错误。
+        /// </remarks>
+        private bool EnsureOrderId(FeeItemList feeItem)
+        {
+            if (feeItem.Order.ID == null || feeItem.Order.ID == string.Empty)
+            {
+                feeItem.Order.ID = this.db.GetNewOrderID();
+                if (feeItem.Order.ID == null || feeItem.Order.ID == string.Empty)
+                {
+                    this.errText = "获得医嘱流水号出错!";
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// 把主项中的待遇、来源和处方上下文复制到新建的组套子项上。
+        /// </summary>
+        /// <param name="parentItem">当前组套主项。</param>
+        /// <param name="detailItem">当前正在构造的子项收费对象。</param>
+        /// <remarks>
+        /// 这些字段看起来像“普通复制”，但对旧 HIS 来说很关键：
+        /// 一旦少复制某个字段，子项在后续结算、追溯、打印、执行科室识别里都可能表现成“孤儿明细”。
+        /// </remarks>
+        private void CopyParentContextToDetail(FeeItemList parentItem, FeeItemList detailItem)
+        {
+            detailItem.Order.ID = parentItem.Order.ID;
+            detailItem.UndrugComb.ID = parentItem.Item.ID;
+            detailItem.UndrugComb.Name = parentItem.Item.Name;
+            detailItem.UndrugComb.Qty = parentItem.Item.Qty;
+            detailItem.Order.Combo.ID = parentItem.Order.Combo.ID;
+            detailItem.Item.IsMaterial = parentItem.Item.IsMaterial;
+            detailItem.RecipeSequence = parentItem.RecipeSequence;
+            detailItem.FTSource = parentItem.FTSource;
+            detailItem.FeePack = parentItem.FeePack;
+
+            // 复合项目拆细后，子项仍应保留主项的用法、申请单号、标本和检查部位记录。
+            detailItem.Order.Usage = parentItem.Order.Usage;
+            detailItem.Order.ApplyNo = parentItem.Order.ApplyNo;
+            detailItem.Order.Sample.ID = parentItem.Order.Sample.ID;
+            detailItem.Order.Sample.Name = parentItem.Order.Sample.Name;
+            detailItem.Order.CheckPartRecord = parentItem.Order.CheckPartRecord;
+        }
+
+        /// <summary>
+        /// 在协议/公费场景下，把主项的待遇属性补回拆分子项。
+        /// </summary>
+        /// <param name="parentItem">当前组套主项。</param>
+        /// <param name="detailItem">当前拆出的子项。</param>
+        /// <remarks>
+        /// 旧系统里主项拆分前后的待遇属性必须连续。
+        /// 这里仍完全保留原有分支：
+        /// 1. 先按子项自身的协议目录判断；
+        /// 2. 再用主项的 <c>ItemRateFlag</c> / 新旧比例做覆盖；
+        /// 3. 未命中协议目录时也保留主项既有标志。
+        /// </remarks>
+        private void ApplyPactItemRateForDetail(FeeItemList parentItem, FeeItemList detailItem)
+        {
+            if (this.rInfo.Pact.PayKind.ID != "03")
+            {
+                return;
+            }
+
+            Neusoft.HISFC.Models.Base.PactItemRate pactRate = this.db.GetOnepPactUnitItemRateByItem(this.rInfo.Pact.ID, detailItem.Item.ID);
+            if (pactRate != null)
+            {
+                if (pactRate.Rate.PayRate != this.rInfo.Pact.Rate.PayRate)
+                {
+                    if (pactRate.Rate.PayRate == 1)
+                    {
+                        detailItem.ItemRateFlag = "1";
+                    }
+                    else
+                    {
+                        detailItem.ItemRateFlag = "2";
+                    }
+                }
+                else
+                {
+                    detailItem.ItemRateFlag = "2";
+                }
+
+                if (parentItem.ItemRateFlag == "3")
+                {
+                    detailItem.OrgItemRate = parentItem.OrgItemRate;
+                    detailItem.NewItemRate = parentItem.NewItemRate;
+                    detailItem.ItemRateFlag = "3";
+                }
+
+                return;
+            }
+
+            if (parentItem.ItemRateFlag == "3")
+            {
+                detailItem.OrgItemRate = parentItem.OrgItemRate;
+                detailItem.NewItemRate = parentItem.NewItemRate;
+                detailItem.ItemRateFlag = "3";
+            }
+            else
+            {
+                detailItem.OrgItemRate = parentItem.OrgItemRate;
+                detailItem.NewItemRate = parentItem.NewItemRate;
+                detailItem.ItemRateFlag = parentItem.ItemRateFlag;
+            }
+        }
+
+        /// <summary>
+        /// 计算组套拆分后“价格最高”的那条子项。
+        /// </summary>
+        /// <param name="detailItems">当前组套已生成的全部子项。</param>
+        /// <returns>
+        /// 返回价格最高的子项；如果集合为空则返回 null。
+        /// </returns>
+        /// <remarks>
+        /// 旧代码里主项级别的特殊金额并不是平均分摊，而是挂到“价格最高”的那条子项上。
+        /// 这个选择规则属于历史口径的一部分，所以这里只抽方法，不改变比较逻辑。
+        /// </remarks>
+        private FeeItemList FindHighestPriceDetail(ArrayList detailItems)
+        {
+            FeeItemList highestPriceDetail = null;
+            decimal highestPrice = 0m;
+            foreach (FeeItemList detailItem in detailItems)
+            {
+                if (detailItem.Item.Price > highestPrice)
+                {
+                    highestPriceDetail = detailItem;
+                    highestPrice = detailItem.Item.Price;
+                }
+            }
+
+            return highestPriceDetail;
+        }
+
+        /// <summary>
+        /// 把主项上的减免、特殊自费和扩展金额重新挂回拆分后的子项。
+        /// </summary>
+        /// <param name="parentItem">当前组套主项。</param>
+        /// <param name="detailItems">当前拆好的子项列表。</param>
+        /// <returns>
+        /// true 表示挂接成功；
+        /// false 表示遇到不可继续的业务边界，例如非自费患者却试图分摊减免。
+        /// </returns>
+        /// <remarks>
+        /// 这一步是拆分逻辑里最容易被误简化的部分：
+        /// 减免按 ownCost 占比分摊，特殊自费和 FT.User03 则都挂到价格最高子项。
+        /// 三种金额虽然都属于“主项级附加信息”，但继承策略并不相同，不能混成一个统一公式。
+        /// </remarks>
+        private bool ApplyParentAdjustmentsToDetails(FeeItemList parentItem, ArrayList detailItems)
+        {
+            if (detailItems.Count == 0)
+            {
+                return true;
+            }
+
+            if (parentItem.FT.RebateCost > 0)
+            {
+                if (this.rInfo.Pact.PayKind.ID != "01")
+                {
+                    this.errText = "暂时不允许非自费患者减免!";
+                    return false;
+                }
+
+                decimal rebateRate = Neusoft.FrameWork.Public.String.FormatNumber(parentItem.FT.RebateCost / parentItem.FT.OwnCost, 2);
+                decimal tempFix = 0;
+                decimal tempRebateCost = 0;
+                foreach (FeeItemList detailItem in detailItems)
+                {
+                    detailItem.FT.RebateCost = detailItem.FT.OwnCost * rebateRate;
+                    tempRebateCost += detailItem.FT.RebateCost;
+                }
+
+                tempFix = parentItem.FT.RebateCost - tempRebateCost;
+                FeeItemList firstDetail = detailItems[0] as FeeItemList;
+                firstDetail.FT.RebateCost = firstDetail.FT.RebateCost + tempFix;
+            }
+
+            FeeItemList highestPriceDetail = this.FindHighestPriceDetail(detailItems);
+            if (highestPriceDetail == null)
+            {
+                return true;
+            }
+
+            if (parentItem.SpecialPrice > 0)
+            {
+                highestPriceDetail.SpecialPrice = parentItem.SpecialPrice;
+            }
+
+            if (Neusoft.FrameWork.Function.NConvert.ToDecimal(parentItem.FT.User03) > 0)
+            {
+                highestPriceDetail.FT.User03 = parentItem.FT.User03;
+            }
+
+            return true;
         }
 
         /// <summary>
