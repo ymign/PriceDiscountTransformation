@@ -2147,33 +2147,61 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             this.undrugManager.GetPricesz("F00000010768", ref pricece);//获取加收项目价格
             pricece = pricece - pricesz;
             sumPubCost = 0;
+            Hashtable hsDFSItem = new Hashtable();
+            ArrayList dfslist = this.managerIntegrate.GetConstantList("DFSitemfee");
+            foreach (Neusoft.HISFC.Models.Base.Const dic in dfslist)
+            {
+                hsDFSItem.Add(dic.ID, dic);
+            }
             int itemqty = 0;
             int returnRows = 0;//是否为限制收费药品
             decimal LimitNumber = 1;
             //限制药品收费
             int number = 1;
             ArrayList hsREOnlylistItem = new ArrayList();
-            // ========== 第二阶段：在真正显示前，先按历史限制收费规则修正金额 ==========
-            // 这里操作的是 alChargeInfo 本身，目的不是生成最终提交集合，
-            // 而是让界面上立刻展示“超限后金额归零 / 部分收费后金额变更”的结果。
+            // ========== 第二阶段：在真正显示前，先按历史限制收费与折价规则修正金额 ==========
+            // 这里不是只做“限制收费”，还同时处理折价和多发伤跳过折价的旧口径。
             for (int i = alChargeInfo.Count - 1; i >= 0; i--)
             {
-                DataRow rowFind;
+                string Discount_type = "1";//限制收费类型
+                string RestrictingfeeChargetype = "1";//是否折价
+                decimal TOPPRICE = 0;
+                decimal DISCOUNT_RATE = 0;
                 FeeItemList s = alChargeInfo[i] as FeeItemList;
-                DataRow[] rowFinds = this.dsItem.Tables[0].Select("ITEM_CODE = " + "'" + s.Item.ID + "'");
-                rowFind = rowFinds[0];
-                string itemType = rowFind["DRUG_FLAG"].ToString();
-                returnRows = this.undrugManager.SetRestrictingfee(s.Item.ID, ref  LimitNumber);
-                // 这里跑的是“显示口径”的限制收费，不是最终提交。
-                // 目的只是让收费员在列表里立刻看到超限后金额变化，避免保存前后价格跳变。
-                // 按当前业务口径，7021 为体验科室；该科室命中数量限制时不执行数量折价。
-                if (returnRows > 0 && this.rInfo.DoctorInfo.Templet.Dept.ID!="7021")
+                returnRows = this.undrugManager.SetRestrictingfee(s.Item.ID, ref LimitNumber);
+                Discount_type = this.undrugManager.SetDiscountfee(s.Item.ID, ref DISCOUNT_RATE, ref TOPPRICE);
+
+                if (hsDFSItem.ContainsKey(s.Item.ID) && this.rInfo.MultipleInjury == "1")
                 {
-                    this.setRestrictingfee.ConvertRestrictingfeeCharge(PatientInfo.PID.CardNO, s, ref hsREOnlyOneItem, ref hsNOREOnlyOneItem, ref hsREOnlylistItem, number, itemType, LimitNumber, ref hsZTNOREOnlyOneItem);
+                    if (this.rInfo.DoctorInfo.Templet.Dept.ID == "1026" || this.rInfo.DoctorInfo.Templet.Dept.ID == "6018")
+                    {
+                        RestrictingfeeChargetype = "0";
+                        if (!string.IsNullOrEmpty(s.Memo.ToString()))
+                        {
+                            if (s.Memo.Substring(0, 1) == "P" || s.Memo.Substring(0, 1) == "N")
+                            {
+                                s.Item.Qty = Convert.ToDecimal(s.Memo.Substring(1));
+                                s.FT.TotCost = Convert.ToDecimal(s.Item.Price * s.Item.Qty);
+                                s.FT.OwnCost = Convert.ToDecimal(s.Item.Price * s.Item.Qty);
+                            }
+                        }
+                        else
+                        {
+                            s.FT.TotCost = Convert.ToDecimal(s.Item.Price * s.Item.Qty);
+                            s.FT.OwnCost = Convert.ToDecimal(s.Item.Price * s.Item.Qty);
+                        }
+                    }
+                }
+                if (returnRows > 0 && this.rInfo.DoctorInfo.Templet.Dept.ID != "7021" && RestrictingfeeChargetype == "1")
+                {
+                    this.setRestrictingfee.ConvertRestrictingfeeCharge(PatientInfo.PID.CardNO, s, ref hsREOnlyOneItem, ref hsNOREOnlyOneItem, ref hsREOnlylistItem, number, LimitNumber, ref hsZTNOREOnlyOneItem, this.dsItem, this.rInfo);
+                }
+                if (Discount_type == "2")
+                {
+                    this.setRestrictingfee.ConvertDiscountfee(s, DISCOUNT_RATE, TOPPRICE, ref hsREOnlyOneItem, ref hsREOnlylistItem, number);
                 }
                 number++;
-            }
-            // ========== 第三阶段：用规则重算后的项目替换掉原始待显示项目 ==========
+            }// ========== 第三阶段：用规则重算后的项目替换掉原始待显示项目 ==========
             // hsREOnlyOneItem 标记哪些原项目已被规则引擎接管，
             // hsREOnlylistItem 中保存的才是最终应该显示给收费员的项目对象。
             number = 1;
@@ -4119,28 +4147,60 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 ArrayList hsZTNOREOnlyOneItem = new ArrayList();
                 ArrayList hsNOREOnlyOneItem = new ArrayList();
                 Hashtable hsREOnlyOneItem = new Hashtable();
+                Hashtable hsDFSItem = new Hashtable();
+                string RestrictingfeeChargetype = "1";//是否折价
+                ArrayList dfslist = this.managerIntegrate.GetConstantList("DFSitemfee");//多发伤患者跳过折价项目
+                foreach (Neusoft.HISFC.Models.Base.Const dic in dfslist)
+                {
+                    hsDFSItem.Add(dic.ID, dic);
+                }
                 int number = 1;
-                int returnRows= 0;//是否为限制收费药品
+                int returnRows = 0;//是否为限制收费药品
                 decimal LimitNumber = 1;
                 ArrayList hsREOnlylistItem = new ArrayList();
-                returnRows = this.undrugManager.SetRestrictingfee(feeItemList.Item.ID, ref  LimitNumber);
-                // 这里是“单条录入即回算”的口径：
-                // 收费员刚录入一条项目时，就要马上把限制收费后的金额回写到当前行，
-                // 否则界面上看到的单价/金额会和后面 SetChargeInfo 或最终保存阶段不一致。
-                // 按当前业务口径，7021 为体验科室；该科室命中数量限制时不执行数量折价。
-                if (returnRows > 0 && this.rInfo.DoctorInfo.Templet.Dept.ID != "7021")
+                if (hsDFSItem.ContainsKey(feeItemList.Item.ID) && this.rInfo.MultipleInjury == "1")
                 {
-                    this.setRestrictingfee.ConvertRestrictingfeeCharge(PatientInfo.PID.CardNO, feeItemList, ref hsREOnlyOneItem, ref hsNOREOnlyOneItem, ref hsREOnlylistItem, number, itemType, LimitNumber, ref hsZTNOREOnlyOneItem);
+                    if (this.rInfo.DoctorInfo.Templet.Dept.ID == "1026" || this.rInfo.DoctorInfo.Templet.Dept.ID == "6018")
+                    {
+                        RestrictingfeeChargetype = "0";
+                        if (!string.IsNullOrEmpty(feeItemList.Memo.ToString()))
+                        {
+                            if (feeItemList.Memo.Substring(0, 1) == "P" || feeItemList.Memo.Substring(0, 1) == "N")
+                            {
+                                feeItemList.Item.Qty = Convert.ToDecimal(feeItemList.Memo.Substring(1));
+                                feeItemList.FT.TotCost = Convert.ToDecimal(feeItemList.Item.Price * feeItemList.Item.Qty);
+                                feeItemList.FT.OwnCost = Convert.ToDecimal(feeItemList.Item.Price * feeItemList.Item.Qty);
+                            }
+                        }
+                        else
+                        {
+                            feeItemList.FT.TotCost = Convert.ToDecimal(feeItemList.Item.Price * feeItemList.Item.Qty);
+                            feeItemList.FT.OwnCost = Convert.ToDecimal(feeItemList.Item.Price * feeItemList.Item.Qty);
+                        }
+                    }
+                }
+                string Discount_type = "1";//限制收费类型
+                decimal TOPPRICE = 0;
+                decimal DISCOUNT_RATE = 0;
+                returnRows = this.undrugManager.SetRestrictingfee(feeItemList.Item.ID, ref LimitNumber);
+                Discount_type = this.undrugManager.SetDiscountfee(feeItemList.Item.ID, ref DISCOUNT_RATE, ref TOPPRICE);
+                // 这里是“单条录入即回算”的口径：
+                // 单条录入时也要同时考虑限制收费、折价配置、多发伤跳过折价和体验科室跳过数量折价。
+                if (returnRows > 0 && this.rInfo.DoctorInfo.Templet.Dept.ID != "7021" && RestrictingfeeChargetype == "1")
+                {
+                    this.setRestrictingfee.ConvertRestrictingfeeCharge(PatientInfo.PID.CardNO, feeItemList, ref hsREOnlyOneItem, ref hsNOREOnlyOneItem, ref hsREOnlylistItem, number, LimitNumber, ref hsZTNOREOnlyOneItem, this.dsItem, this.rInfo);
                     foreach (FeeItemList ds in hsREOnlylistItem)
                     {
                         // 这里只回写当前录入行最关心的几个值：价格、总金额、自费金额。
                         // 其他扩展属性仍挂在 feeItemList 对象上，后续整页刷新时会继续补齐显示列。
-                        feeItemList.Item.Price = ds.Item.Price;
                         feeItemList.FT.TotCost = ds.FT.TotCost;
                         feeItemList.FT.OwnCost = ds.FT.OwnCost;
                     }
                 }
-                this.fpSpread1_Sheet1.Rows[row].Tag = feeItemList;
+                if (Discount_type == "2")
+                {
+                    this.setRestrictingfee.ConvertDiscountfee(feeItemList, DISCOUNT_RATE, TOPPRICE, ref hsREOnlyOneItem, ref hsREOnlylistItem, number);
+                }                this.fpSpread1_Sheet1.Rows[row].Tag = feeItemList;
 
 
                 #region 优惠比例 add by zuowy
