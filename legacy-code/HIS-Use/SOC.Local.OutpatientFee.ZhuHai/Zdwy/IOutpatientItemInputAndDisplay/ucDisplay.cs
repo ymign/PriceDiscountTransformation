@@ -996,137 +996,134 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             InputCode = 1,
 
             /// <summary>
+            /// 组套名称
+            /// </summary>
+            PackageName = 2,
+
+            /// <summary>
             /// 名称
             /// </summary>
-            ItemName = 2,
-
-            /// <summary>
-            /// 显示组合
-            /// </summary>
-            CombNoDisplay = 4,
-
-            /// <summary>
-            /// 数量
-            /// </summary>
-            Amount = 6,
-
-            /// <summary>
-            /// 单位
-            /// </summary>
-            PriceUnit = 7,
-
-            /// <summary>
-            /// 付数
-            /// </summary>
-            Days = 8,
-
-            /// <summary>
-            /// 每次用量
-            /// </summary>
-            DoseOnce = 9,
-
-            /// <summary>
-            /// 用量单位
-            /// </summary>
-            DoseUnit = 10,
-
-            /// <summary>
-            /// 组合号
-            /// </summary>
-            CombNo = 11,
-
-            /// <summary>
-            /// 频次
-            /// </summary>
-            Freq = 12,
-
-            /// <summary>
-            /// 用法
-            /// </summary>
-            Usage = 13,
-
-            ///// <summary>
-            ///// 执行科室
-            ///// </summary>
-            //ExeDept = 13,
-            /// <summary>
-            /// 金额
-            /// </summary>
-            Cost = 14,
-
-            /// <summary>
-            /// 自付比例
-            /// </summary>
-            PayRate = 15,
-
-            /// <summary>
-            /// 医保类型
-            /// </summary>
-            SIPactType = 16,
-
-            /// <summary>
-            /// 公费类型
-            /// </summary>
-            GFPactType = 17,
-
-            /// <summary>
-            /// 设备编号
-            /// </summary>
-            MachineNO = 18,
-
-            ///// <summary>
-            ///// 金额
-            ///// </summary>
-            //Cost = 18,
-            /// <summary>
-            /// 执行科室
-            /// </summary>
-            ExeDept = 19,
-
-            /// <summary>
-            /// 自费药
-            /// </summary>
-            Self = 20,
-
-            /// <summary>
-            /// 小计
-            /// </summary>
-            LittleCost = 21,
-
-            /// <summary>
-            /// 单价
-            /// </summary>
-            Price = 5,
-
-            /// <summary>
-            /// 备注
-            /// </summary>
-            Memo = 22,
-
-            /// <summary>
-            /// 最小费用
-            /// </summary>
-            FeeCode = 23,
-
-            /// <summary>
-            /// 项目类别
-            /// </summary>
-            ItemType = 24,
-
-            /// <summary>
-            /// 项目编码
-            /// </summary>
-            ItemCode = 25,
-
-            /// <summary>
-            /// 是否更改
-            /// </summary>
-            Change = 26,
+            ItemName = 3,
 
             /// <summary>
             /// 是否发送申请
             /// </summary>
-            IsSend = 3
+            IsSend = 4,
+
+            /// <summary>
+            /// 显示组合
+            /// </summary>
+            CombNoDisplay = 5,
+
+            /// <summary>
+            /// 单价
+            /// </summary>
+            Price = 6,
+
+            /// <summary>
+            /// 数量
+            /// </summary>
+            Amount = 7,
+
+            /// <summary>
+            /// 单位
+            /// </summary>
+            PriceUnit = 8,
+
+            /// <summary>
+            /// 付数
+            /// </summary>
+            Days = 9,
+
+            /// <summary>
+            /// 每次用量
+            /// </summary>
+            DoseOnce = 10,
+
+            /// <summary>
+            /// 用量单位
+            /// </summary>
+            DoseUnit = 11,
+
+            /// <summary>
+            /// 组合号
+            /// </summary>
+            CombNo = 12,
+
+            /// <summary>
+            /// 频次
+            /// </summary>
+            Freq = 13,
+
+            /// <summary>
+            /// 用法
+            /// </summary>
+            Usage = 14,
+
+            /// <summary>
+            /// 金额
+            /// </summary>
+            Cost = 15,
+
+            /// <summary>
+            /// 自付比例
+            /// </summary>
+            PayRate = 16,
+
+            /// <summary>
+            /// 医保类型
+            /// </summary>
+            SIPactType = 17,
+
+            /// <summary>
+            /// 公费类型
+            /// </summary>
+            GFPactType = 18,
+
+            /// <summary>
+            /// 设备编号
+            /// </summary>
+            MachineNO = 19,
+
+            /// <summary>
+            /// 执行科室
+            /// </summary>
+            ExeDept = 20,
+
+            /// <summary>
+            /// 自费药
+            /// </summary>
+            Self = 21,
+
+            /// <summary>
+            /// 小计
+            /// </summary>
+            LittleCost = 22,
+
+            /// <summary>
+            /// 备注
+            /// </summary>
+            Memo = 23,
+
+            /// <summary>
+            /// 最小费用
+            /// </summary>
+            FeeCode = 24,
+
+            /// <summary>
+            /// 项目类别
+            /// </summary>
+            ItemType = 25,
+
+            /// <summary>
+            /// 项目编码
+            /// </summary>
+            ItemCode = 26,
+
+            /// <summary>
+            /// 是否更改
+            /// </summary>
+            Change = 27
         }//{EE98C7B7-AC32-4b2c-93A5-9A62A33D6457}结束
 
         #endregion
@@ -2083,6 +2080,36 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
         }
 
         /// <summary>
+        /// 在 FpSpread 表格中获取可用于输入的行索引。
+        /// 规则：若表格为空则新增第一行；若最后一行 InputCode 为空则复用该行；否则在末尾新增新行。
+        /// </summary>
+        /// <returns>可用行的索引（currRow）</returns>
+        private int GetOrAddAvailableRow()
+        {
+            var rowCount = this.fpSpread1_Sheet1.RowCount;
+
+            // 情况1：表格为空，直接新增第一行
+            if (rowCount == 0)
+            {
+                this.fpSpread1_Sheet1.Rows.Add(0, 1);
+                return 0;
+            }
+
+            // 情况2：最后一行的 InputCode 列为空，复用该行
+            var lastInputCode = this.fpSpread1_Sheet1
+                .Cells[rowCount - 1, (int)Columns.InputCode].Text;
+
+            if (lastInputCode == string.Empty)
+            {
+                return rowCount - 1;
+            }
+
+            // 情况3：最后一行已有数据，在末尾新增一行
+            this.fpSpread1_Sheet1.Rows.Add(rowCount, 1);
+            return rowCount;
+        }
+
+        /// <summary>
         /// 显示患者的划价信息
         /// </summary>
         private void SetChargeInfo()
@@ -2090,29 +2117,16 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
 
             this.Clear();
 
-            ArrayList hsNOREOnlyOneItem = new ArrayList();
-            ArrayList hsZTNOREOnlyOneItem = new ArrayList();
-            Hashtable hsREOnlyOneItem = new Hashtable();
-            Hashtable hsDFSItem = new Hashtable();
-            ArrayList hsREOnlylistItem = new ArrayList();
+            int currRow = GetOrAddAvailableRow();
+            sumPubCost = 0;
 
-            int rowCount = this.fpSpread1_Sheet1.RowCount;
-            int currRow = 0;
-            if (this.fpSpread1_Sheet1.RowCount == 0)
-            {
-                this.fpSpread1_Sheet1.Rows.Add(0, 1);
-                currRow = 0;
-            }
-            ////{EE98C7B7-AC32-4b2c-93A5-9A62A33D6457}
-            if (this.fpSpread1_Sheet1.Cells[rowCount - 1, (int)Columns.InputCode].Text == string.Empty)
-            {
-                currRow = rowCount - 1;
-            }
-            else
-            {
-                this.fpSpread1_Sheet1.Rows.Add(currRow, 1);
-                currRow = rowCount;
-            }
+            //本次显示价重算后，仍然保留收费资格的普通项目
+            var hsNOREOnlyOneItem = new ArrayList();
+            //本次显示价重算后，组套拆分子项里被保留下来的部分
+            var hsZTNOREOnlyOneItem = new ArrayList();
+            //被限制收费逻辑接管、需要替换原显示结果的项目
+            var hsREOnlyOneItem = new Hashtable();
+            var hsREOnlylistItem = new ArrayList();
 
             string userCode = string.Empty;
             decimal totDisplayCost = 0;
@@ -2120,17 +2134,22 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             string minUnit = string.Empty;
             string packUnit = string.Empty;
             string specs = string.Empty;
-            decimal pricesz = 0;
-            decimal pricece = 0;
-            this.undrugManager.GetPricesz("F00000010769", ref pricesz);//获取加收项目价格
-            this.undrugManager.GetPricesz("F00000010768", ref pricece);//获取加收项目价格
+
+            //获取四肢血管加收价格
+            decimal pricesz = 0;// sz=子项价格
+            decimal pricece = 0;// ce=差额
+            this.undrugManager.GetPricesz("F00000010769", ref pricesz);
+            this.undrugManager.GetPricesz("F00000010768", ref pricece);
             pricece = pricece - pricesz;
-            sumPubCost = 0;
-            ArrayList dfslist = this.managerIntegrate.GetConstantList("DFSitemfee");//多发伤患者跳过折价项目
-            foreach (Neusoft.HISFC.Models.Base.Const dic in dfslist)  //获取本次收费已经计算的数量
+
+            //多发伤患者跳过折价项目
+            ArrayList dfslist = this.managerIntegrate.GetConstantList("DFSitemfee");
+            var hsDFSItem = new Hashtable();
+            foreach (Neusoft.HISFC.Models.Base.Const dic in dfslist)
             {
                 hsDFSItem.Add(dic.ID, dic);
             }
+
             int itemqty = 0;
             int returnRows = 0;//是否为限制收费药品
             decimal LimitNumber = 1;
@@ -2139,19 +2158,23 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
 
             for (int i = alChargeInfo.Count - 1; i >= 0; i--)
             {
-                string Discount_type = "1";//限制收费类型
-                string RestrictingfeeChargetype = "1";//是否折价
-                decimal TOPPRICE = 0;
-                decimal DISCOUNT_RATE = 0;
+                string Discount_type = "1";//折价类型
+                string RestrictingfeeChargetype = "1";//限制收费类型 1限制 0不限制
+                decimal TOPPRICE = 0;//最高价
+                decimal DISCOUNT_RATE = 0;//折价比例/折价限额
                 FeeItemList s = alChargeInfo[i] as FeeItemList;
+
+                //获取限制收费数量
                 returnRows = this.undrugManager.SetRestrictingfee(s.Item.ID, ref LimitNumber);
+                //获取折价类型和最高收费价格
                 Discount_type = this.undrugManager.SetDiscountfee(s.Item.ID, ref DISCOUNT_RATE, ref TOPPRICE);
 
+                //项目为多发伤项目集合集合里面 且挂号记录里面的多发伤标识为1
                 if (hsDFSItem.ContainsKey(s.Item.ID) && this.rInfo.MultipleInjury == "1")
                 {
-                    if (this.rInfo.DoctorInfo.Templet.Dept.ID == "1026" || this.rInfo.DoctorInfo.Templet.Dept.ID == "6018")
+                    if (this.rInfo.DoctorInfo.Templet.Dept.ID == "1026" || this.rInfo.DoctorInfo.Templet.Dept.ID == "6018")//急诊内科和急诊外科
                     {
-                        RestrictingfeeChargetype = "0";
+                        RestrictingfeeChargetype = "0";//置为 不限制收费
                         if (!string.IsNullOrEmpty(s.Memo.ToString()))
                         {
                             if (s.Memo.Substring(0, 1) == "P" || s.Memo.Substring(0, 1) == "N")
@@ -2168,16 +2191,39 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                         }
                     }
                 }
+
+                //项目为限制收费集合字典表type='Restrictingfee'里面
+                //且科室不是7021体检中心
+                //且限制收费类型为1 限制收费
                 if (returnRows > 0 && this.rInfo.DoctorInfo.Templet.Dept.ID != "7021" && RestrictingfeeChargetype == "1")
                 {
-                    this.setRestrictingfee.ConvertRestrictingfeeCharge(PatientInfo.PID.CardNO, s, ref hsREOnlyOneItem, ref hsNOREOnlyOneItem, ref hsREOnlylistItem, number, LimitNumber, ref hsZTNOREOnlyOneItem, this.dsItem, this.rInfo);
+                    this.setRestrictingfee.ConvertRestrictingfeeCharge(
+                        PatientInfo.PID.CardNO,
+                        s,
+                        ref hsREOnlyOneItem,
+                        ref hsNOREOnlyOneItem, //当前函数后续没用到
+                        ref hsREOnlylistItem,
+                        number,
+                        LimitNumber,
+                        ref hsZTNOREOnlyOneItem,//当前函数后续没用到
+                        this.dsItem,
+                        this.rInfo);
                 }
+                //折价类型为2的
                 if (Discount_type == "2")
                 {
-                    this.setRestrictingfee.ConvertDiscountfee(s, DISCOUNT_RATE, TOPPRICE, ref hsREOnlyOneItem, ref hsREOnlylistItem, number);
+                    this.setRestrictingfee.ConvertDiscountfee(
+                        s,
+                        DISCOUNT_RATE,
+                        TOPPRICE,
+                        ref hsREOnlyOneItem,
+                        ref hsREOnlylistItem,
+                        number);
                 }
+
                 number++;
             }
+
 
             number = 1;
             for (int i = alChargeInfo.Count - 1; i >= 0; i--)
@@ -2530,6 +2576,10 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                     this.fpSpread1_Sheet1.Cells[currRow, (int)Columns.Days].Text = f.Days == 0 ? "1" : f.Days.ToString();
                     //}
                 }
+                else
+                {
+                    this.fpSpread1_Sheet1.Cells[currRow, (int)Columns.PackageName].Text = Function.GetPackageNameByMoOrder(f.Order.ID);
+                }
                 if (f.Days == 0)
                 {
                     f.Days = 1;
@@ -2744,7 +2794,7 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                     }
                 }
             }
-            rowCount = this.fpSpread1_Sheet1.Rows.Count;
+            var rowCount = this.fpSpread1_Sheet1.Rows.Count;
 
             this.DrawCombo(this.fpSpread1_Sheet1, (int)Columns.CombNo, (int)Columns.CombNoDisplay, 0);
             ////{EE98C7B7-AC32-4b2c-93A5-9A62A33D6457}

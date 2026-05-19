@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Engine;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
@@ -40,6 +41,39 @@ public sealed class ActionExecutionPipelineTests
         Assert.Equal(expectedStepType, step.StepType);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_AllowsMultipleFormulaExecutorsAndExecutesMatchingExecutorCode()
+    {
+        var first = new FormulaExecutor("FIRST_FORMULA", 11m);
+        var second = new FormulaExecutor("SECOND_FORMULA", 22m);
+        var pipeline = new ActionExecutionPipeline(
+            new ActionExecutorFactory(new IRuleActionExecutor[]
+            {
+                first,
+                second
+            }),
+            NullLogger<ActionExecutionPipeline>.Instance);
+        var context = new PricingContext
+        {
+            FinalAmount = 100m
+        };
+
+        await pipeline.ExecuteAsync(new[]
+        {
+            new RuleAction
+            {
+                ActionType = "FORMULA_CALC",
+                ExecutorCode = "SECOND_FORMULA",
+                IsEnabled = "Y",
+                OnError = "STOP"
+            }
+        }, context);
+
+        Assert.False(first.WasExecuted);
+        Assert.True(second.WasExecuted);
+        Assert.Equal(22m, context.FinalAmount);
+    }
+
     private sealed class NoOpExecutor : IRuleActionExecutor
     {
         public NoOpExecutor(string actionType)
@@ -50,5 +84,33 @@ public sealed class ActionExecutionPipelineTests
         public string ActionType { get; }
 
         public Task ExecuteAsync(RuleAction action, PricingContext context) => Task.CompletedTask;
+    }
+
+    private sealed class FormulaExecutor : IRuleActionExecutor
+    {
+        private readonly string _executorCode;
+        private readonly decimal _amount;
+
+        public FormulaExecutor(string executorCode, decimal amount)
+        {
+            _executorCode = executorCode;
+            _amount = amount;
+        }
+
+        public string ActionType => "FORMULA_CALC";
+
+        public bool WasExecuted { get; private set; }
+
+        public Task ExecuteAsync(RuleAction action, PricingContext context)
+        {
+            if (!string.Equals(action.ExecutorCode, _executorCode, StringComparison.OrdinalIgnoreCase))
+            {
+                return Task.CompletedTask;
+            }
+
+            WasExecuted = true;
+            context.FinalAmount = _amount;
+            return Task.CompletedTask;
+        }
     }
 }

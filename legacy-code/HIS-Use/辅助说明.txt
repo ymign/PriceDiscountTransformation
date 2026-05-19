@@ -1,0 +1,240 @@
+select rowid,p.* from com_sql p where p.id='Fee.PactUnitItemRate.Restrictingfee';
+                select  1,input_code  FROM (
+           select    info.package_code AS code,dic.input_code from fin_com_undrugztinfo info
+           INNER JOIN (select code,input_code from com_dictionary  where  TYPE='Restrictingfee') dic
+            on info.item_code=dic.code where VALID_STATE='1'
+              union all
+            select code,input_code from com_dictionary  where  TYPE='Restrictingfee'
+            ) where   CODE ='{0}' and rownum=1 
+			
+
+			
+select rowid,p.* from com_sql p where p.id='Fee.PactUnitItemRate.Discountfee';
+      select DFEE.DISCOUNT_RATE, DFEE.TOPPRICE,DFEE.DISCOUNT_TYPE
+        from FIN_DISCOUNT_FEE DFEE
+       where DFEE.ITEM_CODE = '{0}'
+         AND VALID_STATE = '1'
+
+
+
+select rowid,p.* from com_sql p where p.id='Fee.PactUnitItemRate.RestrictingfeePay2';
+SELECT
+    res.feecode, -- 门诊查询限制收费已收数量
+    CASE 
+        WHEN res.feecode IN (SELECT code FROM com_dictionary WHERE TYPE = 'RestrictingfeeCP'and exists (select 1 from  com_dictionary WHERE TYPE = 'RestrictingfeeCP' and CODE='{1}' ))
+        THEN (
+            SELECT SUM(QTY)
+            FROM fin_opb_feedetail
+            WHERE CARD_NO = '{0}'
+                AND pay_flag <> '0'
+                AND CANCEL_FLAG <> '0'
+                AND fee_date >= SYSDATE - (2/24)
+                AND OWN_COST <> '0.00'
+                AND item_code IN (SELECT code FROM com_dictionary WHERE TYPE = 'RestrictingfeeCP')
+        )
+                WHEN res.feecode IN (SELECT code FROM com_dictionary WHERE TYPE = 'RestrictingfeeTX1'and exists (select 1 from  com_dictionary WHERE TYPE = 'RestrictingfeeTX1'
+                   and  CODE  in  (SELECT  PACKAGE_CODE from  fin_com_undrugztinfo where item_code='{1}' )    ))
+        THEN (
+            SELECT 99
+            FROM fin_opb_feedetail
+            WHERE CARD_NO = '{0}'
+                AND pay_flag <> '0'
+                AND CANCEL_FLAG <> '0'
+                AND fee_date >= SYSDATE - (2/24)
+                AND OWN_COST <> '0.00'
+                AND Package_Code IN (SELECT code FROM com_dictionary WHERE TYPE = 'RestrictingfeeTX1')
+        )
+        ELSE SUM(FEE.QTY)
+    END AS feetype
+FROM fin_opb_feedetail fee
+INNER JOIN (
+    SELECT code, feecode
+    FROM (
+        SELECT 
+            undinfo.PACKAGE_CODE AS code,
+            dic.code AS feecode
+        FROM fin_com_undrugztinfo undinfo
+        INNER JOIN (SELECT code FROM com_dictionary WHERE TYPE = 'Restrictingfee' 
+         and CODE  not IN ('F00000209371','F00000209376' )) dic
+            ON undinfo.item_code = dic.code 
+            AND undinfo.VALID_STATE = '1'
+        UNION ALL
+        SELECT 
+            code,
+            code AS feecode
+        FROM com_dictionary 
+        WHERE TYPE = 'Restrictingfee'
+         and CODE  not IN ('F00000209371','F00000209376' )
+         union all
+          SELECT 
+            code,
+            code AS feecode
+        FROM com_dictionary 
+        WHERE TYPE = 'RestrictingfeeTX1'
+    )
+) res ON (fee.item_code = res.feecode 
+or fee.package_code = res.feecode and  package_code in (SELECT code FROM com_dictionary WHERE TYPE = 'RestrictingfeeTX1'))
+WHERE fee.CARD_NO = '{0}'
+    AND fee.pay_flag <> '0'
+    AND fee.CANCEL_FLAG <> '0'
+   AND ( item_code IN (SELECT code FROM com_dictionary WHERE TYPE = 'RestrictingfeeCP'  and exists (select 1 from  com_dictionary WHERE TYPE = 'RestrictingfeeCP' and CODE='{1}' )) or res.code = '{1}'
+   OR  PACKAGE_CODE IN (SELECT code FROM com_dictionary WHERE TYPE = 'RestrictingfeeTX1'  
+   and exists (select 1 from  com_dictionary WHERE TYPE = 'RestrictingfeeTX1' and  CODE IN (SELECT  PACKAGE_CODE from  fin_com_undrugztinfo where ITEM_CODE='{1}') )))
+    AND fee_date >= SYSDATE - (2/24) 
+    AND OWN_COST <> '0.00'
+GROUP BY res.feecode
+
+UNION ALL
+
+SELECT
+    res.feecode,
+    CASE 
+        WHEN res.feecode IN (SELECT code FROM com_dictionary WHERE TYPE = 'RestrictingfeeCP' and exists (select 1 from  com_dictionary WHERE TYPE = 'RestrictingfeeCP' and CODE='{1}' ))
+        THEN (
+            SELECT SUM(QTY)
+            FROM fin_ipb_itemlist
+            WHERE INPATIENT_NO = '{0}'
+                AND fee_date >= SYSDATE - (2/24)
+                AND OWN_COST <> '0.00'
+                AND item_code IN (SELECT code FROM com_dictionary WHERE TYPE = 'RestrictingfeeCP')
+        )
+        WHEN res.feecode IN (SELECT code FROM com_dictionary WHERE TYPE = 'RestrictingfeeTX1' 
+          and exists (select 1 from  com_dictionary WHERE TYPE = 'RestrictingfeeTX1' and 
+          CODE in (SELECT  PACKAGE_CODE from  fin_com_undrugztinfo where item_code='{1}' )  ))
+        THEN (
+            SELECT 99
+            FROM fin_ipb_itemlist
+            WHERE INPATIENT_NO = '{0}'
+                AND fee_date >= SYSDATE - (2/24)
+                AND OWN_COST <> '0.00'
+                AND Package_Code IN (SELECT code FROM com_dictionary WHERE TYPE = 'RestrictingfeeTX1')
+        )
+        ELSE SUM(FEE.QTY)
+    END AS feetype
+FROM fin_ipb_itemlist fee
+INNER JOIN (
+    SELECT code, feecode
+    FROM (
+        SELECT 
+            undinfo.PACKAGE_CODE AS code,
+            dic.code AS feecode
+        FROM fin_com_undrugztinfo undinfo
+        INNER JOIN (SELECT code FROM com_dictionary WHERE TYPE = 'Restrictingfee' and CODE  not IN ('F00000209371','F00000209376' )) dic
+            ON undinfo.item_code = dic.code 
+            AND undinfo.VALID_STATE = '1'
+        UNION ALL
+        SELECT 
+            code,
+            code AS feecode
+        FROM com_dictionary 
+        WHERE TYPE = 'Restrictingfee'
+        and CODE  not IN ('F00000209371','F00000209376' )
+         union all
+          SELECT 
+            code,
+            code AS feecode
+        FROM com_dictionary 
+        WHERE TYPE = 'RestrictingfeeTX1'
+    )
+) res 
+ ON (fee.item_code = res.feecode 
+or fee.package_code = res.feecode and  package_code in (SELECT code FROM com_dictionary WHERE TYPE = 'RestrictingfeeTX1'))
+WHERE fee.INPATIENT_NO = '{0}'
+     AND ( item_code IN (SELECT code FROM com_dictionary WHERE TYPE = 'RestrictingfeeCP' and exists (select 1 from  com_dictionary WHERE TYPE = 'RestrictingfeeCP' and CODE='{1}' )) or res.code = '{1}'
+     OR PACKAGE_CODE IN (SELECT code FROM com_dictionary WHERE TYPE = 'RestrictingfeeTX1' and exists (select 1 from  com_dictionary WHERE TYPE = 'RestrictingfeeTX1'  
+      and CODE IN (SELECT  PACKAGE_CODE from  fin_com_undrugztinfo where  item_code='{1}') )))
+    AND fee_date >= SYSDATE - (2/24)
+    AND OWN_COST <> '0.00'
+    AND NOT EXISTS (
+        SELECT 1
+        FROM fin_ipb_itemlist t
+        WHERE t.TRANS_TYPE = '2'
+            AND t.SEQUENCE_NO = fee.SEQUENCE_NO
+            AND t.inpatient_no = fee.inpatient_no
+            AND t.item_code = fee.item_code
+           AND t.mo_order=fee.mo_order
+    )
+GROUP BY res.feecode
+
+
+
+select rowid,p.* from com_sql p where p.id='Fee.PactUnitItemRate.RestrictingfeePayZT';
+SELECT
+    res.feecode, -- 门诊查询限制收费已收数量
+ (
+            SELECT 99
+            FROM fin_opb_feedetail
+            WHERE CARD_NO ='{0}'
+                AND pay_flag <> '0'
+                AND CANCEL_FLAG <> '0'
+                AND fee_date >= SYSDATE - (2/24)
+                AND OWN_COST <> '0.00'
+                AND Package_Code IN (SELECT code FROM com_dictionary WHERE TYPE = 'RestrictingfeeZT'and MARK='{2}' )
+        )
+      AS feetype
+FROM fin_opb_feedetail fee
+INNER JOIN (
+          SELECT 
+            code,
+            code AS feecode
+        FROM com_dictionary 
+        WHERE TYPE = 'RestrictingfeeZT'
+) res ON (fee.package_code = res.feecode)
+WHERE fee.CARD_NO = '{0}'
+    AND fee.pay_flag <> '0'
+    AND fee.CANCEL_FLAG <> '0'
+   AND PACKAGE_CODE IN (SELECT code FROM com_dictionary WHERE TYPE = 'RestrictingfeeZT'  
+   and exists (select 1 from  com_dictionary WHERE TYPE = 'RestrictingfeeZT' 
+   and  CODE IN (SELECT  PACKAGE_CODE from  fin_com_undrugztinfo where ITEM_CODE='{1}') ) and  MARK='{2}' )
+    AND fee_date >= SYSDATE - (2/24) 
+    AND OWN_COST <> '0.00'
+GROUP BY res.feecode
+UNION ALL
+
+SELECT
+    res.feecode,
+    (
+            SELECT 99
+            FROM fin_ipb_itemlist
+            WHERE  INPATIENT_NO = '{0}'
+                AND fee_date >= SYSDATE - (2/24)
+                AND OWN_COST <> '0.00'
+                AND Package_Code IN (SELECT code FROM com_dictionary WHERE TYPE = 'RestrictingfeeZT' and MARK='{2}')
+        )
+        AS feetype
+FROM fin_ipb_itemlist fee
+INNER JOIN (
+              SELECT 
+            code,
+            code AS feecode
+        FROM com_dictionary 
+        WHERE TYPE = 'RestrictingfeeZT'
+) res 
+ ON ( fee.package_code = res.feecode)
+WHERE fee.INPATIENT_NO = '{0}'
+     AND (PACKAGE_CODE IN (SELECT code FROM com_dictionary WHERE TYPE = 'RestrictingfeeZT'
+      and exists (select 1 from  com_dictionary WHERE TYPE = 'RestrictingfeeZT'  
+      and CODE IN (SELECT  PACKAGE_CODE from  fin_com_undrugztinfo where  item_code='{1}')) and  MARK='{2}'  ))
+    AND fee_date >= SYSDATE - (2/24)
+    AND OWN_COST <> '0.00'
+    AND NOT EXISTS (
+        SELECT 1
+        FROM fin_ipb_itemlist t
+        WHERE t.TRANS_TYPE = '2'
+            AND t.SEQUENCE_NO = fee.SEQUENCE_NO
+            AND t.inpatient_no = fee.inpatient_no
+            AND t.item_code = fee.item_code
+           AND t.mo_order=fee.mo_order
+    )
+GROUP BY res.feecode
+
+
+
+select rowid,p.* from com_sql p where p.id='Fee.PactUnitItemRate.setUltrasound';
+select 1 from com_dictionary  where  TYPE='setUltrasound' and (code= '{0}' or name= '{0}')
+
+
+
+
+
+
