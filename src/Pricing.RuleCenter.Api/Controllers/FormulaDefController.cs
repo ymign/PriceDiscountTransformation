@@ -21,8 +21,9 @@ namespace Pricing.RuleCenter.Api.Controllers;
 /// <list type="number">
 ///   <item>规则匹配成功后，检查规则动作（PR_RULE_ACTION）是否配置了公式</item>
 ///   <item>若配置了公式，从 PR_FORMULA_DEF 表读取公式定义（本控制器管理的数据）</item>
-///   <item>计价引擎使用换算后数量（非输入数量）执行公式计算</item>
-///   <item>公式计算结果再与金额上下限比较（公式优先于限制，先算公式再与限制比较）</item>
+///   <item>数量限制/互斥动作先把可收费数量写入 FinalQty</item>
+///   <item>计价引擎使用 FinalQty 执行 FIN_DISCOUNT_FEE 类比例折价；没有数量限制时 FinalQty 等于换算后数量</item>
+///   <item>公式计算结果再与金额上下限比较，TOPPRICE/APPLY_MAX_AMOUNT 必须在比例折价后封顶</item>
 /// </list>
 /// </para>
 /// <para>
@@ -31,7 +32,7 @@ namespace Pricing.RuleCenter.Api.Controllers;
 ///   <item>同一项目不允许维护不同折价公式（冲突校验在发布时执行）。</item>
 ///   <item>公式项目是否执行数量、时间窗、同组、同手术限制，以规则动作配置为准；
 ///         禁止代码层一见公式就跳过全部数量类限制。</item>
-///   <item>换算数量固定为 1，公式使用换算后数量。</item>
+///   <item>换算数量固定为 1；有限制时公式使用限制后的 FinalQty，不能使用未截断的 ConvertedQty。</item>
 ///   <item>中间计算保留全部精度，最终金额保留 2 位小数、四舍五入。</item>
 /// </list>
 /// </para>

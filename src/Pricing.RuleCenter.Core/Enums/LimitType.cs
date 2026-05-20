@@ -8,7 +8,8 @@ namespace Pricing.RuleCenter.Core.Enums;
 ///
 /// 核心业务约束：
 /// - NULL 表示"不校验"，0 表示"限制为零"（即不允许收费）。
-/// - 公式优先于限制：先算公式结果，再与金额/数量限制比较。
+/// - HIS 兼容顺序：数量限制先截断 FinalQty，比例折价再使用限制后的 FinalQty。
+/// - 金额封顶顺序：TOPPRICE/APPLY_MAX_AMOUNT 在比例折价之后执行。
 /// - 单次限额维度使用 sourceSystem + businessRequestNo + itemCode 或同等收费动作键。
 /// - 时间窗限制按业务收费发生时间（非技术占用时间）向前滑动查询。
 /// </summary>

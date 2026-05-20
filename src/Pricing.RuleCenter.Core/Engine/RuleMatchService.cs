@@ -24,7 +24,8 @@ namespace Pricing.RuleCenter.Core.Engine;
 /// </para>
 /// <para>
 /// 【多规则叠加】同一项目可能命中多条规则（如不同部位的换算规则）。
-/// 多规则的动作统一按全局动作顺序排列，确保换算 → 公式 → 限额 → 折价的执行顺序不被破坏。
+/// 多规则的动作统一按全局动作顺序排列，确保换算 → 数量限制/互斥 → 公式折价 → TOPPRICE 封顶 → 超限归零兜底
+/// 的执行顺序不被单条规则内部 SortNo 打乱。
 /// </para>
 /// <para>
 /// 【业务时间】匹配使用 BusinessChargeTime（HIS 业务发生时间），而不是服务器当前时间。
@@ -34,7 +35,7 @@ namespace Pricing.RuleCenter.Core.Engine;
 /// 【核心约束引用】
 /// <list type="bullet">
 ///   <item><description>NULL ≠ 0：条件值为 NULL 表示"不校验"，0 表示"限制为零"</description></item>
-///   <item><description>公式优先于限制：先算公式，再与限制比较——由动作排序保证</description></item>
+///   <item><description>HIS 兼容顺序：先做数量类限制，再用限制后的数量执行比例折价，最后做 TOPPRICE 封顶</description></item>
 ///   <item><description>超出 = 0元：不是拒单，不是整单归零——由 ExceedToZeroExecutor 实现</description></item>
 /// </list>
 /// </para>
@@ -75,31 +76,32 @@ public sealed class RuleMatchService
     /// 默认动作执行顺序。在字典数据尚未加载时使用，确保向后兼容。
     /// </summary>
     /// <remarks>
-    /// 顺序设计依据业务计算规则：
+    /// 顺序设计依据旧 HIS 正式环境的实际收费链路：
     /// <list type="number">
     ///   <item><description>CONVERT_QTY — 双单位换算，公式依赖换算后数量</description></item>
-    ///   <item><description>FORMULA_CALC — 公式计算，结果写入 FormulaAmount 和 FinalAmount</description></item>
-    ///   <item><description>APPLY_MIN_AMOUNT — 金额下限，公式之后才能比较</description></item>
-    ///   <item><description>APPLY_MAX_AMOUNT — 金额上限，公式之后才能比较</description></item>
-    ///   <item><description>APPLY_DAY_LIMIT_QTY — 日数量限制，需要查询全院累计</description></item>
-    ///   <item><description>APPLY_TIME_WINDOW_LIMIT — 时间窗数量限制（如2小时窗）</description></item>
-    ///   <item><description>APPLY_ONCE_LIMIT_QTY — 单次数量限制</description></item>
-    ///   <item><description>SAME_GROUP_MUTEX — 同组互斥</description></item>
-    ///   <item><description>ADD_CHILD_ITEM — 子项加收</description></item>
-    ///   <item><description>DISCOUNT_EXCEED_TO_ZERO — 超出部分归零，必须最后执行</description></item>
+    ///   <item><description>APPLY_DAY_LIMIT_QTY — 日数量限制，先截断可收费数量</description></item>
+    ///   <item><description>APPLY_TIME_WINDOW_LIMIT — 时间窗数量限制（如旧 HIS 2 小时窗），先截断可收费数量</description></item>
+    ///   <item><description>APPLY_ONCE_LIMIT_QTY — 单次数量限制，先截断可收费数量</description></item>
+    ///   <item><description>SAME_GROUP_MUTEX — 同组互斥，先决定当前项目是否还能收费</description></item>
+    ///   <item><description>FORMULA_CALC — 公式折价，必须使用前面限制后的 FinalQty</description></item>
+    ///   <item><description>APPLY_MIN_AMOUNT — 金额下限，公式之后才能比较（FIN_DISCOUNT_FEE 当前不生成该动作）</description></item>
+    ///   <item><description>APPLY_MAX_AMOUNT — 金额上限/TOPPRICE，必须在比例折价之后截断</description></item>
+    ///   <item><description>SAME_OPERATION_CEILING — 同手术封顶，金额类累计封顶必须在公式和单项封顶之后执行</description></item>
+    ///   <item><description>ADD_CHILD_ITEM — 子项加收，不参与 FIN_DISCOUNT_FEE 公式</description></item>
+    ///   <item><description>DISCOUNT_EXCEED_TO_ZERO — 超出部分归零兜底，必须最后同步超限状态</description></item>
     /// </list>
     /// 新增动作类型不再需要修改此默认列表——只需在 PR_DICT 表的 ACTION_TYPE_ORDER 类型中插入记录即可。
     /// </remarks>
     private static readonly Dictionary<string, int> DefaultActionTypeOrder = new(StringComparer.OrdinalIgnoreCase)
     {
         ["CONVERT_QTY"] = 0,
-        ["FORMULA_CALC"] = 1,
-        ["APPLY_MIN_AMOUNT"] = 2,
-        ["APPLY_MAX_AMOUNT"] = 3,
-        ["APPLY_DAY_LIMIT_QTY"] = 4,
-        ["APPLY_TIME_WINDOW_LIMIT"] = 5,
-        ["APPLY_ONCE_LIMIT_QTY"] = 6,
-        ["SAME_GROUP_MUTEX"] = 7,
+        ["APPLY_DAY_LIMIT_QTY"] = 1,
+        ["APPLY_TIME_WINDOW_LIMIT"] = 2,
+        ["APPLY_ONCE_LIMIT_QTY"] = 3,
+        ["SAME_GROUP_MUTEX"] = 4,
+        ["FORMULA_CALC"] = 5,
+        ["APPLY_MIN_AMOUNT"] = 6,
+        ["APPLY_MAX_AMOUNT"] = 7,
         ["SAME_OPERATION_CEILING"] = 8,
         ["ADD_CHILD_ITEM"] = 9,
         ["DISCOUNT_EXCEED_TO_ZERO"] = 10
@@ -214,9 +216,9 @@ public sealed class RuleMatchService
         var executableActions = ApplyExclusiveGroups(allActions, ruleOrder);
 
         // ========== 第六阶段：按全局动作顺序整理动作链 ==========
-        // 多规则叠加时，如果只按每条规则的 SortNo 执行，可能出现先限额后公式的错误顺序。
+        // 多规则叠加时，如果只按每条规则的 SortNo 执行，可能出现公式先于数量限制的错误顺序。
         // OrderActions 先按全局类别排序，再按同类 SortNo 排序，确保：
-        //   换算 → 公式 → 下限 → 上限 → 日限 → 窗限 → 单次限 → 互斥 → 加收 → 归零
+        //   换算 → 数量限制/互斥 → 公式折价 → TOPPRICE 封顶 → 加收 → 归零兜底
         //
         // 动作执行顺序从 PR_DICT 字典表读取（DICT_TYPE = "ACTION_TYPE_ORDER"），
         // 首次调用时加载并缓存，后续使用缓存值。规则发布/停用/回滚时会清除缓存。
@@ -378,7 +380,7 @@ public sealed class RuleMatchService
     /// </returns>
     /// <remarks>
     /// 这个排序是资金安全的关键。如果多规则叠加时只按每条规则的 SortNo 执行，
-    /// 可能出现"先执行限额截断，再执行公式计算"的错误顺序，导致公式结果被限额误截断。
+    /// 可能出现"先执行公式计算，再执行数量限制"的错误顺序，导致比例折价没有使用旧 HIS 限制后的数量。
     ///
     /// 动作执行顺序从缓存字典中读取，缓存来源为 PR_DICT 表的 ACTION_TYPE_ORDER 类型。
     /// 字典未加载时使用默认顺序，确保向后兼容。

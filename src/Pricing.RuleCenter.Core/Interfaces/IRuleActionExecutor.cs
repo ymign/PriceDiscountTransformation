@@ -8,11 +8,16 @@ namespace Pricing.RuleCenter.Core.Interfaces;
 ///
 /// 架构位置：
 ///   位于领域层（Domain），由计价引擎在规则匹配成功后的动作执行阶段调用。
-///   每种动作类型对应一个独立的执行器实现，通过 ActionType 属性注册到引擎。
+///   ActionType 是一级动作大类；一个 ActionType 可以对应一个或多个执行器。
+///   例如 FORMULA_CALC 可同时注册 INCREMENT_PERCENT、AREA_STEP_INCREMENT 等多个公式执行器，
+///   再由 RuleAction.ExecutorCode 做二级分派。
 ///
 /// 设计模式：
-///   执行器模式（Strategy Pattern）—— 新增动作类型只需新增一个 IRuleActionExecutor 实现类，
-///   无需修改计价引擎的核心执行逻辑。引擎在运行时通过 ActionType 查找对应的执行器。
+///   执行器模式（Strategy Pattern）—— 新增动作类型或公式类型只需新增一个
+///   IRuleActionExecutor 实现类并完成 DI 注册，无需修改计价引擎的核心执行逻辑。
+///   引擎在运行时先通过 ActionType 找到候选执行器集合，再由执行器内部结合 ExecutorCode
+///   判断是否处理当前动作。管线会先调用 CanHandle 做显式校验，避免 ExecutorCode 配错时
+///   所有候选执行器都静默跳过，导致资金规则漏执行。
 ///
 /// 职责边界：
 ///   - 执行规则动作（RuleAction）定义的计价操作，将结果写入计价上下文。
@@ -44,10 +49,32 @@ public interface IRuleActionExecutor
 {
     /// <summary>
     /// 动作类型标识符，用于引擎在运行时查找对应的执行器。
-    /// 必须与 PR_RULE_ACTION.ACTION_TYPE 字段的值一一对应。
-    /// 例如："DISCOUNT_FORMULA"、"AMOUNT_CEILING"、"DAY_QTY_LIMIT"。
+    /// 必须与 PR_RULE_ACTION.ACTION_TYPE 字段的值一致。
+    /// 多个执行器可以返回同一个动作类型，例如多个公式执行器共享 "FORMULA_CALC"。
+    /// 例如："FORMULA_CALC"、"APPLY_MAX_AMOUNT"、"APPLY_DAY_LIMIT_QTY"。
     /// </summary>
     string ActionType { get; }
+
+    /// <summary>
+    /// 判断当前执行器是否真正处理该规则动作。
+    /// </summary>
+    /// <param name="action">
+    /// 待执行的规则动作。普通一对一动作只需要匹配 ActionType；
+    /// 多个执行器共享同一 ActionType 时，还必须结合 ExecutorCode 做二级分派。
+    /// </param>
+    /// <returns>
+    /// <c>true</c> 表示该执行器会处理当前动作；<c>false</c> 表示应继续寻找其他候选执行器。
+    /// </returns>
+    /// <remarks>
+    /// 默认实现覆盖一对一动作类型，例如 APPLY_MAX_AMOUNT、APPLY_DAY_LIMIT_QTY。
+    /// FORMULA_CALC 这类共享动作类型必须由具体公式执行器覆写，按 ExecutorCode 精确匹配。
+    /// 这样管线可以区分“ActionType 已注册但 ExecutorCode 未注册”和“执行器内部合法跳过”
+    /// 两种情况，前者在 OnError=STOP 时必须中断，避免漏执行公式后继续收费。
+    /// </remarks>
+    bool CanHandle(RuleAction action)
+    {
+        return string.Equals(action.ActionType, ActionType, StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>
     /// 执行规则动作定义的计价操作。

@@ -44,6 +44,17 @@ public sealed class AreaStepIncrementExecutor : IRuleActionExecutor
     public string ActionType => "FORMULA_CALC";
 
     /// <summary>
+    /// 判断当前公式动作是否应由面积分段递增公式执行器处理。
+    /// </summary>
+    /// <param name="action">待执行的规则动作，ExecutorCode 必须是面积分段递增公式编码或历史类名。</param>
+    /// <returns>匹配面积分段递增公式时返回 <c>true</c>，否则返回 <c>false</c>。</returns>
+    public bool CanHandle(RuleAction action)
+    {
+        return string.Equals(action.ExecutorCode, "AREA_STEP_INCREMENT", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(action.ExecutorCode, "AreaStepIncrementExecutor", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// 执行面积分段递增公式，把结果写回计价上下文。
     /// </summary>
     /// <param name="action">
@@ -60,8 +71,7 @@ public sealed class AreaStepIncrementExecutor : IRuleActionExecutor
     public Task ExecuteAsync(RuleAction action, PricingContext context)
     {
         // ========== 第一阶段：二级执行器编码过滤 ==========
-        if (!string.Equals(action.ExecutorCode, "AREA_STEP_INCREMENT", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(action.ExecutorCode, "AreaStepIncrementExecutor", StringComparison.OrdinalIgnoreCase))
+        if (!CanHandle(action))
         {
             return Task.CompletedTask;
         }

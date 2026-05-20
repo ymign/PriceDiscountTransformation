@@ -38,9 +38,13 @@ public static class DictSeedData
     /// 动作执行顺序字典类型编码。
     ///
     /// 业务背景：
-    ///   计价引擎执行动作链时，必须按照"换算 → 公式 → 下限 → 上限 → 日限 → 窗限 → 单次限 → 互斥 → 加收 → 归零"
-    ///   的固定顺序执行，否则会导致金额计算错误。此字典类型将执行顺序从代码硬编码改为数据库配置，
-    ///   新增动作类型只需插入字典记录，无需修改引擎代码。
+    ///   计价引擎执行动作链时，必须对齐旧 HIS 正式环境顺序：
+    ///   "换算 → 数量限制/互斥 → 比例折价 → TOPPRICE 封顶 → 子项加收 → 超限归零兜底"。
+    ///   这个顺序不能按新设计文档中的"公式优先"理解，否则 Restrictingfee 与 FIN_DISCOUNT_FEE
+    ///   同时命中时会用未截断数量计算折价金额，产生收费偏差。
+    ///
+    ///   此字典类型将执行顺序从代码硬编码改为数据库配置，新增动作类型只需插入字典记录，
+    ///   无需修改引擎代码。
     ///
     /// 字典项含义：
     ///   - DICT_CODE：动作类型编码，对应 PR_RULE_ACTION.ACTION_TYPE
@@ -71,17 +75,21 @@ public static class DictSeedData
     /// SORT_NO 间隔为 10，便于后续在两个动作类型之间插入新的动作类型。
     ///
     /// 执行顺序设计依据：
+    ///   旧 HIS 在 ucDisplay.GetFeeItemList 中先调用 ConvertRestrictingfee，再调用 ConvertDiscountfee；
+    ///   ConvertDiscountfee 内部先按 DISCOUNT_RATE 计算比例折价，再按 TOPPRICE 做金额封顶。
+    ///   因此这里必须把数量类限制排在 FORMULA_CALC 前，把 APPLY_MAX_AMOUNT 排在 FORMULA_CALC 后。
+    ///
     ///   10  CONVERT_QTY             — 双单位换算，公式依赖换算后数量
-    ///   20  FORMULA_CALC            — 公式计算，结果写入 FormulaAmount 和 FinalAmount
-    ///   30  APPLY_MIN_AMOUNT        — 金额下限，公式之后才能比较
-    ///   40  APPLY_MAX_AMOUNT        — 金额上限，公式之后才能比较
-    ///   50  APPLY_DAY_LIMIT_QTY     — 日数量限制，需要查询全院累计
-    ///   60  APPLY_TIME_WINDOW_LIMIT — 时间窗数量限制（如2小时窗）
-    ///   70  APPLY_ONCE_LIMIT_QTY    — 单次数量限制
-    ///   80  SAME_GROUP_MUTEX        — 同组互斥
-    ///   85  SAME_OPERATION_CEILING  — 同手术封顶
+    ///   20  APPLY_DAY_LIMIT_QTY     — 日数量限制，先截断可收费数量
+    ///   30  APPLY_TIME_WINDOW_LIMIT — 时间窗数量限制（如2小时窗），先截断可收费数量
+    ///   40  APPLY_ONCE_LIMIT_QTY    — 单次数量限制，先截断可收费数量
+    ///   50  SAME_GROUP_MUTEX        — 同组互斥，先决定当前项目是否还能收费
+    ///   60  FORMULA_CALC            — 比例折价，使用前面限制后的 FinalQty
+    ///   70  APPLY_MIN_AMOUNT        — 金额下限，公式之后才能比较；FIN_DISCOUNT_FEE 当前不生成
+    ///   80  APPLY_MAX_AMOUNT        — 金额上限/TOPPRICE，必须在比例折价后比较
+    ///   85  SAME_OPERATION_CEILING  — 同手术封顶，金额类累计封顶必须在公式和单项封顶之后执行
     ///   90  ADD_CHILD_ITEM          — 子项加收
-    ///   100 DISCOUNT_EXCEED_TO_ZERO — 超出部分归零，必须最后执行
+    ///   100 DISCOUNT_EXCEED_TO_ZERO — 超出部分归零兜底，必须最后执行
     /// </summary>
     /// <returns>动作执行顺序字典种子数据列表。</returns>
     public static IReadOnlyList<Dict> GetActionTypeOrderSeedData()
@@ -99,58 +107,58 @@ public static class DictSeedData
             CreateDict(new()
             {
                 DictType = ActionTypeOrderType,
-                DictCode = "FORMULA_CALC",
-                DictName = "公式计算",
-                SortNo = 20,
-                Remark = "公式计算，结果写入 FormulaAmount 和 FinalAmount"
-            }),
-            CreateDict(new()
-            {
-                DictType = ActionTypeOrderType,
-                DictCode = "APPLY_MIN_AMOUNT",
-                DictName = "金额下限",
-                SortNo = 30,
-                Remark = "金额下限，公式之后才能比较"
-            }),
-            CreateDict(new()
-            {
-                DictType = ActionTypeOrderType,
-                DictCode = "APPLY_MAX_AMOUNT",
-                DictName = "金额上限",
-                SortNo = 40,
-                Remark = "金额上限，公式之后才能比较"
-            }),
-            CreateDict(new()
-            {
-                DictType = ActionTypeOrderType,
                 DictCode = "APPLY_DAY_LIMIT_QTY",
                 DictName = "日数量限制",
-                SortNo = 50,
-                Remark = "日数量限制，需要查询全院累计"
+                SortNo = 20,
+                Remark = "日数量限制，先截断可收费数量"
             }),
             CreateDict(new()
             {
                 DictType = ActionTypeOrderType,
                 DictCode = "APPLY_TIME_WINDOW_LIMIT",
                 DictName = "时间窗数量限制",
-                SortNo = 60,
-                Remark = "时间窗数量限制（如2小时窗）"
+                SortNo = 30,
+                Remark = "时间窗数量限制（如旧 HIS 2 小时窗），先截断可收费数量"
             }),
             CreateDict(new()
             {
                 DictType = ActionTypeOrderType,
                 DictCode = "APPLY_ONCE_LIMIT_QTY",
                 DictName = "单次数量限制",
-                SortNo = 70,
-                Remark = "单次数量限制"
+                SortNo = 40,
+                Remark = "单次数量限制，先截断可收费数量"
             }),
             CreateDict(new()
             {
                 DictType = ActionTypeOrderType,
                 DictCode = "SAME_GROUP_MUTEX",
                 DictName = "同组互斥",
+                SortNo = 50,
+                Remark = "同组互斥，先决定当前项目是否还能收费"
+            }),
+            CreateDict(new()
+            {
+                DictType = ActionTypeOrderType,
+                DictCode = "FORMULA_CALC",
+                DictName = "公式计算",
+                SortNo = 60,
+                Remark = "比例折价，使用前面限制后的 FinalQty"
+            }),
+            CreateDict(new()
+            {
+                DictType = ActionTypeOrderType,
+                DictCode = "APPLY_MIN_AMOUNT",
+                DictName = "金额下限",
+                SortNo = 70,
+                Remark = "金额下限，公式之后才能比较；FIN_DISCOUNT_FEE 当前不生成该动作"
+            }),
+            CreateDict(new()
+            {
+                DictType = ActionTypeOrderType,
+                DictCode = "APPLY_MAX_AMOUNT",
+                DictName = "金额上限",
                 SortNo = 80,
-                Remark = "同组互斥"
+                Remark = "金额上限/TOPPRICE，必须在比例折价后比较"
             }),
             CreateDict(new()
             {
@@ -158,7 +166,7 @@ public static class DictSeedData
                 DictCode = "SAME_OPERATION_CEILING",
                 DictName = "同手术封顶",
                 SortNo = 85,
-                Remark = "同手术封顶"
+                Remark = "同手术封顶，金额类累计封顶必须在公式和单项封顶之后执行"
             }),
             CreateDict(new()
             {
@@ -174,7 +182,7 @@ public static class DictSeedData
                 DictCode = "DISCOUNT_EXCEED_TO_ZERO",
                 DictName = "超出部分归零",
                 SortNo = 100,
-                Remark = "超出部分归零，必须最后执行"
+                Remark = "超出部分归零兜底，必须最后执行"
             })
         };
     }

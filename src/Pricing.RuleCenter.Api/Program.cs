@@ -51,7 +51,8 @@ builder.Services.AddScoped<IRuleConditionEvaluator, GroupMatchEvaluator>();
 builder.Services.AddScoped<IRuleConditionEvaluator, ChargeDeptExcludeEvaluator>();
 
 // 动作执行器负责规则命中后的具体计算动作（金额上下限、数量限制、换算、公式等）。
-// 每个执行器只处理一种动作类型，新增动作类型只需新增执行器，无需修改引擎主流程。
+// 动作类型是一级分派；FORMULA_CALC 等大类可注册多个执行器，再由 ExecutorCode 做二级分派。
+// 新增动作或公式类型只需新增执行器并注册，无需修改引擎主流程。
 builder.Services.AddScoped<IRuleActionExecutor, AmountFloorExecutor>();
 builder.Services.AddScoped<IRuleActionExecutor, AmountCeilingExecutor>();
 builder.Services.AddScoped<IRuleActionExecutor, IncrementPercentExecutor>();

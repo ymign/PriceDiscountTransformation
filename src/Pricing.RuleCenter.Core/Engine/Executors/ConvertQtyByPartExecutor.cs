@@ -45,6 +45,17 @@ public sealed class ConvertQtyByPartExecutor : IRuleActionExecutor
     public string ActionType => "FORMULA_CALC";
 
     /// <summary>
+    /// 判断当前公式动作是否应由按部位面积换算公式执行器处理。
+    /// </summary>
+    /// <param name="action">待执行的规则动作，ExecutorCode 必须是按部位换算公式编码或历史类名。</param>
+    /// <returns>匹配按部位换算公式时返回 <c>true</c>，否则返回 <c>false</c>。</returns>
+    public bool CanHandle(RuleAction action)
+    {
+        return string.Equals(action.ExecutorCode, "CONVERT_QTY_BY_PART", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(action.ExecutorCode, "ConvertQtyByPartExecutor", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// 执行按部位面积换算公式，把结果写回计价上下文。
     /// </summary>
     /// <param name="action">
@@ -62,8 +73,7 @@ public sealed class ConvertQtyByPartExecutor : IRuleActionExecutor
     public Task ExecuteAsync(RuleAction action, PricingContext context)
     {
         // ========== 第一阶段：二级执行器编码过滤 ==========
-        if (!string.Equals(action.ExecutorCode, "CONVERT_QTY_BY_PART", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(action.ExecutorCode, "ConvertQtyByPartExecutor", StringComparison.OrdinalIgnoreCase))
+        if (!CanHandle(action))
         {
             return Task.CompletedTask;
         }

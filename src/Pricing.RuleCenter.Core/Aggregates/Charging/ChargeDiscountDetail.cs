@@ -196,8 +196,8 @@ public sealed class ChargeDiscountDetail
     /// 换算后的计价数量。
     /// </summary>
     /// <remarks>
-    /// 经过双单位换算后的数量，用于公式计算。
-    /// 换算数量固定为 1（即换算比例 × 1），公式使用换算后数量。
+    /// 经过双单位换算后的数量，是数量限制之前的计价数量基准。
+    /// 无数量限制时，公式使用的 FinalQty 通常与该值一致；有限制时，公式使用限制后的 FinalQty。
     /// 若未配置换算规则，该值等于 OriginalQty。
     /// 精度 NUMBER(18,4)。
     /// </remarks>
@@ -240,7 +240,7 @@ public sealed class ChargeDiscountDetail
     /// </summary>
     /// <remarks>
     /// 经过公式计算后的中间金额，尚未经过金额上下限校验。
-    /// 公式优先于限制：先算公式，再与金额限制比较。
+    /// FIN_DISCOUNT_FEE 类比例折价使用数量限制后的 FinalQty 计算；TOPPRICE 再在该金额之后封顶。
     /// 中间计算字段，保留全部精度，不做取整。
     /// 单位：元（人民币），精度 NUMBER(18,4)。
     /// </remarks>
@@ -250,7 +250,7 @@ public sealed class ChargeDiscountDetail
     /// 最终收费金额。
     /// </summary>
     /// <remarks>
-    /// 经过公式计算、金额上下限、数量限制等全部处理后的最终收费金额。
+    /// 经过数量限制、公式折价、金额上下限和超限兜底等全部处理后的最终收费金额。
     /// 最终对外金额保留 2 位小数，四舍五入（roundMode 可配置）。
     /// 若项目超出限额，超出部分为 0 元。
     /// 单位：元（人民币），精度 NUMBER(18,4)。

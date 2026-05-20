@@ -11,6 +11,6 @@ public sealed class PricingAmountRounderTests
     [InlineData(0.005, 0.01)]
     public void RoundFinalAmount_UsesTwoDecimalAwayFromZero(decimal input, decimal expected)
     {
-        Assert.Equal(expected, PricingAmountRounder.RoundFinalAmount(input));
+        Assert.Equal(expected, PricingAmountRounder.RoundFinal(input));
     }
 }

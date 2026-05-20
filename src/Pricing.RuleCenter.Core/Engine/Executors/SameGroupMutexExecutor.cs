@@ -12,9 +12,9 @@ namespace Pricing.RuleCenter.Core.Engine.Executors;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 【业务语义】同组内同类项目只允许执行优先级最高的一条，超出部分金额归零。
-/// 例如：皮肤科"激光治疗"项目组包含 CO2 激光和半导体激光两个项目，
-/// 同次收费中只允许对优先级最高的那条计费，其余超出部分金额归零。
+/// 【业务语义】同组内同类项目在最近 2 小时窗口内只允许收费指定数量，超出部分金额归零。
+/// 该口径对齐旧 HIS 的 RestrictingfeeZT / RestrictingfeeTX1 SQL：
+/// 历史收费只向前看 2 小时，而不是按自然日整天互斥。
 /// </para>
 /// <para>
 /// 【执行顺序】在全局动作排序中，SAME_GROUP_MUTEX 排在限额动作之后、
@@ -76,6 +76,7 @@ public sealed class SameGroupMutexExecutor : IRuleActionExecutor
     /// <list type="bullet">
     ///   <item><description>groupDimension — 互斥维度，默认 ITEM_GROUP</description></item>
     ///   <item><description>maxCountPerGroup — 同组内允许计费的最大项目数，默认 1</description></item>
+    ///   <item><description>windowMinutes — 历史互斥窗口分钟数，默认 120，兼容旧 HIS 2 小时窗口</description></item>
     /// </list>
     /// </param>
     /// <param name="context">
@@ -92,6 +93,7 @@ public sealed class SameGroupMutexExecutor : IRuleActionExecutor
         // ========== 第一阶段：解析互斥参数 ==========
         var param = DeserializeParams(action.ParamsJson);
         var maxCount = param?.MaxCountPerGroup > 0 ? param.MaxCountPerGroup : 1;
+        var windowMinutes = param?.WindowMinutes > 0 ? param.WindowMinutes : 120;
         var groupDimension = !string.IsNullOrEmpty(param?.GroupDimension)
             ? param.GroupDimension
             : "ITEM_GROUP";
@@ -108,27 +110,30 @@ public sealed class SameGroupMutexExecutor : IRuleActionExecutor
         }
 
         // ========== 第三阶段：构造历史互斥维度并加锁 ==========
-        // 新架构中同组互斥不只看同批内，还要看同一患者在同一业务日内该互斥组已经收费的记录。
+        // 新架构中同组互斥不只看同批内，还要看同一患者在同一互斥组内最近 2 小时已经收费的记录。
         // 这样才能对齐旧 HIS 的 getRestrictingfeeZT / RestrictingfeeTX1 行为。
-        var limitKey = LimitKeyGenerator
-            .GenerateSameGroupKey(context.PatientId, currentGroupKey, context.BusinessChargeTime)
+        // 注意：旧 SQL 是 fee_date >= SYSDATE - (2/24)，不是“当天互斥”。
+        var dimensionCode = $"{context.PatientId}:{currentGroupKey}"
             .ToUpperInvariant();
-        var dimensionCode = $"{context.PatientId}:{currentGroupKey}:{context.BusinessChargeTime:yyyyMMdd}"
-            .ToUpperInvariant();
+        var windowStart = context.BusinessChargeTime.AddMinutes(-windowMinutes);
+        var windowEnd = context.BusinessChargeTime;
+        var lockKeys = BuildLockKeys(context.PatientId, currentGroupKey, windowStart, windowEnd);
 
         if (context.ShouldLockLimits)
         {
-            await _limitRepository.EnsureAndLockAsync(new[] { limitKey });
+            await _limitRepository.EnsureAndLockAsync(lockKeys);
         }
 
         // ========== 第四阶段：汇总历史 + 同请求内已占用的互斥计数 ==========
-        var processedCount = 0m;
-        foreach (var status in OccupyStatuses)
+        var processedCount = await _limitRepository.GetOccupiedQtyAsync(new Pricing.RuleCenter.Core.Aggregates.Quota.LimitOccupyRangeQuery
         {
-            processedCount += await _limitRepository.GetOccupiedQtyAsync(limitKey, status);
-        }
-
-        processedCount += GetInRequestOccupiedCount(context, dimensionCode, currentGroupKey);
+            LimitType = LimitType,
+            LimitDimensionCode = dimensionCode,
+            StartTime = windowStart,
+            EndTime = windowEnd,
+            Statuses = OccupyStatuses
+        });
+        processedCount += GetInRequestOccupiedCount(context, dimensionCode, currentGroupKey, windowStart, windowEnd);
 
         // ========== 第五阶段：超出配额时归零数量 ==========
         // 当同组内已处理的项目数 >= maxCountPerGroup 时，当前项目数量归零。
@@ -144,8 +149,8 @@ public sealed class SameGroupMutexExecutor : IRuleActionExecutor
             {
                 StepNo = context.TraceSteps.Count + 1,
                 StepType = "LIMIT",
-                StepDesc = $"同组互斥：项目组 {currentGroupKey} 内已处理 {processedCount} 个项目，" +
-                           $"超过上限 {maxCount}，当前项目数量归零",
+                StepDesc = $"同组互斥：项目组 {currentGroupKey} 在最近 {windowMinutes} 分钟内已处理 {processedCount} 个项目，" +
+                           $"达到上限 {maxCount}，当前项目数量归零",
                 InputValue = beforeQty,
                 OutputValue = 0,
                 ParamsJson = action.ParamsJson
@@ -160,14 +165,14 @@ public sealed class SameGroupMutexExecutor : IRuleActionExecutor
         {
             StepNo = context.TraceSteps.Count + 1,
             StepType = "LIMIT",
-            StepDesc = $"同组互斥校验通过：项目组 {currentGroupKey} 内已处理 {processedCount} 个项目，" +
+            StepDesc = $"同组互斥校验通过：项目组 {currentGroupKey} 在最近 {windowMinutes} 分钟内已处理 {processedCount} 个项目，" +
                        $"未超过上限 {maxCount}",
             InputValue = context.FinalQty,
             OutputValue = context.FinalQty,
             ParamsJson = action.ParamsJson
         });
 
-        AddOccupyDraft(context, limitKey, dimensionCode);
+        AddOccupyDraft(context, lockKeys[0], dimensionCode);
     }
 
     /// <summary>
@@ -194,7 +199,9 @@ public sealed class SameGroupMutexExecutor : IRuleActionExecutor
     private static decimal GetInRequestOccupiedCount(
         PricingContext context,
         string dimensionCode,
-        string groupKey)
+        string groupKey,
+        DateTime windowStart,
+        DateTime windowEnd)
     {
         var candidates = context.InRequestLimitOccupies
             .Where(o => string.Equals(o.LimitType, LimitType, StringComparison.OrdinalIgnoreCase))
@@ -203,7 +210,9 @@ public sealed class SameGroupMutexExecutor : IRuleActionExecutor
 
         if (candidates.Count > 0)
         {
-            return candidates.Sum(o => o.OccupyQty);
+            return candidates
+                .Where(o => o.BusinessChargeTime >= windowStart && o.BusinessChargeTime <= windowEnd)
+                .Sum(o => o.OccupyQty);
         }
 
         var sameGroupKey = $"{LimitType}:{dimensionCode}".ToUpperInvariant();
@@ -217,6 +226,29 @@ public sealed class SameGroupMutexExecutor : IRuleActionExecutor
         return context.InRequestOccupiedQtyByLimitDimension.TryGetValue(legacyMutexKey, out cachedCount)
             ? cachedCount
             : 0m;
+    }
+
+    /// <summary>
+    /// 枚举同组互斥窗口覆盖到的全部小时桶锁键。
+    /// </summary>
+    /// <param name="patientId">患者标识。</param>
+    /// <param name="groupKey">互斥组标识。</param>
+    /// <param name="windowStart">窗口开始时间。</param>
+    /// <param name="windowEnd">窗口结束时间。</param>
+    /// <returns>需要按顺序锁定的锁键列表。</returns>
+    private static List<string> BuildLockKeys(string patientId, string groupKey, DateTime windowStart, DateTime windowEnd)
+    {
+        var keys = new List<string>();
+        var current = new DateTime(windowStart.Year, windowStart.Month, windowStart.Day, windowStart.Hour, 0, 0);
+        var end = new DateTime(windowEnd.Year, windowEnd.Month, windowEnd.Day, windowEnd.Hour, 0, 0);
+
+        while (current <= end)
+        {
+            keys.Add(LimitKeyGenerator.GenerateSameGroupWindowKey(patientId, groupKey, current).ToUpperInvariant());
+            current = current.AddHours(1);
+        }
+
+        return keys;
     }
 
     private static void AddOccupyDraft(
@@ -281,6 +313,12 @@ public sealed class SameGroupMutexExecutor : IRuleActionExecutor
         /// NULL 或 0 时默认为 1。
         /// </summary>
         public int MaxCountPerGroup { get; set; }
+
+        /// <summary>
+        /// 历史互斥窗口分钟数。
+        /// 默认 120 分钟，用于对齐旧 HIS RestrictingfeeZT / RestrictingfeeTX1 的 2 小时窗口。
+        /// </summary>
+        public int WindowMinutes { get; set; } = 120;
     }
 
     private sealed class NullLimitOccupyRepository : ILimitOccupyRepository

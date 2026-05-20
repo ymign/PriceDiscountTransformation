@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pricing.RuleCenter.Api.Dto;
-using Pricing.RuleCenter.Api.Services;
+using Pricing.RuleCenter.Api.Application.Rules;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 using Xunit;
@@ -223,6 +223,7 @@ public sealed class RulePublishConflictTests
                 actionRepository,
                 dictRepository ?? new EmptyDictRepository()),
             new MemoryCache(new MemoryCacheOptions()),
+            db: null!,
             NullLogger<RulePublishService>.Instance);
 
     private sealed class InMemoryRuleHeaderRepository : IRuleHeaderRepository

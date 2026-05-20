@@ -94,6 +94,98 @@ public sealed class RuleMatchServiceTests
     }
 
     [Fact]
+    public async Task MatchAsync_DefaultOrderMatchesHisLimitThenDiscountThenTopPrice()
+    {
+        var rule = new RuleHeader
+        {
+            RuleId = 1,
+            ItemCode = "ITEM001",
+            Status = "PUBLISHED",
+            IsEnabled = "Y",
+            CurrentVersion = 1
+        };
+        var actions = new[]
+        {
+            new RuleAction { RuleId = 1, VersionNo = 1, ActionType = "APPLY_MAX_AMOUNT", SortNo = 10, IsEnabled = "Y" },
+            new RuleAction { RuleId = 1, VersionNo = 1, ActionType = "FORMULA_CALC", SortNo = 10, IsEnabled = "Y" },
+            new RuleAction { RuleId = 1, VersionNo = 1, ActionType = "APPLY_TIME_WINDOW_LIMIT", SortNo = 10, IsEnabled = "Y" },
+            new RuleAction { RuleId = 1, VersionNo = 1, ActionType = "DISCOUNT_EXCEED_TO_ZERO", SortNo = 10, IsEnabled = "Y" },
+            new RuleAction { RuleId = 1, VersionNo = 1, ActionType = "CONVERT_QTY", SortNo = 10, IsEnabled = "Y" }
+        };
+        var service = CreateRuleMatchService(
+            new FixedRuleHeaderRepository(rule),
+            new EmptyRuleConditionRepository(),
+            new FixedRuleActionRepository(actions),
+            new ConditionEvaluatorFactory(Array.Empty<IRuleConditionEvaluator>()),
+            new FixedDictRepository(Array.Empty<Dict>()),
+            NullLogger<RuleMatchService>.Instance);
+
+        var (_, orderedActions) = await service.MatchAsync(new PricingContext
+        {
+            ItemCode = "ITEM001",
+            BusinessChargeTime = new DateTime(2026, 5, 10, 10, 0, 0)
+        });
+
+        Assert.Collection(
+            orderedActions,
+            first => Assert.Equal("CONVERT_QTY", first.ActionType),
+            second => Assert.Equal("APPLY_TIME_WINDOW_LIMIT", second.ActionType),
+            third => Assert.Equal("FORMULA_CALC", third.ActionType),
+            fourth => Assert.Equal("APPLY_MAX_AMOUNT", fourth.ActionType),
+            fifth => Assert.Equal("DISCOUNT_EXCEED_TO_ZERO", fifth.ActionType));
+    }
+
+    [Fact]
+    public async Task MatchAsync_DictOrderMatchesHisLimitThenDiscountThenTopPrice()
+    {
+        var rule = new RuleHeader
+        {
+            RuleId = 1,
+            ItemCode = "ITEM001",
+            Status = "PUBLISHED",
+            IsEnabled = "Y",
+            CurrentVersion = 1
+        };
+        var actions = new[]
+        {
+            new RuleAction { RuleId = 1, VersionNo = 1, ActionType = "APPLY_MAX_AMOUNT", SortNo = 10, IsEnabled = "Y" },
+            new RuleAction { RuleId = 1, VersionNo = 1, ActionType = "FORMULA_CALC", SortNo = 10, IsEnabled = "Y" },
+            new RuleAction { RuleId = 1, VersionNo = 1, ActionType = "APPLY_TIME_WINDOW_LIMIT", SortNo = 10, IsEnabled = "Y" },
+            new RuleAction { RuleId = 1, VersionNo = 1, ActionType = "DISCOUNT_EXCEED_TO_ZERO", SortNo = 10, IsEnabled = "Y" },
+            new RuleAction { RuleId = 1, VersionNo = 1, ActionType = "CONVERT_QTY", SortNo = 10, IsEnabled = "Y" }
+        };
+        var dictItems = new[]
+        {
+            new Dict { DictType = "ACTION_TYPE_ORDER", DictCode = "CONVERT_QTY", SortNo = 10, IsEnabled = "Y" },
+            new Dict { DictType = "ACTION_TYPE_ORDER", DictCode = "APPLY_TIME_WINDOW_LIMIT", SortNo = 20, IsEnabled = "Y" },
+            new Dict { DictType = "ACTION_TYPE_ORDER", DictCode = "FORMULA_CALC", SortNo = 30, IsEnabled = "Y" },
+            new Dict { DictType = "ACTION_TYPE_ORDER", DictCode = "APPLY_MAX_AMOUNT", SortNo = 40, IsEnabled = "Y" },
+            new Dict { DictType = "ACTION_TYPE_ORDER", DictCode = "DISCOUNT_EXCEED_TO_ZERO", SortNo = 50, IsEnabled = "Y" }
+        };
+        var service = CreateRuleMatchService(
+            new FixedRuleHeaderRepository(rule),
+            new EmptyRuleConditionRepository(),
+            new FixedRuleActionRepository(actions),
+            new ConditionEvaluatorFactory(Array.Empty<IRuleConditionEvaluator>()),
+            new FixedDictRepository(dictItems),
+            NullLogger<RuleMatchService>.Instance);
+
+        var (_, orderedActions) = await service.MatchAsync(new PricingContext
+        {
+            ItemCode = "ITEM001",
+            BusinessChargeTime = new DateTime(2026, 5, 10, 10, 0, 0)
+        });
+
+        Assert.Collection(
+            orderedActions,
+            first => Assert.Equal("CONVERT_QTY", first.ActionType),
+            second => Assert.Equal("APPLY_TIME_WINDOW_LIMIT", second.ActionType),
+            third => Assert.Equal("FORMULA_CALC", third.ActionType),
+            fourth => Assert.Equal("APPLY_MAX_AMOUNT", fourth.ActionType),
+            fifth => Assert.Equal("DISCOUNT_EXCEED_TO_ZERO", fifth.ActionType));
+    }
+
+    [Fact]
     public async Task MatchAsync_ExecutesOnlyHighestPriorityActionInExclusiveGroup()
     {
         var highPriorityRule = new RuleHeader

@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Pricing.RuleCenter.Api.Dto;
-using Pricing.RuleCenter.Api.Services;
+using Pricing.RuleCenter.Api.Application.Pricing;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 using Pricing.RuleCenter.Core.Options;

@@ -14,10 +14,11 @@ namespace Pricing.RuleCenter.Core.Aggregates.Catalog;
 /// <para>
 /// 公式与限制的交互（关键业务约束）：
 /// <list type="bullet">
-/// <item>公式优先于限制 — 公式 + 金额限制共存时，先算公式，再与限制比较</item>
+/// <item>HIS 兼容顺序 — FIN_DISCOUNT_FEE 类比例折价必须在数量限制之后执行，使用限制后的 FinalQty</item>
+/// <item>金额封顶顺序 — TOPPRICE/APPLY_MAX_AMOUNT 必须在比例折价之后执行，避免先封顶后又被公式覆盖</item>
 /// <item>公式不自动跳过限制 — 公式项目是否执行数量、时间窗、同组、同手术限制，
 /// 以规则动作配置为准；禁止代码层一见公式就跳过全部数量类限制</item>
-/// <item>换算数量固定为 1 — 公式使用换算后数量，非输入数量</item>
+/// <item>换算数量固定为 1 — 无数量限制时 FinalQty 与换算后数量一致；有限制时公式使用限制后的 FinalQty</item>
 /// </list>
 /// </para>
 /// </remarks>

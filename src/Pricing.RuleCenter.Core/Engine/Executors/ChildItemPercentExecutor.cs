@@ -39,6 +39,17 @@ public sealed class ChildItemPercentExecutor : IRuleActionExecutor
     public string ActionType => "FORMULA_CALC";
 
     /// <summary>
+    /// 判断当前公式动作是否应由子项金额百分比公式执行器处理。
+    /// </summary>
+    /// <param name="action">待执行的规则动作，ExecutorCode 必须是子项百分比公式编码或历史类名。</param>
+    /// <returns>匹配子项百分比公式时返回 <c>true</c>，否则返回 <c>false</c>。</returns>
+    public bool CanHandle(RuleAction action)
+    {
+        return string.Equals(action.ExecutorCode, "CHILD_ITEM_PERCENT", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(action.ExecutorCode, "ChildItemPercentExecutor", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// 执行子项金额百分比公式，把结果写回计价上下文。
     /// </summary>
     /// <param name="action">
@@ -57,8 +68,7 @@ public sealed class ChildItemPercentExecutor : IRuleActionExecutor
     public Task ExecuteAsync(RuleAction action, PricingContext context)
     {
         // ========== 第一阶段：二级执行器编码过滤 ==========
-        if (!string.Equals(action.ExecutorCode, "CHILD_ITEM_PERCENT", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(action.ExecutorCode, "ChildItemPercentExecutor", StringComparison.OrdinalIgnoreCase))
+        if (!CanHandle(action))
         {
             return Task.CompletedTask;
         }

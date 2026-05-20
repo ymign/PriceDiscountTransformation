@@ -170,9 +170,9 @@ public sealed class TraceQueryResponse
 /// 每个步骤记录了输入快照和输出快照（JSON 格式），可完整还原该步骤的计算过程。
 /// </para>
 /// <para>
-/// 步骤按 <see cref="StepNo"/> 递增排列，对应计价链路的 10 个阶段：
-/// 规则匹配 → 双单位换算 → 公式计算 → 金额下限 → 金额上限 → 日数量限制 →
-/// 时间窗数量限制 → 同组互斥/同手术封顶 → 子项加收/附加项目 → 超出部分归零。
+/// 步骤按 <see cref="StepNo"/> 递增排列，对应旧 HIS 兼容计价链路：
+/// 规则匹配 → 双单位换算 → 数量限制/时间窗限制/同组互斥 →
+/// 公式折价 → TOPPRICE/金额封顶 → 同手术封顶 → 子项加收/附加项目 → 超出部分归零兜底。
 /// </para>
 /// </remarks>
 public sealed class TraceStepResponse

@@ -392,7 +392,7 @@ HIS 收费录入
 
 ## 10. 当前需要业务或源码补齐的点
 
-1. 补齐 `Fee.PactUnitItemRate.RestrictingfeePay2` 和 `Fee.PactUnitItemRate.RestrictingfeePayZT` 的完整 SQL，确认 2 小时窗口、退费排除、门诊住院累计范围。
+1. `Fee.PactUnitItemRate.RestrictingfeePay2` 和 `Fee.PactUnitItemRate.RestrictingfeePayZT` 已由 `legacy-code/HIS-Use/辅助说明.txt` 补齐，当前已确认 2 小时窗口口径；上线前仍需用生产收费明细抽样核对退费、重收、门诊住院累计范围。
 2. 确认自助机迁移后是否要执行特殊折价。旧源码当前不执行。
 3. 确认微信迁移后是否要执行特殊折价。旧源码当前不执行。
 4. 7021 科室排除需要迁移为规则条件或引擎条件，不能遗漏。

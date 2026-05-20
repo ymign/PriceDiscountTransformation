@@ -66,7 +66,7 @@ public sealed class PricingEngine : IPricingEngine
 
         // ========== 第一阶段：初始化默认计价状态 ==========
         // 默认结果是"普通计价"：数量不变，金额为单价乘数量。
-        // 后续规则动作会在这个基础上做换算、公式、封顶或限额截断。
+        // 后续规则动作会在这个基础上做换算、数量限制/互斥、公式折价和封顶。
         context.ConvertedQty = context.InputQty;
         context.FinalQty = context.InputQty;
         context.FinalAmount = context.UnitPrice * context.InputQty;
@@ -99,7 +99,10 @@ public sealed class PricingEngine : IPricingEngine
         });
 
         // ========== 第四阶段：执行规则动作链 ==========
-        // 动作链内部按"换算 -> 公式 -> 金额上下限 -> 数量/窗口限制 -> 折价"顺序执行。
+        // 动作链内部按旧 HIS 正式环境口径执行：
+        //   换算 -> 数量限制/互斥 -> 比例折价 -> TOPPRICE 封顶 -> 超限归零兜底。
+        // 特别是 FIN_DISCOUNT_FEE 与 Restrictingfee 同时命中时，必须先限制数量，
+        // 再让 IncrementPercentExecutor 使用限制后的 FinalQty 计算比例折价金额。
         await _pipeline.ExecuteAsync(orderedActions, context);
 
         // ========== 第五阶段：计算折价金额并补齐占额草稿 ==========

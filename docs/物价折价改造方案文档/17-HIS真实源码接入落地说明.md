@@ -53,7 +53,7 @@
 - HIS 写库失败、医保提交失败或事务回滚时调用 `cancel`。
 - HIS 已经提交成功后，`commit` 通知失败不再调用 `cancel`，由 SDK 补偿队列落 JSON 等待重试。
 - 替换子项和加收子项会从 HIS 非药品主数据读取项目；读不到项目时阻断落账，避免伪造明细。
-- 旧系统 2 小时历史占用 SQL 尚未在仓库中收录，本次未实现 `QueryLegacyOccupiedQty`，不会编造 SQL。
+- 旧系统 2 小时历史占用 SQL 已从 `legacy-code/HIS-Use/辅助说明.txt` 补齐；规则中心侧已按 120 分钟滑动窗口实现。上线过渡期如需兼容旧 HIS 已收费记录，可由 HIS 侧按旧 SQL 查询后通过 `LegacyOccupiedQty` 注入，规则中心不会伪造历史占用数据。
 
 ## 5. 界面预览与最终落账
 

@@ -101,9 +101,14 @@ public sealed class ActionExecutionPipelineTests
 
         public bool WasExecuted { get; private set; }
 
+        public bool CanHandle(RuleAction action)
+        {
+            return string.Equals(action.ExecutorCode, _executorCode, StringComparison.OrdinalIgnoreCase);
+        }
+
         public Task ExecuteAsync(RuleAction action, PricingContext context)
         {
-            if (!string.Equals(action.ExecutorCode, _executorCode, StringComparison.OrdinalIgnoreCase))
+            if (!CanHandle(action))
             {
                 return Task.CompletedTask;
             }

@@ -320,8 +320,18 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
         /// </summary>
         Neusoft.HISFC.BizLogic.Manager.UndrugztManager ztManager = new Neusoft.HISFC.BizLogic.Manager.UndrugztManager();
         /// <summary>
-        /// 计算限制收费项目
+        /// 五院特殊收费规则处理器。
         /// </summary>
+        /// <remarks>
+        /// 这里不是单纯“限制收费项目”的工具类，而是旧 HIS 门诊划价界面接入折价规则的核心入口：
+        /// 1. Restrictingfee：按最近 2 小时历史收费量和本次已保留量限制收费数量；
+        /// 2. RestrictingfeeCP / RestrictingfeeTX1 / RestrictingfeeZT：床旁、胎心、止血等同组互斥项目；
+        /// 3. FIN_DISCOUNT_FEE：第一件原价、第二件起按比例折价，并可按 TOPPRICE 封顶；
+        /// 4. 组套显示价：SetChargeInfo 会调用 ConvertRestrictingfeeCharge，把组套拆成子项计算后再汇总回主项。
+        ///
+        /// 注意：该对象的方法会直接修改 FeeItemList 的数量、金额和 Memo，调用方必须把它当作“重算并改写入参”的规则引擎，
+        /// 不能只看返回集合。
+        /// </remarks>
         ZDWY.SpecialRule.Price.Restrictingfee setRestrictingfee = new ZDWY.SpecialRule.Price.Restrictingfee();
 
         #endregion
@@ -2110,22 +2120,56 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
         }
 
         /// <summary>
-        /// 显示患者的划价信息
+        /// 显示患者当前划价信息，并在“显示阶段”预先套用五院特殊折价/限制收费规则。
         /// </summary>
+        /// <remarks>
+        /// 这是旧 HIS 门诊费用录入界面的显示价重算入口，通常在患者已有费用明细加载到界面时触发。
+        /// 它和 GetFeeItemList 的最终收费价计算很像，但存在一个关键差异：
+        ///
+        /// 1. 本方法面向界面显示，输入来自 alChargeInfo，最终仍要把重算后的项目重新绘制到 FarPoint 表格；
+        /// 2. 遇到 Restrictingfee 规则时调用 ConvertRestrictingfeeCharge，会把组套主项拆成子项计算，再汇总回主项显示；
+        /// 3. 遇到 Discountfee 规则时调用 ConvertDiscountfee，按“第一件原价、其余件折价、TOPPRICE 封顶”改写金额；
+        /// 4. 多发伤患者在急诊内科/急诊外科时跳过限制收费，并尝试用 Memo 中保存的原数量还原金额；
+        /// 5. 体检中心 7021 排除限制收费，但比例折价仍按 Discountfee 配置判断。
+        ///
+        /// 这里的 Hashtable / ArrayList 变量名称很难读，但核心含义只有两类：
+        /// - hsREOnlyOneItem：标记原列表中哪些行已被特殊规则接管，需要先删除；
+        /// - hsREOnlylistItem：保存重算后的替换行，删除旧行后再追加回列表。
+        ///
+        /// 注意：ConvertRestrictingfeeCharge / ConvertDiscountfee 都会直接修改 FeeItemList，
+        /// 因此本方法不能按“纯函数返回新集合”理解。
+        /// </remarks>
         private void SetChargeInfo()
         {
 
+            // ========== 第一阶段：清空旧显示行，准备重新绘制整批划价明细 ==========
+            // SetChargeInfo 的输入不是用户刚录入的一行，而是 alChargeInfo 中已经存在的一批待显示费用。
+            // 因此这里先清空 FarPoint，再按“旧费用集合 -> 特殊规则重算 -> 重画表格”的顺序重建界面。
+            // 这一步只影响界面显示，不代表 HIS 已经落账；真正提交收费仍会走 GetFeeItemList 再算一次。
             this.Clear();
 
             int currRow = GetOrAddAvailableRow();
             sumPubCost = 0;
 
-            //本次显示价重算后，仍然保留收费资格的普通项目
+            // ========== 第二阶段：初始化旧规则算法需要的临时集合 ==========
+            // 旧代码用 Hashtable / ArrayList 在多个方法之间传递“已处理项”和“替换项”，命名非常难读。
+            // 这里不能随意改成强类型集合，因为 ConvertRestrictingfeeCharge / ConvertDiscountfee 的签名已经固定，
+            // 而且调用方依赖这些集合的副作用完成“删除旧行 + 追加重算行”的替换流程。
+
+            // 本次显示价重算后，仍然保留收费资格的普通项目。
+            // 后续项目会把该集合当作“本次收费动作内已经占用的数量”，继续扣减剩余额度。
             var hsNOREOnlyOneItem = new ArrayList();
-            //本次显示价重算后，组套拆分子项里被保留下来的部分
+
+            // 本次显示价重算后，组套拆分子项里被保留下来的部分。
+            // 组套显示价不是简单用主项数量计算，而是先拆子项，子项命中限制后再汇总回主项。
             var hsZTNOREOnlyOneItem = new ArrayList();
-            //被限制收费逻辑接管、需要替换原显示结果的项目
+
+            // 被限制收费或比例折价逻辑接管、需要从 alChargeInfo 删除的原项目索引表。
+            // 键是“项目编码 + 倒序遍历序号”，不是单独项目编码，用来区分同一批次里的重复项目行。
             var hsREOnlyOneItem = new Hashtable();
+
+            // 重算后需要追加回 alChargeInfo 的替换项目。
+            // 旧流程不是原地替换，而是先登记旧行、再统一删除、最后追加新行。
             var hsREOnlylistItem = new ArrayList();
 
             string userCode = string.Empty;
@@ -2135,6 +2179,9 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             string packUnit = string.Empty;
             string specs = string.Empty;
 
+            // ========== 第三阶段：读取显示价计算所需的辅助价格和例外项目 ==========
+            // 四肢血管相关价格在后续表格绘制/加收显示中会被使用。
+            // 这里保留原来读取方式，不把它和限制收费逻辑混在一起重构，避免影响旧界面展示。
             //获取四肢血管加收价格
             decimal pricesz = 0;// sz=子项价格
             decimal pricece = 0;// ce=差额
@@ -2142,7 +2189,11 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             this.undrugManager.GetPricesz("F00000010768", ref pricece);
             pricece = pricece - pricesz;
 
-            //多发伤患者跳过折价项目
+            // 多发伤患者跳过限制收费的项目清单。
+            // 这里加载的是 DFSitemfee 常量，真正是否跳过还要同时满足：
+            // 1. 患者 rInfo.MultipleInjury == "1"；
+            // 2. 看诊科室是急诊内科 1026 或急诊外科 6018。
+            // 注意：这里只跳过 Restrictingfee 限制收费，不等于跳过 FIN_DISCOUNT_FEE 比例折价。
             ArrayList dfslist = this.managerIntegrate.GetConstantList("DFSitemfee");
             var hsDFSItem = new Hashtable();
             foreach (Neusoft.HISFC.Models.Base.Const dic in dfslist)
@@ -2156,6 +2207,13 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             //限制药品收费
             int number = 1;
 
+            // ========== 第四阶段：倒序遍历原始显示集合，逐条套用旧特殊规则 ==========
+            // 倒序处理是旧逻辑的关键细节：后面会用“项目编码 + number”作为临时键删除旧行。
+            // 如果正序删除，集合下标会变化，重复项目行也会被混淆。
+            //
+            // 这一阶段只负责“算出哪些旧行要删、哪些新行要加”，不立即修改 alChargeInfo。
+            // 原因是 ConvertRestrictingfeeCharge 可能把组套拆子项并追加替换主项，如果边遍历边改集合，
+            // 很容易造成漏算、重复算或下标错乱。
             for (int i = alChargeInfo.Count - 1; i >= 0; i--)
             {
                 string Discount_type = "1";//折价类型
@@ -2165,11 +2223,14 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 FeeItemList s = alChargeInfo[i] as FeeItemList;
 
                 //获取限制收费数量
+                // SetRestrictingfee 只判断是否配置了 Restrictingfee，并取出 INPUT_CODE 作为 2 小时窗口内允许收费上限。
                 returnRows = this.undrugManager.SetRestrictingfee(s.Item.ID, ref LimitNumber);
                 //获取折价类型和最高收费价格
+                // SetDiscountfee 读取 FIN_DISCOUNT_FEE：DISCOUNT_RATE 是第二件起折扣率，TOPPRICE 是总金额封顶。
                 Discount_type = this.undrugManager.SetDiscountfee(s.Item.ID, ref DISCOUNT_RATE, ref TOPPRICE);
 
-                //项目为多发伤项目集合集合里面 且挂号记录里面的多发伤标识为1
+                // 项目属于 DFSitemfee，且患者挂号记录标记为多发伤时，急诊内科/急诊外科跳过限制收费。
+                // 如果此前已经被限制收费逻辑改过数量，Memo=P{原数量}/N{原数量} 用于把原数量和原金额还原回来。
                 if (hsDFSItem.ContainsKey(s.Item.ID) && this.rInfo.MultipleInjury == "1")
                 {
                     if (this.rInfo.DoctorInfo.Templet.Dept.ID == "1026" || this.rInfo.DoctorInfo.Templet.Dept.ID == "6018")//急诊内科和急诊外科
@@ -2192,9 +2253,14 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                     }
                 }
 
-                //项目为限制收费集合字典表type='Restrictingfee'里面
-                //且科室不是7021体检中心
-                //且限制收费类型为1 限制收费
+                // Restrictingfee 命中时执行显示价限制收费。
+                // 体检中心 7021 排除；多发伤急诊排除；其余项目按最近 2 小时历史收费 + 本次已保留量扣减。
+                // 显示价场景调用 ConvertRestrictingfeeCharge，是为了把组套拆成明细算完后再汇总回主项显示。
+                //
+                // 这里不直接把金额设成 0 或截断数量，而是交给 Restrictingfee 类处理。
+                // 原因是 CP/TX1/ZT 同组互斥、组套拆分、Memo 标记都在 Restrictingfee 类内部完成，
+                // 如果在界面侧复制一份逻辑，后续会和最终收费出口 GetFeeItemList 出现价格口径分裂。
+
                 if (returnRows > 0 && this.rInfo.DoctorInfo.Templet.Dept.ID != "7021" && RestrictingfeeChargetype == "1")
                 {
                     this.setRestrictingfee.ConvertRestrictingfeeCharge(
@@ -2209,7 +2275,8 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                         this.dsItem,
                         this.rInfo);
                 }
-                //折价类型为2的
+                // Discount_type=2 表示 FIN_DISCOUNT_FEE 命中比例折价规则。
+                // 该规则独立于 Restrictingfee：同一个项目可能先限制数量，再按“第一件原价、其余件折价、TOPPRICE 封顶”重算金额。
                 if (Discount_type == "2")
                 {
                     this.setRestrictingfee.ConvertDiscountfee(
@@ -2225,7 +2292,13 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             }
 
 
+            // ========== 第五阶段：按登记表删除旧项目，再追加重算项目 ==========
+            // 注意：这里 number 必须从 1 重新开始，并且仍按倒序遍历。
+            // 第一轮登记 hsREOnlyOneItem 时用的键就是“项目编码 + number”，
+            // 第二轮删除必须用完全相同的序号生成方式，否则同一项目重复行会删错。
             number = 1;
+            // 倒序处理是旧逻辑的关键细节：后面会用“项目编码 + number”作为临时键删除旧行。
+            // 如果正序删除，集合下标会变化，重复项目行也会被混淆。
             for (int i = alChargeInfo.Count - 1; i >= 0; i--)
             {
                 FeeItemList s = alChargeInfo[i] as FeeItemList;
@@ -2240,6 +2313,10 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 alChargeInfo.Add(ds);
             }
 
+            // ========== 第六阶段：把重算后的费用集合重新绘制到 FarPoint ==========
+            // 从这里开始主要是界面列赋值、价格显示、单位/规格/执行科室等普通展示逻辑。
+            // 前面的特殊规则已经把 FeeItemList 的数量、金额、Memo 改好，
+            // 后续表格只负责展示这些结果，不再决定是否收费。
             foreach (FeeItemList f in alChargeInfo)
             {
                 DataRow rowFind = null;
@@ -3124,17 +3201,28 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
         #endregion
 
         /// <summary>
-        /// 选择项目
+        /// 把用户选择的项目写入指定行，并在“录入阶段”构造 FeeItemList 基础信息。
         /// </summary>
-        /// <param name="itemCode"></param>
-        /// <param name="drugFlag"></param>
-        /// <param name="exeDeptCode"></param>
-        /// <param name="row"></param>
-        /// <param name="amount"></param>
-        /// <param name="saleprice"></param>
-        /// <param name="unitFlag">针对组套维护的包装单位 1 最小单位 2 包装单位 其他值 未知,不处理</param>
+        /// <param name="itemCode">项目编码，可能是药品、非药品、组套或物资。</param>
+        /// <param name="drugFlag">项目类别标志。旧 HIS 中常见值：0 非药品，1 药品，2 组合项目，3 组套，4 协定处方，6 物资。</param>
+        /// <param name="exeDeptCode">执行科室编码。药品/物资精确匹配库存或执行科室时会用到。</param>
+        /// <param name="row">要写入的 FarPoint 行号。</param>
+        /// <param name="amount">录入数量。组套展开时通常是“组套明细数量 × 组套次数”。</param>
+        /// <param name="saleprice">界面传入单价，物资项目可能用它辅助精确定位库存项目。</param>
+        /// <param name="unitFlag">针对组套维护的包装单位：1 最小单位，2 包装单位，其他值表示未知或不处理。</param>
+        /// <remarks>
+        /// 本方法是项目进入界面的第一道入口，重点不是折价计算，而是把项目资料、价格、单位、执行科室、
+        /// 数量和患者上下文组装成 FeeItemList，并存到表格行 Tag 中。后续 SetChargeInfo / GetFeeItemList
+        /// 都是基于这里生成的 FeeItemList 再做限制收费和折价。
+        ///
+        /// 需要特别注意：组套项目会在这里递归调用 SetItem，把组套明细逐条写入界面；而最终收费时
+        /// GetFeeItemList 还可能再次按 CT/MR/DR 或普通组套规则拆分，所以“界面行”和“最终收费明细”不是一一对应关系。
+        /// </remarks>
         private void SetItem(string itemCode, string drugFlag, string exeDeptCode, int row, decimal amount, decimal saleprice, string unitFlag)
         {
+            // ========== 第一阶段：入口前置校验 ==========
+            // SetItem 的核心职责是构造单行 FeeItemList，并把它挂到表格行 Tag 上。
+            // 如果当前模式要求必须先选患者、选看诊科室，则在这里直接阻断，避免后续项目价格、合同单位、执行科室都失去上下文。
             if (isInputItemsNoSpe)
             {
                 if (this.rInfo == null)
@@ -3157,6 +3245,9 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             }
             this.isDealCellChange = false;
 
+            // ========== 第二阶段：从界面缓存项目表定位当前项目 ==========
+            // dsItem 是收费界面启动或刷新时加载的项目快照。这里先用缓存定位，后续还会再查一次最新价格。
+            // 这样既保留旧界面快速录入性能，又避免长时间打开窗口后项目调价导致继续按旧价收费。
             DataRow findRow;
             DataRow[] rowFinds = this.dsItem.Tables[0].Select("ITEM_CODE = " + "'" + itemCode + "' and drug_flag = '" + drugFlag + "'");
 
@@ -3169,6 +3260,10 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             }
 
             findRow = rowFinds[0];
+            // ========== 第三阶段：重新查询最新项目价格 ==========
+            // 旧 HIS 收费窗口可能被打开很久，期间物价主数据可能已经调价。
+            // 这里重新按收费员所在科室和项目编码查一次最新资料，只同步价格字段，不整体替换 findRow，
+            // 目的是尽量缩小变更面，同时保证收费金额不继续沿用旧缓存价。
             #region {5D62CB1F-6134-48f4-B905-02AD69D6A433}我们的程序都应该做到取最新价格。
             //获得收费员所在科室的维护药房中的药品，非药品和组合项目，组套全部获得
 
@@ -4129,10 +4224,18 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 }
 
                 #endregion
+                // 单行录入时也会立即试算特殊规则，用于让界面行金额尽量接近最终收费金额。
+                // 这里的集合只服务当前一行，不能代表整批最终收费；最终提交仍以 GetFeeItemList 再算一次为准。
                 ArrayList hsZTNOREOnlyOneItem = new ArrayList();
                 ArrayList hsNOREOnlyOneItem = new ArrayList();
                 Hashtable hsREOnlyOneItem = new Hashtable();
                 Hashtable hsDFSItem = new Hashtable();
+                // ========== 录入试算阶段：单行 FeeItemList 已经构造完成，开始套用旧特殊规则 ==========
+                // 这里和 SetChargeInfo / GetFeeItemList 都会调用 Restrictingfee 类，但作用域不同：
+                // - SetItem：只服务当前刚录入的一行，让界面金额尽量接近最终金额；
+                // - SetChargeInfo：服务一批已加载费用的显示重算；
+                // - GetFeeItemList：服务最终收费提交前的落账口径。
+                // 因此这里的结果只能作为界面即时反馈，不能替代最终收费前 GetFeeItemList 的整批重算。
                 string RestrictingfeeChargetype = "1";//是否折价
                 ArrayList dfslist = this.managerIntegrate.GetConstantList("DFSitemfee");//多发伤患者跳过折价项目
                 foreach (Neusoft.HISFC.Models.Base.Const dic in dfslist)  //获取本次收费已经计算的数量
@@ -4167,6 +4270,9 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 string Discount_type = "1";//限制收费类型
                 decimal TOPPRICE = 0;
                 decimal DISCOUNT_RATE = 0;
+                // 查询限制收费和比例折价配置。
+                // SetRestrictingfee 只返回是否存在限制规则和 INPUT_CODE 上限；真正的历史 2 小时占用查询在 ConvertRestrictingfeeCharge 内部。
+                // SetDiscountfee 从 FIN_DISCOUNT_FEE 读取 DISCOUNT_RATE、TOPPRICE、DISCOUNT_TYPE，其中 TOPPRICE 是最高封顶价。
                 returnRows = this.undrugManager.SetRestrictingfee(feeItemList.Item.ID, ref LimitNumber);
                 Discount_type = this.undrugManager.SetDiscountfee(feeItemList.Item.ID, ref DISCOUNT_RATE, ref TOPPRICE);
                 if (returnRows > 0 && this.rInfo.DoctorInfo.Templet.Dept.ID != "7021" && RestrictingfeeChargetype == "1")
@@ -4532,12 +4638,28 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
         }
 
         /// <summary>
-        /// 把组套拆分成明细
+        /// 将普通非药品组套主项拆成最终收费明细。
         /// </summary>
-        /// <param name="f"></param>
-        /// <returns></returns>
+        /// <param name="f">
+        /// 组套主项。方法会读取主项数量、患者、合同单位、医嘱、申请单、优惠和自费字段，
+        /// 再把这些上下文复制或分摊到拆出的明细。
+        /// </param>
+        /// <returns>
+        /// 拆分后的 <see cref="FeeItemList"/> 明细集合；组套维护、项目主数据、医嘱号或价格处理失败时返回 <c>null</c>。
+        /// </returns>
+        /// <remarks>
+        /// 这个方法是 <see cref="GetFeeItemList"/> 最终收费出口中的关键预处理步骤。
+        /// 它不直接做 Restrictingfee 数量限制，也不直接做 FIN_DISCOUNT_FEE 比例折价；
+        /// 它的职责是先把界面上的“一个组套主项”拆成“后续可以逐条限制收费的真实明细”。
+        ///
+        /// 拆分时不能简单复制主项价格，因为子项需要按患者合同单位、儿童价、特价、购入价、
+        /// 组套子项比例、公费额度和人工减免重新计算。
+        /// </remarks>
         private ArrayList ConvertGroupToDetail(FeeItemList f)
         {
+            // ========== 第一阶段：读取普通组套明细定义 ==========
+            // 普通组套从 undrug package 维护中读取。这里得到的只是组套明细定义，
+            // 还不是最终收费明细；后面还要按患者合同单位、价格体系和主项数量逐条构造 FeeItemList。
             ArrayList undrugCombList = this.undrugPackAgeManager.QueryUndrugPackagesBypackageCode(f.Item.ID);
             ArrayList alTemp = new ArrayList();
             if (undrugCombList == null)
@@ -4558,6 +4680,9 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             this.undrugManager.GetPricesz("F00000010768", ref pricece);//获取加收项目价格
             pricece = pricece - pricesz;
             FeeItemList feeDetail = null;
+            // ========== 第二阶段：保证拆出的所有明细共享同一个医嘱号 ==========
+            // 一个组套会拆出多条费用明细，但业务上仍属于同一个医嘱/申请。
+            // 主项没有医嘱号时先生成一个，再复制到所有子项，便于后续退费、执行确认和追溯。
             if (f.Order.ID == null || f.Order.ID == string.Empty)
             {
                 f.Order.ID = this.orderIntegrate.GetNewOrderID();
@@ -4570,6 +4695,9 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             }
 
             //有价格打折的
+            // ========== 第三阶段：读取组套主项价格上下文 ==========
+            // 主项价格用于判断当前收费窗口里是否已发生价格变化，也用于子项价格换算的上下文。
+            // 真正落到明细上的价格仍会在下面按子项编码重新读取。
             DataRow rowFind;
             DataRow[] rowFinds = dsItem.Tables[0].Select("ITEM_CODE = " + "'" + f.Item.ID + "'");
             if (rowFinds == null || rowFinds.Length == 0)
@@ -4604,6 +4732,9 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
 
             //符合项目明细的加成（减免）比例
             decimal itemRate = 1;
+            // ========== 第四阶段：逐个子项重新取价并构造 FeeItemList ==========
+            // 每个子项都要重新读取 UNIT_PRICE/CHILD_PRICE/SP_PRICE/PURCHASE_PRICE，
+            // 再叠加组套子项比例、合同单位优惠和主项数量，最终形成可提交收费的明细行。
             foreach (Neusoft.HISFC.Models.Fee.Item.UndrugComb undrugCombo in undrugCombList)
             {
                 DataRow rowFindZT;
@@ -4679,6 +4810,9 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 feeDetail.Item = new Neusoft.HISFC.Models.Fee.Item.Undrug();
                 feeDetail.Item.ID = rowFindZT["ITEM_CODE"].ToString();
                 feeDetail.Item.Name = rowFindZT["ITEM_NAME"].ToString();
+                // 四肢血管彩超是组套拆分中的院内特殊处理。
+                // 从第二个血管开始，明细项目会改成“加收(每增加两根血管)”编码，价格也扣掉差额。
+                // 这不是通用组套规则，而是旧 HIS 为特定超声项目硬编码的价格口径。
                 if (this.undrugManager.SetUltrasound(f.Item.ID))
                 {
                     if (feeDetail.Item.Name == "四肢血管彩色多普勒超声")
@@ -4726,6 +4860,9 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 //自费如此，如果加上公费需要重新计算!!!
                 feeDetail.FT.OwnCost = totCost;
 
+                // 公费患者在组套拆分后按子项重新分摊公费/自费金额。
+                // sumPubCost 是本次界面累计的公费报销额度，超过 200 的部分转回自费。
+                // 这段逻辑和折价规则无关，但会影响最终 OwnCost/PubCost，迁移时不能只看 TotCost。
                 if (this.rInfo.Pact.Name == "公费")
                 {
                     Neusoft.HISFC.Models.Base.PactItemRate pactRate = null;
@@ -4858,6 +4995,9 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
 
                 alTemp.Add(feeDetail);
             }
+            // ========== 第五阶段：把主项减免、特殊自费字段下沉到子项 ==========
+            // 旧 HIS 不把 RebateCost、SpecialPrice、FT.User03 永远留在组套主项上。
+            // 减免按子项金额比例分摊并把尾差补到第一条；特殊自费字段则挂到价格最高的子项。
             if (alTemp.Count > 0)
             {
                 if (f.FT.RebateCost > 0)//有减免
@@ -4960,15 +5100,23 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
         }
 
         /// <summary>
-        /// 把组套拆分成明细
+        /// 将 DR 特殊组套拆成收费明细，并处理“首个组套收取 / 第二个组套起加收 / 总量取整”规则。
         /// </summary>
-        /// <param name="f"></param>
-        /// <param name="isFirst"></param>
-        /// <param name="hsOnlyOneItem"></param>
-        /// <param name="drCount"></param>
-        /// <returns></returns>
+        /// <param name="f">当前 DR 组套主项。</param>
+        /// <param name="isFirst">是否为本次收费动作中遇到的第一个 DR 组套。</param>
+        /// <param name="hsOnlyOneItem">DR 总量取整项目的去重与汇总表。</param>
+        /// <param name="drCount">本次收费动作内 DR 相关数量累计值，跨多个 DR 组套持续累加。</param>
+        /// <returns>拆分后的 DR 明细集合；失败时返回 <c>null</c> 并写入 <c>errText</c>。</returns>
+        /// <remarks>
+        /// DR 组套不是普通展开。旧规则要求：第一个 DR 组套跳过“第二组起收”的子项；
+        /// 后续 DR 组套跳过“第一组收”的子项；部分子项还要按 <c>Ceiling(drCount / 2)</c> 做总量取整。
+        /// 这些结果会影响 <see cref="GetFeeItemList"/> 后续限制收费和最终收费金额。
+        /// </remarks>
         private ArrayList ConvertDRGroupToDetail(FeeItemList f, bool isFirst, ref Hashtable hsOnlyOneItem, ref decimal drCount)
         {
+            // ========== 第一阶段：读取 DR 特殊组套明细 ==========
+            // DR 使用 QueryUndrugZTBypackageCode 读取 CT/MR/DR 专用组套维护，
+            // 不能走普通组套明细，否则首项/二项/总量取整规则会丢失。
             ArrayList undrugCombList = this.undrugPackAgeManager.QueryUndrugZTBypackageCode(f.Item.ID);
             ArrayList alTemp = new ArrayList();
             if (undrugCombList == null)
@@ -4984,6 +5132,8 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             string itemType = string.Empty;
             decimal totCost = 0;
             FeeItemList feeDetail = null;
+            // ========== 第二阶段：保证 DR 拆分明细共享医嘱号 ==========
+            // 多条 DR 明细必须归属同一个主项医嘱，后续收费、退费和执行确认才能按一组业务处理。
             if (f.Order.ID == null || f.Order.ID == string.Empty)
             {
                 f.Order.ID = this.orderIntegrate.GetNewOrderID();
@@ -4996,6 +5146,8 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             }
 
             //有价格打折的
+            // ========== 第三阶段：读取 DR 主项价格上下文 ==========
+            // 主项价格和合同单位用于后续子项取价；DR 特殊规则还要跨多个组套累计 drCount。
             DataRow rowFind;
             DataRow[] rowFinds = dsItem.Tables[0].Select("ITEM_CODE = " + "'" + f.Item.ID + "'");
             if (rowFinds == null || rowFinds.Length == 0)
@@ -5028,6 +5180,9 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 rate = priceGroup / orgGroupPrice;
             }
 
+            // ========== 第四阶段：预累计 DR 数量并过滤首项/后续项规则 ==========
+            // SortID=1 表示第一个 DR 组套收取；SortID=2 表示第二个 DR 组套起加收。
+            // drCount 跨组套累计，后面 SpellCode=0 的明细会用 Ceiling(drCount / 2) 重新计算数量。
             foreach (Neusoft.HISFC.Models.Fee.Item.UndrugComb undrugCombo in undrugCombList)
             {
                 if (isFirst && undrugCombo.SortID == 2)
@@ -5055,6 +5210,9 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
 
             //符合项目明细的加成（减免）比例
             decimal itemRate = 1;
+            // ========== 第五阶段：按 DR 规则构造实际收费明细 ==========
+            // 第二轮循环才真正创建 FeeItemList。第一轮只是累计数量和判断首项/后续项。
+            // 这里仍然按患者合同单位重新取子项价格，避免使用组套主项价格粗算。
             foreach (Neusoft.HISFC.Models.Fee.Item.UndrugComb undrugCombo in undrugCombList)
             {
                 if (isFirst && undrugCombo.SortID == 2)
@@ -5268,6 +5426,9 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 feeDetail.Order.Sample.Name = f.Order.Sample.Name;
                 feeDetail.Order.CheckPartRecord = f.Order.CheckPartRecord;
 
+                // SpellCode=0 表示“总量取整”。
+                // 旧规则按所有 DR 相关数量汇总后除以 2 并向上取整，而不是每条明细单独取整。
+                // hsOnlyOneItem 保存的是最终应保留的一条汇总明细，重复出现时只更新数量和金额。
                 if (undrugCombo.SpellCode == "0")
                 {
                     //总量取整的，做标识
@@ -5304,6 +5465,9 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
 
                 alTemp.Add(feeDetail);
             }
+            // ========== 第六阶段：继承主项减免和特殊自费字段 ==========
+            // DR 拆分后仍要处理主项上的人工减免、SpecialPrice、FT.User03。
+            // 处理方式与普通组套一致：减免按比例分摊，特殊自费字段挂到价格最高子项。
             if (alTemp.Count > 0)
             {
                 if (f.FT.RebateCost > 0)//有减免
@@ -5406,12 +5570,21 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
         }
 
         /// <summary>
-        /// 把组套拆分成明细
+        /// 将 CT 特殊组套拆成收费明细，并处理 PACS 三维/四维重建“只收一次”规则。
         /// </summary>
-        /// <param name="f"></param>
-        /// <returns></returns>
+        /// <param name="f">当前 CT 组套主项。</param>
+        /// <param name="isFirst">是否为本次收费动作中遇到的第一个 CT 组套。当前方法保留该参数用于兼容 DR/CT 统一调用形态。</param>
+        /// <param name="hsOnlyOneItem">CT/PACS 只收一次项目登记表，调用方会据此删除重复明细。</param>
+        /// <returns>拆分后的 CT 明细集合；失败时返回 <c>null</c> 并写入 <c>errText</c>。</returns>
+        /// <remarks>
+        /// CT 组套的特殊点在 PACS 重建项目：三维和四维不是简单同项目去重，四维出现时会优先，
+        /// 前面已经登记的三维会被标成可删除状态。该行为属于旧 HIS 院内计费口径，不能在重构时遗漏。
+        /// </remarks>
         private ArrayList ConvertCTGroupToDetail(FeeItemList f, bool isFirst, ref Hashtable hsOnlyOneItem)
         {
+            // ========== 第一阶段：读取 CT 特殊组套明细 ==========
+            // CT 组套同样来自 CT/MR/DR 专用维护表。
+            // 这些明细后续还会经过 PACS 三维/四维只收一次规则过滤。
             ArrayList undrugCombList = this.undrugPackAgeManager.QueryUndrugZTBypackageCode(f.Item.ID);
             ArrayList alTemp = new ArrayList();
             if (undrugCombList == null)
@@ -5427,6 +5600,8 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             string itemType = string.Empty;
             decimal totCost = 0;
             FeeItemList feeDetail = null;
+            // ========== 第二阶段：保证 CT 拆分明细共享医嘱号 ==========
+            // CT 组套拆成多条明细后仍要共用主项医嘱号，保持退费和执行确认的业务关联。
             if (f.Order.ID == null || f.Order.ID == string.Empty)
             {
                 f.Order.ID = this.orderIntegrate.GetNewOrderID();
@@ -5439,6 +5614,8 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             }
 
             //有价格打折的
+            // ========== 第三阶段：读取 CT 主项价格上下文 ==========
+            // 后续子项会重新取价，但主项价格仍用于判断组套原始价格比例和合同单位上下文。
             DataRow rowFind;
             DataRow[] rowFinds = dsItem.Tables[0].Select("ITEM_CODE = " + "'" + f.Item.ID + "'");
             if (rowFinds == null || rowFinds.Length == 0)
@@ -5471,6 +5648,9 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 rate = priceGroup / orgGroupPrice;
             }
 
+            // ========== 第四阶段：预登记 PACS 只收一次项目 ==========
+            // SortID=3 表示只收一次。三维/四维重建存在优先级关系：
+            // 如果后续出现四维，前面已登记的三维会被标为 true，调用方据此删除重复收费。
             foreach (Neusoft.HISFC.Models.Fee.Item.UndrugComb undrugCombo in undrugCombList)
             {
                 DataRow rowFindZT;
@@ -5530,6 +5710,9 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
 
             //符合项目明细的加成（减免）比例
             decimal itemRate = 1;
+            // ========== 第五阶段：构造 CT 拆分后的收费明细 ==========
+            // 第二轮循环才真正创建 FeeItemList。
+            // 旧代码保留了 SortID=3 的过滤注释，实际是否删除重复项由调用方结合 hsOnlyOneItem 完成。
             foreach (Neusoft.HISFC.Models.Fee.Item.UndrugComb undrugCombo in undrugCombList)
             {
                 //if (undrugCombo.SortID == 3)
@@ -5754,6 +5937,8 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
 
                 alTemp.Add(feeDetail);
             }
+            // ========== 第六阶段：继承主项减免和特殊自费字段 ==========
+            // CT 拆分后也要把主项上的减免、自费字段下沉到明细，保证最终落账字段完整。
             if (alTemp.Count > 0)
             {
                 if (f.FT.RebateCost > 0)//有减免
@@ -7702,9 +7887,23 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
         }
 
         /// <summary>
-        /// 获得收费信息
+        /// 从界面行生成最终提交收费的 FeeItemList 集合，并在“收费阶段”再次套用特殊折价/限制收费规则。
         /// </summary>
-        /// <returns></returns>
+        /// <returns>最终要提交给收费流程的费用明细集合；失败时返回 null。</returns>
+        /// <remarks>
+        /// 这是旧 HIS 真正提交收费前的关键出口，也是和新规则中心核对时最重要的方法。
+        /// 它的处理顺序可以概括为：
+        ///
+        /// 1. 从 FarPoint 每一行读取 FeeItemList，跳过空行和未勾选行；
+        /// 2. 若是组套，先拆成明细；CT/DR 特殊组套还会执行去重或合并逻辑；
+        /// 3. 对拆分后的最终明细倒序遍历，查询 Restrictingfee 和 Discountfee 配置；
+        /// 4. Restrictingfee 命中时调用 ConvertRestrictingfee，按最近 2 小时历史收费 + 本次已保留量扣减剩余额度；
+        /// 5. Discountfee 命中时调用 ConvertDiscountfee，按比例折价和 TOPPRICE 封顶改写金额；
+        /// 6. 删除被特殊规则接管的旧行，再追加重算后的替换行，返回给收费流程。
+        ///
+        /// 与 SetChargeInfo 的区别：本方法面向最终收费落账，所以普通明细用 ConvertRestrictingfee；
+        /// SetChargeInfo 面向显示价，组套主项显示需要调用 ConvertRestrictingfeeCharge 先拆子项再汇总。
+        /// </remarks>
         public ArrayList GetFeeItemList()
         {
             bool isFindDRFirst = false;
@@ -7718,6 +7917,10 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
 
             Hashtable hsDoct = new Hashtable();
             sumPubCost = 0;
+
+            // ========== GetFeeItemList 第一阶段：从界面表格收集本次真正参与收费的行 ==========
+            // 这里只收集 Rows[i].Tag 中的 FeeItemList，并跳过空行、未勾选行。
+            // 医生科室 DoctDeptInfo 为空时按开方医生补齐，避免后续落账或统计缺少医生科室维度。
             for (int i = 0; i < this.fpSpread1_Sheet1.RowCount; i++)
             {
                 if (this.fpSpread1_Sheet1.Rows[i].Tag == null || !(this.fpSpread1_Sheet1.Rows[i].Tag is FeeItemList))
@@ -7751,6 +7954,9 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                         }
                     }
 
+                    // ========== 第二阶段：组套展开 ==========
+                    // 最终收费不能直接提交“组套主项”就结束，因为限制收费、CT/DR 去重、同组互斥都要看真实明细。
+                    // 因此组套在这里先拆成明细。CT/DR 特殊组套还会按旧院内规则做首个保留、重复删除或差额汇总。
                     if (f.IsGroup)
                     {
                         //ArrayList alDetail = ConvertGroupToDetail(f);
@@ -7799,7 +8005,11 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                     }
                 }
             }
+            // ========== 第三阶段：处理 CT/DR 组套拆分后的去重和合并结果 ==========
+            // itenqty 是旧 CT/DR 处理过程中的过程状态，组套整理结束后必须重置，避免影响下一轮收费。
             itenqty = 0;//将标识重置
+            // 先处理 CT/DR 组套拆分后的去重和合并结果。
+            // 这一段还没有进入 Restrictingfee / Discountfee，只是在整理真实收费明细集合。
             for (int i = feeItemLists.Count - 1; i >= 0; i--)
             {
                 FeeItemList f = feeItemLists[i] as FeeItemList;
@@ -7825,6 +8035,9 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                 FeeItemList f = de.Value as FeeItemList;
                 feeItemLists.Add(f);
             }
+            // ========== 第四阶段：准备多发伤例外清单 ==========
+            // 多发伤例外只在特定急诊科室下跳过 Restrictingfee 限制收费，
+            // 不代表跳过 FIN_DISCOUNT_FEE 比例折价，也不代表跳过组套拆分。
             Hashtable hsDFSItem = new Hashtable();
             ArrayList dfslist = this.managerIntegrate.GetConstantList("DFSitemfee");//多发伤患者跳过折价项目
             foreach (Neusoft.HISFC.Models.Base.Const dic in dfslist)  //获取本次收费已经计算的数量
@@ -7835,6 +8048,12 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
             int returnRows = 0;//是否为限制收费药品
             decimal LimitNumber = 1;
             ArrayList hsREOnlylistItem = new ArrayList();
+            // ========== 第五阶段：对最终收费明细倒序套用限制收费/比例折价 ==========
+            // 此时 feeItemLists 已经不是界面行集合，而是经过组套拆分、CT/DR 去重后的真实收费明细集合。
+            // 倒序遍历配合“项目编码 + number”临时键，保证重复项目能被准确删除和替换。
+            //
+            // 这一阶段是最终收费口径，不能依赖 SetItem 或 SetChargeInfo 的显示结果。
+            // 用户在界面上增删改数量后，只有这里的整批重算才知道本次收费动作内前后项目的占用关系。
             for (int i = feeItemLists.Count - 1; i >= 0; i--)
             {
                 string RestrictingfeeChargetype = "1";//是否折价
@@ -7863,12 +8082,20 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
                         }
                     }
                 }
+                // SetRestrictingfee 只判断是否配置了 Restrictingfee，并取出 INPUT_CODE 作为 2 小时窗口内允许收费上限。
                 returnRows = this.undrugManager.SetRestrictingfee(s.Item.ID, ref LimitNumber);
+                // SetDiscountfee 读取 FIN_DISCOUNT_FEE：DISCOUNT_RATE 是第二件起折扣率，TOPPRICE 是总金额封顶。
                 Discount_type = this.undrugManager.SetDiscountfee(s.Item.ID, ref DISCOUNT_RATE, ref TOPPRICE);
+                // Restrictingfee 是最终收费前的数量限制入口。
+                // 体检中心 7021 不执行限制收费；多发伤急诊项目也可能被上面的分支排除。
+                // ConvertRestrictingfee 会查最近 2 小时历史收费，再叠加本次已保留项目，最后决定归零、截断或保留。
                 if (returnRows > 0 && this.rInfo.DoctorInfo.Templet.Dept.ID != "7021" && RestrictingfeeChargetype == "1")
                 {
                     this.setRestrictingfee.ConvertRestrictingfee(PatientInfo.PID.CardNO, s, ref hsREOnlyOneItem, ref hsNOREOnlyOneItem, ref hsREOnlylistItem, number, LimitNumber);
                 }
+                // FIN_DISCOUNT_FEE.DISCOUNT_TYPE=2 时执行比例折价。
+                // 该动作和 Restrictingfee 可以叠加：先前的限制收费可能已经改了数量或金额，
+                // ConvertDiscountfee 再按“第一件原价、第二件起折价、TOPPRICE 封顶”重算当前项目金额。
                 if (Discount_type == "2")
                 {
                     this.setRestrictingfee.ConvertDiscountfee(s, DISCOUNT_RATE, TOPPRICE, ref hsREOnlyOneItem, ref hsREOnlylistItem, number);
@@ -7876,7 +8103,12 @@ namespace Neusoft.SOC.Local.OutpatientFee.ZhuHai.Zdwy.IOutpatientItemInputAndDis
 
                 number++;
             }
+            // ========== 第六阶段：删除旧明细并追加重算明细 ==========
+            // 这里才真正修改 feeItemLists 集合。
+            // 之所以不在第五阶段边算边删，是为了避免集合下标变化导致重复项目处理错位。
             number = 1;
+            // 删除被限制/折价逻辑接管的旧明细，再追加 hsREOnlylistItem 中的重算明细。
+            // 注意 number 是“遍历序号”，不是项目数量；重复项目靠“项目编码 + number”区分。
             for (int i = feeItemLists.Count - 1; i >= 0; i--)
             {
                 FeeItemList s = feeItemLists[i] as FeeItemList;

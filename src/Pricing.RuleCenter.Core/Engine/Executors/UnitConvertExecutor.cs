@@ -15,8 +15,9 @@ namespace Pricing.RuleCenter.Core.Engine.Executors;
 /// 则 10 CM2 换算为 ⌈10 / 4⌉ = 3 次。
 /// </para>
 /// <para>
-/// 【执行顺序】在全局动作排序中，CONVERT_QTY 排在 FORMULA_CALC 之前。
-/// 公式使用换算后数量（ConvertedQty），非输入数量（InputQty）。
+/// 【执行顺序】在全局动作排序中，CONVERT_QTY 排在数量限制和 FORMULA_CALC 之前。
+/// 本执行器会把换算结果同时写入 ConvertedQty 和 FinalQty；后续若没有数量限制，
+/// 公式读取到的 FinalQty 就等于换算后数量；若有限制，公式读取限制后的 FinalQty。
 /// </para>
 /// <para>
 /// 【部位匹配】同一项目允许按不同部位维护不同换算规则（如头部/面部 4 CM2 = 1 次，
@@ -26,7 +27,7 @@ namespace Pricing.RuleCenter.Core.Engine.Executors;
 /// 【约束引用】
 /// <list type="bullet">
 ///   <item><description>换算数量固定为1：这里是"每 1 个计价单位需要多少输入单位"（除数）</description></item>
-///   <item><description>公式使用换算后数量，非输入数量</description></item>
+///   <item><description>公式读取 FinalQty：无数量限制时等于换算后数量，有限制时等于限制后的可收费数量</description></item>
 ///   <item><description>中间计算保留全精度（decimal），不提前取整</description></item>
 ///   <item><description>NULL ≠ 0：NULL 表示不校验，0 表示限制为零</description></item>
 /// </list>

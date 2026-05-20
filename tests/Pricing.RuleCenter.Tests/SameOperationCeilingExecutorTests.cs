@@ -15,8 +15,8 @@ public sealed class SameOperationCeilingExecutorTests
         {
             OccupiedAmtByStatus =
             {
-                ["SO:OP001:GRP001:PENDING"] = 20m,
-                ["SO:OP001:GRP001:CONFIRMED"] = 50m
+                ["SAME_OP|OP001|GRP001:PENDING"] = 20m,
+                ["SAME_OP|OP001|GRP001:CONFIRMED"] = 50m
             }
         };
         var executor = new SameOperationCeilingExecutor(repository);
@@ -51,15 +51,15 @@ public sealed class SameOperationCeilingExecutorTests
         }, context);
 
         Assert.Equal(20m, context.FinalAmount);
-        Assert.Equal(new[] { "SO:OP001:GRP001" }, repository.LockedKeys);
+        Assert.Equal(new[] { "SAME_OP|OP001|GRP001" }, repository.LockedKeys);
         var occupy = Assert.Single(context.PendingLimitOccupies);
         Assert.Equal("SAME_OPERATION", occupy.LimitType);
-        Assert.Equal("SO:OP001:GRP001", occupy.LimitKey);
+        Assert.Equal("SAME_OP|OP001|GRP001", occupy.LimitKey);
         Assert.Equal("OP001:GRP001", occupy.LimitDimensionCode);
     }
 
     [Fact]
-    public async Task ExecuteAsync_ThrowsWhenOperationNoMissing()
+    public async Task ExecuteAsync_SkipsOperationCeilingWhenOperationNoMissing()
     {
         var executor = new SameOperationCeilingExecutor(new InMemoryLimitOccupyRepository());
         var context = new PricingContext
@@ -72,14 +72,16 @@ public sealed class SameOperationCeilingExecutorTests
             BusinessChargeTime = new DateTime(2026, 5, 10, 10, 0, 0)
         };
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            executor.ExecuteAsync(new RuleAction
-            {
-                ActionType = "SAME_OPERATION_CEILING",
-                ParamsJson = JsonConvert.SerializeObject(new { CeilingPerOperation = 100m })
-            }, context));
+        await executor.ExecuteAsync(new RuleAction
+        {
+            ActionType = "SAME_OPERATION_CEILING",
+            ParamsJson = JsonConvert.SerializeObject(new { CeilingPerOperation = 100m })
+        }, context);
 
-        Assert.Contains("SAME_OPERATION_REQUIRED", ex.Message);
+        Assert.Equal(50m, context.FinalAmount);
+        Assert.Empty(context.PendingLimitOccupies);
+        var traceStep = Assert.Single(context.TraceSteps);
+        Assert.Contains("同手术封顶跳过", traceStep.StepDesc);
     }
 
     [Fact]
