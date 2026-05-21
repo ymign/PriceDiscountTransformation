@@ -107,9 +107,9 @@ public sealed class PricingEngine : IPricingEngine
 
         // ========== 第五阶段：计算折价金额并补齐占额草稿 ==========
         // 占额草稿在执行器中只记录维度，最终占用数量和金额要等动作链全部执行完成后才能确定。
+        // 注意：FinalAmount 的取整只在 BuildResult 中统一执行，此处不重复取整。
         var originalAmount = context.UnitPrice * context.InputQty;
-        context.FinalAmount = PricingAmountRounder.RoundFinal(context.FinalAmount);
-        context.DiscountAmount = PricingAmountRounder.RoundFinal(originalAmount - context.FinalAmount);
+        context.DiscountAmount = originalAmount - context.FinalAmount;
         foreach (var occupy in context.PendingLimitOccupies)
         {
             ApplyFinalOccupyValues(occupy, context);

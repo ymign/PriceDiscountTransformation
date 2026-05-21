@@ -4,6 +4,7 @@ using Pricing.RuleCenter.Core.Interfaces.Quota;
 using Pricing.RuleCenter.Core.Aggregates.Quota;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Models;
+using Pricing.RuleCenter.Core.Services;
 
 namespace Pricing.RuleCenter.Core.Engine.Executors;
 
@@ -58,8 +59,8 @@ public sealed class DailyQtyLimitExecutor : IRuleActionExecutor
 
         // ========== 第二阶段：构造自然日维度 ==========
         // 这里使用 BusinessChargeTime 的日期，而不是服务器当前日期。补录历史收费时必须进入历史业务日累计。
-        var limitKey = $"DQ:{context.PatientId}:{context.ItemCode}:{context.BusinessChargeTime:yyyyMMdd}"
-            .ToUpperInvariant();
+        var limitKey = LimitKeyGenerator.GenerateDailyKey(
+            context.PatientId, context.ItemCode, context.BusinessChargeTime);
         var dimensionCode = $"{context.PatientId}:{context.ItemCode}:{context.BusinessChargeTime:yyyyMMdd}"
             .ToUpperInvariant();
         var dayStart = context.BusinessChargeTime.Date;

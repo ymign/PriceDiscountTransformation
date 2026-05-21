@@ -1,8 +1,8 @@
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using Pricing.RuleCenter.Api.Dto;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
@@ -750,10 +750,23 @@ public sealed class PricingAppService
                         d.ChargeDetailNo == r.ChargeDetailNo))
                     .Sum(r => r.ReverseAmt ?? 0);
 
-                // 按组分配本次退费数量（按原始数量比例分摊）
-                var groupRatio = originalQty == 0 ? 0 : groupOriginalQty / originalQty;
-                var groupReverseQty = reverseQty * groupRatio;
-                var groupReverseAmt = reverseAmt * groupRatio;
+                // 按组分配本次退费数量（按原始数量比例分摊，最后一组用扣减法保证总量一致）
+                decimal groupReverseQty, groupReverseAmt;
+                if (group.Key == groupedDetails.Last().Key)
+                {
+                    var allocatedQty = groupedDetails.Where(g => g.Key != group.Key)
+                        .Sum(g => originalQty == 0 ? 0 : reverseQty * g.Sum(d => d.FinalQty ?? 0) / originalQty);
+                    var allocatedAmt = groupedDetails.Where(g => g.Key != group.Key)
+                        .Sum(g => originalAmt == 0 ? 0 : reverseAmt * g.Sum(d => d.FinalAmt ?? 0) / originalAmt);
+                    groupReverseQty = reverseQty - allocatedQty;
+                    groupReverseAmt = reverseAmt - allocatedAmt;
+                }
+                else
+                {
+                    var groupRatio = originalQty == 0 ? 0 : groupOriginalQty / originalQty;
+                    groupReverseQty = reverseQty * groupRatio;
+                    groupReverseAmt = originalAmt == 0 ? 0 : reverseAmt * groupOriginalAmt / originalAmt;
+                }
 
                 if (groupHistoricalQty + groupReverseQty > groupOriginalQty)
                 {
@@ -913,14 +926,13 @@ public sealed class PricingAppService
                     $"COMMIT_DETAIL_MISMATCH: HIS 未回传实际落账明细 {FormatCommitDetail(expectedDetail)}");
             }
 
-            var matchedIndex = candidateIndexes.FirstOrDefault(index =>
-                Math.Round(actual[index].Qty, 4) == Math.Round(expectedDetail.Qty, 4) &&
-                PricingAmountRounder.RoundFinal(actual[index].Amount) ==
-                PricingAmountRounder.RoundFinal(expectedDetail.Amount));
-            if (matchedIndex == 0 && !candidateIndexes.Contains(0))
-            {
-                matchedIndex = candidateIndexes[0];
-            }
+            var matchedIndex = candidateIndexes
+                .Cast<int?>()
+                .FirstOrDefault(index =>
+                    Math.Round(actual[index!.Value].Qty, 4) == Math.Round(expectedDetail.Qty, 4) &&
+                    PricingAmountRounder.RoundFinal(actual[index.Value].Amount) ==
+                    PricingAmountRounder.RoundFinal(expectedDetail.Amount))
+                ?? candidateIndexes[0];
 
             var actualValue = actual[matchedIndex];
             if (Math.Round(actualValue.Qty, 4) != Math.Round(expectedDetail.Qty, 4))
@@ -1901,19 +1913,14 @@ public sealed class PricingAppService
         // ========== 第一阶段：开启数据库事务 ==========
         // 本服务的大部分资金操作会同时更新多张表。使用同一个 SqlSugarClient 事务可以保证
         // 请求日志、折价明细、限额占用、冲正日志之间不会出现半提交。
+        // ISqlSugarClient 通过 DI 注入，正常运行时不可能为 null。如果为 null 则说明严重配置错误。
         try
         {
-            if (_db is not null)
-            {
-                await _db.Ado.BeginTranAsync();
-            }
+            await _db.Ado.BeginTranAsync();
             var result = await action();
             // ========== 第二阶段：全部成功后提交 ==========
             // 只有所有仓储操作都成功，才允许对外暴露本次状态推进。
-            if (_db is not null)
-            {
-                await _db.Ado.CommitTranAsync();
-            }
+            await _db.Ado.CommitTranAsync();
             return result;
         }
         catch (Exception ex)
@@ -1921,10 +1928,7 @@ public sealed class PricingAppService
             // ========== 第三阶段：任何异常都回滚 ==========
             // 资金链路宁可失败返回给渠道重试，也不能留下部分写入的请求或占额。
             _logger.LogError(ex, "事务执行异常，已回滚");
-            if (_db is not null)
-            {
-                await _db.Ado.RollbackTranAsync();
-            }
+            await _db.Ado.RollbackTranAsync();
             throw;
         }
     }
@@ -2055,9 +2059,10 @@ public sealed class PricingAppService
             decimal number => Math.Round(number, 4),
             double number => Math.Round((decimal)number, 4),
             float number => Math.Round((decimal)number, 4),
-            JsonElement element => element.ValueKind == JsonValueKind.String
-                ? NormalizeString(element.GetString())
-                : element.GetRawText(),
+            JValue jValue => jValue.Type == JTokenType.String
+                ? NormalizeString(jValue.Value<string>())
+                : jValue.ToString(),
+            JToken jToken => jToken.ToString(Formatting.None),
             _ => value
         };
     }

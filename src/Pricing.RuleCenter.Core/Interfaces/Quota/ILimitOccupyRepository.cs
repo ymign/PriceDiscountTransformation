@@ -62,6 +62,17 @@ public interface ILimitOccupyRepository
     Task<decimal> GetOccupiedAmtAsync(string limitKey, string status);
 
     /// <summary>
+    /// 按维度编码查询指定状态下的已占用金额。
+    ///
+    /// 使用场景：同手术封顶的已占用金额查询，需要按 patientId:operationId:groupCode 维度聚合。
+    /// 与 GetOccupiedAmtAsync(limitKey) 的区别：本方法按 LimitDimensionCode 过滤，支持含 groupCode 的精确维度。
+    /// </summary>
+    /// <param name="dimensionCode">维度编码（如 "PAT001:OP001:GROUP_A"）。</param>
+    /// <param name="status">占用状态过滤。</param>
+    /// <returns>已占用的累计金额（decimal）。</returns>
+    Task<decimal> GetOccupiedAmtByDimensionAsync(string dimensionCode, string status);
+
+    /// <summary>
     /// 根据请求ID查询该笔计价请求产生的所有额度占用记录。
     ///
     /// 使用场景：cancel/reverse/expire 操作时，查找需要释放的占用记录。

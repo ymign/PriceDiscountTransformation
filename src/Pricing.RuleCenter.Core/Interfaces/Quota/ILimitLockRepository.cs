@@ -43,13 +43,11 @@ public interface ILimitLockRepository
     /// 锁的过期时间，用于后台清理长时间未释放的锁行。
     /// 通常设置为当前时间加上保护期（如 30 分钟）。
     /// </param>
-    /// <returns>成功获取锁时返回 true。</returns>
     /// <exception cref="InvalidOperationException">
     /// 数据库异常时抛出，包含锁键信息。限额锁是资金安全关键控制点，
-    /// 数据库异常不能静默放行（返回 false 会让调用方误认为锁被占用而跳过限额校验），
-    /// 必须向上抛出由调用方决定重试或失败。
+    /// 数据库异常不能静默放行，必须向上抛出由调用方决定重试或失败。
     /// </exception>
-    Task<bool> AcquireLockAsync(string lockKey, DateTime expireAt);
+    Task AcquireLockAsync(string lockKey, DateTime expireAt);
 
     /// <summary>
     /// 释放指定锁键的锁（删除锁行）。

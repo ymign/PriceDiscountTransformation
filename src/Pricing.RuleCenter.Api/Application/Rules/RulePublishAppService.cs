@@ -734,27 +734,17 @@ public sealed class RulePublishAppService
     /// </remarks>
     private async Task ExecuteInTransactionAsync(Func<Task> action)
     {
+        // ISqlSugarClient 通过 DI 注入，正常运行时不可能为 null。如果为 null 则说明严重配置错误。
         try
         {
-            if (_db is not null)
-            {
-                await _db.Ado.BeginTranAsync();
-            }
-
+            await _db.Ado.BeginTranAsync();
             await action();
-
-            if (_db is not null)
-            {
-                await _db.Ado.CommitTranAsync();
-            }
+            await _db.Ado.CommitTranAsync();
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "规则发布事务执行异常，已回滚");
-            if (_db is not null)
-            {
-                await _db.Ado.RollbackTranAsync();
-            }
+            await _db.Ado.RollbackTranAsync();
             throw;
         }
     }

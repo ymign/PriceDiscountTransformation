@@ -97,6 +97,17 @@ public sealed class LimitOccupyRepository : ILimitOccupyRepository
     }
 
     /// <summary>
+    /// 按维度编码查询指定状态下的已占用金额。
+    /// </summary>
+    public async Task<decimal> GetOccupiedAmtByDimensionAsync(string dimensionCode, string status)
+    {
+        var result = await _db.Queryable<LimitOccupy>()
+            .Where(o => o.LimitDimensionCode == dimensionCode && o.Status == status)
+            .SumAsync(o => o.OccupyAmt);
+        return result;
+    }
+
+    /// <summary>
     /// 按请求日志主键读取限额占用明细。
     /// </summary>
     public async Task<IReadOnlyList<LimitOccupy>> GetByRequestIdAsync(long requestId)
@@ -109,18 +120,26 @@ public sealed class LimitOccupyRepository : ILimitOccupyRepository
     /// <summary>
     /// 确保限额锁行存在，并按固定顺序执行数据库行锁。
     /// </summary>
+    /// <remarks>
+    /// 多个锁键按字典序排序后逐个锁定，保证不同请求保持同一加锁顺序，降低死锁概率。
+    /// EXPIRE_AT 设置为当前时间 + 10 分钟，供 CleanupExpiredAsync 清理长时间未释放的锁行。
+    /// </remarks>
     public async Task EnsureAndLockAsync(IReadOnlyCollection<string> lockKeys)
     {
+        var expireAt = DateTime.Now.AddMinutes(10);
         foreach (var lockKey in lockKeys.OrderBy(k => k, StringComparer.Ordinal))
         {
+            // MERGE = UPSERT：锁行不存在时插入，已存在时跳过
             await _db.Ado.ExecuteCommandAsync(
                 "MERGE INTO PR_LIMIT_LOCK T " +
                 "USING (SELECT :LockKey LOCK_KEY FROM DUAL) S " +
                 "ON (T.LOCK_KEY = S.LOCK_KEY) " +
                 "WHEN NOT MATCHED THEN " +
-                "INSERT (LOCK_KEY, LOCK_DESC, UPDATED_AT) VALUES (S.LOCK_KEY, 'AUTO', SYSDATE)",
-                new { LockKey = lockKey });
+                "INSERT (LOCK_KEY, LOCK_DESC, UPDATED_AT, EXPIRE_AT) " +
+                "VALUES (S.LOCK_KEY, 'AUTO', SYSDATE, :ExpireAt)",
+                new { LockKey = lockKey, ExpireAt = expireAt });
 
+            // SELECT FOR UPDATE 获取行锁，事务提交后自动释放
             await _db.Ado.GetStringAsync(
                 "SELECT LOCK_KEY FROM PR_LIMIT_LOCK WHERE LOCK_KEY = :LockKey FOR UPDATE",
                 new { LockKey = lockKey });

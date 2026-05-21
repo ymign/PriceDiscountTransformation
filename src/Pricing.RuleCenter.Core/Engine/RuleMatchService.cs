@@ -114,22 +114,16 @@ public sealed class RuleMatchService
     private const string ActionTypeOrderDictType = "ACTION_TYPE_ORDER";
 
     /// <summary>
-    /// 动作执行顺序缓存。键为动作类型编码，值为排序序号（数字越小越先执行）。
-    /// 在 MatchAsync 首次调用时从字典加载，之后使用缓存值。
-    /// 规则发布/停用/回滚时应调用 ClearActionTypeOrderCache 清除缓存，确保下次读取最新顺序。
+    /// 动作执行顺序缓存（静态共享）。RuleMatchService 注册为 Scoped，
+    /// 若缓存放实例字段则每个 HTTP 请求都重新创建，缓存永远不命中。
+    /// 改为 static 后全进程共享，首次加载后后续请求直接命中。
     /// </summary>
-    private volatile Dictionary<string, int> _actionTypeOrderCache =
+    private static volatile Dictionary<string, int> s_actionTypeOrderCache =
         new(DefaultActionTypeOrder, StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// 缓存加载锁，确保多线程并发时只加载一次字典数据。
-    /// </summary>
-    private readonly SemaphoreSlim _cacheLock = new(1, 1);
+    private static readonly SemaphoreSlim s_cacheLock = new(1, 1);
 
-    /// <summary>
-    /// 标记缓存是否已从字典加载过。false 表示尚未加载，下次 MatchAsync 将尝试从字典读取。
-    /// </summary>
-    private volatile bool _cacheLoaded;
+    private static volatile bool s_cacheLoaded;
 
     /// <summary>
     /// 初始化规则匹配服务。
@@ -417,7 +411,7 @@ public sealed class RuleMatchService
     /// </remarks>
     private int GetActionTypeSortOrder(string actionType)
     {
-        if (_actionTypeOrderCache.TryGetValue(actionType, out var order))
+        if (s_actionTypeOrderCache.TryGetValue(actionType, out var order))
         {
             return order;
         }
@@ -436,21 +430,21 @@ public sealed class RuleMatchService
     /// 加载策略：
     ///   - 使用 SemaphoreSlim 保证线程安全，避免并发重复加载。
     ///   - 加载失败时保留默认顺序（DefaultActionTypeOrder），确保系统可用性。
-    ///   - 加载成功后设置 _cacheLoaded 标记，后续调用跳过数据库查询。
+    ///   - 加载成功后设置 s_cacheLoaded 标记，后续调用跳过数据库查询。
     /// </summary>
     private async Task EnsureActionTypeOrderLoadedAsync()
     {
         // 快速路径：缓存已加载，直接返回，避免获取锁的开销。
-        if (_cacheLoaded)
+        if (s_cacheLoaded)
         {
             return;
         }
 
-        await _cacheLock.WaitAsync();
+        await s_cacheLock.WaitAsync();
         try
         {
             // 双重检查：进入锁之后再次判断，避免并发场景下重复加载。
-            if (_cacheLoaded)
+            if (s_cacheLoaded)
             {
                 return;
             }
@@ -459,7 +453,7 @@ public sealed class RuleMatchService
         }
         finally
         {
-            _cacheLock.Release();
+            s_cacheLock.Release();
         }
     }
 
@@ -500,8 +494,8 @@ public sealed class RuleMatchService
                 _logger.LogWarning(
                     "PR_DICT 中未找到 DICT_TYPE = {DictType} 的字典项，使用默认动作执行顺序",
                     ActionTypeOrderDictType);
-                _actionTypeOrderCache = new Dictionary<string, int>(DefaultActionTypeOrder, StringComparer.OrdinalIgnoreCase);
-                _cacheLoaded = true;
+                s_actionTypeOrderCache = new Dictionary<string, int>(DefaultActionTypeOrder, StringComparer.OrdinalIgnoreCase);
+                s_cacheLoaded = true;
                 return;
             }
 
@@ -525,8 +519,8 @@ public sealed class RuleMatchService
                 }
             }
 
-            _actionTypeOrderCache = newCache;
-            _cacheLoaded = true;
+            s_actionTypeOrderCache = newCache;
+            s_cacheLoaded = true;
 
             _logger.LogInformation(
                 "已从 PR_DICT 加载动作执行顺序，共 {Count} 个动作类型",
@@ -556,7 +550,7 @@ public sealed class RuleMatchService
     /// </summary>
     public void ClearActionTypeOrderCache()
     {
-        _cacheLoaded = false;
+        s_cacheLoaded = false;
         _logger.LogDebug("动作执行顺序缓存已清除，下次匹配将从字典重新加载");
     }
 

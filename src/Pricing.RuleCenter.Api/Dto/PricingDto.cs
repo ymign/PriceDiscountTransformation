@@ -526,7 +526,9 @@ public sealed class PricingReverseRequest
 
     /// <summary>
     /// 调用方冲正流水号，用于和 HIS 退费或撤销单据关联。
+    /// 必填项，用于幂等校验和冲正日志关联。
     /// </summary>
+    [Required(ErrorMessage = "冲正流水号不能为空")]
     public string? ReverseNo { get; init; }
     /// <summary>
     /// 被退费的原收费明细号。多费用明细请求执行部分退费时必须提供。

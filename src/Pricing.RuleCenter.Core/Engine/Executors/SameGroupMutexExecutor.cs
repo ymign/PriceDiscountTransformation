@@ -338,6 +338,11 @@ public sealed class SameGroupMutexExecutor : IRuleActionExecutor
             return Task.FromResult(0m);
         }
 
+        public Task<decimal> GetOccupiedAmtByDimensionAsync(string dimensionCode, string status)
+        {
+            return Task.FromResult(0m);
+        }
+
         public Task<IReadOnlyList<Pricing.RuleCenter.Core.Aggregates.Quota.LimitOccupy>> GetByRequestIdAsync(long requestId)
         {
             return Task.FromResult<IReadOnlyList<Pricing.RuleCenter.Core.Aggregates.Quota.LimitOccupy>>(

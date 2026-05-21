@@ -177,13 +177,13 @@ public sealed class ExpireCleanupAppService : BackgroundService
 
                 await db.Ado.CommitTranAsync();
             }
-            catch
+            catch (Exception ex)
             {
-                // 任意一步失败都回滚本条记录的全部变更，下一轮清理会再次尝试。
-                // 这比留下"部分表 EXPIRED、部分表仍 PENDING"的不一致状态更安全。
-                // 异常会继续向上抛出，由外层 ExecuteAsync 的 catch 记录日志。
+                // 回滚本条记录的变更，但不向上抛出，确保后续记录继续处理。
+                // 如果 throw 会导致本轮剩余记录全部跳过，影响额度及时释放。
                 await db.Ado.RollbackTranAsync();
-                throw;
+                _logger.LogError(ex, "过期清理单条失败 RequestId={RequestId}，跳过继续", log.RequestId);
+                continue;
             }
 
             _logger.LogInformation("过期清理 RequestId={RequestId}", log.RequestId);

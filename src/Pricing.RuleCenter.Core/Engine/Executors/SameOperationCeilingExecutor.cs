@@ -152,18 +152,20 @@ public sealed class SameOperationCeilingExecutor : IRuleActionExecutor
         }
 
         var groupCode = context.ItemGroupCode ?? context.ItemCode;
-        var limitKey = LimitKeyGenerator.GenerateSameOperationKey(operationId, groupCode);
-        var dimensionCode = $"{operationId}:{groupCode}".ToUpperInvariant();
+        var limitKey = LimitKeyGenerator.GenerateSameOperationKey(context.PatientId, operationId);
+        var dimensionCode = $"{context.PatientId}:{operationId}:{groupCode}".ToUpperInvariant();
 
         if (context.ShouldLockLimits)
         {
             await _limitRepository.EnsureAndLockAsync(new[] { limitKey });
         }
 
+        // 历史查询必须按 dimensionCode（含 groupCode）过滤，而非 limitKey（跨组）。
+        // 否则同一手术下不同组的历史金额会互相干扰，导致封顶金额计算错误。
         var historicalAmount = 0m;
         foreach (var status in OccupyStatuses)
         {
-            historicalAmount += await _limitRepository.GetOccupiedAmtAsync(limitKey, status);
+            historicalAmount += await _limitRepository.GetOccupiedAmtByDimensionAsync(dimensionCode, status);
         }
 
         historicalAmount += GetInRequestOccupiedAmount(context, dimensionCode);

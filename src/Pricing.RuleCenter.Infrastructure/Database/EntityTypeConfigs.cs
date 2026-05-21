@@ -54,6 +54,13 @@ public static class EntityTypeConfigs
                     return;
                 }
 
+                // DomainEvents 是领域事件集合，不映射到数据库列
+                if (string.Equals(property.Name, "DomainEvents", StringComparison.Ordinal))
+                {
+                    column.IsIgnore = true;
+                    return;
+                }
+
                 if (PrimaryKeyProperties.TryGetValue(property.DeclaringType, out var primaryKey) &&
                     string.Equals(property.Name, primaryKey, StringComparison.Ordinal))
                 {

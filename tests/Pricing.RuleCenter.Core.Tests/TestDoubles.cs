@@ -178,6 +178,14 @@ internal sealed class InMemoryLimitOccupyRepository : ILimitOccupyRepository
             .Sum(o => o.OccupyAmt));
     }
 
+    public Task<decimal> GetOccupiedAmtByDimensionAsync(string dimensionCode, string status)
+    {
+        return Task.FromResult(_occupies
+            .Where(o => string.Equals(o.LimitDimensionCode, dimensionCode, StringComparison.OrdinalIgnoreCase))
+            .Where(o => string.Equals(o.Status, status, StringComparison.OrdinalIgnoreCase))
+            .Sum(o => o.OccupyAmt));
+    }
+
     public Task<IReadOnlyList<LimitOccupy>> GetByRequestIdAsync(long requestId)
     {
         IReadOnlyList<LimitOccupy> result = _occupies.Where(o => o.RequestId == requestId).ToList();

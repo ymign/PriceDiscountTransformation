@@ -46,7 +46,11 @@ public sealed class LimitLockRepository : ILimitLockRepository
     /// <summary>
     /// 获取指定锁键的锁（SELECT FOR UPDATE）。
     /// </summary>
-    public async Task<bool> AcquireLockAsync(string lockKey, DateTime expireAt)
+    /// <remarks>
+    /// 成功时无返回值（Task）；失败时抛出 InvalidOperationException。
+    /// 不存在"获取失败返回 false"的场景——数据库异常必须向上抛出，不能静默放行。
+    /// </remarks>
+    public async Task AcquireLockAsync(string lockKey, DateTime expireAt)
     {
         try
         {
@@ -57,15 +61,13 @@ public sealed class LimitLockRepository : ILimitLockRepository
                 "ON (T.LOCK_KEY = S.LOCK_KEY) " +
                 "WHEN NOT MATCHED THEN " +
                 "INSERT (LOCK_KEY, LOCK_DESC, UPDATED_AT, EXPIRE_AT) " +
-                "VALUES (S.LOCK_KEY, 'AUTO', SYSDATE, :expireAt)",
+                "VALUES (S.LOCK_KEY, 'AUTO', SYSDATE, :ExpireAt)",
                 new { LockKey = lockKey, ExpireAt = expireAt });
 
             // 第二阶段：执行 SELECT FOR UPDATE
             await _db.Ado.GetStringAsync(
                 "SELECT LOCK_KEY FROM PR_LIMIT_LOCK WHERE LOCK_KEY = :LockKey FOR UPDATE",
                 new { LockKey = lockKey });
-
-            return true;
         }
         catch (Exception ex)
         {

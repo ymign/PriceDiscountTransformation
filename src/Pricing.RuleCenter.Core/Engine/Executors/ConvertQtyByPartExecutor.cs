@@ -148,6 +148,7 @@ public sealed class ConvertQtyByPartExecutor : IRuleActionExecutor
 
         // ========== 第五阶段：写回上下文 ==========
         context.ConvertedQty = totalConvertedQty;
+        context.FinalQty = totalConvertedQty;
         context.FormulaAmount = totalAmount;
         context.FinalAmount = totalAmount;
 

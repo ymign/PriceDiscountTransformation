@@ -63,6 +63,7 @@ public static class SqlSugarSetup
 
             // ========== 第二阶段：配置 Oracle 连接和实体映射 ==========
             // Core 模型不再直接标注 SqlSugar 特性，表名、列名和主键统一由 EntityTypeConfigs 配置。
+            // InitKeyType.Attribute 表示 SqlSugar 会尝试读取特性注解，但 EntityTypeConfigs 的 Fluent API 会覆盖这些配置。
             var db = new SqlSugarClient(new ConnectionConfig
             {
                 ConnectionString = options.OracleConnectionString,

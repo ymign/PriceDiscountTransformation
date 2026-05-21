@@ -75,10 +75,16 @@ public sealed class GlobalExceptionFilter : IExceptionFilter
     /// </remarks>
     public void OnException(ExceptionContext context)
     {
-        // ========== 第一阶段：记录原始异常 ==========
-        // 无论最终返回给调用方的是业务错误还是 500，都保留完整异常栈和请求路径，便于排查。
-        // 日志中包含请求路径，可以快速定位是哪个接口出了问题。
-        _logger.LogError(context.Exception, "未处理异常: {Path}", context.HttpContext.Request.Path);
+        // ========== 第一阶段：按异常类型分级记录日志 ==========
+        // 业务异常（参数错误、资源不存在）使用 Warning 级别，避免大量 Error 日志淹没真正的系统故障。
+        if (context.Exception is ArgumentException or KeyNotFoundException)
+        {
+            _logger.LogWarning(context.Exception, "业务异常: {Path}", context.HttpContext.Request.Path);
+        }
+        else
+        {
+            _logger.LogError(context.Exception, "未处理异常: {Path}", context.HttpContext.Request.Path);
+        }
 
         // ========== 第二阶段：按异常类型映射业务响应 ==========
         // 参数错误、资源不存在和状态冲突是可预期业务错误；其他异常统一隐藏内部细节，返回 500。
