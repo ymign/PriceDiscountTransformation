@@ -581,4 +581,13 @@ public sealed class SpecialFlagResponse
     /// 当前项目命中的有效规则数量。
     /// </summary>
     public int RuleCount { get; init; }
+
+    /// <summary>
+    /// 当前有效规则中最保守的故障降级模式。
+    /// </summary>
+    /// <remarks>
+    /// 渠道在计价服务不可用时必须按该字段处理特殊项目，不能自行回退为普通计价。
+    /// 常见值：STOP_CHARGE、MANUAL_REVIEW、LEGACY_EQUIVALENT。
+    /// </remarks>
+    public string RollbackMode { get; init; } = "STOP_CHARGE";
 }

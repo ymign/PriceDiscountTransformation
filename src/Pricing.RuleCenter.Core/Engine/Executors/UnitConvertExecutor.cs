@@ -117,9 +117,11 @@ public sealed class UnitConvertExecutor : IRuleActionExecutor
 
         // ========== 第四阶段：写入换算结果 ==========
         // ConvertedQty 供后续公式执行器（FORMULA_CALC）使用。
-        // FinalQty 也同步更新，供后续限额动作使用。
+        // FinalQty 也同步更新，供后续限额动作使用。金额必须同步按换算后的
+        // 计价数量重算，否则只有换算动作、没有公式动作的项目会继续按原始数量收费。
         context.ConvertedQty = convertedQty;
         context.FinalQty = convertedQty;
+        context.FinalAmount = context.UnitPrice * convertedQty;
 
         // ========== 第五阶段：记录追踪步骤 ==========
         // 追踪步骤记录换算前后的数量，便于追溯页面展示换算过程。

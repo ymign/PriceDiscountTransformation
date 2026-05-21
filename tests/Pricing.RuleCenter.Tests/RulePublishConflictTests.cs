@@ -206,12 +206,101 @@ public sealed class RulePublishConflictTests
         Assert.Equal("PUBLISHED", headerRepository.Headers.Single(h => h.RuleId == 2).Status);
     }
 
+    [Fact]
+    public async Task PublishAsync_ClearsRuntimeCacheAfterSuccessfulPublish()
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var versionRepository = new InMemoryRuleVersionRepository();
+        var conditionRepository = new InMemoryRuleConditionRepository();
+        var actionRepository = new InMemoryRuleActionRepository();
+        var runtimeCache = new CapturingRuleRuntimeCacheInvalidator();
+        var service = CreateService(
+            headerRepository,
+            versionRepository,
+            conditionRepository,
+            actionRepository,
+            runtimeCacheInvalidator: runtimeCache);
+
+        headerRepository.Headers.Add(new RuleHeader
+        {
+            RuleId = 3,
+            RuleCode = "R-PUBLISH",
+            ItemCode = "ITEM003",
+            CurrentVersion = 0,
+            Status = "DRAFT",
+            IsEnabled = "Y",
+            EffectiveFrom = new DateTime(2026, 1, 1),
+            EffectiveTo = new DateTime(2026, 12, 31)
+        });
+        versionRepository.Versions.Add(new RuleVersion
+        {
+            VersionId = 31,
+            RuleId = 3,
+            VersionNo = 1,
+            VersionStatus = "DRAFT"
+        });
+        actionRepository.Add(3, 1, new RuleAction
+        {
+            RuleId = 3,
+            VersionNo = 1,
+            ActionType = "FORMULA_CALC",
+            IsEnabled = "Y"
+        });
+
+        await service.PublishAsync(3, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" });
+
+        Assert.Equal(1, runtimeCache.ClearCount);
+    }
+
+    [Fact]
+    public async Task PublishAsync_RejectsLimitActionMissingRequiredParams()
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var versionRepository = new InMemoryRuleVersionRepository();
+        var conditionRepository = new InMemoryRuleConditionRepository();
+        var actionRepository = new InMemoryRuleActionRepository();
+        var service = CreateService(headerRepository, versionRepository, conditionRepository, actionRepository);
+
+        headerRepository.Headers.Add(new RuleHeader
+        {
+            RuleId = 4,
+            RuleCode = "R-BAD-ACTION",
+            ItemCode = "ITEM004",
+            CurrentVersion = 0,
+            Status = "DRAFT",
+            IsEnabled = "Y",
+            EffectiveFrom = new DateTime(2026, 1, 1),
+            EffectiveTo = new DateTime(2026, 12, 31)
+        });
+        versionRepository.Versions.Add(new RuleVersion
+        {
+            VersionId = 41,
+            RuleId = 4,
+            VersionNo = 1,
+            VersionStatus = "DRAFT"
+        });
+        actionRepository.Add(4, 1, new RuleAction
+        {
+            RuleId = 4,
+            VersionNo = 1,
+            ActionType = "APPLY_TIME_WINDOW_LIMIT",
+            ParamsJson = "{\"windowMinutes\":120}",
+            IsEnabled = "Y"
+        });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.PublishAsync(4, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" }));
+
+        Assert.Contains("RULE_ACTION_PARAM_MISSING", ex.Message);
+    }
+
     private static RulePublishService CreateService(
         IRuleHeaderRepository headerRepository,
         IRuleVersionRepository versionRepository,
         IRuleConditionRepository conditionRepository,
         IRuleActionRepository actionRepository,
-        IDictRepository? dictRepository = null) =>
+        IDictRepository? dictRepository = null,
+        IRuleRuntimeCacheInvalidator? runtimeCacheInvalidator = null) =>
         new(
             new RulePublishLifecycleRepositories(
                 headerRepository,
@@ -223,8 +312,39 @@ public sealed class RulePublishConflictTests
                 actionRepository,
                 dictRepository ?? new EmptyDictRepository()),
             new MemoryCache(new MemoryCacheOptions()),
-            db: null!,
+            new NoopUnitOfWork(),
+            runtimeCacheInvalidator ?? new EmptyRuleRuntimeCacheInvalidator(),
             NullLogger<RulePublishService>.Instance);
+
+    private sealed class NoopUnitOfWork : IUnitOfWork
+    {
+        public Task BeginAsync() => Task.CompletedTask;
+
+        public Task CommitAsync() => Task.CompletedTask;
+
+        public Task RollbackAsync() => Task.CompletedTask;
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class EmptyRuleRuntimeCacheInvalidator : IRuleRuntimeCacheInvalidator
+    {
+        public void ClearRuntimeCache()
+        {
+        }
+    }
+
+    private sealed class CapturingRuleRuntimeCacheInvalidator : IRuleRuntimeCacheInvalidator
+    {
+        public int ClearCount { get; private set; }
+
+        public void ClearRuntimeCache()
+        {
+            ClearCount++;
+        }
+    }
 
     private sealed class InMemoryRuleHeaderRepository : IRuleHeaderRepository
     {

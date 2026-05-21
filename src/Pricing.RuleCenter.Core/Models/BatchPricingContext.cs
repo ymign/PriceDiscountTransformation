@@ -181,9 +181,9 @@ public sealed class BatchPricingContext
         }
 
         // ========== 阶段三：更新同组互斥计数 ==========
-        // 如果当前项目属于某个项目组，将其计入同组已处理计数。
-        // 后续同组项目进入时，互斥执行器检查该计数即可判断是否需要截断。
-        if (!string.IsNullOrWhiteSpace(context.ItemGroupCode))
+        // 只有最终仍有可收费数量的项目才计入互斥占用。前序项目若已被数量限制、
+        // 时间窗或其他动作归零，不应阻断同批后续同组项目。
+        if (result.FinalQty > 0 && !string.IsNullOrWhiteSpace(context.ItemGroupCode))
         {
             var groupCode = context.ItemGroupCode.Trim().ToUpperInvariant();
             InBatchItemCountByGroup.TryGetValue(groupCode, out var existingCount);

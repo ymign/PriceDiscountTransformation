@@ -39,7 +39,7 @@ namespace Pricing.RuleCenter.Core.Aggregates.Charging;
 ///       │
 ///       └──→ CONFIRM_PENDING（确认，已占额度）
 ///                   │
-///                   ├──→ COMMITTED（HIS 落账成功）
+///                   ├──→ CONFIRMED（HIS 落账成功）
 ///                   │         │
 ///                   │         └──→ REVERSED（冲正，已对冲）
 ///                   │
@@ -137,7 +137,7 @@ public sealed class ChargeRequest
     /// <list type="bullet">
     /// <item>SIMULATED — 试算完成（仅 SIMULATE 类型）</item>
     /// <item>CONFIRM_PENDING — 已确认，等待 HIS commit 或 cancel</item>
-    /// <item>COMMITTED — HIS 已落账</item>
+    /// <item>CONFIRMED — HIS 已落账确认</item>
     /// <item>CANCELLED — 已取消，额度已释放</item>
     /// <item>EXPIRED — 超时过期，已被后台清理任务释放</item>
     /// <item>REVERSED — 已冲正，生成对冲占用</item>
@@ -366,7 +366,7 @@ public sealed class ChargeRequest
     }
 
     /// <summary>
-    /// 标记为已落账状态（COMMITTED），仅允许从 CONFIRM_PENDING 转换。
+    /// 标记为已落账确认状态（CONFIRMED），仅允许从 CONFIRM_PENDING 转换。
     /// </summary>
     /// <remarks>
     /// <para>
@@ -389,7 +389,7 @@ public sealed class ChargeRequest
             throw new InvalidOperationException($"请求 {RequestNo} 当前状态为 {BusinessStatus}，仅 CONFIRM_PENDING 允许 commit。");
 
         // ========== 第二阶段：推进状态 ==========
-        BusinessStatus = BusinessStatusCodes.Committed;
+        BusinessStatus = BusinessStatusCodes.Confirmed;
         ResponseAt = DateTime.Now;
     }
 
@@ -450,7 +450,7 @@ public sealed class ChargeRequest
     }
 
     /// <summary>
-    /// 标记为已冲正状态（REVERSED），仅允许从 COMMITTED 转换。
+    /// 标记为已冲正状态（REVERSED），仅允许从 CONFIRMED 转换。
     /// </summary>
     /// <remarks>
     /// <para>
@@ -459,18 +459,18 @@ public sealed class ChargeRequest
     /// </para>
     /// <para>
     /// 【状态机约束】
-    /// 只有 COMMITTED 允许冲正。CONFIRM_PENDING 应走 cancel 流程，
+    /// 只有 CONFIRMED 允许冲正。CONFIRM_PENDING 应走 cancel 流程，
     /// 不能直接 reverse，否则会出现"未落账但被冲正"的资金口径断裂。
     /// </para>
     /// </remarks>
-    /// <exception cref="InvalidOperationException">当前状态不是 COMMITTED 时抛出。</exception>
+    /// <exception cref="InvalidOperationException">当前状态不是 CONFIRMED 时抛出。</exception>
     public void MarkReversed()
     {
         // ========== 第一阶段：校验前置状态 ==========
-        // 只有 COMMITTED 允许冲正。CONFIRM_PENDING 应走 cancel 流程，
+        // 只有 CONFIRMED 允许冲正。CONFIRM_PENDING 应走 cancel 流程，
         // 不能直接 reverse，否则会出现"未落账但被冲正"的资金口径断裂。
-        if (BusinessStatus != BusinessStatusCodes.Committed)
-            throw new InvalidOperationException($"请求 {RequestNo} 当前状态为 {BusinessStatus}，仅 COMMITTED 允许冲正。");
+        if (BusinessStatus != BusinessStatusCodes.Confirmed && BusinessStatus != BusinessStatusCodes.Committed)
+            throw new InvalidOperationException($"请求 {RequestNo} 当前状态为 {BusinessStatus}，仅 CONFIRMED 允许冲正。");
 
         // ========== 第二阶段：推进状态 ==========
         BusinessStatus = BusinessStatusCodes.Reversed;

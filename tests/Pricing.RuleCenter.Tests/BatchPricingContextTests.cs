@@ -50,6 +50,27 @@ public sealed class BatchPricingContextTests
         Assert.Single(context.InRequestLimitOccupies);
     }
 
+    [Fact]
+    public void AccumulateToBatch_DoesNotCountZeroQtyItemAsMutexOccupy()
+    {
+        var batchContext = new BatchPricingContext();
+        var context = new PricingContext
+        {
+            ItemCode = "ITEM_A",
+            ItemGroupCode = "GROUP_A"
+        };
+        var result = new PricingResult
+        {
+            IsSpecialItem = true,
+            FinalQty = 0m,
+            FinalAmount = 0m
+        };
+
+        batchContext.AccumulateToBatch(result, context);
+
+        Assert.False(batchContext.InBatchItemCountByGroup.ContainsKey("GROUP_A"));
+    }
+
     private static void InvokeInjectBatchContext(
         PricingContext context,
         BatchPricingContext batchContext)

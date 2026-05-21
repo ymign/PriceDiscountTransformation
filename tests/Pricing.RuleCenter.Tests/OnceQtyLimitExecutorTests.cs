@@ -54,6 +54,37 @@ public sealed class OnceQtyLimitExecutorTests
         Assert.Equal("OQ:HIS:BIZ-001:ITEM001", occupy.LimitKey);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_MaxOnceQtyZero_MeansNoChargeableQty()
+    {
+        var repository = new InMemoryLimitOccupyRepository();
+        var executor = new OnceQtyLimitExecutor(repository);
+        var context = new PricingContext
+        {
+            SourceSystem = "HIS",
+            BusinessRequestNo = "BIZ-ZERO",
+            PatientId = "P001",
+            ItemCode = "ITEM001",
+            InputQty = 3m,
+            FinalQty = 3m,
+            UnitPrice = 10m,
+            FinalAmount = 30m,
+            BusinessChargeTime = new DateTime(2026, 5, 10, 10, 0, 0)
+        };
+        var action = new RuleAction
+        {
+            ActionType = "APPLY_ONCE_LIMIT_QTY",
+            ParamsJson = JsonConvert.SerializeObject(new { MaxOnceQty = 0m })
+        };
+
+        await executor.ExecuteAsync(action, context);
+
+        Assert.Equal(0m, context.FinalQty);
+        Assert.Equal(0m, context.FinalAmount);
+        var occupy = Assert.Single(context.PendingLimitOccupies);
+        Assert.Equal("ONCE_QTY", occupy.LimitType);
+    }
+
     private sealed class InMemoryLimitOccupyRepository : ILimitOccupyRepository
     {
         public Dictionary<string, decimal> OccupiedByStatus { get; } = new(StringComparer.OrdinalIgnoreCase);
@@ -69,6 +100,7 @@ public sealed class OnceQtyLimitExecutorTests
             Task.FromResult(0m);
 
         public Task<decimal> GetOccupiedAmtAsync(string limitKey, string status) => Task.FromResult(0m);
+        public Task<decimal> GetOccupiedAmtByDimensionAsync(string dimensionCode, string status) => Task.FromResult(0m);
         public Task<IReadOnlyList<LimitOccupy>> GetByRequestIdAsync(long requestId) => Task.FromResult((IReadOnlyList<LimitOccupy>)Array.Empty<LimitOccupy>());
         public Task EnsureAndLockAsync(IReadOnlyCollection<string> lockKeys)
         {

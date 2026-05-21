@@ -138,6 +138,105 @@ public sealed class PricingApiServiceTests
     }
 
     [Fact]
+    public async Task GetSpecialFlagAsync_IgnoresRulesOutsideEffectiveRange()
+    {
+        var now = DateTime.Now;
+        var repository = new SpecialFlagRuleHeaderRepository(new[]
+        {
+            new RuleHeader
+            {
+                RuleId = 1,
+                RuleCode = "RULE-EXPIRED",
+                RuleName = "已过期规则",
+                ItemCode = "ITEM001",
+                Status = "PUBLISHED",
+                IsEnabled = "Y",
+                EffectiveTo = now.AddDays(-1),
+                CreatedAt = now.AddDays(-10),
+                UpdatedAt = now.AddDays(-10)
+            },
+            new RuleHeader
+            {
+                RuleId = 2,
+                RuleCode = "RULE-FUTURE",
+                RuleName = "未来规则",
+                ItemCode = "ITEM001",
+                Status = "PUBLISHED",
+                IsEnabled = "Y",
+                EffectiveFrom = now.AddDays(1),
+                CreatedAt = now,
+                UpdatedAt = now
+            }
+        });
+        var service = CreatePricingApiService(
+            new CapturingPricingEngine(),
+            repository,
+            new InMemoryChargeRequestLogRepository(),
+            new EmptyChargeDiscountDetailRepository(),
+            new EmptyChargeTraceStepRepository(),
+            new EmptyLimitOccupyRepository(),
+            new EmptyChargeReverseLogRepository(),
+            new EmptyPriceMasterRepository(),
+            new NoopUnitOfWork(),
+            Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
+            NullLogger<PricingApiService>.Instance);
+
+        var result = await service.GetSpecialFlagAsync("ITEM001");
+
+        Assert.False(result.IsSpecial);
+        Assert.Equal(0, result.RuleCount);
+    }
+
+    [Fact]
+    public async Task GetSpecialFlagAsync_ReturnsMostConservativeRollbackMode()
+    {
+        var repository = new SpecialFlagRuleHeaderRepository(new[]
+        {
+            new RuleHeader
+            {
+                RuleId = 3,
+                RuleCode = "RULE-LEGACY",
+                RuleName = "旧逻辑等价规则",
+                ItemCode = "ITEM001",
+                Status = "PUBLISHED",
+                IsEnabled = "Y",
+                RollbackMode = "LEGACY_EQUIVALENT",
+                CreatedAt = DateTime.Now,
+                UpdatedAt = DateTime.Now
+            },
+            new RuleHeader
+            {
+                RuleId = 4,
+                RuleCode = "RULE-STOP",
+                RuleName = "停收规则",
+                ItemCode = "ITEM001",
+                Status = "PUBLISHED",
+                IsEnabled = "Y",
+                RollbackMode = "STOP_CHARGE",
+                CreatedAt = DateTime.Now,
+                UpdatedAt = DateTime.Now
+            }
+        });
+        var service = CreatePricingApiService(
+            new CapturingPricingEngine(),
+            repository,
+            new InMemoryChargeRequestLogRepository(),
+            new EmptyChargeDiscountDetailRepository(),
+            new EmptyChargeTraceStepRepository(),
+            new EmptyLimitOccupyRepository(),
+            new EmptyChargeReverseLogRepository(),
+            new EmptyPriceMasterRepository(),
+            new NoopUnitOfWork(),
+            Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
+            NullLogger<PricingApiService>.Instance);
+
+        var result = await service.GetSpecialFlagAsync("ITEM001");
+
+        Assert.True(result.IsSpecial);
+        Assert.Equal("STOP_CHARGE", result.RollbackMode);
+    }
+
+    [Fact]
     public async Task SimulateAsync_CalculatesEveryChargeItem()
     {
         var engine = new CapturingPricingEngine();
@@ -151,7 +250,7 @@ public sealed class PricingApiServiceTests
             new EmptyLimitOccupyRepository(),
             new EmptyChargeReverseLogRepository(),
             new EmptyPriceMasterRepository(),
-            db: null!,
+            new NoopUnitOfWork(),
             Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
             NullLogger<PricingApiService>.Instance);
 
@@ -235,7 +334,7 @@ public sealed class PricingApiServiceTests
             new EmptyLimitOccupyRepository(),
             new EmptyChargeReverseLogRepository(),
             new EmptyPriceMasterRepository(),
-            db: null!,
+            new NoopUnitOfWork(),
             Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
             NullLogger<PricingApiService>.Instance);
 
@@ -289,7 +388,7 @@ public sealed class PricingApiServiceTests
             new EmptyLimitOccupyRepository(),
             new EmptyChargeReverseLogRepository(),
             new EmptyPriceMasterRepository(),
-            db: null!,
+            new NoopUnitOfWork(),
             Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
             NullLogger<PricingApiService>.Instance);
 
@@ -346,7 +445,7 @@ public sealed class PricingApiServiceTests
             new EmptyLimitOccupyRepository(),
             new EmptyChargeReverseLogRepository(),
             new EmptyPriceMasterRepository(),
-            db: null!,
+            new NoopUnitOfWork(),
             Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
             NullLogger<PricingApiService>.Instance);
 
@@ -406,7 +505,7 @@ public sealed class PricingApiServiceTests
             limitRepository,
             new EmptyChargeReverseLogRepository(),
             new EmptyPriceMasterRepository(),
-            db: null!,
+            new NoopUnitOfWork(),
             Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
             NullLogger<PricingApiService>.Instance);
 
@@ -476,6 +575,56 @@ public sealed class PricingApiServiceTests
         Assert.Equal("C005-HIS", requestLog.ChargeNo);
         Assert.All(discountRepository.Inserted, detail => Assert.Equal("CONFIRMED", detail.Status));
         Assert.Equal((response.RequestId, "CONFIRMED"), limitRepository.LastStatusUpdate);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_PersistsSameTraceIdAcrossRequestStepsDetailsAndOccupies()
+    {
+        var requestRepository = new InMemoryChargeRequestLogRepository();
+        var discountRepository = new CapturingChargeDiscountDetailRepository();
+        var traceRepository = new CapturingChargeTraceStepRepository();
+        var limitRepository = new CapturingLimitOccupyRepository();
+        var service = CreatePricingApiService(
+            new TraceableSpecialPricingEngine(),
+            new EmptyRuleHeaderRepository(),
+            requestRepository,
+            discountRepository,
+            traceRepository,
+            limitRepository,
+            new EmptyChargeReverseLogRepository(),
+            new EmptyPriceMasterRepository(),
+            new NoopUnitOfWork(),
+            Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
+            NullLogger<PricingApiService>.Instance);
+
+        var response = await service.ConfirmAsync(new PricingCalculateRequest
+        {
+            RequestNo = "REQ-TRACE",
+            BusinessRequestNo = "BR-TRACE",
+            SourceSystem = "HIS",
+            PatientId = "P001",
+            ChargeNo = "C-TRACE",
+            BusinessChargeTime = new DateTime(2026, 5, 10, 9, 30, 0),
+            Items = new[]
+            {
+                new PricingCalculateItemRequest
+                {
+                    ChargeDetailNo = "CD-TRACE",
+                    ItemCode = "ITEM_TRACE",
+                    ItemName = "追溯项目",
+                    InputQty = 1m,
+                    UnitPrice = 10m
+                }
+            }
+        });
+
+        var log = Assert.Single(requestRepository.Inserted);
+        Assert.Equal(response.RequestId, log.RequestId);
+        Assert.False(string.IsNullOrWhiteSpace(log.TraceId));
+        var traceId = log.TraceId;
+        Assert.All(traceRepository.Inserted, step => Assert.Equal(traceId, step.TraceId));
+        Assert.All(discountRepository.Inserted, detail => Assert.Equal(traceId, detail.TraceId));
+        Assert.All(limitRepository.Inserted, occupy => Assert.Equal(traceId, occupy.TraceId));
     }
 
     [Fact]
@@ -769,7 +918,7 @@ public sealed class PricingApiServiceTests
             limitRepository,
             new EmptyChargeReverseLogRepository(),
             new EmptyPriceMasterRepository(),
-            db: null!,
+            new NoopUnitOfWork(),
             Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
             NullLogger<PricingApiService>.Instance);
 
@@ -783,7 +932,7 @@ public sealed class PricingApiServiceTests
             new EmptyLimitOccupyRepository(),
             new EmptyChargeReverseLogRepository(),
             new EmptyPriceMasterRepository(),
-            db: null!,
+            new NoopUnitOfWork(),
             Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
             NullLogger<PricingApiService>.Instance);
 
@@ -796,7 +945,7 @@ public sealed class PricingApiServiceTests
         ILimitOccupyRepository limitRepository,
         IChargeReverseLogRepository reverseLogRepository,
         IPriceMasterRepository priceMasterRepository,
-        SqlSugar.ISqlSugarClient db,
+        IUnitOfWork unitOfWork,
         IOptions<PricingOptions> options,
         ILogger<PricingApiService> logger) =>
         new(
@@ -810,9 +959,22 @@ public sealed class PricingApiServiceTests
                 traceStepRepository,
                 limitRepository,
                 reverseLogRepository),
-            db,
+            unitOfWork,
             options,
             logger);
+
+    private sealed class NoopUnitOfWork : IUnitOfWork
+    {
+        public Task BeginAsync() => Task.CompletedTask;
+
+        public Task CommitAsync() => Task.CompletedTask;
+
+        public Task RollbackAsync() => Task.CompletedTask;
+
+        public void Dispose()
+        {
+        }
+    }
 
     private static PricingCalculateRequest CreateValidCalculateRequest(
         string sourceSystem = "HIS",
@@ -986,6 +1148,50 @@ public sealed class PricingApiServiceTests
         }
     }
 
+    private sealed class TraceableSpecialPricingEngine : IPricingEngine
+    {
+        public Task<PricingResult> CalculateAsync(PricingContext context, BatchPricingContext? batchContext = null)
+        {
+            return Task.FromResult(new PricingResult
+            {
+                IsSpecialItem = true,
+                InputQty = context.InputQty,
+                ConvertedQty = context.InputQty,
+                FinalQty = context.InputQty,
+                UnitPrice = context.UnitPrice,
+                FinalAmount = context.InputQty * context.UnitPrice,
+                DiscountAmount = 0m,
+                TraceSteps = new[]
+                {
+                    new TraceStep
+                    {
+                        StepNo = 1,
+                        StepType = "MATCH",
+                        StepDesc = "命中特殊规则",
+                        InputValue = context.InputQty,
+                        OutputValue = context.InputQty
+                    }
+                },
+                MatchedRuleIds = new[] { 201L },
+                LimitOccupies = new[]
+                {
+                    new LimitOccupy
+                    {
+                        PatientId = context.PatientId,
+                        ItemCode = context.ItemCode,
+                        LimitType = "DAY_QTY",
+                        LimitKey = $"DAY_QTY:{context.PatientId}:{context.ItemCode}:20260510",
+                        LimitDimensionCode = $"{context.PatientId}:{context.ItemCode}:20260510",
+                        OccupyQty = context.InputQty,
+                        OccupyAmt = context.InputQty * context.UnitPrice,
+                        OccupyType = "CHARGE",
+                        BusinessChargeTime = context.BusinessChargeTime
+                    }
+                }
+            });
+        }
+    }
+
     private sealed class InMemoryChargeRequestLogRepository : IChargeRequestLogRepository
     {
         private long _nextId = 100;
@@ -1111,6 +1317,7 @@ public sealed class PricingApiServiceTests
         public Task<decimal> GetOccupiedQtyAsync(string limitKey, string status) => Task.FromResult(0m);
         public Task<decimal> GetOccupiedQtyAsync(LimitOccupyRangeQuery query) => Task.FromResult(0m);
         public Task<decimal> GetOccupiedAmtAsync(string limitKey, string status) => Task.FromResult(0m);
+        public Task<decimal> GetOccupiedAmtByDimensionAsync(string dimensionCode, string status) => Task.FromResult(0m);
         public Task<IReadOnlyList<LimitOccupy>> GetByRequestIdAsync(long requestId) => Task.FromResult((IReadOnlyList<LimitOccupy>)Array.Empty<LimitOccupy>());
         public Task EnsureAndLockAsync(IReadOnlyCollection<string> lockKeys) => Task.CompletedTask;
         public Task<long> InsertAsync(LimitOccupy entity) => Task.FromResult(0L);
@@ -1130,6 +1337,33 @@ public sealed class PricingApiServiceTests
         public Task<IReadOnlyList<RuleHeader>> GetByItemCodeAsync(string itemCode) => Task.FromResult((IReadOnlyList<RuleHeader>)Array.Empty<RuleHeader>());
         public Task<(IReadOnlyList<RuleHeader> Items, int Total)> GetPagedAsync(string? itemCode, string? status, string? category, int pageIndex, int pageSize) => Task.FromResult(((IReadOnlyList<RuleHeader>)Array.Empty<RuleHeader>(), 0));
         public Task<IReadOnlyList<RuleHeader>> GetEffectiveAsync(DateTime businessTime) => Task.FromResult((IReadOnlyList<RuleHeader>)Array.Empty<RuleHeader>());
+        public Task<long> InsertAsync(RuleHeader entity) => Task.FromResult(0L);
+        public Task<bool> UpdateAsync(RuleHeader entity) => Task.FromResult(false);
+        public Task<bool> ExistsAsync(string ruleCode) => Task.FromResult(false);
+    }
+
+    private sealed class SpecialFlagRuleHeaderRepository : IRuleHeaderRepository
+    {
+        private readonly IReadOnlyList<RuleHeader> _rules;
+
+        public SpecialFlagRuleHeaderRepository(IReadOnlyList<RuleHeader> rules)
+        {
+            _rules = rules;
+        }
+
+        public Task<RuleHeader?> GetByIdAsync(long ruleId) => Task.FromResult<RuleHeader?>(null);
+        public Task<RuleHeader?> GetByCodeAsync(string ruleCode) => Task.FromResult<RuleHeader?>(null);
+        public Task<IReadOnlyList<RuleHeader>> GetByItemCodeAsync(string itemCode) =>
+            Task.FromResult((IReadOnlyList<RuleHeader>)_rules
+                .Where(r => string.Equals(r.ItemCode, itemCode, StringComparison.OrdinalIgnoreCase))
+                .ToList());
+
+        public Task<(IReadOnlyList<RuleHeader> Items, int Total)> GetPagedAsync(string? itemCode, string? status, string? category, int pageIndex, int pageSize) =>
+            Task.FromResult(((IReadOnlyList<RuleHeader>)Array.Empty<RuleHeader>(), 0));
+
+        public Task<IReadOnlyList<RuleHeader>> GetEffectiveAsync(DateTime businessTime) =>
+            Task.FromResult((IReadOnlyList<RuleHeader>)Array.Empty<RuleHeader>());
+
         public Task<long> InsertAsync(RuleHeader entity) => Task.FromResult(0L);
         public Task<bool> UpdateAsync(RuleHeader entity) => Task.FromResult(false);
         public Task<bool> ExistsAsync(string ruleCode) => Task.FromResult(false);
@@ -1179,6 +1413,7 @@ public sealed class PricingApiServiceTests
         public Task<decimal> GetOccupiedQtyAsync(string limitKey, string status) => Task.FromResult(0m);
         public Task<decimal> GetOccupiedQtyAsync(LimitOccupyRangeQuery query) => Task.FromResult(0m);
         public Task<decimal> GetOccupiedAmtAsync(string limitKey, string status) => Task.FromResult(0m);
+        public Task<decimal> GetOccupiedAmtByDimensionAsync(string dimensionCode, string status) => Task.FromResult(0m);
         public Task<IReadOnlyList<LimitOccupy>> GetByRequestIdAsync(long requestId) => Task.FromResult((IReadOnlyList<LimitOccupy>)Inserted.Where(o => o.RequestId == requestId).ToList());
         public Task EnsureAndLockAsync(IReadOnlyCollection<string> lockKeys) => Task.CompletedTask;
 
@@ -1208,11 +1443,28 @@ public sealed class PricingApiServiceTests
         public Task InsertBatchAsync(IReadOnlyList<ChargeTraceStep> entities) => Task.CompletedTask;
     }
 
+    private sealed class CapturingChargeTraceStepRepository : IChargeTraceStepRepository
+    {
+        public List<ChargeTraceStep> Inserted { get; } = new();
+
+        public Task<IReadOnlyList<ChargeTraceStep>> GetByRequestIdAsync(long requestId) =>
+            Task.FromResult((IReadOnlyList<ChargeTraceStep>)Inserted
+                .Where(s => s.RequestId == requestId)
+                .ToList());
+
+        public Task InsertBatchAsync(IReadOnlyList<ChargeTraceStep> entities)
+        {
+            Inserted.AddRange(entities);
+            return Task.CompletedTask;
+        }
+    }
+
     private sealed class EmptyLimitOccupyRepository : ILimitOccupyRepository
     {
         public Task<decimal> GetOccupiedQtyAsync(string limitKey, string status) => Task.FromResult(0m);
         public Task<decimal> GetOccupiedQtyAsync(LimitOccupyRangeQuery query) => Task.FromResult(0m);
         public Task<decimal> GetOccupiedAmtAsync(string limitKey, string status) => Task.FromResult(0m);
+        public Task<decimal> GetOccupiedAmtByDimensionAsync(string dimensionCode, string status) => Task.FromResult(0m);
         public Task<IReadOnlyList<LimitOccupy>> GetByRequestIdAsync(long requestId) => Task.FromResult((IReadOnlyList<LimitOccupy>)Array.Empty<LimitOccupy>());
         public Task EnsureAndLockAsync(IReadOnlyCollection<string> lockKeys) => Task.CompletedTask;
         public Task<long> InsertAsync(LimitOccupy entity) => Task.FromResult(0L);

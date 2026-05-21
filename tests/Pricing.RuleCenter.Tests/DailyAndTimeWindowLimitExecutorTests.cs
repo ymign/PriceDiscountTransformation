@@ -143,6 +143,8 @@ public sealed class DailyAndTimeWindowLimitExecutorTests
 
         public Task<decimal> GetOccupiedAmtAsync(string limitKey, string status) => Task.FromResult(0m);
 
+        public Task<decimal> GetOccupiedAmtByDimensionAsync(string dimensionCode, string status) => Task.FromResult(0m);
+
         public Task<IReadOnlyList<LimitOccupy>> GetByRequestIdAsync(long requestId) =>
             Task.FromResult((IReadOnlyList<LimitOccupy>)Array.Empty<LimitOccupy>());
 

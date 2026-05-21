@@ -10,7 +10,7 @@ using Pricing.RuleCenter.Core.Interfaces.Charging;
 using Pricing.RuleCenter.Core.Interfaces.Quota;
 using Pricing.RuleCenter.Core.Options;
 using Pricing.RuleCenter.Core.Services;
-using SqlSugar;
+using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Aggregates.Charging;
 using Pricing.RuleCenter.Core.Aggregates.Quota;
 using Pricing.RuleCenter.Core.Models;
@@ -72,9 +72,9 @@ public sealed class PricingAppService
     /// </summary>
     private readonly IPriceMasterRepository _priceMasterRepository;
     /// <summary>
-    /// _db 数据库客户端，用于开启事务和执行必须贴近 Oracle 的查询或锁操作。
+    /// 工作单元，用于把请求日志、折价明细、限额占用和冲正日志放入同一事务。
     /// </summary>
-    private readonly ISqlSugarClient _db;
+    private readonly IUnitOfWork _unitOfWork;
     /// <summary>
     /// _options 配置对象，集中承载超时、清理间隔、单价校验等运行参数。
     /// </summary>
@@ -89,13 +89,13 @@ public sealed class PricingAppService
     /// </summary>
     /// <param name="calculationDependencies">计价计算侧依赖，包括计价引擎、规则头仓储和权威物价仓储。</param>
     /// <param name="repositories">计价持久化侧仓储集合，覆盖请求、明细、步骤、限额和冲正日志。</param>
-    /// <param name="db">SqlSugar 数据库客户端，用于创建事务边界。</param>
+    /// <param name="unitOfWork">工作单元，用于创建事务边界。</param>
     /// <param name="options">计价配置项，包括过期时间和单价校验开关。</param>
     /// <param name="logger">日志组件，用于记录幂等命中、状态推进和异常上下文。</param>
     public PricingAppService(
         PricingAppCalculationDependencies calculationDependencies,
         PricingAppPersistenceRepositories repositories,
-        ISqlSugarClient db,
+        IUnitOfWork unitOfWork,
         IOptions<PricingOptions> options,
         ILogger<PricingAppService> logger)
     {
@@ -107,7 +107,7 @@ public sealed class PricingAppService
         _limitRepository = repositories.LimitRepository;
         _reverseLogRepository = repositories.ReverseLogRepository;
         _priceMasterRepository = calculationDependencies.PriceMasterRepository;
-        _db = db;
+        _unitOfWork = unitOfWork;
         _options = options.Value;
         _logger = logger;
     }
@@ -196,6 +196,8 @@ public sealed class PricingAppService
     {
         public long RequestId { get; init; }
 
+        public string? TraceId { get; init; }
+
         public PricingCalculateRequest Request { get; init; } = null!;
 
         public PricingCalculateItemRequest Item { get; init; } = null!;
@@ -208,6 +210,8 @@ public sealed class PricingAppService
     private sealed record ChildDiscountDetailSaveInput
     {
         public long RequestId { get; init; }
+
+        public string? TraceId { get; init; }
 
         public PricingCalculateRequest Request { get; init; } = null!;
 
@@ -286,7 +290,7 @@ public sealed class PricingAppService
             CallType = "SIMULATE",
             BusinessStatus = "SIMULATED"
         });
-        await SaveTraceSteps(requestLog.RequestId, calculations);
+        await SaveTraceSteps(requestLog.RequestId, requestLog.TraceId, calculations);
 
         // ========== 第四阶段：保存响应快照 ==========
         // 响应快照不是幂等必需，但可以让追溯查询直接展示当时返回给渠道的结果。
@@ -420,7 +424,7 @@ public sealed class PricingAppService
                 BusinessStatus = "CONFIRM_PENDING",
                 Fingerprint = fingerprint
             });
-            await SaveTraceSteps(requestLog.RequestId, calculations);
+            await SaveTraceSteps(requestLog.RequestId, requestLog.TraceId, calculations);
 
             // confirm 返回后，HIS 会按本次响应落账整批收费明细；commit 阶段也必须能用
             // confirm 快照逐项核对 HIS 的真实落账结果。因此这里保存所有费用明细的计价结果。
@@ -430,6 +434,7 @@ public sealed class PricingAppService
                 await SaveDiscountDetail(new DiscountDetailSaveInput
                 {
                     RequestId = requestLog.RequestId,
+                    TraceId = requestLog.TraceId,
                     Request = request,
                     Item = calculation.Item,
                     Result = calculation.Result,
@@ -437,7 +442,7 @@ public sealed class PricingAppService
                 });
                 if (calculation.Result.IsSpecialItem)
                 {
-                    await SaveLimitOccupies(requestLog.RequestId, calculation.Result);
+                    await SaveLimitOccupies(requestLog.RequestId, requestLog.TraceId, calculation.Result);
                 }
             }
 
@@ -805,7 +810,7 @@ public sealed class PricingAppService
                 ReverseAmt = reverseAmt,
                 ReverseTime = reverseTime
             });
-            await InsertNegativeLimitOccupiesAsync(request, reverseQty, reverseAmt, reverseTime);
+            await InsertNegativeLimitOccupiesAsync(request, reverseRequestId, log.TraceId, reverseQty, reverseAmt, reverseTime);
 
             // ========== 第五阶段：写冲正审计 ==========
             // 这张表回答"为什么原来的收费结果被冲掉"，也是后续财务追查和退费口径复盘的入口。
@@ -813,6 +818,7 @@ public sealed class PricingAppService
             {
                 OriginalRequestId = request.OriginalRequestId,
                 ReverseRequestId = reverseRequestId,
+                TraceId = log.TraceId,
                 ChargeNo = log.ChargeNo,
                 ReverseNo = request.ReverseNo,
                 ChargeDetailNo = NormalizeString(request.ChargeDetailNo),
@@ -846,16 +852,52 @@ public sealed class PricingAppService
         var normalizedItemCode = NormalizeString(itemCode)
             ?? throw new ArgumentException("项目编码不能为空", nameof(itemCode));
 
-        // special-flag 初期直接查数据库，不做本地缓存。规则发布频率低，实时查询可以避免缓存失效不及时。
+        // special-flag 是渠道是否进入特殊计价流程的入口，必须只统计当前有效规则。
+        // 未来生效或已经过期的规则不能提前改变渠道行为。
         var rules = await _headerRepository.GetByItemCodeAsync(normalizedItemCode);
-        var published = rules.Where(r => r.Status == "PUBLISHED" && r.IsEnabled == "Y").ToList();
+        var now = DateTime.Now;
+        var published = rules
+            .Where(r => r.Status == "PUBLISHED" && r.IsEnabled == "Y")
+            .Where(r => r.IsEffectiveAt(now))
+            .ToList();
 
         return new SpecialFlagResponse
         {
             ItemCode = normalizedItemCode,
             IsSpecial = published.Count > 0,
-            RuleCount = published.Count
+            RuleCount = published.Count,
+            RollbackMode = ResolveRollbackMode(published)
         };
+    }
+
+    private static string ResolveRollbackMode(IReadOnlyList<RuleAggregate> rules)
+    {
+        if (rules.Count == 0)
+        {
+            return "STOP_CHARGE";
+        }
+
+        // 多条有效规则同时命中同一项目时，渠道降级必须按最保守策略执行。
+        // STOP_CHARGE 优先级最高，其次人工复核，只有所有规则均允许时才返回 LEGACY_EQUIVALENT。
+        var modes = rules
+            .Select(r => NormalizeString(r.RollbackMode) ?? "STOP_CHARGE")
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (modes.Contains("STOP_CHARGE"))
+        {
+            return "STOP_CHARGE";
+        }
+
+        if (modes.Contains("MANUAL_REVIEW") || modes.Contains("NEW_SERVICE_ONLY"))
+        {
+            return modes.Contains("NEW_SERVICE_ONLY") ? "NEW_SERVICE_ONLY" : "MANUAL_REVIEW";
+        }
+
+        if (modes.Contains("LEGACY_EQUIVALENT"))
+        {
+            return "LEGACY_EQUIVALENT";
+        }
+
+        return "STOP_CHARGE";
     }
 
     private static void ValidateCommitActuals(
@@ -1138,7 +1180,45 @@ public sealed class PricingAppService
             return false;
         }
 
+        if (request.ReverseTime.HasValue &&
+            NormalizeToSecond(existing.ReversedAt) != NormalizeToSecond(request.ReverseTime.Value))
+        {
+            return false;
+        }
+
+        var requestReversedBy = NormalizeString(request.ReversedBy);
+        if (requestReversedBy is not null &&
+            !string.Equals(
+                NormalizeString(existing.ReversedBy),
+                requestReversedBy,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var requestReason = NormalizeString(request.Reason);
+        if (requestReason is not null &&
+            !string.Equals(
+                NormalizeString(existing.ReverseReason),
+                requestReason,
+                StringComparison.Ordinal))
+        {
+            return false;
+        }
+
         return true;
+    }
+
+    private static DateTime NormalizeToSecond(DateTime value)
+    {
+        return new DateTime(
+            value.Year,
+            value.Month,
+            value.Day,
+            value.Hour,
+            value.Minute,
+            value.Second,
+            value.Kind);
     }
 
     private async Task<decimal> GetHistoricalReversedQtyAsync(PricingReverseRequest request)
@@ -1227,6 +1307,8 @@ public sealed class PricingAppService
 
     private async Task InsertNegativeLimitOccupiesAsync(
         PricingReverseRequest request,
+        long reverseRequestId,
+        string? traceId,
         decimal reverseQty,
         decimal reverseAmt,
         DateTime reverseTime)
@@ -1254,8 +1336,8 @@ public sealed class PricingAppService
             var releaseAmt = reverseAmt * ratio;
             await _limitRepository.InsertAsync(new LimitOccupy
             {
-                RequestId = request.OriginalRequestId,
-                TraceId = occupy.TraceId,
+                RequestId = reverseRequestId,
+                TraceId = traceId ?? occupy.TraceId,
                 PatientId = occupy.PatientId,
                 ItemCode = occupy.ItemCode,
                 RuleId = occupy.RuleId,
@@ -1428,6 +1510,7 @@ public sealed class PricingAppService
             RequestNo = NormalizeString(request.RequestNo) ?? $"REQ-{DateTime.Now:yyyyMMddHHmmssfff}",
             BusinessRequestNo = NormalizeString(request.BusinessRequestNo),
             RequestFingerprint = input.Fingerprint,
+            TraceId = BuildTraceId(input.CallType, request.RequestNo, request.BusinessRequestNo),
             CallType = input.CallType,
             BusinessStatus = input.BusinessStatus,
             SourceSystem = request.SourceSystem.Trim(),
@@ -1514,7 +1597,17 @@ public sealed class PricingAppService
         return $"REV-{originalRequestId}-{hash}";
     }
 
-    private async Task SaveTraceSteps(long requestId, IReadOnlyList<ItemPricingCalculation> calculations)
+    private static string BuildTraceId(string callType, string? requestNo, string? businessRequestNo)
+    {
+        var seed = $"{callType}:{NormalizeString(requestNo)}:{NormalizeString(businessRequestNo)}:{Guid.NewGuid():N}";
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(seed)))[..24];
+        return $"TRACE-{DateTime.Now:yyyyMMddHHmmssfff}-{hash}";
+    }
+
+    private async Task SaveTraceSteps(
+        long requestId,
+        string? traceId,
+        IReadOnlyList<ItemPricingCalculation> calculations)
     {
         // 没有命中特殊规则时可能没有步骤。这里直接返回，避免写空集合导致不必要的数据库调用。
         var steps = calculations
@@ -1531,6 +1624,7 @@ public sealed class PricingAppService
         var entities = steps.Select(s => new ChargeTraceStep
         {
             RequestId = requestId,
+            TraceId = traceId,
             StepNo = stepNo++,
             StepName = s.Step.StepType,
             StepType = s.Step.StepType,
@@ -1574,6 +1668,7 @@ public sealed class PricingAppService
         var detail = new ChargeDiscountDetail
         {
             RequestId = requestId,
+            TraceId = input.TraceId,
             ChargeNo = NormalizeString(request.ChargeNo),
             ChargeDetailNo = NormalizeString(item.ChargeDetailNo),
             PatientId = request.PatientId,
@@ -1604,6 +1699,7 @@ public sealed class PricingAppService
             await SaveChildDiscountDetails(new ChildDiscountDetailSaveInput
             {
                 RequestId = requestId,
+                TraceId = input.TraceId,
                 Request = request,
                 Item = item,
                 ChildPricingResults = result.ChildPricingResults,
@@ -1620,6 +1716,7 @@ public sealed class PricingAppService
         var replacementDetail = new ChargeDiscountDetail
         {
             RequestId = requestId,
+            TraceId = input.TraceId,
             ChargeNo = NormalizeString(request.ChargeNo),
             ChargeDetailNo = NormalizeString(item.ChargeDetailNo),
             PatientId = request.PatientId,
@@ -1648,6 +1745,7 @@ public sealed class PricingAppService
         await SaveChildDiscountDetails(new ChildDiscountDetailSaveInput
         {
             RequestId = requestId,
+            TraceId = input.TraceId,
             Request = request,
             Item = item,
             ChildPricingResults = result.ChildPricingResults,
@@ -1669,6 +1767,7 @@ public sealed class PricingAppService
             var childDetail = new ChargeDiscountDetail
             {
                 RequestId = input.RequestId,
+                TraceId = input.TraceId,
                 ChargeNo = NormalizeString(request.ChargeNo),
                 ChargeDetailNo = NormalizeString(item.ChargeDetailNo),
                 PatientId = request.PatientId,
@@ -1696,7 +1795,7 @@ public sealed class PricingAppService
         }
     }
 
-    private async Task SaveLimitOccupies(long requestId, PricingResult result)
+    private async Task SaveLimitOccupies(long requestId, string? traceId, PricingResult result)
     {
         // confirm 结果不是永久有效。ExpireAt 用于后台清理长时间未 commit 的保护占用，
         // 防止 HIS 异常退出后额度一直被 PENDING 记录占住。
@@ -1704,6 +1803,7 @@ public sealed class PricingAppService
         foreach (var occupy in result.LimitOccupies)
         {
             occupy.RequestId = requestId;
+            occupy.TraceId = traceId;
             occupy.Status = "PENDING";
             occupy.ExpireAt = expireAt;
             occupy.OccupiedAt = DateTime.Now;
@@ -1911,16 +2011,15 @@ public sealed class PricingAppService
     private async Task<T> ExecuteInTransactionAsync<T>(Func<Task<T>> action)
     {
         // ========== 第一阶段：开启数据库事务 ==========
-        // 本服务的大部分资金操作会同时更新多张表。使用同一个 SqlSugarClient 事务可以保证
+        // 本服务的大部分资金操作会同时更新多张表。使用工作单元统一事务可以保证
         // 请求日志、折价明细、限额占用、冲正日志之间不会出现半提交。
-        // ISqlSugarClient 通过 DI 注入，正常运行时不可能为 null。如果为 null 则说明严重配置错误。
         try
         {
-            await _db.Ado.BeginTranAsync();
+            await _unitOfWork.BeginAsync();
             var result = await action();
             // ========== 第二阶段：全部成功后提交 ==========
             // 只有所有仓储操作都成功，才允许对外暴露本次状态推进。
-            await _db.Ado.CommitTranAsync();
+            await _unitOfWork.CommitAsync();
             return result;
         }
         catch (Exception ex)
@@ -1928,7 +2027,7 @@ public sealed class PricingAppService
             // ========== 第三阶段：任何异常都回滚 ==========
             // 资金链路宁可失败返回给渠道重试，也不能留下部分写入的请求或占额。
             _logger.LogError(ex, "事务执行异常，已回滚");
-            await _db.Ado.RollbackTranAsync();
+            await _unitOfWork.RollbackAsync();
             throw;
         }
     }

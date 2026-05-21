@@ -25,6 +25,7 @@ public sealed class PricingReverseTests
             RequestId = 100,
             BusinessStatus = "CONFIRMED",
             SourceSystem = "HIS",
+            TraceId = "TRACE-100",
             ChargeNo = "C001",
             BusinessChargeTime = new DateTime(2026, 5, 10, 9, 30, 0)
         };
@@ -46,6 +47,7 @@ public sealed class PricingReverseTests
             LimitType = "DAY_QTY",
             LimitKey = "DQ:P001:ITEM001:20260510",
             LimitDimensionCode = "P001:ITEM001:20260510",
+            TraceId = "TRACE-100",
             OccupyQty = 5m,
             OccupyAmt = 50m,
             Status = "CONFIRMED",
@@ -78,10 +80,14 @@ public sealed class PricingReverseTests
         Assert.Equal("REVERSED", reverseRequestLog.BusinessStatus);
         Assert.Equal("R001", reverseRequestLog.BusinessRequestNo);
         Assert.Equal(2m, reverseRequestLog.InputQty);
+        Assert.Equal("TRACE-100", reverseRequestLog.TraceId);
+        Assert.Equal(reverseRequestLog.RequestId, negativeOccupy.RequestId);
+        Assert.Equal("TRACE-100", negativeOccupy.TraceId);
 
         var reverseLog = Assert.Single(reverseRepository.Inserted);
         Assert.Equal("CD001", reverseLog.ChargeDetailNo);
         Assert.Equal(reverseRequestLog.RequestId, reverseLog.ReverseRequestId);
+        Assert.Equal("TRACE-100", reverseLog.TraceId);
     }
 
     [Fact]
@@ -413,6 +419,60 @@ public sealed class PricingReverseTests
         Assert.Contains("IDEMPOTENT_CONFLICT", ex.Message);
     }
 
+    [Fact]
+    public async Task ReverseAsync_RejectsSameReverseNoWithDifferentAuditFields()
+    {
+        var requestRepository = new ReverseRequestLogRepository();
+        var discountRepository = new ReverseDiscountDetailRepository();
+        var limitRepository = new ReverseLimitOccupyRepository();
+        var reverseRepository = new ReverseLogRepository();
+        var service = CreateService(requestRepository, discountRepository, limitRepository, reverseRepository);
+
+        requestRepository.Log = new ChargeRequestLog
+        {
+            RequestId = 700,
+            BusinessStatus = "CONFIRMED",
+            SourceSystem = "HIS",
+            ChargeNo = "C007"
+        };
+        discountRepository.Details.Add(new ChargeDiscountDetail
+        {
+            RequestId = 700,
+            ChargeDetailNo = "CD001",
+            ItemCode = "ITEM001",
+            FinalQty = 5m,
+            FinalAmt = 50m,
+            Status = "CONFIRMED"
+        });
+
+        await service.ReverseAsync(new PricingReverseRequest
+        {
+            OriginalRequestId = 700,
+            ReverseNo = "R007",
+            ChargeDetailNo = "CD001",
+            ItemCode = "ITEM001",
+            ReverseQty = 2m,
+            ReverseTime = new DateTime(2026, 5, 10, 11, 0, 0),
+            ReversedBy = "OP001",
+            Reason = "患者退费"
+        });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.ReverseAsync(new PricingReverseRequest
+            {
+                OriginalRequestId = 700,
+                ReverseNo = "R007",
+                ChargeDetailNo = "CD001",
+                ItemCode = "ITEM001",
+                ReverseQty = 2m,
+                ReverseTime = new DateTime(2026, 5, 10, 11, 1, 0),
+                ReversedBy = "OP002",
+                Reason = "收费错误"
+            }));
+
+        Assert.Contains("IDEMPOTENT_CONFLICT", ex.Message);
+    }
+
     private static PricingApiService CreateService(
         IChargeRequestLogRepository requestRepository,
         IChargeDiscountDetailRepository discountRepository,
@@ -429,9 +489,22 @@ public sealed class PricingReverseTests
                 new EmptyTraceStepRepository(),
                 limitRepository,
                 reverseRepository),
-            db: null!,
+            new NoopUnitOfWork(),
             Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
             NullLogger<PricingApiService>.Instance);
+
+    private sealed class NoopUnitOfWork : IUnitOfWork
+    {
+        public Task BeginAsync() => Task.CompletedTask;
+
+        public Task CommitAsync() => Task.CompletedTask;
+
+        public Task RollbackAsync() => Task.CompletedTask;
+
+        public void Dispose()
+        {
+        }
+    }
 
     private sealed class ReverseRequestLogRepository : IChargeRequestLogRepository
     {
@@ -503,6 +576,7 @@ public sealed class PricingReverseTests
         public Task<decimal> GetOccupiedQtyAsync(string limitKey, string status) => Task.FromResult(0m);
         public Task<decimal> GetOccupiedQtyAsync(LimitOccupyRangeQuery query) => Task.FromResult(0m);
         public Task<decimal> GetOccupiedAmtAsync(string limitKey, string status) => Task.FromResult(0m);
+        public Task<decimal> GetOccupiedAmtByDimensionAsync(string dimensionCode, string status) => Task.FromResult(0m);
         public Task<IReadOnlyList<LimitOccupy>> GetByRequestIdAsync(long requestId) => Task.FromResult((IReadOnlyList<LimitOccupy>)Occupies.Where(o => o.RequestId == requestId).ToList());
         public Task EnsureAndLockAsync(IReadOnlyCollection<string> lockKeys) => Task.CompletedTask;
         public Task<long> InsertAsync(LimitOccupy entity)

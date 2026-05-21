@@ -15,8 +15,8 @@ public sealed class SameOperationCeilingExecutorTests
         {
             OccupiedAmtByStatus =
             {
-                ["SAME_OP|OP001|GRP001:PENDING"] = 20m,
-                ["SAME_OP|OP001|GRP001:CONFIRMED"] = 50m
+                ["P001:OP001:GRP001:PENDING"] = 20m,
+                ["P001:OP001:GRP001:CONFIRMED"] = 50m
             }
         };
         var executor = new SameOperationCeilingExecutor(repository);
@@ -38,7 +38,7 @@ public sealed class SameOperationCeilingExecutorTests
                 new LimitOccupy
                 {
                     LimitType = "SAME_OPERATION",
-                    LimitDimensionCode = "OP001:GRP001",
+                    LimitDimensionCode = "P001:OP001:GRP001",
                     OccupyAmt = 10m
                 }
             }
@@ -51,11 +51,11 @@ public sealed class SameOperationCeilingExecutorTests
         }, context);
 
         Assert.Equal(20m, context.FinalAmount);
-        Assert.Equal(new[] { "SAME_OP|OP001|GRP001" }, repository.LockedKeys);
+        Assert.Equal(new[] { "SAME_OP|P001|OP001" }, repository.LockedKeys);
         var occupy = Assert.Single(context.PendingLimitOccupies);
         Assert.Equal("SAME_OPERATION", occupy.LimitType);
-        Assert.Equal("SAME_OP|OP001|GRP001", occupy.LimitKey);
-        Assert.Equal("OP001:GRP001", occupy.LimitDimensionCode);
+        Assert.Equal("SAME_OP|P001|OP001", occupy.LimitKey);
+        Assert.Equal("P001:OP001:GRP001", occupy.LimitDimensionCode);
     }
 
     [Fact]
@@ -120,6 +120,12 @@ public sealed class SameOperationCeilingExecutorTests
         public Task<decimal> GetOccupiedAmtAsync(string limitKey, string status)
         {
             OccupiedAmtByStatus.TryGetValue($"{limitKey}:{status}", out var amount);
+            return Task.FromResult(amount);
+        }
+
+        public Task<decimal> GetOccupiedAmtByDimensionAsync(string dimensionCode, string status)
+        {
+            OccupiedAmtByStatus.TryGetValue($"{dimensionCode}:{status}", out var amount);
             return Task.FromResult(amount);
         }
 

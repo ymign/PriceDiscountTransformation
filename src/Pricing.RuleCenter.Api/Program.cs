@@ -73,6 +73,8 @@ builder.Services.AddScoped<ConditionEvaluatorFactory>();
 builder.Services.AddScoped<ActionExecutorFactory>();
 builder.Services.AddScoped<RuleMatchRepositories>();
 builder.Services.AddScoped<RuleMatchService>();
+builder.Services.AddScoped<IRuleRuntimeCacheInvalidator>(provider =>
+    provider.GetRequiredService<RuleMatchService>());
 builder.Services.AddScoped<ActionExecutionPipeline>();
 builder.Services.AddScoped<IPricingEngine, PricingEngine>();
 

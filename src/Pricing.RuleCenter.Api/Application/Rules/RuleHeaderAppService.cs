@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Caching.Memory;
 using Pricing.RuleCenter.Api.Dto;
+using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
@@ -283,6 +284,8 @@ public sealed class RuleHeaderAppService
         var entity = await _repository.GetByIdAsync(ruleId)
             ?? throw new KeyNotFoundException($"规则不存在: {ruleId}");
 
+        ValidatePublishedRuleUpdate(entity, request);
+
         // ========== 第二阶段：只更新主档可维护字段 ==========
         // CurrentVersion、Status、IsEnabled 由发布/停用服务推进，不能在普通编辑入口里直接改。
         entity.RuleName = request.RuleName;
@@ -301,6 +304,7 @@ public sealed class RuleHeaderAppService
 
         await _repository.UpdateAsync(entity);
         _logger.LogInformation("更新规则主档 RuleId={RuleId}", ruleId);
+        ClearEffectiveCache();
 
         // ========== 第三阶段：写入变更日志 ==========
         // 主档更新可能影响规则匹配条件（如项目编码、生效时间、优先级等），
@@ -312,6 +316,45 @@ public sealed class RuleHeaderAppService
             ChangeSummary = $"更新规则主档：名称={request.RuleName}，项目={request.ItemCode}，优先级={request.Priority}",
             ChangedBy = request.UpdatedBy
         });
+    }
+
+    private static void ValidatePublishedRuleUpdate(RuleAggregate entity, RuleHeaderUpdateRequest request)
+    {
+        if (!string.Equals(entity.Status, RuleStatusCodes.Published, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        // 已发布规则已经进入计价匹配链路。普通更新入口只允许修改展示和说明字段；
+        // 会改变匹配范围、冲突校验或降级策略的字段必须通过新版本发布，避免绕过发布审查。
+        var immutableFieldChanged =
+            !StringEquals(entity.RuleCategory, request.RuleCategory) ||
+            !StringEquals(entity.RuleScope, request.RuleScope) ||
+            !StringEquals(entity.ItemCode, request.ItemCode) ||
+            !StringEquals(entity.GroupCode, request.GroupCode) ||
+            entity.Priority != request.Priority ||
+            entity.EffectiveFrom != request.EffectiveFrom ||
+            entity.EffectiveTo != request.EffectiveTo ||
+            !StringEquals(entity.RollbackMode, request.RollbackMode);
+
+        if (immutableFieldChanged)
+        {
+            throw new InvalidOperationException(
+                "PUBLISHED_RULE_IMMUTABLE: 已发布规则不允许在主档更新入口修改匹配关键字段，请创建新版本后发布");
+        }
+    }
+
+    private static bool StringEquals(string? left, string? right)
+    {
+        return string.Equals(
+            NormalizeString(left),
+            NormalizeString(right),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? NormalizeString(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
     /// <summary>

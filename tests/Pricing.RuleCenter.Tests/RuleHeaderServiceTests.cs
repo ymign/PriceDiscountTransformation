@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pricing.RuleCenter.Api.Application.Rules;
+using Pricing.RuleCenter.Api.Dto;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 using Xunit;
@@ -47,11 +48,120 @@ public sealed class RuleHeaderServiceTests
         Assert.Equal(2, repository.BusinessTimes.Count);
     }
 
+    [Fact]
+    public async Task UpdateAsync_RejectsPublishedRuleMatchingFieldChanges()
+    {
+        var repository = new CapturingRuleHeaderRepository
+        {
+            Entity = new RuleHeader
+            {
+                RuleId = 100,
+                RuleCode = "RULE001",
+                RuleName = "旧名称",
+                RuleCategory = "MIXED",
+                RuleScope = "ITEM",
+                ItemCode = "ITEM001",
+                ItemName = "旧项目",
+                GroupCode = "GRP001",
+                Priority = 10,
+                Status = "PUBLISHED",
+                IsEnabled = "Y",
+                CurrentVersion = 1,
+                EffectiveFrom = new DateTime(2026, 5, 1),
+                EffectiveTo = new DateTime(2026, 5, 31),
+                RollbackMode = "STOP_CHARGE",
+                CreatedAt = new DateTime(2026, 5, 1),
+                UpdatedAt = new DateTime(2026, 5, 1)
+            }
+        };
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var service = new RuleHeaderService(
+            repository,
+            new EmptyRuleChangeLogRepository(),
+            cache,
+            NullLogger<RuleHeaderService>.Instance);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.UpdateAsync(100, new RuleHeaderUpdateRequest
+            {
+                RuleName = "新名称",
+                RuleCategory = "MIXED",
+                RuleScope = "ITEM",
+                ItemCode = "ITEM002",
+                ItemName = "新项目",
+                GroupCode = "GRP001",
+                Priority = 10,
+                EffectiveFrom = new DateTime(2026, 5, 1),
+                EffectiveTo = new DateTime(2026, 5, 31),
+                RollbackMode = "STOP_CHARGE",
+                Remark = "尝试修改已发布规则项目"
+            }));
+
+        Assert.Contains("PUBLISHED", ex.Message);
+        Assert.False(repository.WasUpdated);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_AllowsPublishedRuleDisplayFieldChanges()
+    {
+        var repository = new CapturingRuleHeaderRepository
+        {
+            Entity = new RuleHeader
+            {
+                RuleId = 101,
+                RuleCode = "RULE002",
+                RuleName = "旧名称",
+                RuleCategory = "MIXED",
+                RuleScope = "ITEM",
+                ItemCode = "ITEM001",
+                ItemName = "旧项目",
+                GroupCode = "GRP001",
+                Priority = 10,
+                Status = "PUBLISHED",
+                IsEnabled = "Y",
+                CurrentVersion = 1,
+                EffectiveFrom = new DateTime(2026, 5, 1),
+                EffectiveTo = new DateTime(2026, 5, 31),
+                RollbackMode = "STOP_CHARGE",
+                CreatedAt = new DateTime(2026, 5, 1),
+                UpdatedAt = new DateTime(2026, 5, 1)
+            }
+        };
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var service = new RuleHeaderService(
+            repository,
+            new EmptyRuleChangeLogRepository(),
+            cache,
+            NullLogger<RuleHeaderService>.Instance);
+
+        await service.UpdateAsync(101, new RuleHeaderUpdateRequest
+        {
+            RuleName = "新名称",
+            RuleCategory = "MIXED",
+            RuleScope = "ITEM",
+            ItemCode = "ITEM001",
+            ItemName = "新项目展示名",
+            GroupCode = "GRP001",
+            Priority = 10,
+            EffectiveFrom = new DateTime(2026, 5, 1),
+            EffectiveTo = new DateTime(2026, 5, 31),
+            RollbackMode = "STOP_CHARGE",
+            Remark = "只改展示字段",
+            UpdatedBy = "tester"
+        });
+
+        Assert.True(repository.WasUpdated);
+        Assert.Equal("新名称", repository.Entity.RuleName);
+        Assert.Equal("新项目展示名", repository.Entity.ItemName);
+    }
+
     private sealed class CapturingRuleHeaderRepository : IRuleHeaderRepository
     {
         public List<DateTime> BusinessTimes { get; } = new();
+        public RuleHeader? Entity { get; set; }
+        public bool WasUpdated { get; private set; }
 
-        public Task<RuleHeader?> GetByIdAsync(long ruleId) => Task.FromResult<RuleHeader?>(null);
+        public Task<RuleHeader?> GetByIdAsync(long ruleId) => Task.FromResult(Entity?.RuleId == ruleId ? Entity : null);
         public Task<RuleHeader?> GetByCodeAsync(string ruleCode) => Task.FromResult<RuleHeader?>(null);
         public Task<IReadOnlyList<RuleHeader>> GetByItemCodeAsync(string itemCode) => Task.FromResult((IReadOnlyList<RuleHeader>)Array.Empty<RuleHeader>());
         public Task<(IReadOnlyList<RuleHeader> Items, int Total)> GetPagedAsync(string? itemCode, string? status, string? category, int pageIndex, int pageSize) => Task.FromResult(((IReadOnlyList<RuleHeader>)Array.Empty<RuleHeader>(), 0));
@@ -80,7 +190,12 @@ public sealed class RuleHeaderServiceTests
         }
 
         public Task<long> InsertAsync(RuleHeader entity) => Task.FromResult(0L);
-        public Task<bool> UpdateAsync(RuleHeader entity) => Task.FromResult(false);
+        public Task<bool> UpdateAsync(RuleHeader entity)
+        {
+            Entity = entity;
+            WasUpdated = true;
+            return Task.FromResult(true);
+        }
         public Task<bool> ExistsAsync(string ruleCode) => Task.FromResult(false);
     }
 

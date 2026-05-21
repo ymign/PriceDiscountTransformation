@@ -4,7 +4,6 @@ using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Charging;
 using Pricing.RuleCenter.Core.Interfaces.Quota;
 using Pricing.RuleCenter.Core.Options;
-using SqlSugar;
 
 namespace Pricing.RuleCenter.Api.Application.Background;
 
@@ -131,7 +130,7 @@ public sealed class ExpireCleanupAppService : BackgroundService
         var requestLogRepo = scope.ServiceProvider.GetRequiredService<IChargeRequestLogRepository>();
         var discountRepo = scope.ServiceProvider.GetRequiredService<IChargeDiscountDetailRepository>();
         var limitRepo = scope.ServiceProvider.GetRequiredService<ILimitOccupyRepository>();
-        var db = scope.ServiceProvider.GetRequiredService<ISqlSugarClient>();
+        var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 
         // ========== 第二阶段：筛选超时的 CONFIRM_PENDING ==========
         // 过期时间 = 当前时间 - ConfirmExpireMinutes，与 confirm 接口返回给调用方的有效期口径一致。
@@ -148,7 +147,7 @@ public sealed class ExpireCleanupAppService : BackgroundService
         foreach (var log in expired)
         {
             // 每条记录使用独立事务，保证三张资金表的原子性，同时隔离单条失败的影响。
-            await db.Ado.BeginTranAsync();
+            await unitOfWork.BeginAsync();
             try
             {
                 // 重新读取当前状态，而不是依赖扫描时的快照。
@@ -160,7 +159,7 @@ public sealed class ExpireCleanupAppService : BackgroundService
                     // 记录可能已经被 HIS commit/cancel，或者被上一轮清理任务处理过。
                     // 提交空事务并跳过，不要把已推进的状态覆盖成 EXPIRED。
                     // 这是并发安全的关键——只对"仍然是 PENDING"的记录执行过期。
-                    await db.Ado.CommitTranAsync();
+                    await unitOfWork.CommitAsync();
                     continue;
                 }
 
@@ -175,13 +174,13 @@ public sealed class ExpireCleanupAppService : BackgroundService
                 await discountRepo.UpdateStatusByRequestIdAsync(log.RequestId, "EXPIRED");
                 await limitRepo.UpdateStatusByRequestIdAsync(log.RequestId, "EXPIRED");
 
-                await db.Ado.CommitTranAsync();
+                await unitOfWork.CommitAsync();
             }
             catch (Exception ex)
             {
                 // 回滚本条记录的变更，但不向上抛出，确保后续记录继续处理。
                 // 如果 throw 会导致本轮剩余记录全部跳过，影响额度及时释放。
-                await db.Ado.RollbackTranAsync();
+                await unitOfWork.RollbackAsync();
                 _logger.LogError(ex, "过期清理单条失败 RequestId={RequestId}，跳过继续", log.RequestId);
                 continue;
             }

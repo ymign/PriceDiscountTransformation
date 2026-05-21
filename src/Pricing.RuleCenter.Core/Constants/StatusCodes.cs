@@ -107,7 +107,7 @@ public static class EnableFlag
 /// </para>
 /// <para>
 /// 【状态机路径】
-/// SIMULATED（试算）→ CONFIRM_PENDING（待确认）→ CONFIRMED（已确认）→ COMMITTED（已落账）
+/// SIMULATED（试算）→ CONFIRM_PENDING（待确认）→ CONFIRMED（HIS 已落账确认）
 ///      ↘ CANCELLED（已取消）
 ///      ↘ EXPIRED（已过期）
 ///      ↘ REVERSED（已冲正）
@@ -126,12 +126,13 @@ public static class BusinessStatusCodes
     public const string ConfirmPending = "CONFIRM_PENDING";
 
     /// <summary>
-    /// 已确认状态：HIS commit 后确认，额度正式扣减。
+    /// 已确认状态：HIS commit 后确认，额度正式扣减，是当前正式落账状态。
     /// </summary>
     public const string Confirmed = "CONFIRMED";
 
     /// <summary>
-    /// 已落账状态：HIS 结算成功，请求完成。
+    /// 旧版兼容状态：历史设计曾用 COMMITTED 表达 HIS 已落账。
+    /// 新代码以 CONFIRMED 作为正式落账状态，读取旧数据时可兼容识别该值。
     /// </summary>
     public const string Committed = "COMMITTED";
 

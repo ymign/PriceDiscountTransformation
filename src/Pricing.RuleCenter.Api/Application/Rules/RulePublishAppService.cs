@@ -4,8 +4,8 @@ using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
 using Pricing.RuleCenter.Core.Interfaces.Catalog;
-using SqlSugar;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
+using Newtonsoft.Json.Linq;
 
 namespace Pricing.RuleCenter.Api.Application.Rules;
 
@@ -61,10 +61,14 @@ public sealed class RulePublishAppService
     /// </summary>
     private readonly ILogger<RulePublishAppService> _logger;
     /// <summary>
-    /// SqlSugar 数据库客户端，用于在发布操作中开启事务保证多表状态变更的原子性。
+    /// 工作单元，用于在发布操作中开启事务保证多表状态变更的原子性。
     /// 发布操作会同时更新版本状态、主档状态、发布流水和变更日志，必须使用事务包裹。
     /// </summary>
-    private readonly ISqlSugarClient _db;
+    private readonly IUnitOfWork _unitOfWork;
+    /// <summary>
+    /// 规则运行期缓存失效器，用于清除计价引擎侧跨请求共享缓存。
+    /// </summary>
+    private readonly IRuleRuntimeCacheInvalidator _runtimeCacheInvalidator;
 
     /// <summary>
     /// 互斥动作类型缓存。从 PR_DICT 表中 DICT_TYPE = "MUTUALLY_EXCLUSIVE_ACTION_TYPE" 的字典项加载。
@@ -89,13 +93,15 @@ public sealed class RulePublishAppService
     /// <param name="lifecycleRepositories">规则发布生命周期仓储集合。</param>
     /// <param name="definitionRepositories">规则定义仓储集合，用于发布前冲突校验。</param>
     /// <param name="cache">内存缓存，用于在状态变更后清除生效规则缓存。</param>
-    /// <param name="db">SqlSugar 数据库客户端，用于事务支持。</param>
+    /// <param name="unitOfWork">工作单元，用于事务支持。</param>
+    /// <param name="runtimeCacheInvalidator">运行期缓存失效器，用于清除规则匹配服务的动作顺序缓存。</param>
     /// <param name="logger">日志对象。</param>
     public RulePublishAppService(
         RulePublishLifecycleRepositories lifecycleRepositories,
         RulePublishDefinitionRepositories definitionRepositories,
         IMemoryCache cache,
-        ISqlSugarClient db,
+        IUnitOfWork unitOfWork,
+        IRuleRuntimeCacheInvalidator runtimeCacheInvalidator,
         ILogger<RulePublishAppService> logger)
     {
         _headerRepository = lifecycleRepositories.HeaderRepository;
@@ -106,7 +112,8 @@ public sealed class RulePublishAppService
         _actionRepository = definitionRepositories.ActionRepository;
         _dictRepository = definitionRepositories.DictRepository;
         _cache = cache;
-        _db = db;
+        _unitOfWork = unitOfWork;
+        _runtimeCacheInvalidator = runtimeCacheInvalidator;
         _logger = logger;
     }
 
@@ -379,6 +386,8 @@ public sealed class RulePublishAppService
             return;
         }
 
+        await ValidateActionParametersAsync(targetHeader.RuleId, targetVersionNo);
+
         var targetProfile = await BuildRuleProfileAsync(targetHeader, targetVersionNo);
         var sameItemRules = await _headerRepository.GetByItemCodeAsync(targetHeader.ItemCode);
         var publishedRules = sameItemRules
@@ -412,6 +421,112 @@ public sealed class RulePublishAppService
                     $"RuleId={existingRule.RuleId}");
             }
         }
+    }
+
+    private async Task ValidateActionParametersAsync(long ruleId, int versionNo)
+    {
+        var actions = await _actionRepository.GetByRuleAndVersionAsync(ruleId, versionNo);
+        foreach (var action in actions.Where(a => a.IsEnabled == EnableFlag.Yes))
+        {
+            ValidateActionParameters(action);
+        }
+    }
+
+    private static void ValidateActionParameters(RuleAction action)
+    {
+        var json = ParseParams(action.ParamsJson);
+        switch (action.ActionType?.Trim().ToUpperInvariant())
+        {
+            case "APPLY_TIME_WINDOW_LIMIT":
+                if (!HasPositiveNumber(json, "limitQty", "maxQty") ||
+                    !HasPositiveNumber(json, "windowMinutes", "windowHours"))
+                {
+                    throw new InvalidOperationException(
+                        $"RULE_ACTION_PARAM_MISSING: ActionType={action.ActionType} 缺少有效的 limitQty/maxQty 或 windowMinutes/windowHours");
+                }
+                break;
+
+            case "APPLY_DAY_LIMIT_QTY":
+                if (!HasPositiveNumber(json, "maxDailyQty"))
+                {
+                    throw new InvalidOperationException(
+                        $"RULE_ACTION_PARAM_MISSING: ActionType={action.ActionType} 缺少有效的 maxDailyQty");
+                }
+                break;
+
+            case "APPLY_ONCE_LIMIT_QTY":
+                if (!HasNonNegativeNumber(json, "maxOnceQty", "maxQty"))
+                {
+                    throw new InvalidOperationException(
+                        $"RULE_ACTION_PARAM_MISSING: ActionType={action.ActionType} 缺少有效的 maxOnceQty/maxQty");
+                }
+                break;
+
+            case "APPLY_MAX_AMOUNT":
+                if (!HasNonNegativeNumber(json, "maxAmount", "ceilingAmount"))
+                {
+                    throw new InvalidOperationException(
+                        $"RULE_ACTION_PARAM_MISSING: ActionType={action.ActionType} 缺少有效的 maxAmount/ceilingAmount");
+                }
+                break;
+
+            case "APPLY_MIN_AMOUNT":
+                if (!HasNonNegativeNumber(json, "minAmount", "floorAmount"))
+                {
+                    throw new InvalidOperationException(
+                        $"RULE_ACTION_PARAM_MISSING: ActionType={action.ActionType} 缺少有效的 minAmount/floorAmount");
+                }
+                break;
+
+        }
+    }
+
+    private static JObject? ParseParams(string? paramsJson)
+    {
+        if (string.IsNullOrWhiteSpace(paramsJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JObject.Parse(paramsJson);
+        }
+        catch
+        {
+            throw new InvalidOperationException("RULE_ACTION_PARAM_INVALID: 动作参数不是合法 JSON");
+        }
+    }
+
+    private static bool HasPositiveNumber(JObject? json, params string[] keys)
+    {
+        return TryGetNumber(json, keys, out var value) && value > 0m;
+    }
+
+    private static bool HasNonNegativeNumber(JObject? json, params string[] keys)
+    {
+        return TryGetNumber(json, keys, out var value) && value >= 0m;
+    }
+
+    private static bool TryGetNumber(JObject? json, string[] keys, out decimal value)
+    {
+        value = 0m;
+        if (json is null)
+        {
+            return false;
+        }
+
+        foreach (var key in keys)
+        {
+            if (json.TryGetValue(key, StringComparison.OrdinalIgnoreCase, out var token) &&
+                token.Type != JTokenType.Null &&
+                decimal.TryParse(token.ToString(), out value))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private async Task<RuleConflictProfile> BuildRuleProfileAsync(RuleAggregate header, int versionNo)
@@ -679,7 +794,8 @@ public sealed class RulePublishAppService
     {
         var removed = EffectiveRuleCacheKeys.Clear(_cache);
         _mutuallyExclusiveActionsCache = null;
-        _logger.LogDebug("已清除生效规则缓存和互斥动作类型缓存，共清理 {Count} 个生效规则缓存键", removed);
+        _runtimeCacheInvalidator.ClearRuntimeCache();
+        _logger.LogDebug("已清除生效规则缓存、互斥动作类型缓存和规则运行期缓存，共清理 {Count} 个生效规则缓存键", removed);
     }
 
     /// <summary>
@@ -734,17 +850,16 @@ public sealed class RulePublishAppService
     /// </remarks>
     private async Task ExecuteInTransactionAsync(Func<Task> action)
     {
-        // ISqlSugarClient 通过 DI 注入，正常运行时不可能为 null。如果为 null 则说明严重配置错误。
         try
         {
-            await _db.Ado.BeginTranAsync();
+            await _unitOfWork.BeginAsync();
             await action();
-            await _db.Ado.CommitTranAsync();
+            await _unitOfWork.CommitAsync();
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "规则发布事务执行异常，已回滚");
-            await _db.Ado.RollbackTranAsync();
+            await _unitOfWork.RollbackAsync();
             throw;
         }
     }

@@ -52,8 +52,8 @@ public sealed class OnceQtyLimitExecutor : IRuleActionExecutor
     public async Task ExecuteAsync(RuleAction action, PricingContext context)
     {
         var param = DeserializeParams(action.ParamsJson);
-        var maxOnceQty = param?.GetMaxOnceQty() ?? 0;
-        if (maxOnceQty <= 0)
+        var maxOnceQty = param?.GetMaxOnceQty();
+        if (!maxOnceQty.HasValue)
         {
             return;
         }
@@ -78,7 +78,7 @@ public sealed class OnceQtyLimitExecutor : IRuleActionExecutor
             occupiedQty += inRequestQty;
         }
 
-        var remainingQty = maxOnceQty - occupiedQty;
+        var remainingQty = maxOnceQty.Value - occupiedQty;
         if (remainingQty <= 0)
         {
             context.FinalQty = 0;
@@ -148,33 +148,39 @@ public sealed class OnceQtyLimitExecutor : IRuleActionExecutor
         /// <summary>
         /// 当前版本推荐使用的单次收费动作最大允许数量。
         /// </summary>
-        public decimal MaxOnceQty { get; set; }
+        public decimal? MaxOnceQty { get; set; }
 
         /// <summary>
         /// 历史参数名，兼容旧配置中使用 LimitQty 表达单次上限的规则动作。
         /// </summary>
-        public decimal LimitQty { get; set; }
+        public decimal? LimitQty { get; set; }
 
         /// <summary>
         /// 历史参数名，兼容旧配置中使用 MaxQty 表达单次上限的规则动作。
         /// </summary>
-        public decimal MaxQty { get; set; }
+        public decimal? MaxQty { get; set; }
 
         /// <summary>
         /// 按兼容优先级解析最终可用的单次上限数量。
         /// </summary>
-        /// <returns>优先返回 MaxOnceQty，其次 LimitQty，最后 MaxQty；三者都未配置时返回 0。</returns>
+        /// <returns>优先返回 MaxOnceQty，其次 LimitQty，最后 MaxQty；三者都未配置时返回 null。</returns>
         /// <remarks>
         /// 规则中心经历过多版参数命名。这里不要求历史规则一次性清洗，而是在执行器入口统一兼容，
         /// 避免旧动作参数因为字段名不同被当作"未配置上限"直接跳过。
         /// </remarks>
-        public decimal GetMaxOnceQty()
+        public decimal? GetMaxOnceQty()
         {
-            return MaxOnceQty > 0
-                ? MaxOnceQty
-                : LimitQty > 0
-                    ? LimitQty
-                    : MaxQty;
+            if (MaxOnceQty.HasValue)
+            {
+                return MaxOnceQty.Value;
+            }
+
+            if (LimitQty.HasValue)
+            {
+                return LimitQty.Value;
+            }
+
+            return MaxQty;
         }
     }
 }

@@ -40,7 +40,7 @@ namespace Pricing.RuleCenter.Core.Engine;
 /// </list>
 /// </para>
 /// </remarks>
-public sealed class RuleMatchService
+public sealed class RuleMatchService : IRuleRuntimeCacheInvalidator
 {
     /// <summary>
     /// 规则主档仓储，用于按项目编码读取候选规则（PR_RULE_HEADER）。
@@ -552,6 +552,18 @@ public sealed class RuleMatchService
     {
         s_cacheLoaded = false;
         _logger.LogDebug("动作执行顺序缓存已清除，下次匹配将从字典重新加载");
+    }
+
+    /// <summary>
+    /// 清除规则匹配运行期缓存。
+    /// </summary>
+    /// <remarks>
+    /// 目前运行期缓存主要是 ACTION_TYPE_ORDER 动作顺序。通过接口暴露失效能力，
+    /// 发布服务不需要知道 RuleMatchService 的具体缓存结构。
+    /// </remarks>
+    public void ClearRuntimeCache()
+    {
+        ClearActionTypeOrderCache();
     }
 
     /// <summary>

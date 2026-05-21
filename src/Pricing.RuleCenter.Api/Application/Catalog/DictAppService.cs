@@ -49,6 +49,10 @@ public sealed class DictAppService
     /// 字典数据变化频率极低（仅配置维护时变更），适合较长 TTL 的应用层缓存。
     /// </summary>
     private readonly IMemoryCache _cache;
+    /// <summary>
+    /// 规则运行期缓存失效器。部分字典（如动作执行顺序）会影响计价引擎跨请求缓存。
+    /// </summary>
+    private readonly IRuleRuntimeCacheInvalidator _runtimeCacheInvalidator;
 
     /// <summary>
     /// 服务日志，用于记录新增、更新和停用等会影响配置展示的操作。
@@ -73,16 +77,19 @@ public sealed class DictAppService
     /// <param name="repository">字典仓储，用于隔离 PR 字典表的持久化实现。</param>
     /// <param name="changeLogRepository">变更日志仓储，用于写入字典增删改的审计记录。</param>
     /// <param name="cache">内存缓存，用于缓存字典查询结果。</param>
+    /// <param name="runtimeCacheInvalidator">规则运行期缓存失效器，用于清理动作顺序等引擎缓存。</param>
     /// <param name="logger">日志对象，用于输出配置变更审计线索。</param>
     public DictAppService(
         IDictRepository repository,
         IRuleChangeLogRepository changeLogRepository,
         IMemoryCache cache,
+        IRuleRuntimeCacheInvalidator runtimeCacheInvalidator,
         ILogger<DictAppService> logger)
     {
         _repository = repository;
         _changeLogRepository = changeLogRepository;
         _cache = cache;
+        _runtimeCacheInvalidator = runtimeCacheInvalidator;
         _logger = logger;
     }
 
@@ -301,6 +308,11 @@ public sealed class DictAppService
     {
         _cache.Remove($"{DictCachePrefix}{dictType}");
         _cache.Remove($"{DictCachePrefix}__all_types__");
+        if (string.Equals(dictType, "ACTION_TYPE_ORDER", StringComparison.OrdinalIgnoreCase))
+        {
+            _runtimeCacheInvalidator.ClearRuntimeCache();
+        }
+
         _logger.LogDebug("已清除字典缓存: {DictType}", dictType);
     }
 

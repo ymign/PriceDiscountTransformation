@@ -3,4 +3,5 @@
   <Project Path="Pricing.RuleCenter.Core/Pricing.RuleCenter.Core.csproj" />
   <Project Path="Pricing.RuleCenter.Infrastructure/Pricing.RuleCenter.Infrastructure.csproj" />
   <Project Path="../tests/Pricing.RuleCenter.Core.Tests/Pricing.RuleCenter.Core.Tests.csproj" />
+  <Project Path="../tests/Pricing.RuleCenter.Tests/Pricing.RuleCenter.Tests.csproj" />
 </Solution>
