@@ -443,7 +443,11 @@ public sealed class PricingAppService
                 });
                 if (calculation.Result.IsSpecialItem)
                 {
-                    await SaveLimitOccupies(requestLog.RequestId, requestLog.TraceId, calculation.Result);
+                    await SaveLimitOccupies(
+                        requestLog.RequestId,
+                        requestLog.TraceId,
+                        calculation.Item,
+                        calculation.Result);
                 }
             }
 
@@ -817,7 +821,14 @@ public sealed class PricingAppService
             });
             if (!isFullReverse)
             {
-                await InsertNegativeLimitOccupiesAsync(request, reverseRequestId, log.TraceId, reverseQty, reverseAmt, reverseTime);
+                await InsertNegativeLimitOccupiesAsync(
+                    request,
+                    matchedDetails,
+                    reverseRequestId,
+                    log.TraceId,
+                    reverseQty,
+                    reverseAmt,
+                    reverseTime);
             }
 
             // ========== 第五阶段：写冲正审计 ==========
@@ -1315,6 +1326,7 @@ public sealed class PricingAppService
 
     private async Task InsertNegativeLimitOccupiesAsync(
         PricingReverseRequest request,
+        IReadOnlyList<ChargeDiscountDetail> matchedDetails,
         long reverseRequestId,
         string? traceId,
         decimal reverseQty,
@@ -1322,11 +1334,29 @@ public sealed class PricingAppService
         DateTime reverseTime)
     {
         var originalOccupies = await _limitRepository.GetByRequestIdAsync(request.OriginalRequestId);
+        var matchedChargeDetailNos = matchedDetails
+            .Select(d => NormalizeString(d.ChargeDetailNo))
+            .Where(chargeDetailNo => chargeDetailNo is not null)
+            .Select(chargeDetailNo => chargeDetailNo!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var matchedResultGroupNos = matchedDetails
+            .Select(d => NormalizeString(d.ResultGroupNo))
+            .Where(resultGroupNo => resultGroupNo is not null)
+            .Select(resultGroupNo => resultGroupNo!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var matchedItemCodes = matchedDetails
+            .Select(d => NormalizeString(d.ItemCode))
+            .Where(itemCode => itemCode is not null)
+            .Select(itemCode => itemCode!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var candidates = originalOccupies
             .Where(o => o.Status == "CONFIRMED")
             .Where(o => o.OccupyType == "CHARGE")
-            .Where(o => string.IsNullOrWhiteSpace(request.ItemCode) ||
-                        string.Equals(o.ItemCode, request.ItemCode, StringComparison.OrdinalIgnoreCase))
+            .Where(o => MatchReverseOccupyCandidate(
+                o,
+                matchedChargeDetailNos,
+                matchedResultGroupNos,
+                matchedItemCodes))
             .Where(o => !request.PartSeq.HasValue || o.PartSeq == request.PartSeq)
             .Where(o => IsSameBusinessDay(o.BusinessChargeTime, reverseTime))
             .ToList();
@@ -1348,8 +1378,10 @@ public sealed class PricingAppService
                 TraceId = traceId ?? occupy.TraceId,
                 PatientId = occupy.PatientId,
                 ItemCode = occupy.ItemCode,
+                ChargeDetailNo = occupy.ChargeDetailNo,
                 RuleId = occupy.RuleId,
                 RuleVersionNo = occupy.RuleVersionNo,
+                ResultGroupNo = occupy.ResultGroupNo,
                 LimitType = occupy.LimitType,
                 LimitKey = occupy.LimitKey,
                 LimitDimensionCode = occupy.LimitDimensionCode,
@@ -1375,6 +1407,37 @@ public sealed class PricingAppService
     {
         return originalBusinessTime.HasValue &&
                originalBusinessTime.Value.Date == reverseTime.Date;
+    }
+
+    private static bool MatchReverseOccupyCandidate(
+        LimitOccupy occupy,
+        IReadOnlySet<string> matchedChargeDetailNos,
+        IReadOnlySet<string> matchedResultGroupNos,
+        IReadOnlySet<string> matchedItemCodes)
+    {
+        var occupyChargeDetailNo = NormalizeString(occupy.ChargeDetailNo);
+        var occupyResultGroupNo = NormalizeString(occupy.ResultGroupNo);
+        var occupyItemCode = NormalizeString(occupy.ItemCode);
+
+        if (matchedResultGroupNos.Count > 0)
+        {
+            return (occupyResultGroupNo is not null && matchedResultGroupNos.Contains(occupyResultGroupNo)) ||
+                   (occupyChargeDetailNo is not null && matchedChargeDetailNos.Contains(occupyChargeDetailNo)) ||
+                   (occupyResultGroupNo is null &&
+                    occupyChargeDetailNo is null &&
+                    occupyItemCode is not null &&
+                    matchedItemCodes.Contains(occupyItemCode));
+        }
+
+        if (matchedChargeDetailNos.Count > 0)
+        {
+            return (occupyChargeDetailNo is not null && matchedChargeDetailNos.Contains(occupyChargeDetailNo)) ||
+                   (occupyChargeDetailNo is null &&
+                    occupyItemCode is not null &&
+                    matchedItemCodes.Contains(occupyItemCode));
+        }
+
+        return occupyItemCode is not null && matchedItemCodes.Contains(occupyItemCode);
     }
 
     private static bool IsCommittedBusinessStatus(string? businessStatus)
@@ -1663,10 +1726,7 @@ public sealed class PricingAppService
         // 完整动作链仍通过步骤日志和请求响应快照追溯。
         var firstRuleId = result.MatchedRuleIds.FirstOrDefault();
         var now = DateTime.Now;
-        var hasChildItems = result.ChildPricingResults.Count > 0;
-        var resultGroupNo = result.ReplaceChildResult is null && !hasChildItems
-            ? null
-            : BuildResultGroupNo(requestId, item, result.ReplaceChildResult is not null ? "REPLACE" : "CHILD");
+        var resultGroupNo = ResolveResultGroupNo(requestId, item, result);
 
         // ========== 第二阶段：保存待确认或最终折价明细 ==========
         // confirm 阶段写 PENDING，commit 后再统一改 CONFIRMED。这样未落账的结果不会进入正式报表。
@@ -1809,15 +1869,22 @@ public sealed class PricingAppService
         }
     }
 
-    private async Task SaveLimitOccupies(long requestId, string? traceId, PricingResult result)
+    private async Task SaveLimitOccupies(
+        long requestId,
+        string? traceId,
+        PricingCalculateItemRequest item,
+        PricingResult result)
     {
         // confirm 结果不是永久有效。ExpireAt 用于后台清理长时间未 commit 的保护占用，
         // 防止 HIS 异常退出后额度一直被 PENDING 记录占住。
         var expireAt = DateTime.Now.AddMinutes(_options.ConfirmExpireMinutes);
+        var resultGroupNo = ResolveResultGroupNo(requestId, item, result);
         foreach (var occupy in result.LimitOccupies)
         {
             occupy.RequestId = requestId;
             occupy.TraceId = traceId;
+            occupy.ChargeDetailNo = NormalizeString(item.ChargeDetailNo);
+            occupy.ResultGroupNo = resultGroupNo;
             occupy.Status = "PENDING";
             occupy.ExpireAt = expireAt;
             occupy.OccupiedAt = DateTime.Now;
@@ -2044,6 +2111,17 @@ public sealed class PricingAppService
             await _unitOfWork.RollbackAsync();
             throw;
         }
+    }
+
+    private static string? ResolveResultGroupNo(
+        long requestId,
+        PricingCalculateItemRequest item,
+        PricingResult result)
+    {
+        var hasChildItems = result.ChildPricingResults.Count > 0;
+        return result.ReplaceChildResult is null && !hasChildItems
+            ? null
+            : BuildResultGroupNo(requestId, item, result.ReplaceChildResult is not null ? "REPLACE" : "CHILD");
     }
 
     private async Task ExecuteInTransactionAsync(Func<Task> action)

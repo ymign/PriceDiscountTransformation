@@ -180,6 +180,31 @@ Core 聚合 `ChargeRequest` 的 `MarkCommitted` / `MarkReversed` 已统一到现
 - `PublishAsync_ReEnablesRuleWhenPublishingFromDisabledHeader`
 - `RollbackAsync_UsesPublishHistoryInsteadOfHighestDisabledVersion`
 
+### 2.13 限额占用补齐明细级身份
+
+`PR_LIMIT_OCCUPY` 本轮补了两列业务身份字段：
+
+- `CHARGE_DETAIL_NO`
+- `RESULT_GROUP_NO`
+
+同时落地了三处配套改造：
+
+- confirm 持久化限额占用时，透传费用明细的 `ChargeDetailNo`
+- 主子项目/替换子项场景下，限额占用与折价明细共享同一 `ResultGroupNo`
+- reverse 释放原占额时，匹配顺序改成：
+  - 先按 `ResultGroupNo`
+  - 再按 `ChargeDetailNo`
+  - 老数据缺字段时再兼容回退到项目维度
+
+这次修复解决的是一个结构性资金问题：
+
+- 同一请求内如果存在“相同 `ItemCode`、不同 `ChargeDetailNo`”的多条收费明细，部分退费不再被迫按项目维度比例释放，而是优先释放命中的原占额
+
+对应新增回归测试：
+
+- `ReverseAsync_ReleasesOnlyMatchedChargeDetailOccupyWhenSameItemHasMultipleDetails`
+- `ConfirmAsync_PersistsChargeDetailNoIntoLimitOccupies`
+
 ## 3. 自动化验证
 
 本轮完成后已执行：
@@ -211,7 +236,7 @@ git diff --check
 - `CONVERT_QTY` 的发布参数完整性校验，需要结合历史配置口径再收紧
 - authority price 的时间版本追溯
 - reverse 审计如果需要“一次退费多条逐明细冲正日志”，需补表设计或仓储接口
-- `PR_LIMIT_OCCUPY` 当前仍缺少明细级定位字段（如 `ChargeDetailNo` / `OriginalDiscountId`）；同一请求内相同项目多明细的部分退费，仍只能按项目维度比例释放额度
+- `PR_LIMIT_OCCUPY` 目前已经补上 `ChargeDetailNo` / `ResultGroupNo`，但还没有补 `OriginalDiscountId`；如果后续要做到“完全按折价明细主键释放”，还需要继续补表和仓储
 - 规则发布并发一致性仍未做到数据库级硬约束；当前通过事务内重读降低了风险，但还没有落到 `SELECT FOR UPDATE` / CAS / 唯一约束
 - 多实例部署下的规则缓存失效仍是进程内语义，未升级为分布式广播
 - Trace 查询接口若要直接按 `TraceId` 聚合展示，可再补专门查询入口和测试

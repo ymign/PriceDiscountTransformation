@@ -276,6 +276,8 @@ public static class EntityTypeConfigs
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(LimitOccupy), PropertyName = nameof(LimitOccupy.TraceId), DbColumnName = "TRACE_ID" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(LimitOccupy), PropertyName = nameof(LimitOccupy.PatientId), DbColumnName = "PATIENT_ID" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(LimitOccupy), PropertyName = nameof(LimitOccupy.ItemCode), DbColumnName = "ITEM_CODE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(LimitOccupy), PropertyName = nameof(LimitOccupy.ChargeDetailNo), DbColumnName = "CHARGE_DETAIL_NO" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(LimitOccupy), PropertyName = nameof(LimitOccupy.ResultGroupNo), DbColumnName = "RESULT_GROUP_NO" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(LimitOccupy), PropertyName = nameof(LimitOccupy.RuleId), DbColumnName = "RULE_ID" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(LimitOccupy), PropertyName = nameof(LimitOccupy.RuleVersionNo), DbColumnName = "RULE_VERSION_NO" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(LimitOccupy), PropertyName = nameof(LimitOccupy.LimitType), DbColumnName = "LIMIT_TYPE" });

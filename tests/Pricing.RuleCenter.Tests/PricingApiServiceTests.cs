@@ -628,6 +628,52 @@ public sealed class PricingApiServiceTests
     }
 
     [Fact]
+    public async Task ConfirmAsync_PersistsChargeDetailNoIntoLimitOccupies()
+    {
+        var requestRepository = new InMemoryChargeRequestLogRepository();
+        var discountRepository = new CapturingChargeDiscountDetailRepository();
+        var limitRepository = new CapturingLimitOccupyRepository();
+        var service = CreatePricingApiService(
+            new TraceableSpecialPricingEngine(),
+            new EmptyRuleHeaderRepository(),
+            requestRepository,
+            discountRepository,
+            new EmptyChargeTraceStepRepository(),
+            limitRepository,
+            new EmptyChargeReverseLogRepository(),
+            new EmptyPriceMasterRepository(),
+            new NoopUnitOfWork(),
+            Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
+            NullLogger<PricingApiService>.Instance);
+
+        var response = await service.ConfirmAsync(new PricingCalculateRequest
+        {
+            RequestNo = "REQ-TRACE-DETAIL",
+            BusinessRequestNo = "BR-TRACE-DETAIL",
+            SourceSystem = "HIS",
+            PatientId = "P001",
+            ChargeNo = "C-TRACE-DETAIL",
+            BusinessChargeTime = new DateTime(2026, 5, 10, 9, 30, 0),
+            Items = new[]
+            {
+                new PricingCalculateItemRequest
+                {
+                    ChargeDetailNo = "CD-TRACE-DETAIL",
+                    ItemCode = "ITEM_TRACE",
+                    ItemName = "追溯项目",
+                    InputQty = 1m,
+                    UnitPrice = 10m
+                }
+            }
+        });
+
+        Assert.True(response.IsSpecialItem);
+        var occupy = Assert.Single(limitRepository.Inserted);
+        Assert.Equal("CD-TRACE-DETAIL", occupy.ChargeDetailNo);
+        Assert.Null(occupy.ResultGroupNo);
+    }
+
+    [Fact]
     public async Task CommitAsync_ConfirmsWhenHisActualsMatchConfirmDetails()
     {
         var requestRepository = new CommitRequestLogRepository(new ChargeRequestLog

@@ -115,6 +115,25 @@ public sealed class LimitOccupy
     public string? ItemCode { get; set; }
 
     /// <summary>
+    /// 收费明细号。
+    /// </summary>
+    /// <remarks>
+    /// confirm 阶段从调用方费用明细透传，用于在同一请求内存在相同项目多条收费明细时，
+    /// reverse 能精确定位应该释放哪一条原占额。
+    /// 空值表示调用方未提供明细号，此时只能退回到项目维度或结果组维度匹配。
+    /// </remarks>
+    public string? ChargeDetailNo { get; set; }
+
+    /// <summary>
+    /// 主子项目同组结果号。
+    /// </summary>
+    /// <remarks>
+    /// 当一次计价会派生替换子项或加收子项时，限额占用与折价明细共享同一 ResultGroupNo。
+    /// reverse 若只拿到主项目明细号，仍可通过该组号把同组占额一起释放，保证主子项目口径一致。
+    /// </remarks>
+    public string? ResultGroupNo { get; set; }
+
+    /// <summary>
     /// 产生本次占用的规则主键，关联 PR_RULE_HEADER.RULE_ID。
     /// </summary>
     /// <remarks>
