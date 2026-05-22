@@ -37,7 +37,74 @@ public sealed class RuleApprovalAppServiceTests
     }
 
     [Fact]
-    public async Task ApproveAsync_UpdatesLatestPendingApproval()
+    public async Task SubmitAsync_RejectsPublishApprovalWhenVersionIsNotDraft()
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var versionRepository = new InMemoryRuleVersionRepository();
+        var approvalRepository = new InMemoryRuleApprovalRepository();
+        var changeLogRepository = new InMemoryRuleChangeLogRepository();
+        var service = CreateService(headerRepository, versionRepository, approvalRepository, changeLogRepository);
+
+        headerRepository.Headers.Add(new RuleHeader { RuleId = 11, RuleCode = "R11", Status = "PUBLISHED", CurrentVersion = 1, IsEnabled = "Y" });
+        versionRepository.Versions.Add(new RuleVersion { VersionId = 111, RuleId = 11, VersionNo = 1, VersionStatus = "PUBLISHED" });
+
+        var ex = await Assert.ThrowsAsync<BizException>(() => service.SubmitAsync(11, 1, new RuleApprovalSubmitRequest
+        {
+            ActionType = "PUBLISH",
+            SubmittedBy = "maker"
+        }));
+
+        Assert.Equal(BizErrorCode.VersionStatusNotAllowed, ex.Code);
+    }
+
+    [Fact]
+    public async Task SubmitAsync_RejectsDisableApprovalWhenVersionIsNotCurrentPublished()
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var versionRepository = new InMemoryRuleVersionRepository();
+        var approvalRepository = new InMemoryRuleApprovalRepository();
+        var changeLogRepository = new InMemoryRuleChangeLogRepository();
+        var service = CreateService(headerRepository, versionRepository, approvalRepository, changeLogRepository);
+
+        headerRepository.Headers.Add(new RuleHeader { RuleId = 12, RuleCode = "R12", Status = "PUBLISHED", CurrentVersion = 2, IsEnabled = "Y" });
+        versionRepository.Versions.AddRange(new[]
+        {
+            new RuleVersion { VersionId = 121, RuleId = 12, VersionNo = 1, VersionStatus = "DISABLED" },
+            new RuleVersion { VersionId = 122, RuleId = 12, VersionNo = 2, VersionStatus = "PUBLISHED" }
+        });
+
+        var ex = await Assert.ThrowsAsync<BizException>(() => service.SubmitAsync(12, 1, new RuleApprovalSubmitRequest
+        {
+            ActionType = "DISABLE",
+            SubmittedBy = "maker"
+        }));
+
+        Assert.Equal(BizErrorCode.VersionStatusNotAllowed, ex.Code);
+    }
+
+    [Fact]
+    public async Task SubmitAsync_RejectsUnsupportedActionType()
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var versionRepository = new InMemoryRuleVersionRepository();
+        var approvalRepository = new InMemoryRuleApprovalRepository();
+        var changeLogRepository = new InMemoryRuleChangeLogRepository();
+        var service = CreateService(headerRepository, versionRepository, approvalRepository, changeLogRepository);
+
+        headerRepository.Headers.Add(new RuleHeader { RuleId = 13, RuleCode = "R13", Status = "DRAFT", IsEnabled = "Y" });
+        versionRepository.Versions.Add(new RuleVersion { VersionId = 131, RuleId = 13, VersionNo = 1, VersionStatus = "DRAFT" });
+
+        var ex = await Assert.ThrowsAsync<BizException>(() => service.SubmitAsync(13, 1, new RuleApprovalSubmitRequest
+        {
+            ActionType = "ARCHIVE",
+            SubmittedBy = "maker"
+        }));
+
+        Assert.Equal(BizErrorCode.ApprovalActionInvalid, ex.Code);
+    }
+
+    [Fact]
+    public async Task ApproveAsync_UpdatesMatchingPendingApprovalForRequestedActionType()
     {
         var headerRepository = new InMemoryRuleHeaderRepository();
         var versionRepository = new InMemoryRuleVersionRepository();
@@ -47,32 +114,48 @@ public sealed class RuleApprovalAppServiceTests
 
         headerRepository.Headers.Add(new RuleHeader { RuleId = 2, RuleCode = "R2", Status = "DRAFT", IsEnabled = "Y" });
         versionRepository.Versions.Add(new RuleVersion { VersionId = 12, RuleId = 2, VersionNo = 1, VersionStatus = "DRAFT" });
-        approvalRepository.Items.Add(new RuleApproval
+        approvalRepository.Items.AddRange(new[]
         {
-            ApprovalId = 100,
-            RuleId = 2,
-            VersionNo = 1,
-            ActionType = "PUBLISH",
-            ApprovalStatus = "PENDING",
-            SubmittedBy = "maker",
-            SubmittedAt = new DateTime(2026, 5, 22, 9, 0, 0)
+            new RuleApproval
+            {
+                ApprovalId = 100,
+                RuleId = 2,
+                VersionNo = 1,
+                ActionType = "PUBLISH",
+                ApprovalStatus = "PENDING",
+                SubmittedBy = "maker",
+                SubmittedAt = new DateTime(2026, 5, 22, 9, 0, 0)
+            },
+            new RuleApproval
+            {
+                ApprovalId = 101,
+                RuleId = 2,
+                VersionNo = 1,
+                ActionType = "DISABLE",
+                ApprovalStatus = "PENDING",
+                SubmittedBy = "maker",
+                SubmittedAt = new DateTime(2026, 5, 22, 9, 1, 0)
+            }
         });
 
         await service.ApproveAsync(2, 1, new RuleApprovalDecisionRequest
         {
+            ActionType = "PUBLISH",
             ReviewedBy = "checker",
             ReviewComment = "通过"
         });
 
-        var approval = Assert.Single(approvalRepository.Items);
-        Assert.Equal("APPROVED", approval.ApprovalStatus);
-        Assert.Equal("checker", approval.ReviewedBy);
-        Assert.NotNull(approval.ReviewedAt);
+        var publishApproval = approvalRepository.Items.Single(i => i.ActionType == "PUBLISH");
+        var disableApproval = approvalRepository.Items.Single(i => i.ActionType == "DISABLE");
+        Assert.Equal("APPROVED", publishApproval.ApprovalStatus);
+        Assert.Equal("checker", publishApproval.ReviewedBy);
+        Assert.NotNull(publishApproval.ReviewedAt);
+        Assert.Equal("PENDING", disableApproval.ApprovalStatus);
         Assert.Contains(changeLogRepository.Items, i => i.ChangeType == "APPROVE");
     }
 
     [Fact]
-    public async Task RejectAsync_UpdatesLatestPendingApproval()
+    public async Task RejectAsync_UpdatesMatchingPendingApprovalForRequestedActionType()
     {
         var headerRepository = new InMemoryRuleHeaderRepository();
         var versionRepository = new InMemoryRuleVersionRepository();
@@ -82,27 +165,43 @@ public sealed class RuleApprovalAppServiceTests
 
         headerRepository.Headers.Add(new RuleHeader { RuleId = 3, RuleCode = "R3", Status = "DRAFT", IsEnabled = "Y" });
         versionRepository.Versions.Add(new RuleVersion { VersionId = 13, RuleId = 3, VersionNo = 1, VersionStatus = "DRAFT" });
-        approvalRepository.Items.Add(new RuleApproval
+        approvalRepository.Items.AddRange(new[]
         {
-            ApprovalId = 101,
-            RuleId = 3,
-            VersionNo = 1,
-            ActionType = "DISABLE",
-            ApprovalStatus = "PENDING",
-            SubmittedBy = "maker",
-            SubmittedAt = new DateTime(2026, 5, 22, 9, 0, 0)
+            new RuleApproval
+            {
+                ApprovalId = 201,
+                RuleId = 3,
+                VersionNo = 1,
+                ActionType = "DISABLE",
+                ApprovalStatus = "PENDING",
+                SubmittedBy = "maker",
+                SubmittedAt = new DateTime(2026, 5, 22, 9, 0, 0)
+            },
+            new RuleApproval
+            {
+                ApprovalId = 202,
+                RuleId = 3,
+                VersionNo = 1,
+                ActionType = "ROLLBACK",
+                ApprovalStatus = "PENDING",
+                SubmittedBy = "maker",
+                SubmittedAt = new DateTime(2026, 5, 22, 9, 1, 0)
+            }
         });
 
         await service.RejectAsync(3, 1, new RuleApprovalDecisionRequest
         {
+            ActionType = "DISABLE",
             ReviewedBy = "checker",
             ReviewComment = "不通过"
         });
 
-        var approval = Assert.Single(approvalRepository.Items);
-        Assert.Equal("REJECTED", approval.ApprovalStatus);
-        Assert.Equal("checker", approval.ReviewedBy);
-        Assert.NotNull(approval.ReviewedAt);
+        var disableApproval = approvalRepository.Items.Single(i => i.ActionType == "DISABLE");
+        var rollbackApproval = approvalRepository.Items.Single(i => i.ActionType == "ROLLBACK");
+        Assert.Equal("REJECTED", disableApproval.ApprovalStatus);
+        Assert.Equal("checker", disableApproval.ReviewedBy);
+        Assert.NotNull(disableApproval.ReviewedAt);
+        Assert.Equal("PENDING", rollbackApproval.ApprovalStatus);
         Assert.Contains(changeLogRepository.Items, i => i.ChangeType == "REJECT");
     }
 

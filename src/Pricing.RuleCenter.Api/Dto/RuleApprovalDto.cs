@@ -38,6 +38,9 @@ public sealed class RuleApprovalSubmitRequest
 /// </summary>
 public sealed class RuleApprovalDecisionRequest
 {
+    [Required(ErrorMessage = "操作类型不能为空")]
+    public string ActionType { get; init; } = string.Empty;
+
     [Required(ErrorMessage = "审核人不能为空")]
     public string ReviewedBy { get; init; } = string.Empty;
 

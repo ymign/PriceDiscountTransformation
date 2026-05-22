@@ -590,6 +590,49 @@ Core 聚合 `ChargeRequest` 的 `MarkCommitted` / `MarkReversed` 已统一到现
 - `RuleDefinitionTransactionTests.SaveActionsAsync_ReturnsRuleVersionNotFoundBizCodeWhenVersionIsMissing`
 - `RuleDefinitionTransactionTests.SaveActionsAsync_ReturnsVersionStatusNotAllowedBizCodeWhenVersionIsNotDraft`
 
+### 2.25 规则审批接口补上动作维度，避免批错待审记录
+
+审批闭环接入发布门禁后，又暴露出一个更细的接口设计问题：
+
+- `submit-approval` 请求里有 `ActionType`
+- 但 `approve` / `reject` 请求里原先没有 `ActionType`
+- `RuleApprovalAppService` 会直接处理“该规则版本最新一条待审核记录”
+
+这在只有一条待审记录时看不出来，但一旦同一版本并行存在：
+
+- `PUBLISH` 待审
+- `DISABLE` 待审
+- 或 `ROLLBACK` 待审
+
+审核接口就有可能批错单，变成：
+
+- 本来想通过 `PUBLISH`
+- 实际把时间更新更晚的 `DISABLE` 批了
+
+这不是实现细节，而是接口本身缺少唯一定位待审记录的维度。
+
+本轮把审批接口再收紧一层：
+
+- `RuleApprovalDecisionRequest` 新增 `ActionType`
+- `approve` / `reject` 现在只处理“指定版本 + 指定动作类型”的待审核记录
+- 找不到对应待审核记录时，明确返回结构化错误
+
+同时顺手补了 `submit-approval` 的前置校验：
+
+- `ActionType` 必须是 `PUBLISH` / `DISABLE` / `ROLLBACK`
+- `PUBLISH` 只能对 `DRAFT` 版本提审
+- `DISABLE` / `ROLLBACK` 只能对当前已发布版本提审
+
+这样可以提前阻断一批无意义或自相矛盾的审批申请，而不是等到真正执行发布/停用/回滚时才暴露出来。
+
+对应新增/补强回归测试：
+
+- `RuleApprovalAppServiceTests.SubmitAsync_RejectsPublishApprovalWhenVersionIsNotDraft`
+- `RuleApprovalAppServiceTests.SubmitAsync_RejectsDisableApprovalWhenVersionIsNotCurrentPublished`
+- `RuleApprovalAppServiceTests.SubmitAsync_RejectsUnsupportedActionType`
+- `RuleApprovalAppServiceTests.ApproveAsync_UpdatesMatchingPendingApprovalForRequestedActionType`
+- `RuleApprovalAppServiceTests.RejectAsync_UpdatesMatchingPendingApprovalForRequestedActionType`
+
 ## 3. 自动化验证
 
 本轮完成后已执行：
@@ -599,6 +642,7 @@ dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter "RuleApprovalAppServiceTests|RulePublishConflictTests"
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter "CommitAsync_ReturnsRequestNotFoundBizCodeWhenRequestIsMissing|CancelAsync_ReturnsRequestNotFoundBizCodeWhenRequestIsMissing|ReverseAsync_ReturnsRequestNotFoundBizCodeWhenOriginalRequestIsMissing"
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter "RuleVersionAppServiceTests|RuleHeaderServiceTests|RuleDefinitionTransactionTests"
+dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter RuleApprovalAppServiceTests
 dotnet test tests\Pricing.RuleCenter.Core.Tests\Pricing.RuleCenter.Core.Tests.csproj --no-restore
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore
 dotnet test src\Pricing.RuleCenter.slnx --no-restore
@@ -608,7 +652,7 @@ git diff --check
 结果：
 
 - Core tests：38 通过
-- API/Application tests：165 通过
+- API/Application tests：168 通过
 - 解决方案测试：全部通过
 - `git diff --check` 通过
 
@@ -630,6 +674,7 @@ git diff --check
 - 规则发布并发一致性已补事务内 `FOR UPDATE` 锁、版本状态 CAS 和主档状态 CAS，但数据库侧仍缺对主档流程的更细粒度错误码和更强约束
 - 多实例部署下的缓存已经具备基于 Oracle 版本号的同步基础设施，但读侧目前只先接了生效规则查询和动作顺序缓存，字典普通查询仍是单机内存 TTL 语义
 - 审批链路目前已经补了最小可用闭环，但还没有单独的“待审核列表分页 / 审批人权限 / 审批撤回 / 多级审批”能力；现阶段先保证“审批存在且执行入口真正消费审批结论”
+- 审批接口已经补了动作维度和状态前置校验，但还没有“审批记录唯一键/数据库约束”去彻底阻止并行重复提审，当前主要靠应用层校验
 - 计价链路（`PricingAppService`）和规则维护主链路已经继续收口到 `BizException`，但普通维护接口与边角分支中仍有少量旧式 `InvalidOperationException` / `KeyNotFoundException` 残留，后续还需继续扫尾
 - 规则条件/动作保存已经补了应用层事务边界，但版本状态校验仍是“事务外先读、事务内写”；如果后续要继续收紧到“草稿编辑串行化”，可再评估是否补 `GetByRuleAndVersionForUpdateAsync` 级别的锁定保存
 - Trace 查询接口若要直接按 `TraceId` 聚合展示，可再补专门查询入口和测试

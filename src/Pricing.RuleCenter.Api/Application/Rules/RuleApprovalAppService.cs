@@ -1,5 +1,6 @@
 using Pricing.RuleCenter.Api.Dto;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
+using Pricing.RuleCenter.Core.Models;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
 
 namespace Pricing.RuleCenter.Api.Application.Rules;
@@ -9,6 +10,13 @@ namespace Pricing.RuleCenter.Api.Application.Rules;
 /// </summary>
 public sealed class RuleApprovalAppService
 {
+    private static readonly HashSet<string> SupportedActionTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "PUBLISH",
+        "DISABLE",
+        "ROLLBACK"
+    };
+
     private readonly IRuleHeaderRepository _headerRepository;
     private readonly IRuleVersionRepository _versionRepository;
     private readonly IRuleApprovalRepository _approvalRepository;
@@ -37,10 +45,12 @@ public sealed class RuleApprovalAppService
 
     public async Task<long> SubmitAsync(long ruleId, int versionNo, RuleApprovalSubmitRequest request)
     {
-        await EnsureRuleAndVersionExistAsync(ruleId, versionNo);
+        var (header, version) = await EnsureRuleAndVersionExistAsync(ruleId, versionNo);
+
+        var normalizedActionType = NormalizeActionType(request.ActionType);
+        ValidateApprovalActionState(header, version, normalizedActionType);
 
         var approvals = await _approvalRepository.GetByRuleIdAsync(ruleId);
-        var normalizedActionType = NormalizeActionType(request.ActionType);
         var latest = approvals
             .Where(a => a.VersionNo == versionNo)
             .Where(a => string.Equals(a.ActionType, normalizedActionType, StringComparison.OrdinalIgnoreCase))
@@ -90,7 +100,7 @@ public sealed class RuleApprovalAppService
 
     public async Task ApproveAsync(long ruleId, int versionNo, RuleApprovalDecisionRequest request)
     {
-        var pending = await GetLatestPendingApprovalAsync(ruleId, versionNo);
+        var pending = await GetLatestPendingApprovalAsync(ruleId, versionNo, request.ActionType);
         await _approvalRepository.UpdateStatusAsync(
             pending.ApprovalId,
             "APPROVED",
@@ -112,7 +122,7 @@ public sealed class RuleApprovalAppService
 
     public async Task RejectAsync(long ruleId, int versionNo, RuleApprovalDecisionRequest request)
     {
-        var pending = await GetLatestPendingApprovalAsync(ruleId, versionNo);
+        var pending = await GetLatestPendingApprovalAsync(ruleId, versionNo, request.ActionType);
         await _approvalRepository.UpdateStatusAsync(
             pending.ApprovalId,
             "REJECTED",
@@ -132,22 +142,26 @@ public sealed class RuleApprovalAppService
         });
     }
 
-    private async Task EnsureRuleAndVersionExistAsync(long ruleId, int versionNo)
+    private async Task<(RuleAggregate Header, RuleVersion Version)> EnsureRuleAndVersionExistAsync(long ruleId, int versionNo)
     {
-        _ = await _headerRepository.GetByIdAsync(ruleId)
+        var header = await _headerRepository.GetByIdAsync(ruleId)
             ?? throw new BizException(BizErrorCode.RuleNotFound, 404, $"规则不存在: {ruleId}");
-        _ = await _versionRepository.GetByRuleAndVersionAsync(ruleId, versionNo)
+        var version = await _versionRepository.GetByRuleAndVersionAsync(ruleId, versionNo)
             ?? throw new BizException(
                 BizErrorCode.RuleVersionNotFound,
                 404,
                 $"规则版本不存在: RuleId={ruleId}, VersionNo={versionNo}");
+
+        return (header, version);
     }
 
-    private async Task<RuleApproval> GetLatestPendingApprovalAsync(long ruleId, int versionNo)
+    private async Task<RuleApproval> GetLatestPendingApprovalAsync(long ruleId, int versionNo, string actionType)
     {
         await EnsureRuleAndVersionExistAsync(ruleId, versionNo);
+        var normalizedActionType = NormalizeActionType(actionType);
         return (await _approvalRepository.GetByRuleIdAsync(ruleId))
             .Where(a => a.VersionNo == versionNo)
+            .Where(a => string.Equals(a.ActionType, normalizedActionType, StringComparison.OrdinalIgnoreCase))
             .Where(a => string.Equals(a.ApprovalStatus, "PENDING", StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(a => a.SubmittedAt)
             .ThenByDescending(a => a.ApprovalId)
@@ -155,7 +169,7 @@ public sealed class RuleApprovalAppService
             ?? throw new BizException(
                 BizErrorCode.ApprovalRequired,
                 409,
-                $"RuleId={ruleId}, VersionNo={versionNo} 不存在待审核记录");
+                $"RuleId={ruleId}, VersionNo={versionNo}, ActionType={normalizedActionType} 不存在待审核记录");
     }
 
     private async Task TryWriteChangeLogAsync(RuleChangeLog entity)
@@ -192,9 +206,55 @@ public sealed class RuleApprovalAppService
         var normalized = actionType?.Trim().ToUpperInvariant();
         if (string.IsNullOrWhiteSpace(normalized))
         {
-            throw new BizException(BizErrorCode.ApprovalRequired, 400, "审批操作类型不能为空");
+            throw new BizException(BizErrorCode.ApprovalActionInvalid, 400, "审批操作类型不能为空");
+        }
+
+        if (!SupportedActionTypes.Contains(normalized))
+        {
+            throw new BizException(
+                BizErrorCode.ApprovalActionInvalid,
+                400,
+                $"不支持的审批操作类型: {normalized}");
         }
 
         return normalized;
+    }
+
+    private static void ValidateApprovalActionState(RuleAggregate header, RuleVersion version, string actionType)
+    {
+        switch (actionType)
+        {
+            case "PUBLISH":
+                if (!string.Equals(version.VersionStatus, "DRAFT", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new BizException(
+                        BizErrorCode.VersionStatusNotAllowed,
+                        409,
+                        $"只有草稿版本可以提交发布审批, 当前状态: {version.VersionStatus}");
+                }
+                break;
+
+            case "DISABLE":
+                if (!string.Equals(header.Status, "PUBLISHED", StringComparison.OrdinalIgnoreCase) ||
+                    header.CurrentVersion != version.VersionNo)
+                {
+                    throw new BizException(
+                        BizErrorCode.VersionStatusNotAllowed,
+                        409,
+                        $"只有当前已发布版本可以提交停用审批, 当前主档状态: {header.Status}, CurrentVersion={header.CurrentVersion}");
+                }
+                break;
+
+            case "ROLLBACK":
+                if (!string.Equals(header.Status, "PUBLISHED", StringComparison.OrdinalIgnoreCase) ||
+                    header.CurrentVersion != version.VersionNo)
+                {
+                    throw new BizException(
+                        BizErrorCode.VersionStatusNotAllowed,
+                        409,
+                        $"只有当前已发布版本可以提交回滚审批, 当前主档状态: {header.Status}, CurrentVersion={header.CurrentVersion}");
+                }
+                break;
+        }
     }
 }

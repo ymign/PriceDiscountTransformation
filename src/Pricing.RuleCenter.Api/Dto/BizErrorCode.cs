@@ -99,6 +99,9 @@ public static class BizErrorCode
     /// <summary>审批记录已驳回，不能继续执行生命周期操作。</summary>
     public const int ApprovalRejected = 1022;
 
+    /// <summary>审批动作类型不合法或与当前状态不匹配。</summary>
+    public const int ApprovalActionInvalid = 1023;
+
     // ========== 计价计算类错误（2001-2099） ==========
 
     /// <summary>单价校验失败（渠道传入单价与权威单价不一致）。</summary>
