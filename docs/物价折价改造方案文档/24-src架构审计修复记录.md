@@ -633,6 +633,47 @@ Core 聚合 `ChargeRequest` 的 `MarkCommitted` / `MarkReversed` 已统一到现
 - `RuleApprovalAppServiceTests.ApproveAsync_UpdatesMatchingPendingApprovalForRequestedActionType`
 - `RuleApprovalAppServiceTests.RejectAsync_UpdatesMatchingPendingApprovalForRequestedActionType`
 
+### 2.26 规则审批状态推进改成 CAS，避免双人审核后写覆盖
+
+审批接口补上动作维度以后，继续往下看还能发现一个并发口子：
+
+- `RuleApprovalAppService` 取到待审核记录后
+- 调 `_approvalRepository.UpdateStatusAsync(...)`
+- 旧实现是无条件覆盖写
+
+这意味着两个审核人如果几乎同时处理同一条待审记录，可能出现：
+
+1. 审核人 A 先点“通过”
+2. 审核人 B 稍后点“驳回”
+3. 后写把前写结果直接覆盖
+
+最终数据库只保留最后一次写入结果，前一次审核操作没有任何保护。
+
+这类问题和发布/主档/版本状态机的 CAS 风险是同一类：
+
+- 不是业务判断错
+- 而是状态推进缺少“我期望当前仍然是 PENDING”这个前提
+
+本轮把审批状态推进改成了 CAS 语义：
+
+- `IRuleApprovalRepository.UpdateStatusAsync` 新增 `expectedCurrentStatus`
+- 仓储返回 `bool` 表示是否更新成功
+- `RuleApprovalRepository` 只有在当前状态仍匹配预期时才更新
+- `RuleApprovalAppService.ApproveAsync` / `RejectAsync` 都要求从 `PENDING` 推进
+- 如果更新失败，则返回 `ConcurrencyConflict`
+
+这样即使两个审核人并发处理同一条记录：
+
+- 只有第一个成功把 `PENDING` 改掉的人会成功
+- 后一个会收到“状态已变化，请刷新后重试”
+
+这一步的目标不是做完整的审核锁工作台，而是先把最核心的“后写覆盖前写”资金流程风险消掉。
+
+对应新增回归测试：
+
+- `RuleApprovalAppServiceTests.ApproveAsync_RejectsWhenPendingApprovalWasAlreadyProcessed`
+- `RuleApprovalAppServiceTests.RejectAsync_RejectsWhenPendingApprovalWasAlreadyProcessed`
+
 ## 3. 自动化验证
 
 本轮完成后已执行：
@@ -643,6 +684,7 @@ dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter "CommitAsync_ReturnsRequestNotFoundBizCodeWhenRequestIsMissing|CancelAsync_ReturnsRequestNotFoundBizCodeWhenRequestIsMissing|ReverseAsync_ReturnsRequestNotFoundBizCodeWhenOriginalRequestIsMissing"
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter "RuleVersionAppServiceTests|RuleHeaderServiceTests|RuleDefinitionTransactionTests"
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter RuleApprovalAppServiceTests
+dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter "ApproveAsync_RejectsWhenPendingApprovalWasAlreadyProcessed|RejectAsync_RejectsWhenPendingApprovalWasAlreadyProcessed"
 dotnet test tests\Pricing.RuleCenter.Core.Tests\Pricing.RuleCenter.Core.Tests.csproj --no-restore
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore
 dotnet test src\Pricing.RuleCenter.slnx --no-restore
@@ -652,7 +694,7 @@ git diff --check
 结果：
 
 - Core tests：38 通过
-- API/Application tests：168 通过
+- API/Application tests：170 通过
 - 解决方案测试：全部通过
 - `git diff --check` 通过
 
@@ -675,6 +717,7 @@ git diff --check
 - 多实例部署下的缓存已经具备基于 Oracle 版本号的同步基础设施，但读侧目前只先接了生效规则查询和动作顺序缓存，字典普通查询仍是单机内存 TTL 语义
 - 审批链路目前已经补了最小可用闭环，但还没有单独的“待审核列表分页 / 审批人权限 / 审批撤回 / 多级审批”能力；现阶段先保证“审批存在且执行入口真正消费审批结论”
 - 审批接口已经补了动作维度和状态前置校验，但还没有“审批记录唯一键/数据库约束”去彻底阻止并行重复提审，当前主要靠应用层校验
+- 审批状态推进已经改成 CAS，但数据库侧仍没有针对“同一 RuleId + VersionNo + ActionType 的并行 PENDING 申请”唯一约束；如果后续需要进一步收口，应补索引或更强的申请锁
 - 计价链路（`PricingAppService`）和规则维护主链路已经继续收口到 `BizException`，但普通维护接口与边角分支中仍有少量旧式 `InvalidOperationException` / `KeyNotFoundException` 残留，后续还需继续扫尾
 - 规则条件/动作保存已经补了应用层事务边界，但版本状态校验仍是“事务外先读、事务内写”；如果后续要继续收紧到“草稿编辑串行化”，可再评估是否补 `GetByRuleAndVersionForUpdateAsync` 级别的锁定保存
 - Trace 查询接口若要直接按 `TraceId` 聚合展示，可再补专门查询入口和测试

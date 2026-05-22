@@ -205,6 +205,76 @@ public sealed class RuleApprovalAppServiceTests
         Assert.Contains(changeLogRepository.Items, i => i.ChangeType == "REJECT");
     }
 
+    [Fact]
+    public async Task ApproveAsync_RejectsWhenPendingApprovalWasAlreadyProcessed()
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var versionRepository = new InMemoryRuleVersionRepository();
+        var approvalRepository = new InMemoryRuleApprovalRepository
+        {
+            ForceUpdateFailure = true
+        };
+        var changeLogRepository = new InMemoryRuleChangeLogRepository();
+        var service = CreateService(headerRepository, versionRepository, approvalRepository, changeLogRepository);
+
+        headerRepository.Headers.Add(new RuleHeader { RuleId = 21, RuleCode = "R21", Status = "DRAFT", IsEnabled = "Y" });
+        versionRepository.Versions.Add(new RuleVersion { VersionId = 211, RuleId = 21, VersionNo = 1, VersionStatus = "DRAFT" });
+        approvalRepository.Items.Add(new RuleApproval
+        {
+            ApprovalId = 2101,
+            RuleId = 21,
+            VersionNo = 1,
+            ActionType = "PUBLISH",
+            ApprovalStatus = "PENDING",
+            SubmittedBy = "maker",
+            SubmittedAt = new DateTime(2026, 5, 22, 9, 0, 0)
+        });
+
+        var ex = await Assert.ThrowsAsync<BizException>(() => service.ApproveAsync(21, 1, new RuleApprovalDecisionRequest
+        {
+            ActionType = "PUBLISH",
+            ReviewedBy = "checker",
+            ReviewComment = "再次通过"
+        }));
+
+        Assert.Equal(BizErrorCode.ConcurrencyConflict, ex.Code);
+    }
+
+    [Fact]
+    public async Task RejectAsync_RejectsWhenPendingApprovalWasAlreadyProcessed()
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var versionRepository = new InMemoryRuleVersionRepository();
+        var approvalRepository = new InMemoryRuleApprovalRepository
+        {
+            ForceUpdateFailure = true
+        };
+        var changeLogRepository = new InMemoryRuleChangeLogRepository();
+        var service = CreateService(headerRepository, versionRepository, approvalRepository, changeLogRepository);
+
+        headerRepository.Headers.Add(new RuleHeader { RuleId = 22, RuleCode = "R22", Status = "DRAFT", IsEnabled = "Y" });
+        versionRepository.Versions.Add(new RuleVersion { VersionId = 221, RuleId = 22, VersionNo = 1, VersionStatus = "DRAFT" });
+        approvalRepository.Items.Add(new RuleApproval
+        {
+            ApprovalId = 2201,
+            RuleId = 22,
+            VersionNo = 1,
+            ActionType = "PUBLISH",
+            ApprovalStatus = "PENDING",
+            SubmittedBy = "maker",
+            SubmittedAt = new DateTime(2026, 5, 22, 9, 0, 0)
+        });
+
+        var ex = await Assert.ThrowsAsync<BizException>(() => service.RejectAsync(22, 1, new RuleApprovalDecisionRequest
+        {
+            ActionType = "PUBLISH",
+            ReviewedBy = "checker",
+            ReviewComment = "再次驳回"
+        }));
+
+        Assert.Equal(BizErrorCode.ConcurrencyConflict, ex.Code);
+    }
+
     private static RuleApprovalAppService CreateService(
         InMemoryRuleHeaderRepository headerRepository,
         InMemoryRuleVersionRepository versionRepository,
@@ -245,6 +315,8 @@ public sealed class RuleApprovalAppServiceTests
     private sealed class InMemoryRuleApprovalRepository : IRuleApprovalRepository
     {
         public List<RuleApproval> Items { get; } = new();
+        public bool FailUpdateWhenStatusIsNotPending { get; set; }
+        public bool ForceUpdateFailure { get; set; }
 
         public Task<IReadOnlyList<RuleApproval>> GetByRuleIdAsync(long ruleId) =>
             Task.FromResult((IReadOnlyList<RuleApproval>)Items.Where(i => i.RuleId == ruleId).OrderByDescending(i => i.SubmittedAt).ToList());
@@ -259,14 +331,26 @@ public sealed class RuleApprovalAppServiceTests
             return Task.FromResult(entity.ApprovalId);
         }
 
-        public Task UpdateStatusAsync(long approvalId, string status, string reviewedBy, string reviewComment)
+        public Task<bool> UpdateStatusAsync(long approvalId, string status, string reviewedBy, string reviewComment, string? expectedCurrentStatus = null)
         {
             var item = Items.Single(i => i.ApprovalId == approvalId);
+            if (ForceUpdateFailure)
+            {
+                return Task.FromResult(false);
+            }
+
+            if (FailUpdateWhenStatusIsNotPending &&
+                !string.IsNullOrWhiteSpace(expectedCurrentStatus) &&
+                !string.Equals(item.ApprovalStatus, expectedCurrentStatus, StringComparison.OrdinalIgnoreCase))
+            {
+                return Task.FromResult(false);
+            }
+
             item.ApprovalStatus = status;
             item.ReviewedBy = reviewedBy;
             item.ReviewComment = reviewComment;
             item.ReviewedAt = DateTime.Now;
-            return Task.CompletedTask;
+            return Task.FromResult(true);
         }
     }
 

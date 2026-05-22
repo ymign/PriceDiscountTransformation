@@ -126,6 +126,7 @@ public sealed class RuleApprovalRepository : IRuleApprovalRepository
     /// <param name="status">目标审核状态（APPROVED / REJECTED）。</param>
     /// <param name="reviewedBy">审核人。</param>
     /// <param name="reviewComment">审核意见。</param>
+    /// <param name="expectedCurrentStatus">期望的当前审核状态，用于 CAS 式状态推进。</param>
     /// <remarks>
     /// 【SQL 语义】等价于：
     /// <code>
@@ -139,14 +140,25 @@ public sealed class RuleApprovalRepository : IRuleApprovalRepository
     /// 【使用场景】审核人员执行审核操作（通过或驳回）时调用。
     /// 【约束】状态合法性由应用服务保证，仓储只执行指定更新。
     /// </remarks>
-    public async Task UpdateStatusAsync(long approvalId, string status, string reviewedBy, string reviewComment)
+    public async Task<bool> UpdateStatusAsync(
+        long approvalId,
+        string status,
+        string reviewedBy,
+        string reviewComment,
+        string? expectedCurrentStatus = null)
     {
-        await _db.Updateable<RuleApproval>()
+        var update = _db.Updateable<RuleApproval>()
             .SetColumns(a => a.ApprovalStatus == status)
             .SetColumns(a => a.ReviewedBy == reviewedBy)
             .SetColumns(a => a.ReviewedAt == DateTime.Now)
             .SetColumns(a => a.ReviewComment == reviewComment)
-            .Where(a => a.ApprovalId == approvalId)
-            .ExecuteCommandAsync();
+            .Where(a => a.ApprovalId == approvalId);
+
+        if (!string.IsNullOrWhiteSpace(expectedCurrentStatus))
+        {
+            update = update.Where(a => a.ApprovalStatus == expectedCurrentStatus);
+        }
+
+        return await update.ExecuteCommandAsync() > 0;
     }
 }

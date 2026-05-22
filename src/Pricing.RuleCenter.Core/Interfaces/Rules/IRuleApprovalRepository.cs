@@ -69,5 +69,15 @@ public interface IRuleApprovalRepository
     /// <param name="status">目标审核状态（APPROVED / REJECTED）。</param>
     /// <param name="reviewedBy">审核人。</param>
     /// <param name="reviewComment">审核意见（通过时可选，驳回时应填写驳回理由）。</param>
-    Task UpdateStatusAsync(long approvalId, string status, string reviewedBy, string reviewComment);
+    /// <param name="expectedCurrentStatus">
+    /// 期望的当前审核状态。传入后只会在数据库当前状态匹配时更新，
+    /// 用于避免两个审核人并发处理同一条待审记录时发生后写覆盖前写。
+    /// </param>
+    /// <returns>是否更新成功。</returns>
+    Task<bool> UpdateStatusAsync(
+        long approvalId,
+        string status,
+        string reviewedBy,
+        string reviewComment,
+        string? expectedCurrentStatus = null);
 }

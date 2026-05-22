@@ -101,11 +101,19 @@ public sealed class RuleApprovalAppService
     public async Task ApproveAsync(long ruleId, int versionNo, RuleApprovalDecisionRequest request)
     {
         var pending = await GetLatestPendingApprovalAsync(ruleId, versionNo, request.ActionType);
-        await _approvalRepository.UpdateStatusAsync(
+        var updated = await _approvalRepository.UpdateStatusAsync(
             pending.ApprovalId,
             "APPROVED",
             request.ReviewedBy.Trim(),
-            request.ReviewComment ?? string.Empty);
+            request.ReviewComment ?? string.Empty,
+            "PENDING");
+        if (!updated)
+        {
+            throw new BizException(
+                BizErrorCode.ConcurrencyConflict,
+                409,
+                $"ApprovalId={pending.ApprovalId} 状态已变化，请刷新后重试");
+        }
 
         pending.ReviewedAt = DateTime.Now;
         await TryWriteChangeLogAsync(new RuleChangeLog
@@ -123,11 +131,19 @@ public sealed class RuleApprovalAppService
     public async Task RejectAsync(long ruleId, int versionNo, RuleApprovalDecisionRequest request)
     {
         var pending = await GetLatestPendingApprovalAsync(ruleId, versionNo, request.ActionType);
-        await _approvalRepository.UpdateStatusAsync(
+        var updated = await _approvalRepository.UpdateStatusAsync(
             pending.ApprovalId,
             "REJECTED",
             request.ReviewedBy.Trim(),
-            request.ReviewComment ?? string.Empty);
+            request.ReviewComment ?? string.Empty,
+            "PENDING");
+        if (!updated)
+        {
+            throw new BizException(
+                BizErrorCode.ConcurrencyConflict,
+                409,
+                $"ApprovalId={pending.ApprovalId} 状态已变化，请刷新后重试");
+        }
 
         pending.ReviewedAt = DateTime.Now;
         await TryWriteChangeLogAsync(new RuleChangeLog

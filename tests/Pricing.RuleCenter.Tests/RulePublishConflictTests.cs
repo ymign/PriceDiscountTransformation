@@ -1485,15 +1485,26 @@ public sealed class RulePublishConflictTests
             return Task.FromResult(entity.ApprovalId);
         }
 
-        public Task UpdateStatusAsync(long approvalId, string status, string reviewedBy, string reviewComment)
+        public Task<bool> UpdateStatusAsync(
+            long approvalId,
+            string status,
+            string reviewedBy,
+            string reviewComment,
+            string? expectedCurrentStatus = null)
         {
             var item = Items.Single(i => i.ApprovalId == approvalId);
+            if (!string.IsNullOrWhiteSpace(expectedCurrentStatus) &&
+                !string.Equals(item.ApprovalStatus, expectedCurrentStatus, StringComparison.OrdinalIgnoreCase))
+            {
+                return Task.FromResult(false);
+            }
+
             item.ApprovalStatus = status;
             item.ReviewedBy = reviewedBy;
             item.ReviewComment = reviewComment;
             item.ReviewedAt = item.ReviewedAt ?? DateTime.Now;
             StatusUpdates.Add((approvalId, status, reviewedBy, reviewComment));
-            return Task.CompletedTask;
+            return Task.FromResult(true);
         }
     }
 
@@ -1529,8 +1540,13 @@ public sealed class RulePublishConflictTests
 
         public Task<long> InsertAsync(RuleApproval entity) => Task.FromResult(entity.ApprovalId);
 
-        public Task UpdateStatusAsync(long approvalId, string status, string reviewedBy, string reviewComment) =>
-            Task.CompletedTask;
+        public Task<bool> UpdateStatusAsync(
+            long approvalId,
+            string status,
+            string reviewedBy,
+            string reviewComment,
+            string? expectedCurrentStatus = null) =>
+            Task.FromResult(true);
 
         private static RuleApproval CreateApproved(long ruleId, int versionNo, string actionType)
         {
