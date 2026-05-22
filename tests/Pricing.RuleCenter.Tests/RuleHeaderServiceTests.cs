@@ -51,6 +51,34 @@ public sealed class RuleHeaderServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ReturnsRuleCodeDuplicateBizCodeWhenRuleCodeAlreadyExists()
+    {
+        var repository = new CapturingRuleHeaderRepository
+        {
+            ExistsResult = true
+        };
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var service = new RuleHeaderService(
+            repository,
+            new EmptyRuleChangeLogRepository(),
+            cache,
+            new NoopCacheVersionSynchronizer(),
+            NullLogger<RuleHeaderService>.Instance);
+
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
+            service.CreateAsync(new RuleHeaderCreateRequest
+            {
+                RuleCode = "RULE001",
+                RuleName = "重复规则",
+                RuleCategory = "MIXED",
+                RuleScope = "ITEM",
+                ItemCode = "ITEM001"
+            }));
+
+        Assert.Equal(BizErrorCode.RuleCodeDuplicate, ex.Code);
+    }
+
+    [Fact]
     public async Task UpdateAsync_RejectsPublishedRuleMatchingFieldChanges()
     {
         var repository = new CapturingRuleHeaderRepository
@@ -84,7 +112,7 @@ public sealed class RuleHeaderServiceTests
             new NoopCacheVersionSynchronizer(),
             NullLogger<RuleHeaderService>.Instance);
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
             service.UpdateAsync(100, new RuleHeaderUpdateRequest
             {
                 RuleName = "新名称",
@@ -100,8 +128,32 @@ public sealed class RuleHeaderServiceTests
                 Remark = "尝试修改已发布规则项目"
             }));
 
-        Assert.Contains("PUBLISHED", ex.Message);
+        Assert.Equal(BizErrorCode.VersionStatusNotAllowed, ex.Code);
         Assert.False(repository.WasUpdated);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ReturnsRuleNotFoundBizCodeWhenHeaderIsMissing()
+    {
+        var repository = new CapturingRuleHeaderRepository();
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var service = new RuleHeaderService(
+            repository,
+            new EmptyRuleChangeLogRepository(),
+            cache,
+            new NoopCacheVersionSynchronizer(),
+            NullLogger<RuleHeaderService>.Instance);
+
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
+            service.UpdateAsync(999, new RuleHeaderUpdateRequest
+            {
+                RuleName = "不存在",
+                RuleCategory = "MIXED",
+                RuleScope = "ITEM",
+                ItemCode = "ITEM999"
+            }));
+
+        Assert.Equal(BizErrorCode.RuleNotFound, ex.Code);
     }
 
     [Fact]
@@ -164,6 +216,7 @@ public sealed class RuleHeaderServiceTests
         public List<DateTime> BusinessTimes { get; } = new();
         public RuleHeader? Entity { get; set; }
         public bool WasUpdated { get; private set; }
+        public bool ExistsResult { get; set; }
 
         public Task<RuleHeader?> GetByIdAsync(long ruleId) => Task.FromResult(Entity?.RuleId == ruleId ? Entity : null);
         public Task<RuleHeader?> GetByIdForUpdateAsync(long ruleId) => Task.FromResult(Entity?.RuleId == ruleId ? Entity : null);
@@ -201,7 +254,7 @@ public sealed class RuleHeaderServiceTests
             WasUpdated = true;
             return Task.FromResult(true);
         }
-        public Task<bool> ExistsAsync(string ruleCode) => Task.FromResult(false);
+        public Task<bool> ExistsAsync(string ruleCode) => Task.FromResult(ExistsResult);
     }
 
     private sealed class EmptyRuleChangeLogRepository : IRuleChangeLogRepository

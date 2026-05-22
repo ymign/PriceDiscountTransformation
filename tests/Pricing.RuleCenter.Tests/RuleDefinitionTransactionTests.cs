@@ -220,6 +220,96 @@ public sealed class RuleDefinitionTransactionTests
         Assert.Equal("{\"rate\":0.8}", persisted[0].ParamsJson);
     }
 
+    [Fact]
+    public async Task SaveConditionsAsync_ReturnsRuleVersionNotFoundBizCodeWhenVersionIsMissing()
+    {
+        var unitOfWork = new FakeUnitOfWork();
+        var repository = new TransactionalRuleConditionRepository(unitOfWork);
+        var service = new RuleConditionAppService(
+            unitOfWork,
+            repository,
+            new DraftRuleVersionRepository(999, 9),
+            new EmptyRuleChangeLogRepository(),
+            NullLogger<RuleConditionAppService>.Instance);
+
+        var ex = await Assert.ThrowsAsync<BizException>(() => service.SaveAsync(100, 1, new RuleConditionSaveRequest
+        {
+            Conditions = Array.Empty<RuleConditionItemRequest>()
+        }));
+
+        Assert.Equal(BizErrorCode.RuleVersionNotFound, ex.Code);
+    }
+
+    [Fact]
+    public async Task SaveConditionsAsync_ReturnsVersionStatusNotAllowedBizCodeWhenVersionIsNotDraft()
+    {
+        var unitOfWork = new FakeUnitOfWork();
+        var repository = new TransactionalRuleConditionRepository(unitOfWork);
+        var service = new RuleConditionAppService(
+            unitOfWork,
+            repository,
+            new FixedRuleVersionRepository(new RuleVersion
+            {
+                RuleId = 100,
+                VersionNo = 1,
+                VersionStatus = "PUBLISHED"
+            }),
+            new EmptyRuleChangeLogRepository(),
+            NullLogger<RuleConditionAppService>.Instance);
+
+        var ex = await Assert.ThrowsAsync<BizException>(() => service.SaveAsync(100, 1, new RuleConditionSaveRequest
+        {
+            Conditions = Array.Empty<RuleConditionItemRequest>()
+        }));
+
+        Assert.Equal(BizErrorCode.VersionStatusNotAllowed, ex.Code);
+    }
+
+    [Fact]
+    public async Task SaveActionsAsync_ReturnsRuleVersionNotFoundBizCodeWhenVersionIsMissing()
+    {
+        var unitOfWork = new FakeUnitOfWork();
+        var repository = new TransactionalRuleActionRepository(unitOfWork);
+        var service = new RuleActionAppService(
+            unitOfWork,
+            repository,
+            new DraftRuleVersionRepository(999, 9),
+            new EmptyRuleChangeLogRepository(),
+            NullLogger<RuleActionAppService>.Instance);
+
+        var ex = await Assert.ThrowsAsync<BizException>(() => service.SaveAsync(200, 2, new RuleActionSaveRequest
+        {
+            Actions = Array.Empty<RuleActionItemRequest>()
+        }));
+
+        Assert.Equal(BizErrorCode.RuleVersionNotFound, ex.Code);
+    }
+
+    [Fact]
+    public async Task SaveActionsAsync_ReturnsVersionStatusNotAllowedBizCodeWhenVersionIsNotDraft()
+    {
+        var unitOfWork = new FakeUnitOfWork();
+        var repository = new TransactionalRuleActionRepository(unitOfWork);
+        var service = new RuleActionAppService(
+            unitOfWork,
+            repository,
+            new FixedRuleVersionRepository(new RuleVersion
+            {
+                RuleId = 200,
+                VersionNo = 2,
+                VersionStatus = "DISABLED"
+            }),
+            new EmptyRuleChangeLogRepository(),
+            NullLogger<RuleActionAppService>.Instance);
+
+        var ex = await Assert.ThrowsAsync<BizException>(() => service.SaveAsync(200, 2, new RuleActionSaveRequest
+        {
+            Actions = Array.Empty<RuleActionItemRequest>()
+        }));
+
+        Assert.Equal(BizErrorCode.VersionStatusNotAllowed, ex.Code);
+    }
+
     private sealed class FakeUnitOfWork : IUnitOfWork
     {
         private readonly List<ITransactionalParticipant> _participants = new();
@@ -512,6 +602,38 @@ public sealed class RuleDefinitionTransactionTests
 
         public Task<IReadOnlyList<RuleVersion>> GetByRuleIdAsync(long ruleId) =>
             Task.FromResult((IReadOnlyList<RuleVersion>)Array.Empty<RuleVersion>());
+
+        public Task<long> InsertAsync(RuleVersion entity) => Task.FromResult(0L);
+
+        public Task<bool> UpdateStatusAsync(long versionId, string status, string? expectedCurrentStatus = null) =>
+            Task.FromResult(true);
+    }
+
+    private sealed class FixedRuleVersionRepository : IRuleVersionRepository
+    {
+        private readonly RuleVersion? _version;
+
+        public FixedRuleVersionRepository(RuleVersion? version)
+        {
+            _version = version;
+        }
+
+        public Task<RuleVersion?> GetByIdAsync(long versionId) => Task.FromResult(_version);
+
+        public Task<RuleVersion?> GetByRuleAndVersionAsync(long ruleId, int versionNo)
+        {
+            return Task.FromResult(_version is not null && _version.RuleId == ruleId && _version.VersionNo == versionNo
+                ? _version
+                : null);
+        }
+
+        public Task<RuleVersion?> GetByRuleAndVersionForUpdateAsync(long ruleId, int versionNo) =>
+            GetByRuleAndVersionAsync(ruleId, versionNo);
+
+        public Task<IReadOnlyList<RuleVersion>> GetByRuleIdAsync(long ruleId) =>
+            Task.FromResult((IReadOnlyList<RuleVersion>)(_version is not null && _version.RuleId == ruleId
+                ? new[] { _version }
+                : Array.Empty<RuleVersion>()));
 
         public Task<long> InsertAsync(RuleVersion entity) => Task.FromResult(0L);
 

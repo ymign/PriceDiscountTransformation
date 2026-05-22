@@ -225,14 +225,17 @@ public sealed class RuleHeaderAppService
     /// </summary>
     /// <param name="request">规则主档新增请求。</param>
     /// <returns>新增规则主键。</returns>
-    /// <exception cref="InvalidOperationException">规则编码已存在时抛出。</exception>
+    /// <exception cref="BizException">规则编码已存在时抛出结构化业务错误。</exception>
     public async Task<long> CreateAsync(RuleHeaderCreateRequest request)
     {
         // ========== 第一阶段：校验稳定业务编码 ==========
         // RuleCode 是规则在配置、审计和外部沟通中的稳定标识，重复会导致发布历史和追踪记录难以解释。
         if (await _repository.ExistsAsync(request.RuleCode))
         {
-            throw new InvalidOperationException($"规则编码已存在: {request.RuleCode}");
+            throw new BizException(
+                BizErrorCode.RuleCodeDuplicate,
+                409,
+                $"规则编码已存在: {request.RuleCode}");
         }
 
         // ========== 第二阶段：创建草稿主档 ==========
@@ -284,13 +287,16 @@ public sealed class RuleHeaderAppService
     /// </summary>
     /// <param name="ruleId">规则主键。</param>
     /// <param name="request">主档更新请求；不包含当前版本字段，避免绕过发布状态机。</param>
-    /// <exception cref="KeyNotFoundException">规则不存在时抛出。</exception>
+    /// <exception cref="BizException">规则不存在或更新边界不允许时抛出结构化业务错误。</exception>
     public async Task UpdateAsync(long ruleId, RuleHeaderUpdateRequest request)
     {
         // ========== 第一阶段：读取现有主档 ==========
         // 不存在时直接返回业务错误，避免后续 Update 影响 0 行造成调用方误以为成功。
         var entity = await _repository.GetByIdAsync(ruleId)
-            ?? throw new KeyNotFoundException($"规则不存在: {ruleId}");
+            ?? throw new BizException(
+                BizErrorCode.RuleNotFound,
+                404,
+                $"规则不存在: {ruleId}");
 
         ValidatePublishedRuleUpdate(entity, request);
 
@@ -347,8 +353,10 @@ public sealed class RuleHeaderAppService
 
         if (immutableFieldChanged)
         {
-            throw new InvalidOperationException(
-                "PUBLISHED_RULE_IMMUTABLE: 已发布规则不允许在主档更新入口修改匹配关键字段，请创建新版本后发布");
+            throw new BizException(
+                BizErrorCode.VersionStatusNotAllowed,
+                409,
+                "已发布规则不允许在主档更新入口修改匹配关键字段，请创建新版本后发布");
         }
     }
 

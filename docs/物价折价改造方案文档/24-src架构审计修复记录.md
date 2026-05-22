@@ -533,6 +533,63 @@ Core 聚合 `ChargeRequest` 的 `MarkCommitted` / `MarkReversed` 已统一到现
 - `PricingApiServiceTests.CancelAsync_ReturnsRequestNotFoundBizCodeWhenRequestIsMissing`
 - `PricingReverseTests.ReverseAsync_ReturnsRequestNotFoundBizCodeWhenOriginalRequestIsMissing`
 
+### 2.24 规则维护链路继续收口结构化异常并补单草稿约束
+
+本轮把规则维护域里两类残留问题一起收口了。
+
+第一类是接口契约不一致：
+
+- `RuleHeaderAppService.CreateAsync` 仍在用 `InvalidOperationException` 表示规则编码重复
+- `RuleHeaderAppService.UpdateAsync` 仍在用 `KeyNotFoundException` / `InvalidOperationException`
+- `RuleVersionAppService.CreateDraftAsync` 仍在用 `KeyNotFoundException`
+- `RuleConditionAppService.SaveAsync` / `RuleActionAppService.SaveAsync`
+  的“版本不存在 / 版本不是草稿”分支仍在抛旧式异常
+
+这会让规则维护工作台在联调时继续出现：
+
+- 有些接口返回结构化业务码
+- 有些接口退回到通用异常映射
+
+本轮统一改成：
+
+- 规则不存在 → `RuleNotFound`
+- 规则编码重复 → `RuleCodeDuplicate`
+- 规则版本不存在 → `RuleVersionNotFound`
+- 非法状态编辑/修改已发布关键字段 → `VersionStatusNotAllowed`
+
+第二类是真实业务缺口：
+
+- `RuleVersionAppService.CreateDraftAsync` 此前没有阻止同一规则重复创建多个 `DRAFT` 版本
+
+这会直接破坏当前设计里“同一规则同时只能有一个草稿”的前提，后续条件/动作保存、审批、发布都可能出现多份草稿并行漂移的问题。
+
+本轮已补上单草稿约束：
+
+- 同一规则下只要已存在任意 `DRAFT` 版本，就直接返回 `DraftVersionAlreadyExists`
+
+这次特意没有把“仓储插入失败”也一并包装成业务码：
+
+- `RuleConditionAppService` / `RuleActionAppService` 仍然只对“版本不存在 / 非草稿”做结构化异常
+- 真正的批量插入失败、数据库异常仍保持原始系统异常
+
+原因是这两类错误语义不同：
+
+- 版本状态错误属于调用方可修复的业务边界
+- 插入失败属于底层故障，不应伪装成业务错误码
+
+对应新增/补强回归测试：
+
+- `RuleVersionAppServiceTests.CreateDraftAsync_ReturnsRuleNotFoundBizCodeWhenHeaderIsMissing`
+- `RuleVersionAppServiceTests.CreateDraftAsync_RejectsWhenDraftVersionAlreadyExists`
+- `RuleVersionAppServiceTests.CreateDraftAsync_CreatesNextDraftVersionWhenNoDraftExists`
+- `RuleHeaderServiceTests.CreateAsync_ReturnsRuleCodeDuplicateBizCodeWhenRuleCodeAlreadyExists`
+- `RuleHeaderServiceTests.UpdateAsync_ReturnsRuleNotFoundBizCodeWhenHeaderIsMissing`
+- `RuleHeaderServiceTests.UpdateAsync_RejectsPublishedRuleMatchingFieldChanges`
+- `RuleDefinitionTransactionTests.SaveConditionsAsync_ReturnsRuleVersionNotFoundBizCodeWhenVersionIsMissing`
+- `RuleDefinitionTransactionTests.SaveConditionsAsync_ReturnsVersionStatusNotAllowedBizCodeWhenVersionIsNotDraft`
+- `RuleDefinitionTransactionTests.SaveActionsAsync_ReturnsRuleVersionNotFoundBizCodeWhenVersionIsMissing`
+- `RuleDefinitionTransactionTests.SaveActionsAsync_ReturnsVersionStatusNotAllowedBizCodeWhenVersionIsNotDraft`
+
 ## 3. 自动化验证
 
 本轮完成后已执行：
@@ -541,6 +598,7 @@ Core 聚合 `ChargeRequest` 的 `MarkCommitted` / `MarkReversed` 已统一到现
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter RuleDefinitionTransactionTests
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter "RuleApprovalAppServiceTests|RulePublishConflictTests"
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter "CommitAsync_ReturnsRequestNotFoundBizCodeWhenRequestIsMissing|CancelAsync_ReturnsRequestNotFoundBizCodeWhenRequestIsMissing|ReverseAsync_ReturnsRequestNotFoundBizCodeWhenOriginalRequestIsMissing"
+dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter "RuleVersionAppServiceTests|RuleHeaderServiceTests|RuleDefinitionTransactionTests"
 dotnet test tests\Pricing.RuleCenter.Core.Tests\Pricing.RuleCenter.Core.Tests.csproj --no-restore
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore
 dotnet test src\Pricing.RuleCenter.slnx --no-restore
@@ -550,7 +608,7 @@ git diff --check
 结果：
 
 - Core tests：38 通过
-- API/Application tests：156 通过
+- API/Application tests：165 通过
 - 解决方案测试：全部通过
 - `git diff --check` 通过
 
@@ -572,7 +630,7 @@ git diff --check
 - 规则发布并发一致性已补事务内 `FOR UPDATE` 锁、版本状态 CAS 和主档状态 CAS，但数据库侧仍缺对主档流程的更细粒度错误码和更强约束
 - 多实例部署下的缓存已经具备基于 Oracle 版本号的同步基础设施，但读侧目前只先接了生效规则查询和动作顺序缓存，字典普通查询仍是单机内存 TTL 语义
 - 审批链路目前已经补了最小可用闭环，但还没有单独的“待审核列表分页 / 审批人权限 / 审批撤回 / 多级审批”能力；现阶段先保证“审批存在且执行入口真正消费审批结论”
-- 计价链路（`PricingAppService`）已经继续收口到 `BizException`，但仍有部分 `COMMIT_*`、`REVERSE_*` 以及普通规则维护入口中的旧式 `InvalidOperationException` / `KeyNotFoundException` 尚未全部完成结构化
+- 计价链路（`PricingAppService`）和规则维护主链路已经继续收口到 `BizException`，但普通维护接口与边角分支中仍有少量旧式 `InvalidOperationException` / `KeyNotFoundException` 残留，后续还需继续扫尾
 - 规则条件/动作保存已经补了应用层事务边界，但版本状态校验仍是“事务外先读、事务内写”；如果后续要继续收紧到“草稿编辑串行化”，可再评估是否补 `GetByRuleAndVersionForUpdateAsync` 级别的锁定保存
 - Trace 查询接口若要直接按 `TraceId` 聚合展示，可再补专门查询入口和测试
 

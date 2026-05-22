@@ -92,18 +92,23 @@ public sealed class RuleConditionAppService
     /// <param name="ruleId">规则主键。</param>
     /// <param name="versionNo">规则版本号。</param>
     /// <param name="request">条件保存请求，包含完整条件集合。</param>
-    /// <exception cref="KeyNotFoundException">规则版本不存在时抛出。</exception>
-    /// <exception cref="InvalidOperationException">规则版本不是草稿状态时抛出。</exception>
+    /// <exception cref="BizException">规则版本不存在或不是草稿状态时抛出结构化业务错误。</exception>
     public async Task SaveAsync(long ruleId, int versionNo, RuleConditionSaveRequest request)
     {
         // ========== 第一阶段：校验版本状态 ==========
         // 条件属于版本快照内容；已发布或历史版本如果允许编辑，会导致追踪记录无法解释当时使用了哪套条件。
         var version = await _versionRepository.GetByRuleAndVersionAsync(ruleId, versionNo)
-            ?? throw new KeyNotFoundException($"规则版本不存在: RuleId={ruleId}, VersionNo={versionNo}");
+            ?? throw new BizException(
+                BizErrorCode.RuleVersionNotFound,
+                404,
+                $"规则版本不存在: RuleId={ruleId}, VersionNo={versionNo}");
 
         if (version.VersionStatus != "DRAFT")
         {
-            throw new InvalidOperationException($"只有草稿版本可以编辑条件, 当前状态: {version.VersionStatus}");
+            throw new BizException(
+                BizErrorCode.VersionStatusNotAllowed,
+                409,
+                $"只有草稿版本可以编辑条件, 当前状态: {version.VersionStatus}");
         }
 
         // ========== 第二阶段：把请求项映射为实体 ==========

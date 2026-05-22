@@ -83,17 +83,28 @@ public sealed class RuleVersionAppService
     /// </summary>
     /// <param name="ruleId">规则主键。</param>
     /// <returns>新建草稿版本主键。</returns>
-    /// <exception cref="KeyNotFoundException">规则主档不存在时抛出。</exception>
+    /// <exception cref="BizException">规则不存在或已存在草稿版本时抛出结构化业务错误。</exception>
     public async Task<long> CreateDraftAsync(long ruleId)
     {
         // ========== 第一阶段：确认主档存在 ==========
         // 版本必须挂在规则主档下，同时默认继承主档生效时间，避免草稿缺少基础适用范围。
         var header = await _headerRepository.GetByIdAsync(ruleId)
-            ?? throw new KeyNotFoundException($"规则不存在: {ruleId}");
+            ?? throw new BizException(
+                BizErrorCode.RuleNotFound,
+                404,
+                $"规则不存在: {ruleId}");
 
         // ========== 第二阶段：计算下一个版本号 ==========
         // 版本号只在单条规则内部递增，发布和回滚不会复用旧版本号，便于审计追踪。
         var versions = await _versionRepository.GetByRuleIdAsync(ruleId);
+        if (versions.Any(v => string.Equals(v.VersionStatus, "DRAFT", StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new BizException(
+                BizErrorCode.DraftVersionAlreadyExists,
+                409,
+                $"RuleId={ruleId} 已存在草稿版本，不允许重复创建");
+        }
+
         var nextVersionNo = versions.Count > 0
             ? versions.Max(v => v.VersionNo) + 1
             : 1;
