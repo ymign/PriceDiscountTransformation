@@ -91,13 +91,16 @@ public sealed class RuleHeaderController : ControllerBase
     /// </para>
     /// </summary>
     /// <param name="ruleId">规则主键（路径参数）。</param>
-    /// <returns>规则主档详情（<see cref="RuleHeaderResponse"/>）。</returns>
-    /// <exception cref="KeyNotFoundException">当指定 ruleId 的规则不存在时抛出。</exception>
+    /// <returns>规则主档详情（<see cref="RuleHeaderResponse"/>）。不存在时返回 404 统一响应。</returns>
     [HttpGet("{ruleId:long}")]
-    public async Task<ApiResponse<RuleHeaderResponse>> GetByIdAsync(long ruleId)
+    public async Task<ActionResult<ApiResponse<RuleHeaderResponse>>> GetByIdAsync(long ruleId)
     {
-        var item = await _service.GetByIdAsync(ruleId)
-            ?? throw new KeyNotFoundException($"规则不存在: {ruleId}");
+        var item = await _service.GetByIdAsync(ruleId);
+        if (item is null)
+        {
+            return NotFound(ApiResponse.Fail(404, $"规则不存在: {ruleId}"));
+        }
+
         return ApiResponse<RuleHeaderResponse>.Ok(item);
     }
 

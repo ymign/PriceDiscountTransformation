@@ -82,13 +82,16 @@ public sealed class DictController : ControllerBase
     /// </para>
     /// </summary>
     /// <param name="dictId">字典项主键（路径参数，数据库自增序列生成）。</param>
-    /// <returns>字典项详情（<see cref="DictResponse"/>）。</returns>
-    /// <exception cref="KeyNotFoundException">当指定 dictId 的字典项不存在时抛出。</exception>
+    /// <returns>字典项详情（<see cref="DictResponse"/>）。不存在时返回 404 统一响应。</returns>
     [HttpGet("{dictId:long}")]
-    public async Task<ApiResponse<DictResponse>> GetByIdAsync(long dictId)
+    public async Task<ActionResult<ApiResponse<DictResponse>>> GetByIdAsync(long dictId)
     {
-        var item = await _service.GetByIdAsync(dictId)
-            ?? throw new KeyNotFoundException($"字典项不存在: {dictId}");
+        var item = await _service.GetByIdAsync(dictId);
+        if (item is null)
+        {
+            return NotFound(ApiResponse.Fail(404, $"字典项不存在: {dictId}"));
+        }
+
         return ApiResponse<DictResponse>.Ok(item);
     }
 

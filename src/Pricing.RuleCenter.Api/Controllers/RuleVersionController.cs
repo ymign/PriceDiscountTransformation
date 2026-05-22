@@ -88,13 +88,16 @@ public sealed class RuleVersionController : ControllerBase
     /// </para>
     /// </summary>
     /// <param name="versionId">版本主键（路径参数）。</param>
-    /// <returns>规则版本详情（<see cref="RuleVersionResponse"/>）。</returns>
-    /// <exception cref="KeyNotFoundException">当指定 versionId 的版本不存在时抛出。</exception>
+    /// <returns>规则版本详情（<see cref="RuleVersionResponse"/>）。不存在时返回 404 统一响应。</returns>
     [HttpGet("{versionId:long}")]
-    public async Task<ApiResponse<RuleVersionResponse>> GetByIdAsync(long versionId)
+    public async Task<ActionResult<ApiResponse<RuleVersionResponse>>> GetByIdAsync(long versionId)
     {
-        var item = await _service.GetByIdAsync(versionId)
-            ?? throw new KeyNotFoundException($"规则版本不存在: {versionId}");
+        var item = await _service.GetByIdAsync(versionId);
+        if (item is null)
+        {
+            return NotFound(ApiResponse.Fail(404, $"规则版本不存在: {versionId}"));
+        }
+
         return ApiResponse<RuleVersionResponse>.Ok(item);
     }
 

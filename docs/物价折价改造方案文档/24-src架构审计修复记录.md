@@ -835,6 +835,42 @@ Core 聚合 `ChargeRequest` 的 `MarkCommitted` / `MarkReversed` 已统一到现
 - `GlobalExceptionFilterTests.OnException_ShouldMapLimitLockConcurrencyExceptionToConcurrencyBizCode`
 - `GlobalExceptionFilterTests.OnException_ShouldMapLimitLockInfrastructureExceptionToLimitLockFailedBizCode`
 
+### 2.31 控制器层查询接口改为显式返回 404，而不是依赖异常过滤器
+
+继续清理边角接口时，发现有几条“按主键查询详情”的控制器入口还保留着一种旧写法：
+
+- 先调用应用服务拿对象
+- 拿不到就直接抛 `KeyNotFoundException`
+- 再依赖全局异常过滤器转成 404
+
+这在技术上能工作，但控制器边界并不清晰：
+
+- 资源不存在本来就是控制器能直接判断的正常分支
+- 却要通过异常通道返回
+- 测试时也更难区分“显式 404”与“未处理异常后被过滤器兜底”
+
+本轮把以下 4 个查询入口改成显式 `NotFound(...)` 返回：
+
+- `RuleHeaderController.GetByIdAsync`
+- `RuleVersionController.GetByIdAsync`
+- `FormulaDefController.GetByIdAsync`
+- `DictController.GetByIdAsync`
+
+当前返回口径：
+
+- `ActionResult<ApiResponse<T>>`
+- 资源不存在时直接 `NotFound(ApiResponse.Fail(404, ...))`
+- 资源存在时正常返回 `ApiResponse.Ok(...)`
+
+这类改动不是资金风险修复，但它能让接口契约和控制器职责更一致，也让后续测试不再需要依赖异常过滤器来证明 404 行为。
+
+对应新增回归测试：
+
+- `ControllerNotFoundTests.RuleHeaderController_GetByIdAsync_ReturnsNotFoundResultWhenMissing`
+- `ControllerNotFoundTests.RuleVersionController_GetByIdAsync_ReturnsNotFoundResultWhenMissing`
+- `ControllerNotFoundTests.FormulaDefController_GetByIdAsync_ReturnsNotFoundResultWhenMissing`
+- `ControllerNotFoundTests.DictController_GetByIdAsync_ReturnsNotFoundResultWhenMissing`
+
 ## 3. 自动化验证
 
 本轮完成后已执行：
@@ -850,6 +886,7 @@ dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter "SaveConditionsAsync_LocksVersionInsideTransactionAndRejectsWhenStatusChangedAfterPreCheck|SaveActionsAsync_LocksVersionInsideTransactionAndRejectsWhenStatusChangedAfterPreCheck"
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter "FormulaDefAppServiceTests|DictAppServiceTests"
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter GlobalExceptionFilterTests
+dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter ControllerNotFoundTests
 dotnet test tests\Pricing.RuleCenter.Core.Tests\Pricing.RuleCenter.Core.Tests.csproj --no-restore
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore
 dotnet test src\Pricing.RuleCenter.slnx --no-restore
@@ -859,7 +896,7 @@ git diff --check
 结果：
 
 - Core tests：38 通过
-- API/Application tests：182 通过
+- API/Application tests：186 通过
 - 解决方案测试：全部通过
 - `git diff --check` 通过
 
@@ -886,6 +923,7 @@ git diff --check
 - 计价链路、规则维护主链路和 `Catalog` 维护入口已经继续收口到 `BizException`，但领域聚合、基础设施边角分支和少量非关键接口里仍有旧式异常残留，后续还需继续扫尾
 - 限额锁失败现在已经有专用异常语义，但执行器与应用层的并发失败提示仍可继续细化，例如更明确地区分“资源忙/死锁/数据库故障”
 - 规则条件/动作保存已经补了事务内版本锁与重验；如果后续还要继续收口，可再评估是否在“提交审批后”到“正式发布前”增加更强的编辑冻结策略
+- 控制器层主要查询入口的 404 语义已经开始显式化，但其他少量读接口仍可能沿用“抛异常交给过滤器”的旧模式，后续可以继续统一
 - Trace 查询接口若要直接按 `TraceId` 聚合展示，可再补专门查询入口和测试
 
 ## 5. 结论

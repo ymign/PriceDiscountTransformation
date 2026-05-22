@@ -86,13 +86,16 @@ public sealed class FormulaDefController : ControllerBase
     /// </para>
     /// </summary>
     /// <param name="formulaId">公式定义主键（路径参数）。</param>
-    /// <returns>公式定义详情（<see cref="FormulaDefResponse"/>）。</returns>
-    /// <exception cref="KeyNotFoundException">当指定 formulaId 的公式不存在时抛出。</exception>
+    /// <returns>公式定义详情（<see cref="FormulaDefResponse"/>）。不存在时返回 404 统一响应。</returns>
     [HttpGet("{formulaId:long}")]
-    public async Task<ApiResponse<FormulaDefResponse>> GetByIdAsync(long formulaId)
+    public async Task<ActionResult<ApiResponse<FormulaDefResponse>>> GetByIdAsync(long formulaId)
     {
-        var item = await _service.GetByIdAsync(formulaId)
-            ?? throw new KeyNotFoundException($"公式定义不存在: {formulaId}");
+        var item = await _service.GetByIdAsync(formulaId);
+        if (item is null)
+        {
+            return NotFound(ApiResponse.Fail(404, $"公式定义不存在: {formulaId}"));
+        }
+
         return ApiResponse<FormulaDefResponse>.Ok(item);
     }
 
