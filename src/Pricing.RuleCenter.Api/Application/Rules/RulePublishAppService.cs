@@ -175,17 +175,23 @@ public sealed class RulePublishAppService
         // ========== 第一阶段：读取主档和目标版本（事务外） ==========
         // 发布必须同时拿到主档和版本。主档提供当前版本号，版本表提供目标版本的状态边界。
         var header = await _headerRepository.GetByIdAsync(ruleId)
-            ?? throw new KeyNotFoundException($"规则不存在: {ruleId}");
+            ?? throw new BizException(BizErrorCode.RuleNotFound, 404, $"规则不存在: {ruleId}");
 
         var version = await _versionRepository.GetByRuleAndVersionAsync(ruleId, request.VersionNo)
-            ?? throw new KeyNotFoundException($"规则版本不存在: RuleId={ruleId}, VersionNo={request.VersionNo}");
+            ?? throw new BizException(
+                BizErrorCode.RuleVersionNotFound,
+                404,
+                $"规则版本不存在: RuleId={ruleId}, VersionNo={request.VersionNo}");
 
         // ========== 第二阶段：校验目标版本必须是草稿（事务外） ==========
         // 只允许 DRAFT -> PUBLISHED。已经发布、禁用或回滚过的版本不能再次走普通发布入口，
         // 避免发布历史出现同一个版本被多次发布的歧义。
         if (version.VersionStatus != VersionStatusCodes.Draft)
         {
-            throw new InvalidOperationException($"只有草稿版本可以发布, 当前状态: {version.VersionStatus}");
+            throw new BizException(
+                BizErrorCode.VersionStatusNotAllowed,
+                409,
+                $"只有草稿版本可以发布, 当前状态: {version.VersionStatus}");
         }
 
         await ValidatePublishConflictsAsync(header, request.VersionNo);
@@ -196,12 +202,18 @@ public sealed class RulePublishAppService
         await ExecuteInTransactionAsync(async () =>
         {
             var currentHeader = await _headerRepository.GetByIdForUpdateAsync(ruleId)
-                ?? throw new KeyNotFoundException($"规则不存在: {ruleId}");
+                ?? throw new BizException(BizErrorCode.RuleNotFound, 404, $"规则不存在: {ruleId}");
             var currentVersion = await _versionRepository.GetByRuleAndVersionForUpdateAsync(ruleId, request.VersionNo)
-                ?? throw new KeyNotFoundException($"规则版本不存在: RuleId={ruleId}, VersionNo={request.VersionNo}");
+                ?? throw new BizException(
+                    BizErrorCode.RuleVersionNotFound,
+                    404,
+                    $"规则版本不存在: RuleId={ruleId}, VersionNo={request.VersionNo}");
             if (currentVersion.VersionStatus != VersionStatusCodes.Draft)
             {
-                throw new InvalidOperationException($"只有草稿版本可以发布, 当前状态: {currentVersion.VersionStatus}");
+                throw new BizException(
+                    BizErrorCode.VersionStatusNotAllowed,
+                    409,
+                    $"只有草稿版本可以发布, 当前状态: {currentVersion.VersionStatus}");
             }
 
             var oldVersion = currentHeader.CurrentVersion;
@@ -225,8 +237,10 @@ public sealed class RulePublishAppService
                             VersionStatusCodes.Published);
                         if (!disableOldVersionUpdated)
                         {
-                            throw new InvalidOperationException(
-                                $"RULE_VERSION_CONCURRENCY_CONFLICT: RuleId={ruleId}, OldVersionNo={oldVersion} 状态已变化，请刷新后重试");
+                            throw new BizException(
+                                BizErrorCode.RuleVersionConcurrencyConflict,
+                                409,
+                                $"RuleId={ruleId}, OldVersionNo={oldVersion} 状态已变化，请刷新后重试");
                         }
                     }
                 }
@@ -239,8 +253,10 @@ public sealed class RulePublishAppService
                 VersionStatusCodes.Draft);
             if (!publishVersionUpdated)
             {
-                throw new InvalidOperationException(
-                    $"RULE_VERSION_CONCURRENCY_CONFLICT: RuleId={ruleId}, VersionNo={request.VersionNo} 状态已变化，请刷新后重试");
+                throw new BizException(
+                    BizErrorCode.RuleVersionConcurrencyConflict,
+                    409,
+                    $"RuleId={ruleId}, VersionNo={request.VersionNo} 状态已变化，请刷新后重试");
             }
 
             currentHeader.CurrentVersion = request.VersionNo;
@@ -254,8 +270,10 @@ public sealed class RulePublishAppService
                 previousHeaderStatus);
             if (!publishHeaderUpdated)
             {
-                throw new InvalidOperationException(
-                    $"RULE_HEADER_CONCURRENCY_CONFLICT: RuleId={ruleId} 主档状态已变化，请刷新后重试");
+                throw new BizException(
+                    BizErrorCode.RuleHeaderConcurrencyConflict,
+                    409,
+                    $"RuleId={ruleId} 主档状态已变化，请刷新后重试");
             }
 
             // 写发布流水
@@ -305,21 +323,27 @@ public sealed class RulePublishAppService
         // ========== 第一阶段：读取并校验主档状态 ==========
         // 只有已发布规则才有"停用"的业务含义，草稿规则不应通过停用入口改变可编辑状态。
         var header = await _headerRepository.GetByIdAsync(ruleId)
-            ?? throw new KeyNotFoundException($"规则不存在: {ruleId}");
+            ?? throw new BizException(BizErrorCode.RuleNotFound, 404, $"规则不存在: {ruleId}");
 
         if (header.Status != RuleStatusCodes.Published)
         {
-            throw new InvalidOperationException($"只有已发布的规则可以停用, 当前状态: {header.Status}");
+            throw new BizException(
+                BizErrorCode.RuleAlreadyDisabled,
+                409,
+                $"只有已发布的规则可以停用, 当前状态: {header.Status}");
         }
 
         // ========== 第二阶段：事务内执行状态变更和流水写入 ==========
         await ExecuteInTransactionAsync(async () =>
         {
             var currentHeader = await _headerRepository.GetByIdForUpdateAsync(ruleId)
-                ?? throw new KeyNotFoundException($"规则不存在: {ruleId}");
+                ?? throw new BizException(BizErrorCode.RuleNotFound, 404, $"规则不存在: {ruleId}");
             if (currentHeader.Status != RuleStatusCodes.Published)
             {
-                throw new InvalidOperationException($"只有已发布的规则可以停用, 当前状态: {currentHeader.Status}");
+                throw new BizException(
+                    BizErrorCode.RuleAlreadyDisabled,
+                    409,
+                    $"只有已发布的规则可以停用, 当前状态: {currentHeader.Status}");
             }
 
             // 禁用当前版本
@@ -334,8 +358,10 @@ public sealed class RulePublishAppService
                         VersionStatusCodes.Published);
                     if (!disableCurrentVersionUpdated)
                     {
-                        throw new InvalidOperationException(
-                            $"RULE_VERSION_CONCURRENCY_CONFLICT: RuleId={ruleId}, CurrentVersionNo={currentHeader.CurrentVersion} 状态已变化，请刷新后重试");
+                        throw new BizException(
+                            BizErrorCode.RuleVersionConcurrencyConflict,
+                            409,
+                            $"RuleId={ruleId}, CurrentVersionNo={currentHeader.CurrentVersion} 状态已变化，请刷新后重试");
                     }
                 }
             }
@@ -349,8 +375,10 @@ public sealed class RulePublishAppService
                 RuleStatusCodes.Published);
             if (!disableHeaderUpdated)
             {
-                throw new InvalidOperationException(
-                    $"RULE_HEADER_CONCURRENCY_CONFLICT: RuleId={ruleId} 主档状态已变化，请刷新后重试");
+                throw new BizException(
+                    BizErrorCode.RuleHeaderConcurrencyConflict,
+                    409,
+                    $"RuleId={ruleId} 主档状态已变化，请刷新后重试");
             }
 
             // 写停用流水和变更日志
@@ -397,21 +425,27 @@ public sealed class RulePublishAppService
         // ========== 第一阶段：读取并校验主档 ==========
         // 回滚只对已发布规则有效；停用或草稿状态下回滚会让规则是否参与匹配变得不清晰。
         var header = await _headerRepository.GetByIdAsync(ruleId)
-            ?? throw new KeyNotFoundException($"规则不存在: {ruleId}");
+            ?? throw new BizException(BizErrorCode.RuleNotFound, 404, $"规则不存在: {ruleId}");
 
         if (header.Status != RuleStatusCodes.Published)
         {
-            throw new InvalidOperationException($"只有已发布的规则可以回滚, 当前状态: {header.Status}");
+            throw new BizException(
+                BizErrorCode.RollbackTargetNotAvailable,
+                409,
+                $"只有已发布的规则可以回滚, 当前状态: {header.Status}");
         }
 
         // ========== 第三阶段：事务内执行状态变更和流水写入 ==========
         await ExecuteInTransactionAsync(async () =>
         {
             var currentHeader = await _headerRepository.GetByIdForUpdateAsync(ruleId)
-                ?? throw new KeyNotFoundException($"规则不存在: {ruleId}");
+                ?? throw new BizException(BizErrorCode.RuleNotFound, 404, $"规则不存在: {ruleId}");
             if (currentHeader.Status != RuleStatusCodes.Published)
             {
-                throw new InvalidOperationException($"只有已发布的规则可以回滚, 当前状态: {currentHeader.Status}");
+                throw new BizException(
+                    BizErrorCode.RollbackTargetNotAvailable,
+                    409,
+                    $"只有已发布的规则可以回滚, 当前状态: {currentHeader.Status}");
             }
 
             var oldVersionNo = currentHeader.CurrentVersion;
@@ -427,22 +461,29 @@ public sealed class RulePublishAppService
                     VersionStatusCodes.Published);
                 if (!rollbackCurrentVersionUpdated)
                 {
-                    throw new InvalidOperationException(
-                        $"RULE_VERSION_CONCURRENCY_CONFLICT: RuleId={ruleId}, CurrentVersionNo={oldVersionNo} 状态已变化，请刷新后重试");
+                    throw new BizException(
+                        BizErrorCode.RuleVersionConcurrencyConflict,
+                        409,
+                        $"RuleId={ruleId}, CurrentVersionNo={oldVersionNo} 状态已变化，请刷新后重试");
                 }
             }
 
             // 恢复历史版本为发布状态
             var rollbackVersion = await _versionRepository.GetByRuleAndVersionForUpdateAsync(ruleId, rollbackVersionNo)
-                ?? throw new InvalidOperationException($"回滚目标版本不存在: RuleId={ruleId}, VersionNo={rollbackVersionNo}");
+                ?? throw new BizException(
+                    BizErrorCode.RollbackTargetNotAvailable,
+                    409,
+                    $"回滚目标版本不存在: RuleId={ruleId}, VersionNo={rollbackVersionNo}");
             var rollbackVersionUpdated = await _versionRepository.UpdateStatusAsync(
                 rollbackVersion.VersionId,
                 VersionStatusCodes.Published,
                 VersionStatusCodes.Disabled);
             if (!rollbackVersionUpdated)
             {
-                throw new InvalidOperationException(
-                    $"RULE_VERSION_CONCURRENCY_CONFLICT: RuleId={ruleId}, RollbackVersionNo={rollbackVersionNo} 状态已变化，请刷新后重试");
+                throw new BizException(
+                    BizErrorCode.RuleVersionConcurrencyConflict,
+                    409,
+                    $"RuleId={ruleId}, RollbackVersionNo={rollbackVersionNo} 状态已变化，请刷新后重试");
             }
 
             currentHeader.CurrentVersion = rollbackVersionNo;
@@ -454,8 +495,10 @@ public sealed class RulePublishAppService
                 RuleStatusCodes.Published);
             if (!rollbackHeaderUpdated)
             {
-                throw new InvalidOperationException(
-                    $"RULE_HEADER_CONCURRENCY_CONFLICT: RuleId={ruleId} 主档状态已变化，请刷新后重试");
+                throw new BizException(
+                    BizErrorCode.RuleHeaderConcurrencyConflict,
+                    409,
+                    $"RuleId={ruleId} 主档状态已变化，请刷新后重试");
             }
 
             // 记录回滚流水和变更摘要
@@ -530,7 +573,10 @@ public sealed class RulePublishAppService
             .Where(v => v.VersionNo < currentVersionNo && v.VersionStatus == VersionStatusCodes.Disabled)
             .OrderByDescending(v => v.VersionNo)
             .FirstOrDefault()
-            ?? throw new InvalidOperationException("没有可回滚的历史版本");
+            ?? throw new BizException(
+                BizErrorCode.RollbackTargetNotAvailable,
+                409,
+                "没有可回滚的历史版本");
         return previousPublished.VersionNo;
     }
 
@@ -563,18 +609,20 @@ public sealed class RulePublishAppService
             var (hasConflict, conflictActionType) = await HasForbiddenActionConflictAsync(targetProfile.Actions, existingProfile.Actions);
             if (hasConflict)
             {
-                throw new InvalidOperationException(
-                    $"RULE_CONFLICT: 项目 {targetHeader.ItemCode} 在相同场景和生效期内已存在 {conflictActionType} 规则，" +
-                    $"RuleId={existingRule.RuleId}");
+                throw new BizException(
+                    BizErrorCode.RuleOverlapConflict,
+                    409,
+                    $"项目 {targetHeader.ItemCode} 在相同场景和生效期内已存在 {conflictActionType} 规则，RuleId={existingRule.RuleId}");
             }
 
             if (targetProfile.Actions.Contains("CONVERT_QTY") &&
                 existingProfile.Actions.Contains("CONVERT_QTY") &&
                 HasSceneAndBodyPartOverlap(targetProfile.ConditionScopes, existingProfile.ConditionScopes))
             {
-                throw new InvalidOperationException(
-                    $"RULE_CONFLICT: 项目 {targetHeader.ItemCode} 的换算规则部位范围重叠，" +
-                    $"RuleId={existingRule.RuleId}");
+                throw new BizException(
+                    BizErrorCode.RuleOverlapConflict,
+                    409,
+                    $"项目 {targetHeader.ItemCode} 的换算规则部位范围重叠，RuleId={existingRule.RuleId}");
             }
         }
     }
@@ -598,8 +646,10 @@ public sealed class RulePublishAppService
             .ToList();
         if (enabledCases.Count == 0)
         {
-            throw new InvalidOperationException(
-                $"RULE_TEST_CASE_MISSING: 规则 RuleId={ruleId}, VersionNo={versionNo} 缺少启用测试用例");
+            throw new BizException(
+                BizErrorCode.MissingTestCase,
+                409,
+                $"规则 RuleId={ruleId}, VersionNo={versionNo} 缺少启用测试用例");
         }
 
         foreach (var testCase in enabledCases)
@@ -607,8 +657,10 @@ public sealed class RulePublishAppService
             if (string.IsNullOrWhiteSpace(testCase.InputJson) ||
                 string.IsNullOrWhiteSpace(testCase.ExpectedJson))
             {
-                throw new InvalidOperationException(
-                    $"RULE_TEST_CASE_INCOMPLETE: TestCaseId={testCase.TestCaseId} 缺少 InputJson 或 ExpectedJson");
+                throw new BizException(
+                    BizErrorCode.TestCaseIncomplete,
+                    409,
+                    $"TestCaseId={testCase.TestCaseId} 缺少 InputJson 或 ExpectedJson");
             }
 
             var latestRun = (await _testRunRepository.GetByTestCaseIdAsync(testCase.TestCaseId))
@@ -617,14 +669,18 @@ public sealed class RulePublishAppService
                 .FirstOrDefault();
             if (latestRun is null)
             {
-                throw new InvalidOperationException(
-                    $"RULE_TEST_RUN_MISSING: TestCaseId={testCase.TestCaseId} 尚未执行测试");
+                throw new BizException(
+                    BizErrorCode.TestRunMissing,
+                    409,
+                    $"TestCaseId={testCase.TestCaseId} 尚未执行测试");
             }
 
             if (!string.Equals(latestRun.IsPass, EnableFlag.Yes, StringComparison.OrdinalIgnoreCase))
             {
-                throw new InvalidOperationException(
-                    $"RULE_TEST_RUN_FAILED: TestCaseId={testCase.TestCaseId} 最新测试未通过");
+                throw new BizException(
+                    BizErrorCode.TestRunFailed,
+                    409,
+                    $"TestCaseId={testCase.TestCaseId} 最新测试未通过");
             }
         }
     }
@@ -645,8 +701,10 @@ public sealed class RulePublishAppService
                 continue;
             }
 
-            throw new InvalidOperationException(
-                $"RULE_ACTION_ONERROR_INVALID: ActionType={action.ActionType} 的 OnError 必须为 STOP");
+            throw new BizException(
+                BizErrorCode.ActionOnErrorInvalid,
+                409,
+                $"ActionType={action.ActionType} 的 OnError 必须为 STOP");
         }
     }
 
@@ -668,14 +726,18 @@ public sealed class RulePublishAppService
                 var normalizedItemCode = NormalizeChildItemCode(child.ItemCode);
                 if (normalizedItemCode is null)
                 {
-                    throw new InvalidOperationException(
-                        "RULE_CHILD_ITEM_INVALID: ADD_CHILD_ITEM 的 childItems[].itemCode 不能为空");
+                    throw new BizException(
+                        BizErrorCode.ChildItemInvalid,
+                        409,
+                        "ADD_CHILD_ITEM 的 childItems[].itemCode 不能为空");
                 }
 
                 if (!normalizedChildCodes.Add(normalizedItemCode))
                 {
-                    throw new InvalidOperationException(
-                        $"RULE_CHILD_ITEM_DUPLICATE: ADD_CHILD_ITEM 重复引用子项目 {normalizedItemCode}");
+                    throw new BizException(
+                        BizErrorCode.ChildItemDuplicate,
+                        409,
+                        $"ADD_CHILD_ITEM 重复引用子项目 {normalizedItemCode}");
                 }
             }
         }
@@ -690,40 +752,50 @@ public sealed class RulePublishAppService
                 if (!HasPositiveNumber(json, "limitQty", "maxQty") ||
                     !HasPositiveNumber(json, "windowMinutes", "windowHours"))
                 {
-                    throw new InvalidOperationException(
-                        $"RULE_ACTION_PARAM_MISSING: ActionType={action.ActionType} 缺少有效的 limitQty/maxQty 或 windowMinutes/windowHours");
+                    throw new BizException(
+                        BizErrorCode.ActionParamMissing,
+                        409,
+                        $"ActionType={action.ActionType} 缺少有效的 limitQty/maxQty 或 windowMinutes/windowHours");
                 }
                 break;
 
             case "APPLY_DAY_LIMIT_QTY":
                 if (!HasPositiveNumber(json, "maxDailyQty"))
                 {
-                    throw new InvalidOperationException(
-                        $"RULE_ACTION_PARAM_MISSING: ActionType={action.ActionType} 缺少有效的 maxDailyQty");
+                    throw new BizException(
+                        BizErrorCode.ActionParamMissing,
+                        409,
+                        $"ActionType={action.ActionType} 缺少有效的 maxDailyQty");
                 }
                 break;
 
             case "APPLY_ONCE_LIMIT_QTY":
                 if (!HasNonNegativeNumber(json, "maxOnceQty", "maxQty"))
                 {
-                    throw new InvalidOperationException(
-                        $"RULE_ACTION_PARAM_MISSING: ActionType={action.ActionType} 缺少有效的 maxOnceQty/maxQty");
+                    throw new BizException(
+                        BizErrorCode.ActionParamMissing,
+                        409,
+                        $"ActionType={action.ActionType} 缺少有效的 maxOnceQty/maxQty");
                 }
                 break;
 
             case "APPLY_MAX_AMOUNT":
                 if (!HasNonNegativeNumber(json, "maxAmount", "ceilingAmount"))
                 {
-                    throw new InvalidOperationException(
-                        $"RULE_ACTION_PARAM_MISSING: ActionType={action.ActionType} 缺少有效的 maxAmount/ceilingAmount");
+                    throw new BizException(
+                        BizErrorCode.ActionParamMissing,
+                        409,
+                        $"ActionType={action.ActionType} 缺少有效的 maxAmount/ceilingAmount");
                 }
                 break;
 
             case "APPLY_MIN_AMOUNT":
                 if (!HasNonNegativeNumber(json, "minAmount", "floorAmount"))
                 {
-                    throw new InvalidOperationException(
-                        $"RULE_ACTION_PARAM_MISSING: ActionType={action.ActionType} 缺少有效的 minAmount/floorAmount");
+                    throw new BizException(
+                        BizErrorCode.ActionParamMissing,
+                        409,
+                        $"ActionType={action.ActionType} 缺少有效的 minAmount/floorAmount");
                 }
                 break;
 
@@ -743,7 +815,10 @@ public sealed class RulePublishAppService
         }
         catch
         {
-            throw new InvalidOperationException("RULE_ACTION_PARAM_INVALID: 动作参数不是合法 JSON");
+            throw new BizException(
+                BizErrorCode.ActionParamInvalid,
+                409,
+                "动作参数不是合法 JSON");
         }
     }
 
@@ -760,7 +835,10 @@ public sealed class RulePublishAppService
         }
         catch
         {
-            throw new InvalidOperationException("RULE_ACTION_PARAM_INVALID: ADD_CHILD_ITEM 动作参数不是合法 JSON");
+            throw new BizException(
+                BizErrorCode.ActionParamInvalid,
+                409,
+                "ADD_CHILD_ITEM 动作参数不是合法 JSON");
         }
     }
 

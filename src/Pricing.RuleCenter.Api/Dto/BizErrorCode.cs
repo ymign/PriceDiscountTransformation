@@ -66,6 +66,30 @@ public static class BizErrorCode
     /// <summary>字典项不存在。</summary>
     public const int DictNotFound = 1011;
 
+    /// <summary>测试用例内容不完整。</summary>
+    public const int TestCaseIncomplete = 1012;
+
+    /// <summary>测试用例尚未执行。</summary>
+    public const int TestRunMissing = 1013;
+
+    /// <summary>测试用例最新运行未通过。</summary>
+    public const int TestRunFailed = 1014;
+
+    /// <summary>动作参数 JSON 非法。</summary>
+    public const int ActionParamInvalid = 1015;
+
+    /// <summary>动作参数缺失关键字段。</summary>
+    public const int ActionParamMissing = 1016;
+
+    /// <summary>资金关键动作 OnError 配置不合法。</summary>
+    public const int ActionOnErrorInvalid = 1017;
+
+    /// <summary>子项目配置非法。</summary>
+    public const int ChildItemInvalid = 1018;
+
+    /// <summary>子项目重复配置。</summary>
+    public const int ChildItemDuplicate = 1019;
+
     // ========== 计价计算类错误（2001-2099） ==========
 
     /// <summary>单价校验失败（渠道传入单价与权威单价不一致）。</summary>
@@ -105,6 +129,12 @@ public static class BizErrorCode
 
     /// <summary>请求状态不允许当前操作（如 CONFIRM_PENDING 才能 commit）。</summary>
     public const int RequestStatusNotAllowed = 3004;
+
+    /// <summary>规则主档并发冲突。</summary>
+    public const int RuleHeaderConcurrencyConflict = 3005;
+
+    /// <summary>规则版本并发冲突。</summary>
+    public const int RuleVersionConcurrencyConflict = 3006;
 
     // ========== 限额占用类错误（4001-4099） ==========
 

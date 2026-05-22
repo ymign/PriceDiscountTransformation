@@ -102,9 +102,9 @@ public sealed class RulePublishConflictTests
         });
         AddPassingTestCase(testCaseRepository, testRunRepository, 2, 1, 2001, 3001);
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
             service.PublishAsync(2, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" }));
-        Assert.Contains("RULE_CONFLICT", ex.Message);
+        Assert.Equal(BizErrorCode.RuleOverlapConflict, ex.Code);
     }
 
     [Fact]
@@ -443,10 +443,10 @@ public sealed class RulePublishConflictTests
             IsEnabled = "Y"
         });
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
             service.PublishAsync(4, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" }));
 
-        Assert.Contains("RULE_ACTION_PARAM_MISSING", ex.Message);
+        Assert.Equal(BizErrorCode.ActionParamMissing, ex.Code);
     }
 
     [Fact]
@@ -491,10 +491,55 @@ public sealed class RulePublishConflictTests
             IsEnabled = "Y"
         });
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
             service.PublishAsync(7, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" }));
 
-        Assert.Contains("RULE_TEST_CASE_MISSING", ex.Message);
+        Assert.Equal(BizErrorCode.MissingTestCase, ex.Code);
+    }
+
+    [Fact]
+    public async Task PublishAsync_ReturnsRuleNotFoundBizCodeWhenHeaderIsMissing()
+    {
+        var service = CreateService(
+            new InMemoryRuleHeaderRepository(),
+            new InMemoryRuleVersionRepository(),
+            new InMemoryRuleConditionRepository(),
+            new InMemoryRuleActionRepository());
+
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
+            service.PublishAsync(999, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" }));
+
+        Assert.Equal(BizErrorCode.RuleNotFound, ex.Code);
+        Assert.Equal(404, ex.HttpStatusCode);
+    }
+
+    [Fact]
+    public async Task PublishAsync_ReturnsRuleVersionNotFoundBizCodeWhenVersionIsMissing()
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        headerRepository.Headers.Add(new RuleHeader
+        {
+            RuleId = 14,
+            RuleCode = "R-NO-VERSION",
+            ItemCode = "ITEM014",
+            CurrentVersion = 0,
+            Status = "DRAFT",
+            IsEnabled = "Y",
+            EffectiveFrom = new DateTime(2026, 1, 1),
+            EffectiveTo = new DateTime(2026, 12, 31)
+        });
+
+        var service = CreateService(
+            headerRepository,
+            new InMemoryRuleVersionRepository(),
+            new InMemoryRuleConditionRepository(),
+            new InMemoryRuleActionRepository());
+
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
+            service.PublishAsync(14, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" }));
+
+        Assert.Equal(BizErrorCode.RuleVersionNotFound, ex.Code);
+        Assert.Equal(404, ex.HttpStatusCode);
     }
 
     [Fact]
@@ -559,10 +604,10 @@ public sealed class RulePublishConflictTests
             RunAt = new DateTime(2026, 5, 22, 10, 0, 0)
         });
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
             service.PublishAsync(8, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" }));
 
-        Assert.Contains("RULE_TEST_RUN_FAILED", ex.Message);
+        Assert.Equal(BizErrorCode.TestRunFailed, ex.Code);
     }
 
     [Fact]
@@ -635,10 +680,10 @@ public sealed class RulePublishConflictTests
             RunAt = new DateTime(2026, 5, 22, 10, 0, 0)
         });
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
             service.PublishAsync(9, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" }));
 
-        Assert.Contains("RULE_CHILD_ITEM_DUPLICATE", ex.Message);
+        Assert.Equal(BizErrorCode.ChildItemDuplicate, ex.Code);
     }
 
     [Fact]
@@ -686,10 +731,10 @@ public sealed class RulePublishConflictTests
         });
         AddPassingTestCase(testCaseRepository, testRunRepository, 10, 1, 2010, 3010);
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
             service.PublishAsync(10, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" }));
 
-        Assert.Contains("RULE_ACTION_ONERROR_INVALID", ex.Message);
+        Assert.Equal(BizErrorCode.ActionOnErrorInvalid, ex.Code);
     }
 
     [Fact]

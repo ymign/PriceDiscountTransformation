@@ -346,6 +346,35 @@ Core 聚合 `ChargeRequest` 的 `MarkCommitted` / `MarkReversed` 已统一到现
 - `CacheVersionSynchronizerTests.SyncAsync_ShouldClearRuleAndRuntimeCacheWhenDatabaseVersionChanges`
 - `DictAppServiceTests.UpdateAsync_ClearsRuntimeCacheWhenActionTypeOrderChanges`
 
+### 2.19 发布链路开始切换到结构化业务异常
+
+本轮引入了轻量 `BizException`，并让 `GlobalExceptionFilter` 优先识别它：
+
+- `BizException(code, httpStatusCode, message)`
+- `GlobalExceptionFilter` 直接返回业务码和独立的 HTTP 状态码
+
+当前先把规则发布链路里最密集的一批字符串异常切成结构化错误：
+
+- 规则不存在 → `RuleNotFound`
+- 规则版本不存在 → `RuleVersionNotFound`
+- 规则重叠冲突 → `RuleOverlapConflict`
+- 版本并发冲突 → `RuleVersionConcurrencyConflict`
+- 主档并发冲突 → `RuleHeaderConcurrencyConflict`
+- 测试用例缺失/不完整/未运行/失败
+- `ADD_CHILD_ITEM` 子项目非法/重复
+- 关键动作 `OnError` 非 `STOP`
+- 动作参数 JSON 非法/关键参数缺失
+
+这一步的收益有两个：
+
+- 前端/HIS/SDK 不再需要依赖异常消息前缀猜测业务语义
+- 业务码和 HTTP 状态码开始解耦，后续可以继续细化接口契约
+
+对应新增/补强回归测试：
+
+- `GlobalExceptionFilterTests.OnException_ShouldMapBizExceptionToConfiguredBusinessCodeAndHttpStatus`
+- `RulePublishConflictTests` 中多条发布门禁测试已升级为直接断言 `BizErrorCode`
+
 ## 3. 自动化验证
 
 本轮完成后已执行：
@@ -360,7 +389,7 @@ git diff --check
 结果：
 
 - Core tests：38 通过
-- API/Application tests：137 通过
+- API/Application tests：143 通过
 - 解决方案测试：全部通过
 - `git diff --check` 通过
 
@@ -381,6 +410,7 @@ git diff --check
 - 测试用例门禁目前还不能自动区分“正向用例/边界用例”，因为现有表结构没有 `CaseType` 或标签字段
 - 规则发布并发一致性已补事务内 `FOR UPDATE` 锁、版本状态 CAS 和主档状态 CAS，但数据库侧仍缺对主档流程的更细粒度错误码和更强约束
 - 多实例部署下的缓存已经具备基于 Oracle 版本号的同步基础设施，但读侧目前只先接了生效规则查询和动作顺序缓存，字典普通查询仍是单机内存 TTL 语义
+- 计价链路（`PricingAppService`）仍大量使用 `InvalidOperationException + 消息前缀`，还没有整体切到 `BizException`
 - Trace 查询接口若要直接按 `TraceId` 聚合展示，可再补专门查询入口和测试
 
 ## 5. 结论
