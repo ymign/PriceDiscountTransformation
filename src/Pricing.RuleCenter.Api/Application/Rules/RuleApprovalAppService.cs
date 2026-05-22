@@ -78,7 +78,18 @@ public sealed class RuleApprovalAppService
             SubmittedAt = now,
             ReviewComment = request.Remark
         };
-        var approvalId = await _approvalRepository.InsertAsync(approval);
+        long approvalId;
+        try
+        {
+            approvalId = await _approvalRepository.InsertAsync(approval);
+        }
+        catch (Exception ex) when (IsUniqueConstraintViolation(ex))
+        {
+            throw new BizException(
+                BizErrorCode.ResourceAlreadyExists,
+                409,
+                $"RuleId={ruleId}, VersionNo={versionNo}, ActionType={normalizedActionType} 已存在待审核记录");
+        }
 
         await TryWriteChangeLogAsync(new RuleChangeLog
         {
@@ -272,5 +283,11 @@ public sealed class RuleApprovalAppService
                 }
                 break;
         }
+    }
+
+    private static bool IsUniqueConstraintViolation(Exception ex)
+    {
+        return ex.Message.Contains("ORA-00001", StringComparison.OrdinalIgnoreCase) ||
+               ex.Message.Contains("unique constraint", StringComparison.OrdinalIgnoreCase);
     }
 }

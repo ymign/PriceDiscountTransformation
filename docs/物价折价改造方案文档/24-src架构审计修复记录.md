@@ -674,6 +674,56 @@ Core 聚合 `ChargeRequest` 的 `MarkCommitted` / `MarkReversed` 已统一到现
 - `RuleApprovalAppServiceTests.ApproveAsync_RejectsWhenPendingApprovalWasAlreadyProcessed`
 - `RuleApprovalAppServiceTests.RejectAsync_RejectsWhenPendingApprovalWasAlreadyProcessed`
 
+### 2.27 审批待审申请补数据库唯一约束，并兼容插入竞态冲突
+
+审批状态推进补了 CAS 之后，还剩一个明显的“提交阶段竞态”：
+
+- 两个请求几乎同时执行 `submit-approval`
+- 应用层都先查到“当前没有 PENDING”
+- 随后都尝试插入新的待审记录
+
+如果只靠服务层先查后插，而数据库没有硬约束，最终就可能留下两条：
+
+- 同一 `RuleId`
+- 同一 `VersionNo`
+- 同一 `ActionType`
+- 同时 `APPROVAL_STATUS = 'PENDING'`
+
+这会让后续审核工作台出现“一条规则版本同一动作有多张待审单”的歧义。
+
+本轮把这层保护再往数据库收了一层：
+
+- `sql/01-create-tables.sql` 新增唯一索引 `UK_PR_RAP_PENDING`
+- 约束口径：
+  - 只有 `APPROVAL_STATUS = 'PENDING'` 时参与唯一性判断
+  - 维度为 `RULE_ID + VERSION_NO + ACTION_TYPE`
+
+这样可以允许：
+
+- 历史 `APPROVED`
+- 历史 `REJECTED`
+- 后续新的 `PENDING`
+
+并存追溯，但不允许同一动作同时挂多张待审核单。
+
+同时在应用层补了插入阶段的唯一键兼容：
+
+- `RuleApprovalAppService.SubmitAsync` 现在会识别 `ORA-00001` / unique constraint 冲突
+- 即使应用层预查没有看见重复，但插入时被数据库唯一索引挡住，也会稳定返回 `ResourceAlreadyExists`
+
+这一步的目标是把审批防重从：
+
+- 仅靠应用层预查
+
+推进到：
+
+- 应用层预查 + 数据库唯一索引兜底 + 插入冲突业务化翻译
+
+对应新增/补强回归测试：
+
+- `RuleApprovalAppServiceTests.SubmitAsync_ReturnsResourceAlreadyExistsWhenRepositoryRejectsDuplicatePendingApproval`
+- `RuleApprovalAppServiceTests.SubmitAsync_ReturnsResourceAlreadyExistsWhenInsertHitsUniqueConstraintRace`
+
 ## 3. 自动化验证
 
 本轮完成后已执行：
@@ -685,6 +735,7 @@ dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter "RuleVersionAppServiceTests|RuleHeaderServiceTests|RuleDefinitionTransactionTests"
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter RuleApprovalAppServiceTests
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter "ApproveAsync_RejectsWhenPendingApprovalWasAlreadyProcessed|RejectAsync_RejectsWhenPendingApprovalWasAlreadyProcessed"
+dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter "SubmitAsync_ReturnsResourceAlreadyExistsWhenRepositoryRejectsDuplicatePendingApproval|SubmitAsync_ReturnsResourceAlreadyExistsWhenInsertHitsUniqueConstraintRace"
 dotnet test tests\Pricing.RuleCenter.Core.Tests\Pricing.RuleCenter.Core.Tests.csproj --no-restore
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore
 dotnet test src\Pricing.RuleCenter.slnx --no-restore
@@ -694,7 +745,7 @@ git diff --check
 结果：
 
 - Core tests：38 通过
-- API/Application tests：170 通过
+- API/Application tests：172 通过
 - 解决方案测试：全部通过
 - `git diff --check` 通过
 
@@ -717,7 +768,7 @@ git diff --check
 - 多实例部署下的缓存已经具备基于 Oracle 版本号的同步基础设施，但读侧目前只先接了生效规则查询和动作顺序缓存，字典普通查询仍是单机内存 TTL 语义
 - 审批链路目前已经补了最小可用闭环，但还没有单独的“待审核列表分页 / 审批人权限 / 审批撤回 / 多级审批”能力；现阶段先保证“审批存在且执行入口真正消费审批结论”
 - 审批接口已经补了动作维度和状态前置校验，但还没有“审批记录唯一键/数据库约束”去彻底阻止并行重复提审，当前主要靠应用层校验
-- 审批状态推进已经改成 CAS，但数据库侧仍没有针对“同一 RuleId + VersionNo + ActionType 的并行 PENDING 申请”唯一约束；如果后续需要进一步收口，应补索引或更强的申请锁
+- 审批状态推进已经改成 CAS，数据库侧也补了 `UK_PR_RAP_PENDING` 唯一索引；如果后续还要继续收口，可再评估是否补“提交审批时的显式申请锁”或更细的操作审计
 - 计价链路（`PricingAppService`）和规则维护主链路已经继续收口到 `BizException`，但普通维护接口与边角分支中仍有少量旧式 `InvalidOperationException` / `KeyNotFoundException` 残留，后续还需继续扫尾
 - 规则条件/动作保存已经补了应用层事务边界，但版本状态校验仍是“事务外先读、事务内写”；如果后续要继续收紧到“草稿编辑串行化”，可再评估是否补 `GetByRuleAndVersionForUpdateAsync` 级别的锁定保存
 - Trace 查询接口若要直接按 `TraceId` 聚合展示，可再补专门查询入口和测试

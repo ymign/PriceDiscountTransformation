@@ -37,6 +37,64 @@ public sealed class RuleApprovalAppServiceTests
     }
 
     [Fact]
+    public async Task SubmitAsync_ReturnsResourceAlreadyExistsWhenRepositoryRejectsDuplicatePendingApproval()
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var versionRepository = new InMemoryRuleVersionRepository();
+        var approvalRepository = new InMemoryRuleApprovalRepository
+        {
+            ThrowOnInsertDuplicatePendingApproval = true
+        };
+        var changeLogRepository = new InMemoryRuleChangeLogRepository();
+        var service = CreateService(headerRepository, versionRepository, approvalRepository, changeLogRepository);
+
+        headerRepository.Headers.Add(new RuleHeader { RuleId = 31, RuleCode = "R31", Status = "DRAFT", IsEnabled = "Y" });
+        versionRepository.Versions.Add(new RuleVersion { VersionId = 311, RuleId = 31, VersionNo = 1, VersionStatus = "DRAFT" });
+        approvalRepository.Items.Add(new RuleApproval
+        {
+            ApprovalId = 3101,
+            RuleId = 31,
+            VersionNo = 1,
+            ActionType = "PUBLISH",
+            ApprovalStatus = "PENDING",
+            SubmittedBy = "maker",
+            SubmittedAt = new DateTime(2026, 5, 22, 9, 0, 0)
+        });
+
+        var ex = await Assert.ThrowsAsync<BizException>(() => service.SubmitAsync(31, 1, new RuleApprovalSubmitRequest
+        {
+            ActionType = "PUBLISH",
+            SubmittedBy = "maker"
+        }));
+
+        Assert.Equal(BizErrorCode.ResourceAlreadyExists, ex.Code);
+    }
+
+    [Fact]
+    public async Task SubmitAsync_ReturnsResourceAlreadyExistsWhenInsertHitsUniqueConstraintRace()
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var versionRepository = new InMemoryRuleVersionRepository();
+        var approvalRepository = new InMemoryRuleApprovalRepository
+        {
+            ThrowUniqueConstraintOnInsert = true
+        };
+        var changeLogRepository = new InMemoryRuleChangeLogRepository();
+        var service = CreateService(headerRepository, versionRepository, approvalRepository, changeLogRepository);
+
+        headerRepository.Headers.Add(new RuleHeader { RuleId = 32, RuleCode = "R32", Status = "DRAFT", IsEnabled = "Y" });
+        versionRepository.Versions.Add(new RuleVersion { VersionId = 321, RuleId = 32, VersionNo = 1, VersionStatus = "DRAFT" });
+
+        var ex = await Assert.ThrowsAsync<BizException>(() => service.SubmitAsync(32, 1, new RuleApprovalSubmitRequest
+        {
+            ActionType = "PUBLISH",
+            SubmittedBy = "maker"
+        }));
+
+        Assert.Equal(BizErrorCode.ResourceAlreadyExists, ex.Code);
+    }
+
+    [Fact]
     public async Task SubmitAsync_RejectsPublishApprovalWhenVersionIsNotDraft()
     {
         var headerRepository = new InMemoryRuleHeaderRepository();
@@ -317,6 +375,8 @@ public sealed class RuleApprovalAppServiceTests
         public List<RuleApproval> Items { get; } = new();
         public bool FailUpdateWhenStatusIsNotPending { get; set; }
         public bool ForceUpdateFailure { get; set; }
+        public bool ThrowOnInsertDuplicatePendingApproval { get; set; }
+        public bool ThrowUniqueConstraintOnInsert { get; set; }
 
         public Task<IReadOnlyList<RuleApproval>> GetByRuleIdAsync(long ruleId) =>
             Task.FromResult((IReadOnlyList<RuleApproval>)Items.Where(i => i.RuleId == ruleId).OrderByDescending(i => i.SubmittedAt).ToList());
@@ -326,6 +386,21 @@ public sealed class RuleApprovalAppServiceTests
 
         public Task<long> InsertAsync(RuleApproval entity)
         {
+            if (ThrowUniqueConstraintOnInsert)
+            {
+                throw new InvalidOperationException("ORA-00001: unique constraint (UK_PR_RAP_PENDING) violated");
+            }
+
+            if (ThrowOnInsertDuplicatePendingApproval &&
+                Items.Any(i =>
+                    i.RuleId == entity.RuleId &&
+                    i.VersionNo == entity.VersionNo &&
+                    string.Equals(i.ActionType, entity.ActionType, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(i.ApprovalStatus, "PENDING", StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new InvalidOperationException("ORA-00001: unique constraint (UK_PR_RAP_PENDING) violated");
+            }
+
             entity.ApprovalId = entity.ApprovalId == 0 ? (Items.Count == 0 ? 1 : Items.Max(i => i.ApprovalId) + 1) : entity.ApprovalId;
             Items.Add(entity);
             return Task.FromResult(entity.ApprovalId);

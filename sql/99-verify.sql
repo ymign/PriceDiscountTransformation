@@ -132,6 +132,15 @@ WHERE table_name LIKE 'PR_%'
   AND constraint_type IN ('P','U','C')
 ORDER BY table_name, constraint_type, constraint_name;
 
+-- 6.1 检查关键唯一索引是否存在
+SELECT index_name, table_name, uniqueness
+FROM user_indexes
+WHERE index_name IN ('UK_PR_RV_RULE_PUBLISHED', 'UK_PR_RAP_PENDING')
+ORDER BY index_name;
+-- 期望:
+-- UK_PR_RV_RULE_PUBLISHED
+-- UK_PR_RAP_PENDING
+
 
 -- ============================================================
 -- 以下验证项在执行 04-import-rules.sql 后运行
