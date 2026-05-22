@@ -116,6 +116,21 @@ public static class BizErrorCode
     /// <summary>批量试算中部分项目计价失败。</summary>
     public const int BatchPartialFailure = 2008;
 
+    /// <summary>commit 未找到 confirm 明细。</summary>
+    public const int CommitDetailNotFound = 2009;
+
+    /// <summary>commit 实际落账明细缺失。</summary>
+    public const int CommitActualItemsRequired = 2010;
+
+    /// <summary>commit 明细不匹配。</summary>
+    public const int CommitDetailMismatch = 2011;
+
+    /// <summary>commit 数量不匹配。</summary>
+    public const int CommitQtyMismatch = 2012;
+
+    /// <summary>commit 金额不匹配。</summary>
+    public const int CommitAmountMismatch = 2013;
+
     // ========== 状态流转类错误（3001-3099） ==========
 
     /// <summary>版本状态不允许发布（如已 DISABLED 或已有草稿）。</summary>

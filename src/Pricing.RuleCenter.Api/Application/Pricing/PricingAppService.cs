@@ -955,8 +955,10 @@ public sealed class PricingAppService
     {
         if (details.Count == 0)
         {
-            throw new InvalidOperationException(
-                $"COMMIT_DETAIL_NOT_FOUND: RequestId={request.RequestId} 未找到 confirm 折价明细");
+            throw new BizException(
+                BizErrorCode.CommitDetailNotFound,
+                409,
+                $"RequestId={request.RequestId} 未找到 confirm 折价明细");
         }
 
         var expected = BuildExpectedCommitDetails(details);
@@ -969,14 +971,18 @@ public sealed class PricingAppService
             if (request.ActualTotalAmount.HasValue &&
                 PricingAmountRounder.RoundFinal(request.ActualTotalAmount.Value) != expectedTotal)
             {
-                throw new InvalidOperationException(
-                    $"COMMIT_AMOUNT_MISMATCH: confirm总金额={expectedTotal}, HIS实际总金额={PricingAmountRounder.RoundFinal(request.ActualTotalAmount.Value)}");
+                throw new BizException(
+                    BizErrorCode.CommitAmountMismatch,
+                    409,
+                    $"confirm总金额={expectedTotal}, HIS实际总金额={PricingAmountRounder.RoundFinal(request.ActualTotalAmount.Value)}");
             }
 
             if (requireActualItems)
             {
-                throw new InvalidOperationException(
-                    "COMMIT_ACTUAL_ITEMS_REQUIRED: commit 必须传入 HIS 实际落账明细");
+                throw new BizException(
+                    BizErrorCode.CommitActualItemsRequired,
+                    409,
+                    "commit 必须传入 HIS 实际落账明细");
             }
 
             return;
@@ -986,7 +992,10 @@ public sealed class PricingAppService
         {
             if (string.IsNullOrWhiteSpace(item.ItemCode))
             {
-                throw new InvalidOperationException("COMMIT_ACTUAL_ITEM_INVALID: 实际落账明细 ItemCode 不能为空");
+                throw new BizException(
+                    BizErrorCode.CommitActualItemsRequired,
+                    409,
+                    "实际落账明细 ItemCode 不能为空");
             }
         }
 
@@ -1012,8 +1021,10 @@ public sealed class PricingAppService
                 .ToList();
             if (candidateIndexes.Count == 0)
             {
-                throw new InvalidOperationException(
-                    $"COMMIT_DETAIL_MISMATCH: HIS 未回传实际落账明细 {FormatCommitDetail(expectedDetail)}");
+                throw new BizException(
+                    BizErrorCode.CommitDetailMismatch,
+                    409,
+                    $"HIS 未回传实际落账明细 {FormatCommitDetail(expectedDetail)}");
             }
 
             var matchedIndex = candidateIndexes
@@ -1027,16 +1038,20 @@ public sealed class PricingAppService
             var actualValue = actual[matchedIndex];
             if (Math.Round(actualValue.Qty, 4) != Math.Round(expectedDetail.Qty, 4))
             {
-                throw new InvalidOperationException(
-                    $"COMMIT_QTY_MISMATCH: {FormatCommitDetail(expectedDetail)} confirm数量={Math.Round(expectedDetail.Qty, 4)}, HIS实际数量={Math.Round(actualValue.Qty, 4)}");
+                throw new BizException(
+                    BizErrorCode.CommitQtyMismatch,
+                    409,
+                    $"{FormatCommitDetail(expectedDetail)} confirm数量={Math.Round(expectedDetail.Qty, 4)}, HIS实际数量={Math.Round(actualValue.Qty, 4)}");
             }
 
             var expectedAmount = PricingAmountRounder.RoundFinal(expectedDetail.Amount);
             var actualAmount = PricingAmountRounder.RoundFinal(actualValue.Amount);
             if (actualAmount != expectedAmount)
             {
-                throw new InvalidOperationException(
-                    $"COMMIT_AMOUNT_MISMATCH: {FormatCommitDetail(expectedDetail)} confirm金额={expectedAmount}, HIS实际金额={actualAmount}");
+                throw new BizException(
+                    BizErrorCode.CommitAmountMismatch,
+                    409,
+                    $"{FormatCommitDetail(expectedDetail)} confirm金额={expectedAmount}, HIS实际金额={actualAmount}");
             }
 
             usedActualIndexes.Add(matchedIndex);
@@ -1049,22 +1064,28 @@ public sealed class PricingAppService
             .ToList();
         if (extraActuals.Count > 0)
         {
-            throw new InvalidOperationException(
-                $"COMMIT_DETAIL_MISMATCH: HIS 回传了 confirm 未产生的落账明细 {string.Join(", ", extraActuals.Select(FormatCommitActual))}");
+            throw new BizException(
+                BizErrorCode.CommitDetailMismatch,
+                409,
+                $"HIS 回传了 confirm 未产生的落账明细 {string.Join(", ", extraActuals.Select(FormatCommitActual))}");
         }
 
         var actualTotal = PricingAmountRounder.RoundFinal(actual.Sum(v => v.Amount));
         if (actualTotal != expectedTotal)
         {
-            throw new InvalidOperationException(
-                $"COMMIT_AMOUNT_MISMATCH: confirm总金额={expectedTotal}, HIS实际明细合计={actualTotal}");
+            throw new BizException(
+                BizErrorCode.CommitAmountMismatch,
+                409,
+                $"confirm总金额={expectedTotal}, HIS实际明细合计={actualTotal}");
         }
 
         if (request.ActualTotalAmount.HasValue &&
             PricingAmountRounder.RoundFinal(request.ActualTotalAmount.Value) != expectedTotal)
         {
-            throw new InvalidOperationException(
-                $"COMMIT_AMOUNT_MISMATCH: confirm总金额={expectedTotal}, HIS实际总金额={PricingAmountRounder.RoundFinal(request.ActualTotalAmount.Value)}");
+            throw new BizException(
+                BizErrorCode.CommitAmountMismatch,
+                409,
+                $"confirm总金额={expectedTotal}, HIS实际总金额={PricingAmountRounder.RoundFinal(request.ActualTotalAmount.Value)}");
         }
     }
 

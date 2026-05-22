@@ -749,7 +749,7 @@ public sealed class PricingApiServiceTests
         var limitRepository = new CommitLimitOccupyRepository();
         var service = CreateCommitService(requestRepository, discountRepository, limitRepository);
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
             service.CommitAsync(new PricingCommitRequest
             {
                 RequestId = 901,
@@ -766,7 +766,7 @@ public sealed class PricingApiServiceTests
                 }
             }));
 
-        Assert.Contains("COMMIT_AMOUNT_MISMATCH", ex.Message);
+        Assert.Equal(BizErrorCode.CommitAmountMismatch, ex.Code);
         Assert.Equal("CONFIRM_PENDING", requestRepository.Log.BusinessStatus);
         Assert.Equal("PENDING", Assert.Single(discountRepository.Details).Status);
         Assert.Null(limitRepository.LastStatusUpdate);
@@ -797,7 +797,7 @@ public sealed class PricingApiServiceTests
         var limitRepository = new CommitLimitOccupyRepository();
         var service = CreateCommitService(requestRepository, discountRepository, limitRepository);
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
             service.CommitAsync(new PricingCommitRequest
             {
                 RequestId = 902,
@@ -814,7 +814,7 @@ public sealed class PricingApiServiceTests
                 }
             }));
 
-        Assert.Contains("COMMIT_QTY_MISMATCH", ex.Message);
+        Assert.Equal(BizErrorCode.CommitQtyMismatch, ex.Code);
         Assert.Equal("CONFIRM_PENDING", requestRepository.Log.BusinessStatus);
         Assert.Equal("PENDING", Assert.Single(discountRepository.Details).Status);
         Assert.Null(limitRepository.LastStatusUpdate);
@@ -922,7 +922,7 @@ public sealed class PricingApiServiceTests
         var limitRepository = new CommitLimitOccupyRepository();
         var service = CreateCommitService(requestRepository, discountRepository, limitRepository);
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
             service.CommitAsync(new PricingCommitRequest
             {
                 RequestId = 904,
@@ -946,7 +946,7 @@ public sealed class PricingApiServiceTests
                 }
             }));
 
-        Assert.Contains("COMMIT_AMOUNT_MISMATCH", ex.Message);
+        Assert.Equal(BizErrorCode.CommitAmountMismatch, ex.Code);
         Assert.Equal("CONFIRM_PENDING", requestRepository.Log.BusinessStatus);
         Assert.All(discountRepository.Details, detail => Assert.Equal("PENDING", detail.Status));
     }
