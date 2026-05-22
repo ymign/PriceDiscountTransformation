@@ -50,10 +50,12 @@ namespace Pricing.RuleCenter.Infrastructure.Repositories.Quota;
 public sealed class LimitOccupyRepository : ILimitOccupyRepository
 {
     private readonly ISqlSugarClient _db;
+    private readonly ILimitLockRepository _limitLockRepository;
 
-    public LimitOccupyRepository(ISqlSugarClient db)
+    public LimitOccupyRepository(ISqlSugarClient db, ILimitLockRepository limitLockRepository)
     {
         _db = db;
+        _limitLockRepository = limitLockRepository;
     }
 
     /// <summary>
@@ -129,20 +131,7 @@ public sealed class LimitOccupyRepository : ILimitOccupyRepository
         var expireAt = DateTime.Now.AddMinutes(10);
         foreach (var lockKey in lockKeys.OrderBy(k => k, StringComparer.Ordinal))
         {
-            // MERGE = UPSERT：锁行不存在时插入，已存在时跳过
-            await _db.Ado.ExecuteCommandAsync(
-                "MERGE INTO PR_LIMIT_LOCK T " +
-                "USING (SELECT :LockKey LOCK_KEY FROM DUAL) S " +
-                "ON (T.LOCK_KEY = S.LOCK_KEY) " +
-                "WHEN NOT MATCHED THEN " +
-                "INSERT (LOCK_KEY, LOCK_DESC, UPDATED_AT, EXPIRE_AT) " +
-                "VALUES (S.LOCK_KEY, 'AUTO', SYSDATE, :ExpireAt)",
-                new { LockKey = lockKey, ExpireAt = expireAt });
-
-            // SELECT FOR UPDATE 获取行锁，事务提交后自动释放
-            await _db.Ado.GetStringAsync(
-                "SELECT LOCK_KEY FROM PR_LIMIT_LOCK WHERE LOCK_KEY = :LockKey FOR UPDATE",
-                new { LockKey = lockKey });
+            await _limitLockRepository.AcquireLockAsync(lockKey, expireAt);
         }
     }
 

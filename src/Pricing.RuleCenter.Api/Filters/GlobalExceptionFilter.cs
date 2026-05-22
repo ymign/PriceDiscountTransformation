@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Pricing.RuleCenter.Api.Dto;
+using Pricing.RuleCenter.Core.Exceptions;
 
 namespace Pricing.RuleCenter.Api.Filters;
 
@@ -77,7 +78,7 @@ public sealed class GlobalExceptionFilter : IExceptionFilter
     {
         // ========== 第一阶段：按异常类型分级记录日志 ==========
         // 业务异常（参数错误、资源不存在）使用 Warning 级别，避免大量 Error 日志淹没真正的系统故障。
-        if (context.Exception is ArgumentException or KeyNotFoundException or BizException)
+        if (context.Exception is ArgumentException or KeyNotFoundException or BizException or LimitLockException)
         {
             _logger.LogWarning(context.Exception, "业务异常: {Path}", context.HttpContext.Request.Path);
         }
@@ -92,6 +93,9 @@ public sealed class GlobalExceptionFilter : IExceptionFilter
         var response = context.Exception switch
         {
             BizException ex => ApiResponse.Fail(ex.Code, ex.Message),
+            LimitLockException ex => ApiResponse.Fail(
+                ex.IsConcurrencyConflict ? BizErrorCode.ConcurrencyConflict : BizErrorCode.LimitLockFailed,
+                ex.Message),
             // ArgumentException — 参数校验失败，如缺少必填字段、格式不合法
             ArgumentException ex => ApiResponse.Fail(ex.Message, 400),
             // KeyNotFoundException — 资源不存在，如按ID查询无结果
@@ -110,6 +114,7 @@ public sealed class GlobalExceptionFilter : IExceptionFilter
             StatusCode = context.Exception switch
             {
                 BizException ex => ex.HttpStatusCode,
+                LimitLockException ex => ex.IsConcurrencyConflict ? 409 : 500,
                 _ => response.Code switch
                 {
                     400 => 400,

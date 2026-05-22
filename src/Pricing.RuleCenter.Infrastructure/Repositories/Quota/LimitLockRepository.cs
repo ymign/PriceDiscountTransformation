@@ -1,6 +1,7 @@
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Quota;
 using Pricing.RuleCenter.Core.Aggregates.Quota;
+using Pricing.RuleCenter.Core.Exceptions;
 using SqlSugar;
 
 namespace Pricing.RuleCenter.Infrastructure.Repositories.Quota;
@@ -72,9 +73,11 @@ public sealed class LimitLockRepository : ILimitLockRepository
         catch (Exception ex)
         {
             // 限额锁是资金安全的关键并发控制点，不能静默吞没数据库异常。
-            throw new InvalidOperationException(
-                $"获取限额锁失败，LockKey={lockKey}。限额锁是资金安全关键控制点，" +
-                "数据库异常不能静默放行，否则将导致限额被突破。", ex);
+            throw new LimitLockException(
+                lockKey,
+                IsConcurrencyException(ex),
+                $"获取限额锁失败，LockKey={lockKey}。限额锁是资金安全关键控制点，数据库异常不能静默放行，否则将导致限额被突破。",
+                ex);
         }
     }
 
@@ -101,5 +104,16 @@ public sealed class LimitLockRepository : ILimitLockRepository
         await _db.Deleteable<LimitLock>()
             .Where(l => l.ExpireAt < expireBefore)
             .ExecuteCommandAsync();
+    }
+
+    private static bool IsConcurrencyException(Exception ex)
+    {
+        var message = ex.Message;
+        return message.Contains("ORA-00060", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("deadlock", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("timeout", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("resource busy", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("ORA-00054", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("ORA-30006", StringComparison.OrdinalIgnoreCase);
     }
 }

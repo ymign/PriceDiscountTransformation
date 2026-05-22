@@ -803,6 +803,38 @@ Core 聚合 `ChargeRequest` 的 `MarkCommitted` / `MarkReversed` 已统一到现
 - `DictAppServiceTests.UpdateAsync_ReturnsDictNotFoundBizCodeWhenEntityMissing`
 - `DictAppServiceTests.DeleteAsync_ReturnsDictNotFoundBizCodeWhenEntityMissing`
 
+### 2.30 限额锁失败补专用异常语义并统一映射
+
+这一轮继续 review 时，发现限额并发控制链路里还有一个“语义不够稳定”的基础设施口子：
+
+- `LimitLockRepository.AcquireLockAsync` 在数据库锁失败时抛的是 `InvalidOperationException`
+- `LimitOccupyRepository.EnsureAndLockAsync` 也直接走自己的 `SELECT FOR UPDATE` 实现
+- 全局异常过滤器对普通 `InvalidOperationException` 只会统一映射成 409
+
+问题在于这里其实混了两类完全不同的失败：
+
+1. 真正的锁竞争/死锁/超时 —— 属于并发冲突
+2. 锁表数据库故障 —— 属于锁获取失败
+
+如果继续都挤在 `InvalidOperationException` 里，调用方看到的只能是“普通状态冲突”，拿不到稳定的额度并发语义。
+
+本轮做了两步收口：
+
+1. 在 Core 层新增专用异常 `LimitLockException`
+2. 让 `LimitOccupyRepository.EnsureAndLockAsync` 正式复用 `ILimitLockRepository.AcquireLockAsync`
+
+同时全局异常过滤器新增了对 `LimitLockException` 的映射：
+
+- `IsConcurrencyConflict = true` → `ConcurrencyConflict` / HTTP 409
+- `IsConcurrencyConflict = false` → `LimitLockFailed` / HTTP 500
+
+这样之后，额度并发控制链路的异常语义就不再依赖普通 `InvalidOperationException` 的通用兜底。
+
+对应新增回归测试：
+
+- `GlobalExceptionFilterTests.OnException_ShouldMapLimitLockConcurrencyExceptionToConcurrencyBizCode`
+- `GlobalExceptionFilterTests.OnException_ShouldMapLimitLockInfrastructureExceptionToLimitLockFailedBizCode`
+
 ## 3. 自动化验证
 
 本轮完成后已执行：
@@ -817,6 +849,7 @@ dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter "SubmitAsync_ReturnsResourceAlreadyExistsWhenRepositoryRejectsDuplicatePendingApproval|SubmitAsync_ReturnsResourceAlreadyExistsWhenInsertHitsUniqueConstraintRace"
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter "SaveConditionsAsync_LocksVersionInsideTransactionAndRejectsWhenStatusChangedAfterPreCheck|SaveActionsAsync_LocksVersionInsideTransactionAndRejectsWhenStatusChangedAfterPreCheck"
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter "FormulaDefAppServiceTests|DictAppServiceTests"
+dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter GlobalExceptionFilterTests
 dotnet test tests\Pricing.RuleCenter.Core.Tests\Pricing.RuleCenter.Core.Tests.csproj --no-restore
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore
 dotnet test src\Pricing.RuleCenter.slnx --no-restore
@@ -826,7 +859,7 @@ git diff --check
 结果：
 
 - Core tests：38 通过
-- API/Application tests：180 通过
+- API/Application tests：182 通过
 - 解决方案测试：全部通过
 - `git diff --check` 通过
 
@@ -851,6 +884,7 @@ git diff --check
 - 审批接口已经补了动作维度和状态前置校验，但还没有“审批记录唯一键/数据库约束”去彻底阻止并行重复提审，当前主要靠应用层校验
 - 审批状态推进已经改成 CAS，数据库侧也补了 `UK_PR_RAP_PENDING` 唯一索引；如果后续还要继续收口，可再评估是否补“提交审批时的显式申请锁”或更细的操作审计
 - 计价链路、规则维护主链路和 `Catalog` 维护入口已经继续收口到 `BizException`，但领域聚合、基础设施边角分支和少量非关键接口里仍有旧式异常残留，后续还需继续扫尾
+- 限额锁失败现在已经有专用异常语义，但执行器与应用层的并发失败提示仍可继续细化，例如更明确地区分“资源忙/死锁/数据库故障”
 - 规则条件/动作保存已经补了事务内版本锁与重验；如果后续还要继续收口，可再评估是否在“提交审批后”到“正式发布前”增加更强的编辑冻结策略
 - Trace 查询接口若要直接按 `TraceId` 聚合展示，可再补专门查询入口和测试
 
