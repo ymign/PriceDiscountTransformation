@@ -283,6 +283,10 @@ public sealed class RuleHeaderRepository : IRuleHeaderRepository
     /// 更新规则主档（主键、编码和创建信息不可更新）。
     /// </summary>
     /// <param name="entity">包含最新主档状态或基础信息的规则聚合实体。</param>
+    /// <param name="expectedCurrentStatus">
+    /// 期望的当前状态。传入后使用条件更新，只有数据库当前状态匹配时才返回成功。
+    /// 为空时保持旧行为，仅按主键更新。
+    /// </param>
     /// <returns>是否至少更新了一行（true 表示成功，false 表示记录不存在）。</returns>
     /// <remarks>
     /// 【SQL 语义】等价于：
@@ -297,13 +301,18 @@ public sealed class RuleHeaderRepository : IRuleHeaderRepository
     /// 【不可变字段】RuleId 和 RuleCode 保持不可变，避免更新入口破坏历史审计和外部引用。
     /// CreatedBy 和 CreatedAt 不可变，创建信息只在 InsertAsync 时写入。
     /// </remarks>
-    public async Task<bool> UpdateAsync(RuleAggregate entity)
+    public async Task<bool> UpdateAsync(RuleAggregate entity, string? expectedCurrentStatus = null)
     {
         // RuleId、RuleCode 和创建信息保持不可变，避免更新入口破坏历史审计和外部引用。
         entity.UpdatedAt = DateTime.Now;
-        var rows = await _db.Updateable(entity)
-            .IgnoreColumns(r => new { r.RuleId, r.RuleCode, r.CreatedBy, r.CreatedAt })
-            .ExecuteCommandAsync();
+        var update = _db.Updateable(entity)
+            .IgnoreColumns(r => new { r.RuleId, r.RuleCode, r.CreatedBy, r.CreatedAt });
+        if (!string.IsNullOrWhiteSpace(expectedCurrentStatus))
+        {
+            update = update.Where(r => r.Status == expectedCurrentStatus);
+        }
+
+        var rows = await update.ExecuteCommandAsync();
         return rows > 0;
     }
 

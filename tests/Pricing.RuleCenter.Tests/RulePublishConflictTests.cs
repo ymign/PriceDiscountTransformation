@@ -793,6 +793,9 @@ public sealed class RulePublishConflictTests
         var promoted = Assert.Single(versionRepository.StatusUpdates, u => u.VersionId == 121);
         Assert.Equal("DRAFT", promoted.ExpectedStatus);
         Assert.Equal("PUBLISHED", promoted.NewStatus);
+        var headerUpdate = Assert.Single(headerRepository.StatusUpdates);
+        Assert.Equal("DRAFT", headerUpdate.ExpectedStatus);
+        Assert.Equal("PUBLISHED", headerUpdate.NewStatus);
     }
 
     private static void AddPassingTestCase(
@@ -883,20 +886,81 @@ public sealed class RulePublishConflictTests
     private sealed class InMemoryRuleHeaderRepository : IRuleHeaderRepository
     {
         public List<RuleHeader> Headers { get; } = new();
-        public Task<RuleHeader?> GetByIdAsync(long ruleId) => Task.FromResult(Headers.SingleOrDefault(h => h.RuleId == ruleId));
+        public List<(long RuleId, string NewStatus, string? ExpectedStatus)> StatusUpdates { get; } = new();
+        public Task<RuleHeader?> GetByIdAsync(long ruleId) => Task.FromResult(Clone(Headers.SingleOrDefault(h => h.RuleId == ruleId)));
         public bool WasLocked { get; private set; }
         public Task<RuleHeader?> GetByIdForUpdateAsync(long ruleId)
         {
             WasLocked = true;
-            return Task.FromResult(Headers.SingleOrDefault(h => h.RuleId == ruleId));
+            return Task.FromResult(Clone(Headers.SingleOrDefault(h => h.RuleId == ruleId)));
         }
-        public Task<RuleHeader?> GetByCodeAsync(string ruleCode) => Task.FromResult(Headers.SingleOrDefault(h => h.RuleCode == ruleCode));
+        public Task<RuleHeader?> GetByCodeAsync(string ruleCode) => Task.FromResult(Clone(Headers.SingleOrDefault(h => h.RuleCode == ruleCode)));
         public Task<IReadOnlyList<RuleHeader>> GetByItemCodeAsync(string itemCode) => Task.FromResult((IReadOnlyList<RuleHeader>)Headers.Where(h => h.ItemCode == itemCode).ToList());
         public Task<(IReadOnlyList<RuleHeader> Items, int Total)> GetPagedAsync(string? itemCode, string? status, string? category, int pageIndex, int pageSize) => Task.FromResult(((IReadOnlyList<RuleHeader>)Headers.ToList(), Headers.Count));
         public Task<IReadOnlyList<RuleHeader>> GetEffectiveAsync(DateTime businessTime) => Task.FromResult((IReadOnlyList<RuleHeader>)Headers.Where(h => h.IsEnabled == "Y" && h.Status == "PUBLISHED").ToList());
         public Task<long> InsertAsync(RuleHeader entity) => Task.FromResult(entity.RuleId);
-        public Task<bool> UpdateAsync(RuleHeader entity) => Task.FromResult(true);
+        public Task<bool> UpdateAsync(RuleHeader entity, string? expectedCurrentStatus = null)
+        {
+            var current = Headers.Single(h => h.RuleId == entity.RuleId);
+            if (!string.IsNullOrWhiteSpace(expectedCurrentStatus) &&
+                !string.Equals(current.Status, expectedCurrentStatus, StringComparison.OrdinalIgnoreCase))
+            {
+                return Task.FromResult(false);
+            }
+
+            StatusUpdates.Add((entity.RuleId, entity.Status, expectedCurrentStatus));
+            current.RuleCode = entity.RuleCode;
+            current.RuleName = entity.RuleName;
+            current.RuleCategory = entity.RuleCategory;
+            current.RuleScope = entity.RuleScope;
+            current.ItemCode = entity.ItemCode;
+            current.ItemName = entity.ItemName;
+            current.GroupCode = entity.GroupCode;
+            current.Priority = entity.Priority;
+            current.CurrentVersion = entity.CurrentVersion;
+            current.Status = entity.Status;
+            current.IsEnabled = entity.IsEnabled;
+            current.EffectiveFrom = entity.EffectiveFrom;
+            current.EffectiveTo = entity.EffectiveTo;
+            current.RollbackMode = entity.RollbackMode;
+            current.Remark = entity.Remark;
+            current.UpdatedBy = entity.UpdatedBy;
+            current.UpdatedAt = entity.UpdatedAt;
+            return Task.FromResult(true);
+        }
         public Task<bool> ExistsAsync(string ruleCode) => Task.FromResult(Headers.Any(h => h.RuleCode == ruleCode));
+
+        private static RuleHeader? Clone(RuleHeader? source)
+        {
+            if (source is null)
+            {
+                return null;
+            }
+
+            return new RuleHeader
+            {
+                RuleId = source.RuleId,
+                RuleCode = source.RuleCode,
+                RuleName = source.RuleName,
+                RuleCategory = source.RuleCategory,
+                RuleScope = source.RuleScope,
+                ItemCode = source.ItemCode,
+                ItemName = source.ItemName,
+                GroupCode = source.GroupCode,
+                Priority = source.Priority,
+                CurrentVersion = source.CurrentVersion,
+                Status = source.Status,
+                IsEnabled = source.IsEnabled,
+                EffectiveFrom = source.EffectiveFrom,
+                EffectiveTo = source.EffectiveTo,
+                RollbackMode = source.RollbackMode,
+                Remark = source.Remark,
+                CreatedBy = source.CreatedBy,
+                CreatedAt = source.CreatedAt,
+                UpdatedBy = source.UpdatedBy,
+                UpdatedAt = source.UpdatedAt
+            };
+        }
     }
 
     private sealed class InMemoryRuleVersionRepository : IRuleVersionRepository

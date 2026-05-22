@@ -102,8 +102,12 @@ public interface IRuleHeaderRepository
     /// 使用场景：修改规则的基本信息（名称、描述、有效期等）。
     /// </summary>
     /// <param name="entity">要更新的规则主表实体，ID 必须存在。</param>
+    /// <param name="expectedCurrentStatus">
+    /// 期望的当前状态。传入后会做条件更新，只有数据库中的当前状态与期望值一致时才允许更新。
+    /// 用于发布状态机做 CAS 式主档推进，避免并发事务在状态已经变化后继续覆盖写入。
+    /// </param>
     /// <returns>是否更新成功。</returns>
-    Task<bool> UpdateAsync(RuleAggregate entity);
+    Task<bool> UpdateAsync(RuleAggregate entity, string? expectedCurrentStatus = null);
 
     /// <summary>
     /// 检查指定规则编码是否已存在。

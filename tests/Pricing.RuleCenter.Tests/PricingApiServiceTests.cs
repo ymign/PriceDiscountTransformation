@@ -1385,7 +1385,7 @@ public sealed class PricingApiServiceTests
         public Task<(IReadOnlyList<RuleHeader> Items, int Total)> GetPagedAsync(string? itemCode, string? status, string? category, int pageIndex, int pageSize) => Task.FromResult(((IReadOnlyList<RuleHeader>)Array.Empty<RuleHeader>(), 0));
         public Task<IReadOnlyList<RuleHeader>> GetEffectiveAsync(DateTime businessTime) => Task.FromResult((IReadOnlyList<RuleHeader>)Array.Empty<RuleHeader>());
         public Task<long> InsertAsync(RuleHeader entity) => Task.FromResult(0L);
-        public Task<bool> UpdateAsync(RuleHeader entity) => Task.FromResult(false);
+        public Task<bool> UpdateAsync(RuleHeader entity, string? expectedCurrentStatus = null) => Task.FromResult(false);
         public Task<bool> ExistsAsync(string ruleCode) => Task.FromResult(false);
     }
 
@@ -1413,7 +1413,7 @@ public sealed class PricingApiServiceTests
             Task.FromResult((IReadOnlyList<RuleHeader>)Array.Empty<RuleHeader>());
 
         public Task<long> InsertAsync(RuleHeader entity) => Task.FromResult(0L);
-        public Task<bool> UpdateAsync(RuleHeader entity) => Task.FromResult(false);
+        public Task<bool> UpdateAsync(RuleHeader entity, string? expectedCurrentStatus = null) => Task.FromResult(false);
         public Task<bool> ExistsAsync(string ruleCode) => Task.FromResult(false);
     }
 

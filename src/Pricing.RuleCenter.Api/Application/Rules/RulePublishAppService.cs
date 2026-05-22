@@ -233,7 +233,14 @@ public sealed class RulePublishAppService
             // 否则 GetEffective/GetSpecialFlag 仍会把它排除，形成“已发布但不生效”的假发布。
             currentHeader.IsEnabled = EnableFlag.Yes;
             currentHeader.UpdatedAt = DateTime.Now;
-            await _headerRepository.UpdateAsync(currentHeader);
+            var publishHeaderUpdated = await _headerRepository.UpdateAsync(
+                currentHeader,
+                oldVersion > 0 ? RuleStatusCodes.Disabled : RuleStatusCodes.Draft);
+            if (!publishHeaderUpdated)
+            {
+                throw new InvalidOperationException(
+                    $"RULE_HEADER_CONCURRENCY_CONFLICT: RuleId={ruleId} 主档状态已变化，请刷新后重试");
+            }
 
             // 写发布流水
             var publishNo = $"PUB-{ruleId}-{request.VersionNo}-{DateTime.Now:yyyyMMddHHmmss}";
@@ -314,7 +321,14 @@ public sealed class RulePublishAppService
             currentHeader.Status = RuleStatusCodes.Disabled;
             currentHeader.IsEnabled = EnableFlag.No;
             currentHeader.UpdatedAt = DateTime.Now;
-            await _headerRepository.UpdateAsync(currentHeader);
+            var disableHeaderUpdated = await _headerRepository.UpdateAsync(
+                currentHeader,
+                RuleStatusCodes.Published);
+            if (!disableHeaderUpdated)
+            {
+                throw new InvalidOperationException(
+                    $"RULE_HEADER_CONCURRENCY_CONFLICT: RuleId={ruleId} 主档状态已变化，请刷新后重试");
+            }
 
             // 写停用流水和变更日志
             await _publishRepository.InsertAsync(new RulePublish
@@ -405,7 +419,14 @@ public sealed class RulePublishAppService
             currentHeader.Status = RuleStatusCodes.Published;
             currentHeader.IsEnabled = EnableFlag.Yes;
             currentHeader.UpdatedAt = DateTime.Now;
-            await _headerRepository.UpdateAsync(currentHeader);
+            var rollbackHeaderUpdated = await _headerRepository.UpdateAsync(
+                currentHeader,
+                RuleStatusCodes.Published);
+            if (!rollbackHeaderUpdated)
+            {
+                throw new InvalidOperationException(
+                    $"RULE_HEADER_CONCURRENCY_CONFLICT: RuleId={ruleId} 主档状态已变化，请刷新后重试");
+            }
 
             // 记录回滚流水和变更摘要
             await _publishRepository.InsertAsync(new RulePublish

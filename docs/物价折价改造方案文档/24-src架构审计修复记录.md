@@ -284,6 +284,30 @@ Core 聚合 `ChargeRequest` 的 `MarkCommitted` / `MarkReversed` 已统一到现
 
 - `PublishAsync_UsesCompareAndSetWhenPromotingDraftVersion`
 
+### 2.17 主档状态推进补齐 CAS 语义
+
+在版本表之外，本轮也把 `PR_RULE_HEADER` 的状态推进补成了带期望旧状态的条件更新：
+
+- `IRuleHeaderRepository.UpdateAsync` 新增 `expectedCurrentStatus`
+- 发布时主档只允许：
+  - `DRAFT -> PUBLISHED`
+  - `DISABLED -> PUBLISHED`
+- 停用时主档只允许：
+  - `PUBLISHED -> DISABLED`
+- 回滚时主档仍要求当前保持：
+  - `PUBLISHED`
+
+这一步的作用是让主档和版本表的并发保护口径保持一致：
+
+- 事务内先 `FOR UPDATE` 锁住主档
+- 真正落库时再用期望旧状态做一次 CAS
+
+这样即使对象在事务内被多处改写，也不会在状态已变化后继续盲写覆盖。
+
+对应新增/补强回归测试：
+
+- `PublishAsync_UsesCompareAndSetWhenPromotingDraftVersion`
+
 ## 3. 自动化验证
 
 本轮完成后已执行：
@@ -317,7 +341,7 @@ git diff --check
 - reverse 审计如果需要“一次退费多条逐明细冲正日志”，需补表设计或仓储接口
 - `PR_LIMIT_OCCUPY` 目前已经补上 `ChargeDetailNo` / `ResultGroupNo`，但还没有补 `OriginalDiscountId`；如果后续要做到“完全按折价明细主键释放”，还需要继续补表和仓储
 - 测试用例门禁目前还不能自动区分“正向用例/边界用例”，因为现有表结构没有 `CaseType` 或标签字段
-- 规则发布并发一致性已补事务内 `FOR UPDATE` 锁和版本状态 CAS 语义，但主档状态推进还没有做同等级别的条件更新
+- 规则发布并发一致性已补事务内 `FOR UPDATE` 锁、版本状态 CAS 和主档状态 CAS，但数据库侧仍缺对主档流程的更细粒度错误码和更强约束
 - 多实例部署下的规则缓存失效仍是进程内语义，未升级为分布式广播
 - Trace 查询接口若要直接按 `TraceId` 聚合展示，可再补专门查询入口和测试
 

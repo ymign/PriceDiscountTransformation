@@ -191,7 +191,7 @@ public sealed class RuleHeaderServiceTests
         }
 
         public Task<long> InsertAsync(RuleHeader entity) => Task.FromResult(0L);
-        public Task<bool> UpdateAsync(RuleHeader entity)
+        public Task<bool> UpdateAsync(RuleHeader entity, string? expectedCurrentStatus = null)
         {
             Entity = entity;
             WasUpdated = true;

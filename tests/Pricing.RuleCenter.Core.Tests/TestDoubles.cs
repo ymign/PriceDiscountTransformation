@@ -57,7 +57,7 @@ internal sealed class InMemoryRuleHeaderRepository : IRuleHeaderRepository
         throw new NotSupportedException();
     }
 
-    public Task<bool> UpdateAsync(RuleAggregate entity)
+    public Task<bool> UpdateAsync(RuleAggregate entity, string? expectedCurrentStatus = null)
     {
         throw new NotSupportedException();
     }
