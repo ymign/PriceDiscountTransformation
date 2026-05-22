@@ -491,6 +491,48 @@ Core 聚合 `ChargeRequest` 的 `MarkCommitted` / `MarkReversed` 已统一到现
 - `RuleApprovalAppServiceTests.ApproveAsync_UpdatesLatestPendingApproval`
 - `RuleApprovalAppServiceTests.RejectAsync_UpdatesLatestPendingApproval`
 
+### 2.23 计价主链路补齐请求不存在的结构化业务错误
+
+`PricingAppService` 在上一轮已经把：
+
+- 单价不一致
+- 幂等冲突
+- commit 数量/金额不匹配
+- reverse 关键失败分支
+
+逐步切到了 `BizException`。
+
+但 `commit/cancel/reverse` 三个主入口仍残留了最基础、也最常见的一类穿透异常：
+
+- `CommitAsync`：`RequestId` 不存在时直接抛 `KeyNotFoundException`
+- `CancelAsync`：`RequestId` 不存在时直接抛 `KeyNotFoundException`
+- `ReverseAsync`：`OriginalRequestId` 不存在时直接抛 `KeyNotFoundException`
+
+这个问题的风险不在于金额计算，而在于接口契约不一致：
+
+- 有些失败分支返回结构化业务码
+- 有些失败分支却退回到通用异常映射
+
+前端/HIS/SDK 在联调时就必须同时兼容：
+
+- 业务码判断
+- 文本消息判断
+- 通用 409/500 兜底
+
+本轮把这 3 处入口统一改成：
+
+- `BizErrorCode.RequestNotFound`
+- HTTP 404
+- 中文业务描述保持不变
+
+这样之后，调用方在计价主链路里对“请求不存在/原请求不存在”只需要按统一业务码处理，不再依赖异常类型或字符串内容。
+
+对应新增回归测试：
+
+- `PricingApiServiceTests.CommitAsync_ReturnsRequestNotFoundBizCodeWhenRequestIsMissing`
+- `PricingApiServiceTests.CancelAsync_ReturnsRequestNotFoundBizCodeWhenRequestIsMissing`
+- `PricingReverseTests.ReverseAsync_ReturnsRequestNotFoundBizCodeWhenOriginalRequestIsMissing`
+
 ## 3. 自动化验证
 
 本轮完成后已执行：
@@ -498,6 +540,7 @@ Core 聚合 `ChargeRequest` 的 `MarkCommitted` / `MarkReversed` 已统一到现
 ```powershell
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter RuleDefinitionTransactionTests
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter "RuleApprovalAppServiceTests|RulePublishConflictTests"
+dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter "CommitAsync_ReturnsRequestNotFoundBizCodeWhenRequestIsMissing|CancelAsync_ReturnsRequestNotFoundBizCodeWhenRequestIsMissing|ReverseAsync_ReturnsRequestNotFoundBizCodeWhenOriginalRequestIsMissing"
 dotnet test tests\Pricing.RuleCenter.Core.Tests\Pricing.RuleCenter.Core.Tests.csproj --no-restore
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore
 dotnet test src\Pricing.RuleCenter.slnx --no-restore
@@ -507,7 +550,7 @@ git diff --check
 结果：
 
 - Core tests：38 通过
-- API/Application tests：153 通过
+- API/Application tests：156 通过
 - 解决方案测试：全部通过
 - `git diff --check` 通过
 
@@ -529,7 +572,7 @@ git diff --check
 - 规则发布并发一致性已补事务内 `FOR UPDATE` 锁、版本状态 CAS 和主档状态 CAS，但数据库侧仍缺对主档流程的更细粒度错误码和更强约束
 - 多实例部署下的缓存已经具备基于 Oracle 版本号的同步基础设施，但读侧目前只先接了生效规则查询和动作顺序缓存，字典普通查询仍是单机内存 TTL 语义
 - 审批链路目前已经补了最小可用闭环，但还没有单独的“待审核列表分页 / 审批人权限 / 审批撤回 / 多级审批”能力；现阶段先保证“审批存在且执行入口真正消费审批结论”
-- 计价链路（`PricingAppService`）已经开始切换 `BizException`，但仍有部分 `COMMIT_*`、`REVERSE_*` 和其余状态校验分支尚未全部完成结构化
+- 计价链路（`PricingAppService`）已经继续收口到 `BizException`，但仍有部分 `COMMIT_*`、`REVERSE_*` 以及普通规则维护入口中的旧式 `InvalidOperationException` / `KeyNotFoundException` 尚未全部完成结构化
 - 规则条件/动作保存已经补了应用层事务边界，但版本状态校验仍是“事务外先读、事务内写”；如果后续要继续收紧到“草稿编辑串行化”，可再评估是否补 `GetByRuleAndVersionForUpdateAsync` 级别的锁定保存
 - Trace 查询接口若要直接按 `TraceId` 聚合展示，可再补专门查询入口和测试
 

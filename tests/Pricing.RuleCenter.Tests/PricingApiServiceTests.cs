@@ -112,6 +112,66 @@ public sealed class PricingApiServiceTests
     }
 
     [Fact]
+    public async Task CommitAsync_ReturnsRequestNotFoundBizCodeWhenRequestIsMissing()
+    {
+        var service = CreatePricingApiService(
+            new CapturingPricingEngine(),
+            new SpecialFlagRuleHeaderRepository(Array.Empty<RuleHeader>()),
+            new InMemoryChargeRequestLogRepository(),
+            new EmptyChargeDiscountDetailRepository(),
+            new EmptyChargeTraceStepRepository(),
+            new EmptyLimitOccupyRepository(),
+            new EmptyChargeReverseLogRepository(),
+            new EmptyPriceMasterRepository(),
+            new NoopUnitOfWork(),
+            Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
+            NullLogger<PricingApiService>.Instance);
+
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
+            service.CommitAsync(new PricingCommitRequest
+            {
+                RequestId = 999,
+                ChargeNo = "C999",
+                ActualItems = new[]
+                {
+                    new PricingCommitActualItemRequest
+                    {
+                        ItemCode = "ITEM999",
+                        FinalQty = 1m,
+                        FinalAmount = 10m
+                    }
+                }
+            }));
+
+        Assert.Equal(BizErrorCode.RequestNotFound, ex.Code);
+    }
+
+    [Fact]
+    public async Task CancelAsync_ReturnsRequestNotFoundBizCodeWhenRequestIsMissing()
+    {
+        var service = CreatePricingApiService(
+            new CapturingPricingEngine(),
+            new SpecialFlagRuleHeaderRepository(Array.Empty<RuleHeader>()),
+            new InMemoryChargeRequestLogRepository(),
+            new EmptyChargeDiscountDetailRepository(),
+            new EmptyChargeTraceStepRepository(),
+            new EmptyLimitOccupyRepository(),
+            new EmptyChargeReverseLogRepository(),
+            new EmptyPriceMasterRepository(),
+            new NoopUnitOfWork(),
+            Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
+            NullLogger<PricingApiService>.Instance);
+
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
+            service.CancelAsync(new PricingCancelRequest
+            {
+                RequestId = 999
+            }));
+
+        Assert.Equal(BizErrorCode.RequestNotFound, ex.Code);
+    }
+
+    [Fact]
     public async Task ReverseAsync_RejectsInvalidRequestBeforeLookup()
     {
         var service = CreateValidationService();

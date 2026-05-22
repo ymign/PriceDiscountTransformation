@@ -254,6 +254,28 @@ public sealed class PricingReverseTests
     }
 
     [Fact]
+    public async Task ReverseAsync_ReturnsRequestNotFoundBizCodeWhenOriginalRequestIsMissing()
+    {
+        var requestRepository = new ReverseRequestLogRepository();
+        var discountRepository = new ReverseDiscountDetailRepository();
+        var limitRepository = new ReverseLimitOccupyRepository();
+        var reverseRepository = new ReverseLogRepository();
+        var service = CreateService(requestRepository, discountRepository, limitRepository, reverseRepository);
+
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
+            service.ReverseAsync(new PricingReverseRequest
+            {
+                OriginalRequestId = 999,
+                ReverseNo = "R404",
+                ItemCode = "ITEM404",
+                ReverseQty = 1m,
+                ReverseTime = new DateTime(2026, 5, 10, 11, 0, 0)
+            }));
+
+        Assert.Equal(BizErrorCode.RequestNotFound, ex.Code);
+    }
+
+    [Fact]
     public async Task ReverseAsync_UsesOriginalOccupyBusinessTimeForSameDayRelease()
     {
         var requestRepository = new ReverseRequestLogRepository();

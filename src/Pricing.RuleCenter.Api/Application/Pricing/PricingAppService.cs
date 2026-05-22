@@ -508,7 +508,10 @@ public sealed class PricingAppService
             await _limitRepository.EnsureAndLockAsync(new[] { BuildRequestLockKey(request.RequestId) });
 
             var log = await _requestLogRepository.GetByIdAsync(request.RequestId)
-                ?? throw new KeyNotFoundException($"请求不存在: {request.RequestId}");
+                ?? throw new BizException(
+                    BizErrorCode.RequestNotFound,
+                    404,
+                    $"请求不存在: {request.RequestId}");
 
             if (log.BusinessStatus == "CONFIRMED" || log.BusinessStatus == "COMMITTED")
             {
@@ -604,7 +607,10 @@ public sealed class PricingAppService
             await _limitRepository.EnsureAndLockAsync(new[] { BuildRequestLockKey(request.RequestId) });
 
             var log = await _requestLogRepository.GetByIdAsync(request.RequestId)
-                ?? throw new KeyNotFoundException($"请求不存在: {request.RequestId}");
+                ?? throw new BizException(
+                    BizErrorCode.RequestNotFound,
+                    404,
+                    $"请求不存在: {request.RequestId}");
 
             if (log.BusinessStatus == "CANCELLED" || log.BusinessStatus == "EXPIRED")
             {
@@ -680,7 +686,10 @@ public sealed class PricingAppService
             });
 
             var log = await _requestLogRepository.GetByIdAsync(request.OriginalRequestId)
-                ?? throw new KeyNotFoundException($"原请求不存在: {request.OriginalRequestId}");
+                ?? throw new BizException(
+                    BizErrorCode.RequestNotFound,
+                    404,
+                    $"原请求不存在: {request.OriginalRequestId}");
 
             var reverseLogs = await _reverseLogRepository.GetByOriginalRequestIdAsync(request.OriginalRequestId);
             var sameReverseNo = reverseLogs.FirstOrDefault(r =>
