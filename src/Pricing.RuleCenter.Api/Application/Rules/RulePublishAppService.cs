@@ -209,12 +209,23 @@ public sealed class RulePublishAppService
                 }
                 else
                 {
-                    await _versionRepository.UpdateStatusAsync(oldVersionEntity.VersionId, VersionStatusCodes.Disabled);
+                    await _versionRepository.UpdateStatusAsync(
+                        oldVersionEntity.VersionId,
+                        VersionStatusCodes.Disabled,
+                        VersionStatusCodes.Published);
                 }
             }
 
             // 发布目标版本并推进主档
-            await _versionRepository.UpdateStatusAsync(currentVersion.VersionId, VersionStatusCodes.Published);
+            var publishVersionUpdated = await _versionRepository.UpdateStatusAsync(
+                currentVersion.VersionId,
+                VersionStatusCodes.Published,
+                VersionStatusCodes.Draft);
+            if (!publishVersionUpdated)
+            {
+                throw new InvalidOperationException(
+                    $"RULE_VERSION_CONCURRENCY_CONFLICT: RuleId={ruleId}, VersionNo={request.VersionNo} 状态已变化，请刷新后重试");
+            }
 
             currentHeader.CurrentVersion = request.VersionNo;
             currentHeader.Status = RuleStatusCodes.Published;
@@ -292,7 +303,10 @@ public sealed class RulePublishAppService
                 var currentVersion = await _versionRepository.GetByRuleAndVersionForUpdateAsync(ruleId, currentHeader.CurrentVersion);
                 if (currentVersion is not null)
                 {
-                    await _versionRepository.UpdateStatusAsync(currentVersion.VersionId, VersionStatusCodes.Disabled);
+                    await _versionRepository.UpdateStatusAsync(
+                        currentVersion.VersionId,
+                        VersionStatusCodes.Disabled,
+                        VersionStatusCodes.Published);
                 }
             }
 
@@ -368,13 +382,24 @@ public sealed class RulePublishAppService
             var currentVersion = await _versionRepository.GetByRuleAndVersionForUpdateAsync(ruleId, oldVersionNo);
             if (currentVersion is not null)
             {
-                await _versionRepository.UpdateStatusAsync(currentVersion.VersionId, VersionStatusCodes.RolledBack);
+                await _versionRepository.UpdateStatusAsync(
+                    currentVersion.VersionId,
+                    VersionStatusCodes.RolledBack,
+                    VersionStatusCodes.Published);
             }
 
             // 恢复历史版本为发布状态
             var rollbackVersion = await _versionRepository.GetByRuleAndVersionForUpdateAsync(ruleId, rollbackVersionNo)
                 ?? throw new InvalidOperationException($"回滚目标版本不存在: RuleId={ruleId}, VersionNo={rollbackVersionNo}");
-            await _versionRepository.UpdateStatusAsync(rollbackVersion.VersionId, VersionStatusCodes.Published);
+            var rollbackVersionUpdated = await _versionRepository.UpdateStatusAsync(
+                rollbackVersion.VersionId,
+                VersionStatusCodes.Published,
+                VersionStatusCodes.Disabled);
+            if (!rollbackVersionUpdated)
+            {
+                throw new InvalidOperationException(
+                    $"RULE_VERSION_CONCURRENCY_CONFLICT: RuleId={ruleId}, RollbackVersionNo={rollbackVersionNo} 状态已变化，请刷新后重试");
+            }
 
             currentHeader.CurrentVersion = rollbackVersionNo;
             currentHeader.Status = RuleStatusCodes.Published;

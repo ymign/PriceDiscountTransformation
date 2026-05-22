@@ -85,6 +85,10 @@ public interface IRuleVersionRepository
     /// </summary>
     /// <param name="versionId">规则版本主键ID。</param>
     /// <param name="status">目标状态（VersionStatus 的字符串表示）。</param>
+    /// <param name="expectedCurrentStatus">
+    /// 期望的当前状态。传入后会做条件更新，只有数据库中的当前状态与期望值一致时才允许推进。
+    /// 用于发布状态机做 CAS 式状态流转，降低并发事务把同一版本重复推进的风险。
+    /// </param>
     /// <returns>是否更新成功。</returns>
-    Task<bool> UpdateStatusAsync(long versionId, string status);
+    Task<bool> UpdateStatusAsync(long versionId, string status, string? expectedCurrentStatus = null);
 }

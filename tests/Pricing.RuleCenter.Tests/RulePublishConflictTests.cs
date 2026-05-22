@@ -743,6 +743,58 @@ public sealed class RulePublishConflictTests
         Assert.True(versionRepository.WasLocked);
     }
 
+    [Fact]
+    public async Task PublishAsync_UsesCompareAndSetWhenPromotingDraftVersion()
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var versionRepository = new InMemoryRuleVersionRepository();
+        var conditionRepository = new InMemoryRuleConditionRepository();
+        var actionRepository = new InMemoryRuleActionRepository();
+        var testCaseRepository = new InMemoryRuleTestCaseRepository();
+        var testRunRepository = new InMemoryRuleTestRunRepository();
+        var service = CreateService(
+            headerRepository,
+            versionRepository,
+            conditionRepository,
+            actionRepository,
+            testCaseRepository: testCaseRepository,
+            testRunRepository: testRunRepository);
+
+        headerRepository.Headers.Add(new RuleHeader
+        {
+            RuleId = 12,
+            RuleCode = "R-CAS",
+            ItemCode = "ITEM012",
+            CurrentVersion = 0,
+            Status = "DRAFT",
+            IsEnabled = "Y",
+            EffectiveFrom = new DateTime(2026, 1, 1),
+            EffectiveTo = new DateTime(2026, 12, 31)
+        });
+        versionRepository.Versions.Add(new RuleVersion
+        {
+            VersionId = 121,
+            RuleId = 12,
+            VersionNo = 1,
+            VersionStatus = "DRAFT"
+        });
+        actionRepository.Add(12, 1, new RuleAction
+        {
+            RuleId = 12,
+            VersionNo = 1,
+            ActionType = "FORMULA_CALC",
+            OnError = "STOP",
+            IsEnabled = "Y"
+        });
+        AddPassingTestCase(testCaseRepository, testRunRepository, 12, 1, 2012, 3012);
+
+        await service.PublishAsync(12, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" });
+
+        var promoted = Assert.Single(versionRepository.StatusUpdates, u => u.VersionId == 121);
+        Assert.Equal("DRAFT", promoted.ExpectedStatus);
+        Assert.Equal("PUBLISHED", promoted.NewStatus);
+    }
+
     private static void AddPassingTestCase(
         InMemoryRuleTestCaseRepository testCaseRepository,
         InMemoryRuleTestRunRepository testRunRepository,
@@ -850,6 +902,7 @@ public sealed class RulePublishConflictTests
     private sealed class InMemoryRuleVersionRepository : IRuleVersionRepository
     {
         public List<RuleVersion> Versions { get; } = new();
+        public List<(long VersionId, string NewStatus, string? ExpectedStatus)> StatusUpdates { get; } = new();
         public Task<RuleVersion?> GetByIdAsync(long versionId) => Task.FromResult(Versions.SingleOrDefault(v => v.VersionId == versionId));
         public Task<RuleVersion?> GetByRuleAndVersionAsync(long ruleId, int versionNo) => Task.FromResult(Versions.SingleOrDefault(v => v.RuleId == ruleId && v.VersionNo == versionNo));
         public bool WasLocked { get; private set; }
@@ -860,9 +913,16 @@ public sealed class RulePublishConflictTests
         }
         public Task<IReadOnlyList<RuleVersion>> GetByRuleIdAsync(long ruleId) => Task.FromResult((IReadOnlyList<RuleVersion>)Versions.Where(v => v.RuleId == ruleId).ToList());
         public Task<long> InsertAsync(RuleVersion entity) => Task.FromResult(entity.VersionId);
-        public Task<bool> UpdateStatusAsync(long versionId, string status)
+        public Task<bool> UpdateStatusAsync(long versionId, string status, string? expectedCurrentStatus = null)
         {
             var version = Versions.Single(v => v.VersionId == versionId);
+            if (!string.IsNullOrWhiteSpace(expectedCurrentStatus) &&
+                !string.Equals(version.VersionStatus, expectedCurrentStatus, StringComparison.OrdinalIgnoreCase))
+            {
+                return Task.FromResult(false);
+            }
+
+            StatusUpdates.Add((versionId, status, expectedCurrentStatus));
             version.VersionStatus = status;
             return Task.FromResult(true);
         }

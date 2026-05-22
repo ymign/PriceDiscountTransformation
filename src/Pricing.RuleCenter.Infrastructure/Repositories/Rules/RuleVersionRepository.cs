@@ -157,6 +157,10 @@ public sealed class RuleVersionRepository : IRuleVersionRepository
     /// </summary>
     /// <param name="versionId">版本主键。</param>
     /// <param name="status">目标版本状态（DRAFT / PUBLISHED / DISABLED / ROLLED_BACK）。</param>
+    /// <param name="expectedCurrentStatus">
+    /// 期望的当前状态。传入后使用条件更新，只有数据库当前状态匹配时才返回成功。
+    /// 为空时保持旧行为，仅按主键更新。
+    /// </param>
     /// <returns>是否至少更新了一行（true 表示成功，false 表示记录不存在）。</returns>
     /// <remarks>
     /// 【SQL 语义】等价于：
@@ -167,13 +171,18 @@ public sealed class RuleVersionRepository : IRuleVersionRepository
     /// 版本快照（条件和动作的配置内容）在发布后应不可变。
     /// 【事务要求】版本状态更新通常与规则主档状态更新、发布流水写入在同一事务中执行。
     /// </remarks>
-    public async Task<bool> UpdateStatusAsync(long versionId, string status)
+    public async Task<bool> UpdateStatusAsync(long versionId, string status, string? expectedCurrentStatus = null)
     {
         // 只更新状态字段，避免发布状态机误改版本快照或生效期。
-        var rows = await _db.Updateable<RuleVersion>()
+        var update = _db.Updateable<RuleVersion>()
             .SetColumns(v => v.VersionStatus == status)
-            .Where(v => v.VersionId == versionId)
-            .ExecuteCommandAsync();
+            .Where(v => v.VersionId == versionId);
+        if (!string.IsNullOrWhiteSpace(expectedCurrentStatus))
+        {
+            update = update.Where(v => v.VersionStatus == expectedCurrentStatus);
+        }
+
+        var rows = await update.ExecuteCommandAsync();
         return rows > 0;
     }
 }

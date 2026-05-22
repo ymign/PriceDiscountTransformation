@@ -258,6 +258,32 @@ Core 聚合 `ChargeRequest` 的 `MarkCommitted` / `MarkReversed` 已统一到现
 
 - `PublishAsync_LocksHeaderAndTargetVersionInsideTransaction`
 
+### 2.16 版本状态推进补齐 CAS 语义
+
+在显式加锁之外，本轮继续把 `PR_RULE_VERSION` 的状态推进补成了带期望旧状态的条件更新：
+
+- `IRuleVersionRepository.UpdateStatusAsync` 新增 `expectedCurrentStatus`
+- 发布时要求目标版本必须从 `DRAFT -> PUBLISHED`
+- 停用时要求当前版本必须从 `PUBLISHED -> DISABLED`
+- 回滚时要求：
+  - 当前版本必须从 `PUBLISHED -> ROLLED_BACK`
+  - 回滚目标版本必须从 `DISABLED -> PUBLISHED`
+
+这一步的意义是：
+
+- 就算事务已经拿到了锁，也不会在状态已经被外部推进后的情况下“盲写覆盖”
+- 应用服务可以据此区分“正常推进失败”和“并发状态已变化”
+
+同时，SQL 脚本已补上版本表的唯一索引约束草案：
+
+- `UK_PR_RV_RULE_PUBLISHED`
+
+约束语义：同一规则下最多只允许一个 `VERSION_STATUS = 'PUBLISHED'` 的版本。
+
+对应新增回归测试：
+
+- `PublishAsync_UsesCompareAndSetWhenPromotingDraftVersion`
+
 ## 3. 自动化验证
 
 本轮完成后已执行：
@@ -272,7 +298,7 @@ git diff --check
 结果：
 
 - Core tests：38 通过
-- API/Application tests：135 通过
+- API/Application tests：137 通过
 - 解决方案测试：全部通过
 - `git diff --check` 通过
 
@@ -291,7 +317,7 @@ git diff --check
 - reverse 审计如果需要“一次退费多条逐明细冲正日志”，需补表设计或仓储接口
 - `PR_LIMIT_OCCUPY` 目前已经补上 `ChargeDetailNo` / `ResultGroupNo`，但还没有补 `OriginalDiscountId`；如果后续要做到“完全按折价明细主键释放”，还需要继续补表和仓储
 - 测试用例门禁目前还不能自动区分“正向用例/边界用例”，因为现有表结构没有 `CaseType` 或标签字段
-- 规则发布并发一致性已补事务内 `FOR UPDATE` 锁，但还没有落到更彻底的 CAS 更新和数据库唯一约束
+- 规则发布并发一致性已补事务内 `FOR UPDATE` 锁和版本状态 CAS 语义，但主档状态推进还没有做同等级别的条件更新
 - 多实例部署下的规则缓存失效仍是进程内语义，未升级为分布式广播
 - Trace 查询接口若要直接按 `TraceId` 聚合展示，可再补专门查询入口和测试
 
