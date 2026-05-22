@@ -374,6 +374,8 @@ Core 聚合 `ChargeRequest` 的 `MarkCommitted` / `MarkReversed` 已统一到现
 
 - `GlobalExceptionFilterTests.OnException_ShouldMapBizExceptionToConfiguredBusinessCodeAndHttpStatus`
 - `RulePublishConflictTests` 中多条发布门禁测试已升级为直接断言 `BizErrorCode`
+- `RulePublishConflictTests.PublishAsync_ReturnsRuleNotFoundBizCodeWhenHeaderIsMissing`
+- `RulePublishConflictTests.PublishAsync_ReturnsRuleVersionNotFoundBizCodeWhenVersionIsMissing`
 
 ## 3. 自动化验证
 
