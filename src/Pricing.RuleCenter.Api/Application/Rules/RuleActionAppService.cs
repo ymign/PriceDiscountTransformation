@@ -29,6 +29,11 @@ namespace Pricing.RuleCenter.Api.Application.Rules;
 public sealed class RuleActionAppService
 {
     /// <summary>
+    /// 工作单元，负责把“删除旧动作 + 插入新动作”放进同一数据库事务。
+    /// </summary>
+    private readonly IUnitOfWork _unitOfWork;
+
+    /// <summary>
     /// 规则动作仓储，负责 PR_RULE_ACTION 表的读取、按版本清空和批量写入。
     /// </summary>
     private readonly IRuleActionRepository _actionRepository;
@@ -54,16 +59,19 @@ public sealed class RuleActionAppService
     /// <summary>
     /// 初始化规则动作服务。
     /// </summary>
+    /// <param name="unitOfWork">工作单元，用于保证整体替换保存的事务一致性。</param>
     /// <param name="actionRepository">规则动作仓储。</param>
     /// <param name="versionRepository">规则版本仓储。</param>
     /// <param name="changeLogRepository">变更日志仓储，用于写入动作保存的审计记录。</param>
     /// <param name="logger">日志对象。</param>
     public RuleActionAppService(
+        IUnitOfWork unitOfWork,
         IRuleActionRepository actionRepository,
         IRuleVersionRepository versionRepository,
         IRuleChangeLogRepository changeLogRepository,
         ILogger<RuleActionAppService> logger)
     {
+        _unitOfWork = unitOfWork;
         _actionRepository = actionRepository;
         _versionRepository = versionRepository;
         _changeLogRepository = changeLogRepository;
@@ -102,11 +110,7 @@ public sealed class RuleActionAppService
             throw new InvalidOperationException($"只有草稿版本可以编辑动作, 当前状态: {version.VersionStatus}");
         }
 
-        // ========== 第二阶段：删除旧动作 ==========
-        // 动作链的排序、互斥组和错误策略共同决定执行结果。整体替换比逐项补丁更容易保证最终状态与请求一致。
-        await _actionRepository.DeleteByRuleAndVersionAsync(ruleId, versionNo);
-
-        // ========== 第三阶段：映射动作实体 ==========
+        // ========== 第二阶段：映射动作实体 ==========
         // ExecutorCode 决定运行时使用哪个 IRuleActionExecutor；ParamsJson 作为执行器私有参数保存。
         var entities = request.Actions.Select(a => new RuleAction
         {
@@ -121,19 +125,34 @@ public sealed class RuleActionAppService
             IsEnabled = a.IsEnabled
         }).ToList();
 
-        // ========== 第四阶段：批量写入动作集合 ==========
-        // 空动作集合允许保存，表示当前草稿只做条件匹配但不改变价格；发布前可由业务流程再行校验。
-        if (entities.Count > 0)
+        // ========== 第三阶段：事务性整体替换 ==========
+        // 删除和重建必须处于同一事务中，否则批量插入失败时，会把原草稿动作链整批清空。
+        await _unitOfWork.BeginAsync();
+        try
         {
-            await _actionRepository.InsertBatchAsync(entities);
+            await _actionRepository.DeleteByRuleAndVersionAsync(ruleId, versionNo);
+
+            // 空动作集合允许保存，表示当前草稿只做条件匹配但不改变价格；发布前可由业务流程再行校验。
+            if (entities.Count > 0)
+            {
+                await _actionRepository.InsertBatchAsync(entities);
+            }
+
+            await _unitOfWork.CommitAsync();
+        }
+        catch
+        {
+            await _unitOfWork.RollbackAsync();
+            throw;
         }
 
         _logger.LogInformation("保存规则动作 RuleId={RuleId}, VersionNo={VersionNo}, Count={Count}",
             ruleId, versionNo, entities.Count);
 
-        // ========== 第五阶段：写入变更日志 ==========
+        // ========== 第四阶段：写入变更日志 ==========
         // 动作决定了规则的计价行为（公式计算、数量限制、金额限制、换算等），
         // 每次整体替换都必须记录审计日志，确保动作链的修改可追溯到具体保存操作。
+        // 变更日志保持 best-effort 旁路语义，不反向影响已经提交成功的主配置保存。
         await TryWriteChangeLogAsync(ruleId, versionNo, "SAVE_ACTIONS",
             $"保存规则动作：共 {entities.Count} 个动作，RuleId={ruleId}，VersionNo={versionNo}");
     }

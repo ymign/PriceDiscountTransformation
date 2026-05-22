@@ -407,11 +407,46 @@ Core 聚合 `ChargeRequest` 的 `MarkCommitted` / `MarkReversed` 已统一到现
 - `PricingReverseTests` 中冲正金额越界与幂等冲突已升级为直接断言 `BizErrorCode`
 - `PricingApiServiceTests` 中 commit 数量/金额不匹配已升级为直接断言 `BizErrorCode`
 
+### 2.21 规则条件/动作整体保存补上事务边界
+
+`RuleConditionAppService.SaveAsync` 和 `RuleActionAppService.SaveAsync`
+此前都采用：
+
+- 先 `DeleteByRuleAndVersionAsync`
+- 再 `InsertBatchAsync`
+- 无事务保护
+
+这会留下一个高风险窗口：
+
+- 草稿版本先被整批清空
+- 随后批量插入如果失败
+- 该版本就会停留在“条件/动作全空”或部分重建后的不一致状态
+
+本轮改为显式依赖 `IUnitOfWork`，把“删除旧定义 + 重建新定义”纳入同一事务：
+
+- `RuleConditionAppService`
+- `RuleActionAppService`
+
+当前落地口径：
+
+- 版本存在且为 `DRAFT` 的校验仍在事务外先做
+- 真正有破坏性的“删旧 + 插新”在事务内执行
+- 插入抛错时显式 `RollbackAsync`
+- 审计变更日志继续保持 best-effort 旁路语义，不反向影响已提交成功的主配置保存
+
+对应新增回归测试：
+
+- `RuleDefinitionTransactionTests.SaveConditionsAsync_RollsBackDeleteWhenInsertFails`
+- `RuleDefinitionTransactionTests.SaveConditionsAsync_CommitsRebuiltCollectionWhenInsertSucceeds`
+- `RuleDefinitionTransactionTests.SaveActionsAsync_RollsBackDeleteWhenInsertFails`
+- `RuleDefinitionTransactionTests.SaveActionsAsync_CommitsRebuiltCollectionWhenInsertSucceeds`
+
 ## 3. 自动化验证
 
 本轮完成后已执行：
 
 ```powershell
+dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter RuleDefinitionTransactionTests
 dotnet test tests\Pricing.RuleCenter.Core.Tests\Pricing.RuleCenter.Core.Tests.csproj --no-restore
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore
 dotnet test src\Pricing.RuleCenter.slnx --no-restore
@@ -421,7 +456,7 @@ git diff --check
 结果：
 
 - Core tests：38 通过
-- API/Application tests：143 通过
+- API/Application tests：147 通过
 - 解决方案测试：全部通过
 - `git diff --check` 通过
 
@@ -443,6 +478,7 @@ git diff --check
 - 规则发布并发一致性已补事务内 `FOR UPDATE` 锁、版本状态 CAS 和主档状态 CAS，但数据库侧仍缺对主档流程的更细粒度错误码和更强约束
 - 多实例部署下的缓存已经具备基于 Oracle 版本号的同步基础设施，但读侧目前只先接了生效规则查询和动作顺序缓存，字典普通查询仍是单机内存 TTL 语义
 - 计价链路（`PricingAppService`）已经开始切换 `BizException`，但仍有部分 `COMMIT_*`、`REVERSE_*` 和其余状态校验分支尚未全部完成结构化
+- 规则条件/动作保存已经补了应用层事务边界，但版本状态校验仍是“事务外先读、事务内写”；如果后续要继续收紧到“草稿编辑串行化”，可再评估是否补 `GetByRuleAndVersionForUpdateAsync` 级别的锁定保存
 - Trace 查询接口若要直接按 `TraceId` 聚合展示，可再补专门查询入口和测试
 
 ## 5. 结论

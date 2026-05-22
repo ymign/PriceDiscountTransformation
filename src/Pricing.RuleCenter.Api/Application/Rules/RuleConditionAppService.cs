@@ -25,6 +25,11 @@ namespace Pricing.RuleCenter.Api.Application.Rules;
 public sealed class RuleConditionAppService
 {
     /// <summary>
+    /// 工作单元，负责把“删除旧条件 + 插入新条件”放进同一数据库事务。
+    /// </summary>
+    private readonly IUnitOfWork _unitOfWork;
+
+    /// <summary>
     /// 规则条件仓储，负责 PR_RULE_CONDITION 表的读取、按版本清空和批量写入。
     /// </summary>
     private readonly IRuleConditionRepository _conditionRepository;
@@ -50,16 +55,19 @@ public sealed class RuleConditionAppService
     /// <summary>
     /// 初始化规则条件服务。
     /// </summary>
+    /// <param name="unitOfWork">工作单元，用于保证整体替换保存的事务一致性。</param>
     /// <param name="conditionRepository">规则条件仓储。</param>
     /// <param name="versionRepository">规则版本仓储。</param>
     /// <param name="changeLogRepository">变更日志仓储，用于写入条件保存的审计记录。</param>
     /// <param name="logger">日志对象。</param>
     public RuleConditionAppService(
+        IUnitOfWork unitOfWork,
         IRuleConditionRepository conditionRepository,
         IRuleVersionRepository versionRepository,
         IRuleChangeLogRepository changeLogRepository,
         ILogger<RuleConditionAppService> logger)
     {
+        _unitOfWork = unitOfWork;
         _conditionRepository = conditionRepository;
         _versionRepository = versionRepository;
         _changeLogRepository = changeLogRepository;
@@ -98,12 +106,7 @@ public sealed class RuleConditionAppService
             throw new InvalidOperationException($"只有草稿版本可以编辑条件, 当前状态: {version.VersionStatus}");
         }
 
-        // ========== 第二阶段：先清空旧条件 ==========
-        // 前端通常以完整条件树提交。采用"删除后重建"能避免复杂的增删改合并逻辑，
-        // 同时保证排序号、分组和启用状态完全以本次提交为准。
-        await _conditionRepository.DeleteByRuleAndVersionAsync(ruleId, versionNo);
-
-        // ========== 第三阶段：把请求项映射为实体 ==========
+        // ========== 第二阶段：把请求项映射为实体 ==========
         // ConditionGroup 用于表达同组条件关系；具体如何求值由 RuleMatchService 和 Evaluator 执行。
         var entities = request.Conditions.Select(c => new RuleCondition
         {
@@ -119,19 +122,34 @@ public sealed class RuleConditionAppService
             IsEnabled = c.IsEnabled
         }).ToList();
 
-        // ========== 第四阶段：批量写入非空集合 ==========
-        // 空集合也是合法保存结果，表示该版本暂时没有额外条件，因此不能强行报错。
-        if (entities.Count > 0)
+        // ========== 第三阶段：事务性整体替换 ==========
+        // 删除和重建必须处于同一事务中，否则批量插入中途失败时，会把原草稿条件整批清空。
+        await _unitOfWork.BeginAsync();
+        try
         {
-            await _conditionRepository.InsertBatchAsync(entities);
+            await _conditionRepository.DeleteByRuleAndVersionAsync(ruleId, versionNo);
+
+            // 空集合也是合法保存结果，表示该版本暂时没有额外条件，因此不能强行报错。
+            if (entities.Count > 0)
+            {
+                await _conditionRepository.InsertBatchAsync(entities);
+            }
+
+            await _unitOfWork.CommitAsync();
+        }
+        catch
+        {
+            await _unitOfWork.RollbackAsync();
+            throw;
         }
 
         _logger.LogInformation("保存规则条件 RuleId={RuleId}, VersionNo={VersionNo}, Count={Count}",
             ruleId, versionNo, entities.Count);
 
-        // ========== 第五阶段：写入变更日志 ==========
+        // ========== 第四阶段：写入变更日志 ==========
         // 条件决定了规则的匹配范围（项目、场景、部位、时间等），
         // 每次整体替换都必须记录审计日志，确保条件维度的修改可追溯到具体保存操作。
+        // 变更日志保持 best-effort 旁路语义，不反向影响已经提交成功的主配置保存。
         await TryWriteChangeLogAsync(ruleId, versionNo, "SAVE_CONDITIONS",
             $"保存规则条件：共 {entities.Count} 个条件，RuleId={ruleId}，VersionNo={versionNo}");
     }
