@@ -93,6 +93,21 @@ public sealed class RuleVersionRepository : IRuleVersionRepository
     }
 
     /// <summary>
+    /// 按规则主键和版本号读取规则版本并执行数据库行锁。
+    /// </summary>
+    /// <remarks>
+    /// 使用 Oracle `SELECT ... FOR UPDATE` 把目标版本锁到当前事务，避免并发发布/回滚同时修改同一版本状态。
+    /// 必须在外层事务已开启时调用。
+    /// </remarks>
+    public async Task<RuleVersion?> GetByRuleAndVersionForUpdateAsync(long ruleId, int versionNo)
+    {
+        var rows = await _db.Ado.SqlQueryAsync<RuleVersion>(
+            "SELECT * FROM PR_RULE_VERSION WHERE RULE_ID = :RuleId AND VERSION_NO = :VersionNo FOR UPDATE",
+            new { RuleId = ruleId, VersionNo = versionNo });
+        return rows.FirstOrDefault();
+    }
+
+    /// <summary>
     /// 读取某条规则的全部版本，按版本号倒序排列。
     /// </summary>
     /// <param name="ruleId">规则主键（PR_RULE_HEADER.RULE_ID）。</param>

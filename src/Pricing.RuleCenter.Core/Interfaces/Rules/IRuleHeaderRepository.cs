@@ -33,6 +33,15 @@ public interface IRuleHeaderRepository
     Task<RuleAggregate?> GetByIdAsync(long ruleId);
 
     /// <summary>
+    /// 根据主键ID查询规则主表并加行锁。
+    /// </summary>
+    /// <remarks>
+    /// 用于发布、停用、回滚等需要串行化状态机推进的场景。
+    /// 调用方必须在已开启事务的上下文中调用，否则 `FOR UPDATE` 锁没有意义。
+    /// </remarks>
+    Task<RuleAggregate?> GetByIdForUpdateAsync(long ruleId);
+
+    /// <summary>
     /// 根据规则编码查询规则主表。
     ///
     /// 使用场景：通过业务编码快速定位规则，如规则详情页面的编码搜索。

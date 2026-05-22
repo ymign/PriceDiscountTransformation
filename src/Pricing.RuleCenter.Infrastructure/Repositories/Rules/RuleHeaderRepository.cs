@@ -74,6 +74,21 @@ public sealed class RuleHeaderRepository : IRuleHeaderRepository
     }
 
     /// <summary>
+    /// 按主键读取规则主档并执行数据库行锁。
+    /// </summary>
+    /// <remarks>
+    /// 使用 Oracle `SELECT ... FOR UPDATE` 串行化发布状态机入口，避免两个事务同时读取到同一条主档并各自推进状态。
+    /// 必须在外层事务已开启时调用。
+    /// </remarks>
+    public async Task<RuleAggregate?> GetByIdForUpdateAsync(long ruleId)
+    {
+        var rows = await _db.Ado.SqlQueryAsync<RuleAggregate>(
+            "SELECT * FROM PR_RULE_HEADER WHERE RULE_ID = :RuleId FOR UPDATE",
+            new { RuleId = ruleId });
+        return rows.FirstOrDefault();
+    }
+
+    /// <summary>
     /// 按规则编码读取规则主档。
     /// </summary>
     /// <param name="ruleCode">规则编码（全局唯一）。</param>

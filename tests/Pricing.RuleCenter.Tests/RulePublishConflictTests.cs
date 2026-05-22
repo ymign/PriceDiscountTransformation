@@ -692,6 +692,57 @@ public sealed class RulePublishConflictTests
         Assert.Contains("RULE_ACTION_ONERROR_INVALID", ex.Message);
     }
 
+    [Fact]
+    public async Task PublishAsync_LocksHeaderAndTargetVersionInsideTransaction()
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var versionRepository = new InMemoryRuleVersionRepository();
+        var conditionRepository = new InMemoryRuleConditionRepository();
+        var actionRepository = new InMemoryRuleActionRepository();
+        var testCaseRepository = new InMemoryRuleTestCaseRepository();
+        var testRunRepository = new InMemoryRuleTestRunRepository();
+        var service = CreateService(
+            headerRepository,
+            versionRepository,
+            conditionRepository,
+            actionRepository,
+            testCaseRepository: testCaseRepository,
+            testRunRepository: testRunRepository);
+
+        headerRepository.Headers.Add(new RuleHeader
+        {
+            RuleId = 11,
+            RuleCode = "R-LOCK",
+            ItemCode = "ITEM011",
+            CurrentVersion = 0,
+            Status = "DRAFT",
+            IsEnabled = "Y",
+            EffectiveFrom = new DateTime(2026, 1, 1),
+            EffectiveTo = new DateTime(2026, 12, 31)
+        });
+        versionRepository.Versions.Add(new RuleVersion
+        {
+            VersionId = 111,
+            RuleId = 11,
+            VersionNo = 1,
+            VersionStatus = "DRAFT"
+        });
+        actionRepository.Add(11, 1, new RuleAction
+        {
+            RuleId = 11,
+            VersionNo = 1,
+            ActionType = "FORMULA_CALC",
+            OnError = "STOP",
+            IsEnabled = "Y"
+        });
+        AddPassingTestCase(testCaseRepository, testRunRepository, 11, 1, 2011, 3011);
+
+        await service.PublishAsync(11, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" });
+
+        Assert.True(headerRepository.WasLocked);
+        Assert.True(versionRepository.WasLocked);
+    }
+
     private static void AddPassingTestCase(
         InMemoryRuleTestCaseRepository testCaseRepository,
         InMemoryRuleTestRunRepository testRunRepository,
@@ -781,6 +832,12 @@ public sealed class RulePublishConflictTests
     {
         public List<RuleHeader> Headers { get; } = new();
         public Task<RuleHeader?> GetByIdAsync(long ruleId) => Task.FromResult(Headers.SingleOrDefault(h => h.RuleId == ruleId));
+        public bool WasLocked { get; private set; }
+        public Task<RuleHeader?> GetByIdForUpdateAsync(long ruleId)
+        {
+            WasLocked = true;
+            return Task.FromResult(Headers.SingleOrDefault(h => h.RuleId == ruleId));
+        }
         public Task<RuleHeader?> GetByCodeAsync(string ruleCode) => Task.FromResult(Headers.SingleOrDefault(h => h.RuleCode == ruleCode));
         public Task<IReadOnlyList<RuleHeader>> GetByItemCodeAsync(string itemCode) => Task.FromResult((IReadOnlyList<RuleHeader>)Headers.Where(h => h.ItemCode == itemCode).ToList());
         public Task<(IReadOnlyList<RuleHeader> Items, int Total)> GetPagedAsync(string? itemCode, string? status, string? category, int pageIndex, int pageSize) => Task.FromResult(((IReadOnlyList<RuleHeader>)Headers.ToList(), Headers.Count));
@@ -795,6 +852,12 @@ public sealed class RulePublishConflictTests
         public List<RuleVersion> Versions { get; } = new();
         public Task<RuleVersion?> GetByIdAsync(long versionId) => Task.FromResult(Versions.SingleOrDefault(v => v.VersionId == versionId));
         public Task<RuleVersion?> GetByRuleAndVersionAsync(long ruleId, int versionNo) => Task.FromResult(Versions.SingleOrDefault(v => v.RuleId == ruleId && v.VersionNo == versionNo));
+        public bool WasLocked { get; private set; }
+        public Task<RuleVersion?> GetByRuleAndVersionForUpdateAsync(long ruleId, int versionNo)
+        {
+            WasLocked = true;
+            return Task.FromResult(Versions.SingleOrDefault(v => v.RuleId == ruleId && v.VersionNo == versionNo));
+        }
         public Task<IReadOnlyList<RuleVersion>> GetByRuleIdAsync(long ruleId) => Task.FromResult((IReadOnlyList<RuleVersion>)Versions.Where(v => v.RuleId == ruleId).ToList());
         public Task<long> InsertAsync(RuleVersion entity) => Task.FromResult(entity.VersionId);
         public Task<bool> UpdateStatusAsync(long versionId, string status)

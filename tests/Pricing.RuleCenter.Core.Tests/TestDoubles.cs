@@ -21,6 +21,11 @@ internal sealed class InMemoryRuleHeaderRepository : IRuleHeaderRepository
         return Task.FromResult(_rules.FirstOrDefault(r => r.RuleId == ruleId));
     }
 
+    public Task<RuleAggregate?> GetByIdForUpdateAsync(long ruleId)
+    {
+        return GetByIdAsync(ruleId);
+    }
+
     public Task<RuleAggregate?> GetByCodeAsync(string ruleCode)
     {
         return Task.FromResult(_rules.FirstOrDefault(r =>

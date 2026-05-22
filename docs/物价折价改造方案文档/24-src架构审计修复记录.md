@@ -241,6 +241,23 @@ Core 聚合 `ChargeRequest` 的 `MarkCommitted` / `MarkReversed` 已统一到现
 - `PublishAsync_RejectsDuplicateChildItemsInAddChildAction`
 - `PublishAsync_RejectsCriticalActionWhenOnErrorIsNotStop`
 
+### 2.15 发布状态机显式加锁
+
+`RulePublishAppService` 本轮继续把发布一致性往数据库语义上收了一层：
+
+- `IRuleHeaderRepository` 新增 `GetByIdForUpdateAsync`
+- `IRuleVersionRepository` 新增 `GetByRuleAndVersionForUpdateAsync`
+- 发布、停用、回滚在事务内不再只做“重新读取”，而是显式对主档和目标版本执行 `SELECT ... FOR UPDATE`
+
+这次改动的目标不是彻底解决所有并发问题，而是先把最危险的窗口再缩小一层：
+
+- 两个事务同时读取同一条规则主档并分别推进状态
+- 两个事务同时读取同一目标版本并各自把它从 `DRAFT` 推进为 `PUBLISHED`
+
+对应新增回归测试：
+
+- `PublishAsync_LocksHeaderAndTargetVersionInsideTransaction`
+
 ## 3. 自动化验证
 
 本轮完成后已执行：
@@ -274,7 +291,7 @@ git diff --check
 - reverse 审计如果需要“一次退费多条逐明细冲正日志”，需补表设计或仓储接口
 - `PR_LIMIT_OCCUPY` 目前已经补上 `ChargeDetailNo` / `ResultGroupNo`，但还没有补 `OriginalDiscountId`；如果后续要做到“完全按折价明细主键释放”，还需要继续补表和仓储
 - 测试用例门禁目前还不能自动区分“正向用例/边界用例”，因为现有表结构没有 `CaseType` 或标签字段
-- 规则发布并发一致性仍未做到数据库级硬约束；当前通过事务内重读降低了风险，但还没有落到 `SELECT FOR UPDATE` / CAS / 唯一约束
+- 规则发布并发一致性已补事务内 `FOR UPDATE` 锁，但还没有落到更彻底的 CAS 更新和数据库唯一约束
 - 多实例部署下的规则缓存失效仍是进程内语义，未升级为分布式广播
 - Trace 查询接口若要直接按 `TraceId` 聚合展示，可再补专门查询入口和测试
 

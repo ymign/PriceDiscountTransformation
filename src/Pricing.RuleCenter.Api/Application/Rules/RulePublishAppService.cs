@@ -188,9 +188,9 @@ public sealed class RulePublishAppService
         // 如果任何一步失败，整体回滚，避免数据不一致。
         await ExecuteInTransactionAsync(async () =>
         {
-            var currentHeader = await _headerRepository.GetByIdAsync(ruleId)
+            var currentHeader = await _headerRepository.GetByIdForUpdateAsync(ruleId)
                 ?? throw new KeyNotFoundException($"规则不存在: {ruleId}");
-            var currentVersion = await _versionRepository.GetByRuleAndVersionAsync(ruleId, request.VersionNo)
+            var currentVersion = await _versionRepository.GetByRuleAndVersionForUpdateAsync(ruleId, request.VersionNo)
                 ?? throw new KeyNotFoundException($"规则版本不存在: RuleId={ruleId}, VersionNo={request.VersionNo}");
             if (currentVersion.VersionStatus != VersionStatusCodes.Draft)
             {
@@ -202,7 +202,7 @@ public sealed class RulePublishAppService
             // 禁用旧生效版本
             if (oldVersion > 0)
             {
-                var oldVersionEntity = await _versionRepository.GetByRuleAndVersionAsync(ruleId, oldVersion);
+                var oldVersionEntity = await _versionRepository.GetByRuleAndVersionForUpdateAsync(ruleId, oldVersion);
                 if (oldVersionEntity is null)
                 {
                     _logger.LogWarning("发布规则时未找到旧版本记录 RuleId={RuleId}, OldVersion={OldVersion}", ruleId, oldVersion);
@@ -279,7 +279,7 @@ public sealed class RulePublishAppService
         // ========== 第二阶段：事务内执行状态变更和流水写入 ==========
         await ExecuteInTransactionAsync(async () =>
         {
-            var currentHeader = await _headerRepository.GetByIdAsync(ruleId)
+            var currentHeader = await _headerRepository.GetByIdForUpdateAsync(ruleId)
                 ?? throw new KeyNotFoundException($"规则不存在: {ruleId}");
             if (currentHeader.Status != RuleStatusCodes.Published)
             {
@@ -289,7 +289,7 @@ public sealed class RulePublishAppService
             // 禁用当前版本
             if (currentHeader.CurrentVersion > 0)
             {
-                var currentVersion = await _versionRepository.GetByRuleAndVersionAsync(ruleId, currentHeader.CurrentVersion);
+                var currentVersion = await _versionRepository.GetByRuleAndVersionForUpdateAsync(ruleId, currentHeader.CurrentVersion);
                 if (currentVersion is not null)
                 {
                     await _versionRepository.UpdateStatusAsync(currentVersion.VersionId, VersionStatusCodes.Disabled);
@@ -354,7 +354,7 @@ public sealed class RulePublishAppService
         // ========== 第三阶段：事务内执行状态变更和流水写入 ==========
         await ExecuteInTransactionAsync(async () =>
         {
-            var currentHeader = await _headerRepository.GetByIdAsync(ruleId)
+            var currentHeader = await _headerRepository.GetByIdForUpdateAsync(ruleId)
                 ?? throw new KeyNotFoundException($"规则不存在: {ruleId}");
             if (currentHeader.Status != RuleStatusCodes.Published)
             {
@@ -365,14 +365,14 @@ public sealed class RulePublishAppService
             var rollbackVersionNo = await ResolveRollbackVersionNoAsync(ruleId, oldVersionNo);
 
             // 把当前版本标记为已回滚
-            var currentVersion = await _versionRepository.GetByRuleAndVersionAsync(ruleId, oldVersionNo);
+            var currentVersion = await _versionRepository.GetByRuleAndVersionForUpdateAsync(ruleId, oldVersionNo);
             if (currentVersion is not null)
             {
                 await _versionRepository.UpdateStatusAsync(currentVersion.VersionId, VersionStatusCodes.RolledBack);
             }
 
             // 恢复历史版本为发布状态
-            var rollbackVersion = await _versionRepository.GetByRuleAndVersionAsync(ruleId, rollbackVersionNo)
+            var rollbackVersion = await _versionRepository.GetByRuleAndVersionForUpdateAsync(ruleId, rollbackVersionNo)
                 ?? throw new InvalidOperationException($"回滚目标版本不存在: RuleId={ruleId}, VersionNo={rollbackVersionNo}");
             await _versionRepository.UpdateStatusAsync(rollbackVersion.VersionId, VersionStatusCodes.Published);
 

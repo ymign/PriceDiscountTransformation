@@ -48,6 +48,15 @@ public interface IRuleVersionRepository
     Task<RuleVersion?> GetByRuleAndVersionAsync(long ruleId, int versionNo);
 
     /// <summary>
+    /// 根据规则ID和版本号查询规则版本并加行锁。
+    /// </summary>
+    /// <remarks>
+    /// 用于发布、停用、回滚时串行化版本状态推进，防止两个并发事务同时把同一版本从草稿推进为已发布。
+    /// 调用方必须在已开启事务的上下文中调用。
+    /// </remarks>
+    Task<RuleVersion?> GetByRuleAndVersionForUpdateAsync(long ruleId, int versionNo);
+
+    /// <summary>
     /// 查询指定规则的所有版本。
     ///
     /// 使用场景：工作台展示规则的版本历史列表，支持版本切换和回滚操作。

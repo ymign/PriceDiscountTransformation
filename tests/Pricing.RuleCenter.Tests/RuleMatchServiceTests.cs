@@ -331,6 +331,7 @@ public sealed class RuleMatchServiceTests
         }
 
         public Task<RuleHeader?> GetByIdAsync(long ruleId) => Task.FromResult<RuleHeader?>(null);
+        public Task<RuleHeader?> GetByIdForUpdateAsync(long ruleId) => Task.FromResult<RuleHeader?>(null);
         public Task<RuleHeader?> GetByCodeAsync(string ruleCode) => Task.FromResult<RuleHeader?>(null);
         public Task<IReadOnlyList<RuleHeader>> GetByItemCodeAsync(string itemCode) =>
             Task.FromResult((IReadOnlyList<RuleHeader>)_rules.Where(r => r.ItemCode == itemCode).ToList());
