@@ -351,8 +351,10 @@ public sealed class PricingAppService
             // 否则调用方会以为重试成功，实际额度和折价明细已经对应另一组参数。
             if (!string.Equals(existing.RequestFingerprint, fingerprint, StringComparison.Ordinal))
             {
-                throw new InvalidOperationException(
-                    $"IDEMPOTENT_CONFLICT: BusinessRequestNo={request.BusinessRequestNo} 已存在，但本次参数与首次请求不一致");
+                throw new BizException(
+                    BizErrorCode.IdempotencyConflict,
+                    409,
+                    $"BusinessRequestNo={request.BusinessRequestNo} 已存在，但本次参数与首次请求不一致");
             }
 
             // 参数一致时直接返回首次响应快照，不重新执行规则，也不再次写占额。
@@ -382,8 +384,10 @@ public sealed class PricingAppService
             {
                 if (!string.Equals(existingInTransaction.RequestFingerprint, fingerprint, StringComparison.Ordinal))
                 {
-                    throw new InvalidOperationException(
-                        $"IDEMPOTENT_CONFLICT: BusinessRequestNo={request.BusinessRequestNo} 已存在，但本次参数与首次请求不一致");
+                    throw new BizException(
+                        BizErrorCode.IdempotencyConflict,
+                        409,
+                        $"BusinessRequestNo={request.BusinessRequestNo} 已存在，但本次参数与首次请求不一致");
                 }
 
                 _logger.LogInformation(
@@ -527,7 +531,9 @@ public sealed class PricingAppService
                 _logger.LogWarning(
                     "COMMIT 状态校验失败 RequestId={RequestId}, 当前状态={Status}, 期望=CONFIRM_PENDING",
                     request.RequestId, log.BusinessStatus);
-                throw new InvalidOperationException(
+                throw new BizException(
+                    BizErrorCode.RequestStatusNotAllowed,
+                    409,
                     $"只有CONFIRM_PENDING状态可以COMMIT, 当前: {log.BusinessStatus}");
             }
 
@@ -538,7 +544,10 @@ public sealed class PricingAppService
                 _logger.LogWarning(
                     "COMMIT 已过期 RequestId={RequestId}, RequestAt={RequestAt}, 过期分钟数={ExpireMinutes}",
                     request.RequestId, log.RequestAt, _options.ConfirmExpireMinutes);
-                throw new InvalidOperationException("EXPIRED: 确认计价结果已过期，请重新 confirm");
+                throw new BizException(
+                    BizErrorCode.RequestStatusNotAllowed,
+                    409,
+                    "确认计价结果已过期，请重新 confirm");
             }
 
             // commit 是 HIS 真正落账后的资金状态推进。推进前必须把 HIS 实际落账明细
@@ -612,7 +621,9 @@ public sealed class PricingAppService
                 _logger.LogWarning(
                     "CANCEL 状态校验失败 RequestId={RequestId}, 当前状态={Status}, 期望=CONFIRM_PENDING",
                     request.RequestId, log.BusinessStatus);
-                throw new InvalidOperationException(
+                throw new BizException(
+                    BizErrorCode.RequestStatusNotAllowed,
+                    409,
                     $"只有CONFIRM_PENDING状态可以CANCEL, 当前: {log.BusinessStatus}");
             }
 
@@ -678,8 +689,10 @@ public sealed class PricingAppService
             {
                 if (!IsSameReverseRequest(sameReverseNo, request))
                 {
-                    throw new InvalidOperationException(
-                        $"IDEMPOTENT_CONFLICT: ReverseNo={request.ReverseNo} 已存在，但本次冲正参数与首次请求不一致");
+                    throw new BizException(
+                        BizErrorCode.IdempotencyConflict,
+                        409,
+                        $"ReverseNo={request.ReverseNo} 已存在，但本次冲正参数与首次请求不一致");
                 }
 
                 _logger.LogInformation(
@@ -695,7 +708,9 @@ public sealed class PricingAppService
                 _logger.LogWarning(
                     "REVERSE 状态校验失败 OriginalRequestId={OriginalRequestId}, 当前状态={Status}, 期望=CONFIRMED/COMMITTED",
                     request.OriginalRequestId, log.BusinessStatus);
-                throw new InvalidOperationException(
+                throw new BizException(
+                    BizErrorCode.ReverseNotAllowed,
+                    409,
                     $"只有CONFIRMED或COMMITTED状态可以REVERSE, 当前: {log.BusinessStatus}");
             }
 
@@ -704,7 +719,10 @@ public sealed class PricingAppService
             var matchedDetails = FilterReverseDetails(details, request);
             if (matchedDetails.Count == 0)
             {
-                throw new InvalidOperationException("REVERSE_DETAIL_NOT_FOUND: 未找到可退费的原收费明细");
+                throw new BizException(
+                    BizErrorCode.ReverseNotAllowed,
+                    409,
+                    "未找到可退费的原收费明细");
             }
 
             var allOriginalQty = details
@@ -715,15 +733,20 @@ public sealed class PricingAppService
             var reverseQty = request.ReverseQty ?? originalQty;
             if (reverseQty <= 0)
             {
-                throw new InvalidOperationException("REVERSE_QTY_INVALID: 退费数量必须大于0");
+                throw new BizException(
+                    BizErrorCode.ReverseNotAllowed,
+                    409,
+                    "退费数量必须大于0");
             }
 
             var historicalReversedQty = await GetHistoricalReversedQtyAsync(request);
             var allHistoricalReversedQty = await GetHistoricalReversedQtyAsync(request.OriginalRequestId);
             if (historicalReversedQty + reverseQty > originalQty)
             {
-                throw new InvalidOperationException(
-                    $"REVERSE_QTY_EXCEEDED: 原有效数量={originalQty}, 历史已退={historicalReversedQty}, 本次退费={reverseQty}");
+                throw new BizException(
+                    BizErrorCode.ReverseNotAllowed,
+                    409,
+                    $"原有效数量={originalQty}, 历史已退={historicalReversedQty}, 本次退费={reverseQty}");
             }
 
             var reverseAmt = request.ReverseAmt ??
@@ -732,8 +755,10 @@ public sealed class PricingAppService
             var historicalReversedAmt = await GetHistoricalReversedAmtAsync(request);
             if (historicalReversedAmt + reverseAmt > originalAmt)
             {
-                throw new InvalidOperationException(
-                    $"REVERSE_AMT_EXCEEDED: 原有效金额={originalAmt}, 历史已退={historicalReversedAmt}, 本次退费={reverseAmt}");
+                throw new BizException(
+                    BizErrorCode.ReverseNotAllowed,
+                    409,
+                    $"原有效金额={originalAmt}, 历史已退={historicalReversedAmt}, 本次退费={reverseAmt}");
             }
 
             var isFullReverse =
@@ -784,14 +809,18 @@ public sealed class PricingAppService
 
                 if (groupHistoricalQty + groupReverseQty > groupOriginalQty)
                 {
-                    throw new InvalidOperationException(
-                        $"REVERSE_GROUP_QTY_EXCEEDED: ResultGroupNo={group.Key}, 组原有效数量={groupOriginalQty}, 组历史已退={groupHistoricalQty}, 组本次退费={groupReverseQty}");
+                    throw new BizException(
+                        BizErrorCode.ReverseNotAllowed,
+                        409,
+                        $"ResultGroupNo={group.Key}, 组原有效数量={groupOriginalQty}, 组历史已退={groupHistoricalQty}, 组本次退费={groupReverseQty}");
                 }
 
                 if (groupHistoricalAmt + groupReverseAmt > groupOriginalAmt)
                 {
-                    throw new InvalidOperationException(
-                        $"REVERSE_GROUP_AMT_EXCEEDED: ResultGroupNo={group.Key}, 组原有效金额={groupOriginalAmt}, 组历史已退={groupHistoricalAmt}, 组本次退费={groupReverseAmt}");
+                    throw new BizException(
+                        BizErrorCode.ReverseNotAllowed,
+                        409,
+                        $"ResultGroupNo={group.Key}, 组原有效金额={groupOriginalAmt}, 组历史已退={groupHistoricalAmt}, 组本次退费={groupReverseAmt}");
                 }
             }
 
@@ -1467,8 +1496,10 @@ public sealed class PricingAppService
                 _logger.LogWarning(
                     "权威单价校验失败: 未找到项目权威单价 ItemCode={ItemCode}",
                     item.ItemCode);
-                throw new InvalidOperationException(
-                    $"PRICE_MISMATCH: 未找到项目 {item.ItemCode} 的权威单价");
+                throw new BizException(
+                    BizErrorCode.PriceMismatch,
+                    409,
+                    $"未找到项目 {item.ItemCode} 的权威单价");
             }
 
             // ========== 第三阶段：按金额精度比较 ==========
@@ -1478,8 +1509,10 @@ public sealed class PricingAppService
                 _logger.LogWarning(
                     "权威单价校验失败: 单价不一致 ItemCode={ItemCode}, AuthorityPrice={AuthorityPrice}, RequestPrice={RequestPrice}",
                     item.ItemCode, authorityPrice.Value, item.UnitPrice);
-                throw new InvalidOperationException(
-                    $"PRICE_MISMATCH: 项目 {item.ItemCode} 权威单价={authorityPrice.Value}, 请求单价={item.UnitPrice}");
+                throw new BizException(
+                    BizErrorCode.PriceMismatch,
+                    409,
+                    $"项目 {item.ItemCode} 权威单价={authorityPrice.Value}, 请求单价={item.UnitPrice}");
             }
         }
     }

@@ -377,6 +377,34 @@ Core 聚合 `ChargeRequest` 的 `MarkCommitted` / `MarkReversed` 已统一到现
 - `RulePublishConflictTests.PublishAsync_ReturnsRuleNotFoundBizCodeWhenHeaderIsMissing`
 - `RulePublishConflictTests.PublishAsync_ReturnsRuleVersionNotFoundBizCodeWhenVersionIsMissing`
 
+### 2.20 计价链路开始切换到结构化业务异常
+
+本轮开始把 `PricingAppService` 中最核心的一批资金链路异常从
+`InvalidOperationException + 消息前缀`
+切到
+`BizException + BizErrorCode`：
+
+- `PRICE_MISMATCH`
+- `IDEMPOTENT_CONFLICT`
+- `REVERSE_*` 中的关键失败分支
+- `COMMIT/CANCEL` 的核心状态校验分支
+
+本轮优先收口的是“最影响接口契约和联调体验”的错误：
+
+- 同一业务号/冲正号参数不一致
+- 权威单价缺失或不一致
+- 退费目标不存在、数量/金额越界、状态不允许
+
+这样做以后，调用方不再需要依赖字符串前缀去区分：
+
+- 幂等冲突
+- 价格校验失败
+- 退费不允许
+
+对应新增/补强回归测试：
+
+- `PricingReverseTests` 中冲正金额越界与幂等冲突已升级为直接断言 `BizErrorCode`
+
 ## 3. 自动化验证
 
 本轮完成后已执行：
@@ -412,7 +440,7 @@ git diff --check
 - 测试用例门禁目前还不能自动区分“正向用例/边界用例”，因为现有表结构没有 `CaseType` 或标签字段
 - 规则发布并发一致性已补事务内 `FOR UPDATE` 锁、版本状态 CAS 和主档状态 CAS，但数据库侧仍缺对主档流程的更细粒度错误码和更强约束
 - 多实例部署下的缓存已经具备基于 Oracle 版本号的同步基础设施，但读侧目前只先接了生效规则查询和动作顺序缓存，字典普通查询仍是单机内存 TTL 语义
-- 计价链路（`PricingAppService`）仍大量使用 `InvalidOperationException + 消息前缀`，还没有整体切到 `BizException`
+- 计价链路（`PricingAppService`）已经开始切换 `BizException`，但 `COMMIT_*` 和剩余 `REVERSE_*`/`PRICE_MISMATCH` 分支还没有全部完成结构化
 - Trace 查询接口若要直接按 `TraceId` 聚合展示，可再补专门查询入口和测试
 
 ## 5. 结论

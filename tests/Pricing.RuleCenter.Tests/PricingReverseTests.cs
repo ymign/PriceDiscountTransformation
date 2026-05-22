@@ -236,7 +236,7 @@ public sealed class PricingReverseTests
             Status = "CONFIRMED"
         });
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
             service.ReverseAsync(new PricingReverseRequest
             {
                 OriginalRequestId = 300,
@@ -248,7 +248,7 @@ public sealed class PricingReverseTests
                 ReverseTime = new DateTime(2026, 5, 10, 11, 0, 0)
             }));
 
-        Assert.Contains("REVERSE_AMT_EXCEEDED", ex.Message);
+        Assert.Equal(BizErrorCode.ReverseNotAllowed, ex.Code);
         Assert.Empty(reverseRepository.Inserted);
         Assert.Empty(limitRepository.Inserted);
     }
@@ -672,7 +672,7 @@ public sealed class PricingReverseTests
             ReverseTime = new DateTime(2026, 5, 10, 11, 0, 0)
         });
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
             service.ReverseAsync(new PricingReverseRequest
             {
                 OriginalRequestId = 600,
@@ -683,7 +683,7 @@ public sealed class PricingReverseTests
                 ReverseTime = new DateTime(2026, 5, 10, 11, 1, 0)
             }));
 
-        Assert.Contains("IDEMPOTENT_CONFLICT", ex.Message);
+        Assert.Equal(BizErrorCode.IdempotencyConflict, ex.Code);
     }
 
     [Fact]
@@ -724,7 +724,7 @@ public sealed class PricingReverseTests
             Reason = "患者退费"
         });
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
             service.ReverseAsync(new PricingReverseRequest
             {
                 OriginalRequestId = 700,
@@ -737,7 +737,7 @@ public sealed class PricingReverseTests
                 Reason = "收费错误"
             }));
 
-        Assert.Contains("IDEMPOTENT_CONFLICT", ex.Message);
+        Assert.Equal(BizErrorCode.IdempotencyConflict, ex.Code);
     }
 
     private static PricingApiService CreateService(
