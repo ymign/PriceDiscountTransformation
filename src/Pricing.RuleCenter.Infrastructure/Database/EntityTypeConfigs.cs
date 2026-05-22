@@ -26,6 +26,7 @@ public static class EntityTypeConfigs
             [typeof(RulePublish)] = nameof(RulePublish.PublishId),
             [typeof(RuleChangeLog)] = nameof(RuleChangeLog.ChangeId),
             [typeof(Dict)] = nameof(Dict.DictId),
+            [typeof(CacheVersion)] = nameof(CacheVersion.CacheScope),
             [typeof(FormulaDef)] = nameof(FormulaDef.FormulaId),
             [typeof(ItemGroup)] = nameof(ItemGroup.GroupId),
             [typeof(ItemGroupDetail)] = nameof(ItemGroupDetail.DetailId),
@@ -202,6 +203,17 @@ public static class EntityTypeConfigs
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(Dict), PropertyName = nameof(Dict.SortNo), DbColumnName = "SORT_NO" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(Dict), PropertyName = nameof(Dict.IsEnabled), DbColumnName = "IS_ENABLED" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(Dict), PropertyName = nameof(Dict.Remark), DbColumnName = "REMARK" });
+    }
+
+    /// <summary>
+    /// 配置 PR_CACHE_VERSION 表映射。
+    /// </summary>
+    public static void ConfigureCacheVersion(SqlSugarClient db)
+    {
+        db.MappingTables.Add(typeof(CacheVersion).Name, "PR_CACHE_VERSION");
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(CacheVersion), PropertyName = nameof(CacheVersion.CacheScope), DbColumnName = "CACHE_SCOPE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(CacheVersion), PropertyName = nameof(CacheVersion.VersionNo), DbColumnName = "VERSION_NO" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(CacheVersion), PropertyName = nameof(CacheVersion.UpdatedAt), DbColumnName = "UPDATED_AT" });
     }
 
     /// <summary>
@@ -486,6 +498,7 @@ public static class EntityTypeConfigs
         ConfigureRulePublish(db);
         ConfigureRuleChangeLog(db);
         ConfigureDict(db);
+        ConfigureCacheVersion(db);
         ConfigureFormulaDef(db);
         ConfigureItemGroup(db);
         ConfigureItemGroupDetail(db);

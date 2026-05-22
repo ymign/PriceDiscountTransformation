@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Caching.Memory;
 using Newtonsoft.Json;
 using Pricing.RuleCenter.Api.Dto;
+using Pricing.RuleCenter.Api.Application.Background;
 using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
@@ -78,6 +79,10 @@ public sealed class RulePublishAppService
     /// 规则运行期缓存失效器，用于清除计价引擎侧跨请求共享缓存。
     /// </summary>
     private readonly IRuleRuntimeCacheInvalidator _runtimeCacheInvalidator;
+    /// <summary>
+    /// 跨实例缓存版本同步器，用于在发布状态变更后递增共享缓存版本。
+    /// </summary>
+    private readonly ICacheVersionSynchronizer _cacheVersionSynchronizer;
 
     /// <summary>
     /// 互斥动作类型缓存。从 PR_DICT 表中 DICT_TYPE = "MUTUALLY_EXCLUSIVE_ACTION_TYPE" 的字典项加载。
@@ -110,6 +115,7 @@ public sealed class RulePublishAppService
         RulePublishDefinitionRepositories definitionRepositories,
         IMemoryCache cache,
         IUnitOfWork unitOfWork,
+        ICacheVersionSynchronizer cacheVersionSynchronizer,
         IRuleRuntimeCacheInvalidator runtimeCacheInvalidator,
         ILogger<RulePublishAppService> logger)
     {
@@ -124,6 +130,7 @@ public sealed class RulePublishAppService
         _testRunRepository = definitionRepositories.TestRunRepository;
         _cache = cache;
         _unitOfWork = unitOfWork;
+        _cacheVersionSynchronizer = cacheVersionSynchronizer;
         _runtimeCacheInvalidator = runtimeCacheInvalidator;
         _logger = logger;
     }
@@ -198,6 +205,7 @@ public sealed class RulePublishAppService
             }
 
             var oldVersion = currentHeader.CurrentVersion;
+            var previousHeaderStatus = currentHeader.Status;
 
             // 禁用旧生效版本
             if (oldVersion > 0)
@@ -209,10 +217,18 @@ public sealed class RulePublishAppService
                 }
                 else
                 {
-                    await _versionRepository.UpdateStatusAsync(
-                        oldVersionEntity.VersionId,
-                        VersionStatusCodes.Disabled,
-                        VersionStatusCodes.Published);
+                    if (string.Equals(oldVersionEntity.VersionStatus, VersionStatusCodes.Published, StringComparison.OrdinalIgnoreCase))
+                    {
+                        var disableOldVersionUpdated = await _versionRepository.UpdateStatusAsync(
+                            oldVersionEntity.VersionId,
+                            VersionStatusCodes.Disabled,
+                            VersionStatusCodes.Published);
+                        if (!disableOldVersionUpdated)
+                        {
+                            throw new InvalidOperationException(
+                                $"RULE_VERSION_CONCURRENCY_CONFLICT: RuleId={ruleId}, OldVersionNo={oldVersion} 状态已变化，请刷新后重试");
+                        }
+                    }
                 }
             }
 
@@ -235,7 +251,7 @@ public sealed class RulePublishAppService
             currentHeader.UpdatedAt = DateTime.Now;
             var publishHeaderUpdated = await _headerRepository.UpdateAsync(
                 currentHeader,
-                oldVersion > 0 ? RuleStatusCodes.Disabled : RuleStatusCodes.Draft);
+                previousHeaderStatus);
             if (!publishHeaderUpdated)
             {
                 throw new InvalidOperationException(
@@ -271,6 +287,8 @@ public sealed class RulePublishAppService
         // ========== 第四阶段：清除生效规则缓存（事务外） ==========
         // 发布改变了当前生效版本，必须立即清除缓存，确保计价引擎读到最新规则集。
         ClearEffectiveCache();
+        await _cacheVersionSynchronizer.IncreaseVersionAsync(CacheVersionSynchronizer.EffectiveRulesScope);
+        await _cacheVersionSynchronizer.IncreaseVersionAsync(CacheVersionSynchronizer.ActionTypeOrderScope);
 
         _logger.LogInformation("发布规则 RuleId={RuleId}, VersionNo={VersionNo}", ruleId, request.VersionNo);
     }
@@ -310,10 +328,15 @@ public sealed class RulePublishAppService
                 var currentVersion = await _versionRepository.GetByRuleAndVersionForUpdateAsync(ruleId, currentHeader.CurrentVersion);
                 if (currentVersion is not null)
                 {
-                    await _versionRepository.UpdateStatusAsync(
+                    var disableCurrentVersionUpdated = await _versionRepository.UpdateStatusAsync(
                         currentVersion.VersionId,
                         VersionStatusCodes.Disabled,
                         VersionStatusCodes.Published);
+                    if (!disableCurrentVersionUpdated)
+                    {
+                        throw new InvalidOperationException(
+                            $"RULE_VERSION_CONCURRENCY_CONFLICT: RuleId={ruleId}, CurrentVersionNo={currentHeader.CurrentVersion} 状态已变化，请刷新后重试");
+                    }
                 }
             }
 
@@ -356,6 +379,8 @@ public sealed class RulePublishAppService
 
         // ========== 第三阶段：清除生效规则缓存 ==========
         ClearEffectiveCache();
+        await _cacheVersionSynchronizer.IncreaseVersionAsync(CacheVersionSynchronizer.EffectiveRulesScope);
+        await _cacheVersionSynchronizer.IncreaseVersionAsync(CacheVersionSynchronizer.ActionTypeOrderScope);
 
         _logger.LogInformation("停用规则 RuleId={RuleId}", ruleId);
     }
@@ -396,10 +421,15 @@ public sealed class RulePublishAppService
             var currentVersion = await _versionRepository.GetByRuleAndVersionForUpdateAsync(ruleId, oldVersionNo);
             if (currentVersion is not null)
             {
-                await _versionRepository.UpdateStatusAsync(
+                var rollbackCurrentVersionUpdated = await _versionRepository.UpdateStatusAsync(
                     currentVersion.VersionId,
                     VersionStatusCodes.RolledBack,
                     VersionStatusCodes.Published);
+                if (!rollbackCurrentVersionUpdated)
+                {
+                    throw new InvalidOperationException(
+                        $"RULE_VERSION_CONCURRENCY_CONFLICT: RuleId={ruleId}, CurrentVersionNo={oldVersionNo} 状态已变化，请刷新后重试");
+                }
             }
 
             // 恢复历史版本为发布状态
@@ -454,6 +484,8 @@ public sealed class RulePublishAppService
 
         // ========== 第四阶段：清除生效规则缓存 ==========
         ClearEffectiveCache();
+        await _cacheVersionSynchronizer.IncreaseVersionAsync(CacheVersionSynchronizer.EffectiveRulesScope);
+        await _cacheVersionSynchronizer.IncreaseVersionAsync(CacheVersionSynchronizer.ActionTypeOrderScope);
 
         var currentHeaderAfterRollback = await _headerRepository.GetByIdAsync(ruleId)
             ?? throw new KeyNotFoundException($"规则不存在: {ruleId}");

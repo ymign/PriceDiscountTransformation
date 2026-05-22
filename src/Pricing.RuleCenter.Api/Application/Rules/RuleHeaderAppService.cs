@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Caching.Memory;
+using Pricing.RuleCenter.Api.Application.Background;
 using Pricing.RuleCenter.Api.Dto;
 using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
@@ -49,6 +50,10 @@ public sealed class RuleHeaderAppService
     /// 生效规则变化频率低（仅发布/停用/回滚时变化），适合应用层缓存。
     /// </summary>
     private readonly IMemoryCache _cache;
+    /// <summary>
+    /// 跨实例缓存版本同步器，用于在读取生效规则前校验本机缓存是否过期。
+    /// </summary>
+    private readonly ICacheVersionSynchronizer _cacheVersionSynchronizer;
 
     /// <summary>
     /// 服务日志，用于记录规则主档新增和更新等配置变更。
@@ -92,11 +97,13 @@ public sealed class RuleHeaderAppService
         IRuleHeaderRepository repository,
         IRuleChangeLogRepository changeLogRepository,
         IMemoryCache cache,
+        ICacheVersionSynchronizer cacheVersionSynchronizer,
         ILogger<RuleHeaderAppService> logger)
     {
         _repository = repository;
         _changeLogRepository = changeLogRepository;
         _cache = cache;
+        _cacheVersionSynchronizer = cacheVersionSynchronizer;
         _logger = logger;
     }
 
@@ -165,6 +172,7 @@ public sealed class RuleHeaderAppService
         string? itemCode = null,
         DateTime? chargeTime = null)
     {
+        await _cacheVersionSynchronizer.SyncAsync();
         var businessTime = chargeTime ?? DateTime.Now;
 
         // 构造缓存 key：itemCode 为空时用 "all"，避免 null 参与 key 拼接产生歧义。

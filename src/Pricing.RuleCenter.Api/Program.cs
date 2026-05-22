@@ -32,10 +32,12 @@ builder.Services.AddScoped<PricingAppCalculationDependencies>();
 builder.Services.AddScoped<PricingAppPersistenceRepositories>();
 builder.Services.AddScoped<PricingAppService>();
 builder.Services.AddScoped<TraceQueryAppService>();
+builder.Services.AddScoped<ICacheVersionSynchronizer, CacheVersionSynchronizer>();
 
 // ExpireCleanupService 位于 Api 层，在此注册为后台服务。
 // 它是 Singleton BackgroundService，通过 IServiceScopeFactory 创建 Scoped 依赖。
 builder.Services.AddHostedService<ExpireCleanupAppService>();
+builder.Services.AddHostedService<CacheVersionSyncService>();
 
 // ========== 第三阶段：注册规则引擎和执行器 ==========
 // 条件执行器负责规则条件匹配（项目、场景、部位、时间等维度）。

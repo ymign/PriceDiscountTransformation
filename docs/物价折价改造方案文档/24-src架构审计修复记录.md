@@ -292,6 +292,7 @@ Core 聚合 `ChargeRequest` 的 `MarkCommitted` / `MarkReversed` 已统一到现
 - 发布时主档只允许：
   - `DRAFT -> PUBLISHED`
   - `DISABLED -> PUBLISHED`
+  - 已发布规则升级到新版本时保持 `PUBLISHED -> PUBLISHED`
 - 停用时主档只允许：
   - `PUBLISHED -> DISABLED`
 - 回滚时主档仍要求当前保持：
@@ -307,6 +308,43 @@ Core 聚合 `ChargeRequest` 的 `MarkCommitted` / `MarkReversed` 已统一到现
 对应新增/补强回归测试：
 
 - `PublishAsync_UsesCompareAndSetWhenPromotingDraftVersion`
+
+### 2.18 多实例缓存版本同步基础设施
+
+本轮补了基于 Oracle 的最小跨实例缓存失效基础设施，不引入 Redis 或消息总线：
+
+- 新增 `PR_CACHE_VERSION`
+- 新增 `CacheVersionRepository`
+- 新增 `ICacheVersionSynchronizer` / `CacheVersionSynchronizer`
+- 新增后台轮询服务 `CacheVersionSyncService`
+
+当前共享版本号作用域先收两类：
+
+- `EFFECTIVE_RULES`
+- `ACTION_TYPE_ORDER`
+
+写侧行为：
+
+- 规则发布/停用/回滚后递增：
+  - `EFFECTIVE_RULES`
+  - `ACTION_TYPE_ORDER`
+- `ACTION_TYPE_ORDER` 字典变更后递增：
+  - `ACTION_TYPE_ORDER`
+
+读侧行为：
+
+- `RuleHeaderAppService.GetEffectiveAsync` 读取生效规则前先做一次版本同步
+- 后台轮询服务持续检查数据库版本，发现变化后清理本机：
+  - 生效规则 `IMemoryCache`
+  - `RuleMatchService` 的动作顺序静态缓存
+
+这一步的目标不是完整分布式缓存系统，而是先把“其他实例长时间继续使用旧缓存”的风险收敛到版本号同步窗口内。
+
+对应新增回归测试：
+
+- `CacheVersionSynchronizerTests.IncreaseVersionAsync_ShouldPersistAndRememberLatestVersion`
+- `CacheVersionSynchronizerTests.SyncAsync_ShouldClearRuleAndRuntimeCacheWhenDatabaseVersionChanges`
+- `DictAppServiceTests.UpdateAsync_ClearsRuntimeCacheWhenActionTypeOrderChanges`
 
 ## 3. 自动化验证
 
@@ -342,7 +380,7 @@ git diff --check
 - `PR_LIMIT_OCCUPY` 目前已经补上 `ChargeDetailNo` / `ResultGroupNo`，但还没有补 `OriginalDiscountId`；如果后续要做到“完全按折价明细主键释放”，还需要继续补表和仓储
 - 测试用例门禁目前还不能自动区分“正向用例/边界用例”，因为现有表结构没有 `CaseType` 或标签字段
 - 规则发布并发一致性已补事务内 `FOR UPDATE` 锁、版本状态 CAS 和主档状态 CAS，但数据库侧仍缺对主档流程的更细粒度错误码和更强约束
-- 多实例部署下的规则缓存失效仍是进程内语义，未升级为分布式广播
+- 多实例部署下的缓存已经具备基于 Oracle 版本号的同步基础设施，但读侧目前只先接了生效规则查询和动作顺序缓存，字典普通查询仍是单机内存 TTL 语义
 - Trace 查询接口若要直接按 `TraceId` 聚合展示，可再补专门查询入口和测试
 
 ## 5. 结论

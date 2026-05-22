@@ -22,10 +22,12 @@ public sealed class DictAppServiceTests
             IsEnabled = "Y"
         });
         var runtimeCache = new CapturingRuleRuntimeCacheInvalidator();
+        var cacheVersionSynchronizer = new NoopCacheVersionSynchronizer();
         var service = new DictAppService(
             repository,
             new EmptyRuleChangeLogRepository(),
             new MemoryCache(new MemoryCacheOptions()),
+            cacheVersionSynchronizer,
             runtimeCache,
             NullLogger<DictAppService>.Instance);
 
@@ -36,6 +38,7 @@ public sealed class DictAppServiceTests
         });
 
         Assert.Equal(1, runtimeCache.ClearCount);
+        Assert.Equal(1, cacheVersionSynchronizer.IncreaseCount);
     }
 
     private sealed class CapturingRuleRuntimeCacheInvalidator : IRuleRuntimeCacheInvalidator
@@ -45,6 +48,19 @@ public sealed class DictAppServiceTests
         public void ClearRuntimeCache()
         {
             ClearCount++;
+        }
+    }
+
+    private sealed class NoopCacheVersionSynchronizer : ICacheVersionSynchronizer
+    {
+        public int IncreaseCount { get; private set; }
+
+        public Task SyncAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task<long> IncreaseVersionAsync(string cacheScope, CancellationToken cancellationToken = default)
+        {
+            IncreaseCount++;
+            return Task.FromResult((long)IncreaseCount);
         }
     }
 

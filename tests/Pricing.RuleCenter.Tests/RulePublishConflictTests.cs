@@ -798,6 +798,70 @@ public sealed class RulePublishConflictTests
         Assert.Equal("PUBLISHED", headerUpdate.NewStatus);
     }
 
+    [Fact]
+    public async Task PublishAsync_AllowsPublishedHeaderToPromoteNextDraftVersion()
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var versionRepository = new InMemoryRuleVersionRepository();
+        var conditionRepository = new InMemoryRuleConditionRepository();
+        var actionRepository = new InMemoryRuleActionRepository();
+        var testCaseRepository = new InMemoryRuleTestCaseRepository();
+        var testRunRepository = new InMemoryRuleTestRunRepository();
+        var service = CreateService(
+            headerRepository,
+            versionRepository,
+            conditionRepository,
+            actionRepository,
+            testCaseRepository: testCaseRepository,
+            testRunRepository: testRunRepository);
+
+        headerRepository.Headers.Add(new RuleHeader
+        {
+            RuleId = 13,
+            RuleCode = "R-UPGRADE",
+            ItemCode = "ITEM013",
+            CurrentVersion = 1,
+            Status = "PUBLISHED",
+            IsEnabled = "Y",
+            EffectiveFrom = new DateTime(2026, 1, 1),
+            EffectiveTo = new DateTime(2026, 12, 31)
+        });
+        versionRepository.Versions.AddRange(new[]
+        {
+            new RuleVersion
+            {
+                VersionId = 131,
+                RuleId = 13,
+                VersionNo = 1,
+                VersionStatus = "PUBLISHED"
+            },
+            new RuleVersion
+            {
+                VersionId = 132,
+                RuleId = 13,
+                VersionNo = 2,
+                VersionStatus = "DRAFT"
+            }
+        });
+        actionRepository.Add(13, 2, new RuleAction
+        {
+            RuleId = 13,
+            VersionNo = 2,
+            ActionType = "FORMULA_CALC",
+            OnError = "STOP",
+            IsEnabled = "Y"
+        });
+        AddPassingTestCase(testCaseRepository, testRunRepository, 13, 2, 2013, 3013);
+
+        await service.PublishAsync(13, new RulePublishRequest { VersionNo = 2, PublishedBy = "tester" });
+
+        var headerUpdate = Assert.Single(headerRepository.StatusUpdates);
+        Assert.Equal("PUBLISHED", headerUpdate.ExpectedStatus);
+        Assert.Equal(2, headerRepository.Headers.Single().CurrentVersion);
+        Assert.Equal("DISABLED", versionRepository.Versions.Single(v => v.VersionId == 131).VersionStatus);
+        Assert.Equal("PUBLISHED", versionRepository.Versions.Single(v => v.VersionId == 132).VersionStatus);
+    }
+
     private static void AddPassingTestCase(
         InMemoryRuleTestCaseRepository testCaseRepository,
         InMemoryRuleTestRunRepository testRunRepository,
@@ -850,6 +914,7 @@ public sealed class RulePublishConflictTests
                 testRunRepository ?? new InMemoryRuleTestRunRepository()),
             new MemoryCache(new MemoryCacheOptions()),
             new NoopUnitOfWork(),
+            new NoopCacheVersionSynchronizer(),
             runtimeCacheInvalidator ?? new EmptyRuleRuntimeCacheInvalidator(),
             NullLogger<RulePublishService>.Instance);
 
@@ -881,6 +946,14 @@ public sealed class RulePublishConflictTests
         {
             ClearCount++;
         }
+    }
+
+    private sealed class NoopCacheVersionSynchronizer : ICacheVersionSynchronizer
+    {
+        public Task SyncAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task<long> IncreaseVersionAsync(string cacheScope, CancellationToken cancellationToken = default) =>
+            Task.FromResult(0L);
     }
 
     private sealed class InMemoryRuleHeaderRepository : IRuleHeaderRepository

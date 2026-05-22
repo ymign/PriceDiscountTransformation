@@ -58,6 +58,7 @@ public static class DependencyInjection
 
         // --- 规则配置仓储 ---
         services.AddScoped<IDictRepository, DictRepository>();
+        services.AddScoped<ICacheVersionRepository, CacheVersionRepository>();
         services.AddScoped<IRuleHeaderRepository, RuleHeaderRepository>();
         services.AddScoped<IRuleVersionRepository, RuleVersionRepository>();
         services.AddScoped<IRuleConditionRepository, RuleConditionRepository>();

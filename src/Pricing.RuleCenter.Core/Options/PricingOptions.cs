@@ -61,6 +61,15 @@ public sealed class PricingOptions
     public int MaxRetryCount { get; set; } = 3;
 
     /// <summary>
+    /// 缓存版本同步后台任务的轮询间隔，单位秒，默认 3 秒。
+    /// </summary>
+    /// <remarks>
+    /// 多实例部署下，各节点通过轮询 `PR_CACHE_VERSION` 表感知规则缓存版本变化。
+    /// 数值越小，跨实例缓存收敛越快；数值越大，数据库轮询压力越低。
+    /// </remarks>
+    public int CacheVersionSyncIntervalSeconds { get; set; } = 3;
+
+    /// <summary>
     /// 是否启用权威物价校验，默认 true。
     /// 启用后，confirm（确认计价）时会校验调用方传入的单价与 HIS 物价主数据是否一致。
     /// 不一致时返回 PRICE_MISMATCH 错误，防止调用方传入错误单价导致资损。

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Caching.Memory;
+using Pricing.RuleCenter.Api.Application.Background;
 using Pricing.RuleCenter.Api.Dto;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
@@ -53,6 +54,10 @@ public sealed class DictAppService
     /// 规则运行期缓存失效器。部分字典（如动作执行顺序）会影响计价引擎跨请求缓存。
     /// </summary>
     private readonly IRuleRuntimeCacheInvalidator _runtimeCacheInvalidator;
+    /// <summary>
+    /// 跨实例缓存版本同步器，用于在字典变更后递增共享缓存版本。
+    /// </summary>
+    private readonly ICacheVersionSynchronizer _cacheVersionSynchronizer;
 
     /// <summary>
     /// 服务日志，用于记录新增、更新和停用等会影响配置展示的操作。
@@ -83,12 +88,14 @@ public sealed class DictAppService
         IDictRepository repository,
         IRuleChangeLogRepository changeLogRepository,
         IMemoryCache cache,
+        ICacheVersionSynchronizer cacheVersionSynchronizer,
         IRuleRuntimeCacheInvalidator runtimeCacheInvalidator,
         ILogger<DictAppService> logger)
     {
         _repository = repository;
         _changeLogRepository = changeLogRepository;
         _cache = cache;
+        _cacheVersionSynchronizer = cacheVersionSynchronizer;
         _runtimeCacheInvalidator = runtimeCacheInvalidator;
         _logger = logger;
     }
@@ -311,6 +318,7 @@ public sealed class DictAppService
         if (string.Equals(dictType, "ACTION_TYPE_ORDER", StringComparison.OrdinalIgnoreCase))
         {
             _runtimeCacheInvalidator.ClearRuntimeCache();
+            _cacheVersionSynchronizer.IncreaseVersionAsync(CacheVersionSynchronizer.ActionTypeOrderScope).GetAwaiter().GetResult();
         }
 
         _logger.LogDebug("已清除字典缓存: {DictType}", dictType);

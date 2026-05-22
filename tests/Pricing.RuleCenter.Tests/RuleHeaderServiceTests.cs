@@ -19,6 +19,7 @@ public sealed class RuleHeaderServiceTests
             repository,
             new EmptyRuleChangeLogRepository(),
             cache,
+            new NoopCacheVersionSynchronizer(),
             NullLogger<RuleHeaderService>.Instance);
 
         var firstTime = new DateTime(2026, 5, 10, 9, 0, 0);
@@ -39,6 +40,7 @@ public sealed class RuleHeaderServiceTests
             repository,
             new EmptyRuleChangeLogRepository(),
             cache,
+            new NoopCacheVersionSynchronizer(),
             NullLogger<RuleHeaderService>.Instance);
 
         await service.GetEffectiveAsync("ITEM001", new DateTime(2026, 5, 10, 9, 0, 0));
@@ -79,6 +81,7 @@ public sealed class RuleHeaderServiceTests
             repository,
             new EmptyRuleChangeLogRepository(),
             cache,
+            new NoopCacheVersionSynchronizer(),
             NullLogger<RuleHeaderService>.Instance);
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -132,6 +135,7 @@ public sealed class RuleHeaderServiceTests
             repository,
             new EmptyRuleChangeLogRepository(),
             cache,
+            new NoopCacheVersionSynchronizer(),
             NullLogger<RuleHeaderService>.Instance);
 
         await service.UpdateAsync(101, new RuleHeaderUpdateRequest
@@ -204,5 +208,13 @@ public sealed class RuleHeaderServiceTests
     {
         public Task<IReadOnlyList<RuleChangeLog>> GetByRuleIdAsync(long ruleId) => Task.FromResult((IReadOnlyList<RuleChangeLog>)Array.Empty<RuleChangeLog>());
         public Task<long> InsertAsync(RuleChangeLog entity) => Task.FromResult(0L);
+    }
+
+    private sealed class NoopCacheVersionSynchronizer : ICacheVersionSynchronizer
+    {
+        public Task SyncAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task<long> IncreaseVersionAsync(string cacheScope, CancellationToken cancellationToken = default) =>
+            Task.FromResult(0L);
     }
 }
