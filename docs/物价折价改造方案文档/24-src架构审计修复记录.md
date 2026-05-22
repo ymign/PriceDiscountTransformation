@@ -441,12 +441,63 @@ Core 聚合 `ChargeRequest` 的 `MarkCommitted` / `MarkReversed` 已统一到现
 - `RuleDefinitionTransactionTests.SaveActionsAsync_RollsBackDeleteWhenInsertFails`
 - `RuleDefinitionTransactionTests.SaveActionsAsync_CommitsRebuiltCollectionWhenInsertSucceeds`
 
+### 2.22 规则审批闭环真正接入发布链路
+
+此前代码里已经有：
+
+- `PR_RULE_APPROVAL` 表映射
+- `IRuleApprovalRepository` / `RuleApprovalRepository`
+- 多份设计文档里“审核后才能发布”的明确要求
+
+但实际 `RulePublishAppService` 并没有消费审批结果，导致出现一个明显断层：
+
+- 审批模型存在
+- 发布接口也存在
+- 但发布/停用/回滚时并不会检查审批是否通过
+
+这意味着工作台侧即使未来补了“提审/审核通过”页面，当前后端主链路仍然可以绕过审批直接推进状态机。
+
+本轮补成了最小可用闭环：
+
+- 新增 `RuleApprovalAppService`
+- 新增 `RuleApprovalController`
+- 新增接口：
+  - `POST /api/pricing/rules/{ruleId}/versions/{versionNo}/submit-approval`
+  - `POST /api/pricing/rules/{ruleId}/versions/{versionNo}/approve`
+  - `POST /api/pricing/rules/{ruleId}/versions/{versionNo}/reject`
+  - `GET /api/pricing/rules/{ruleId}/versions/{versionNo}/approvals`
+
+同时把审批仓储真正接入了 `RulePublishAppService`：
+
+- `PublishAsync` 执行前校验 `PUBLISH` 审批
+- `DisableAsync` 执行前校验 `DISABLE` 审批
+- `RollbackAsync` 执行前校验 `ROLLBACK` 审批
+
+当前审批门禁口径：
+
+- 缺少审批记录：阻断
+- 最近一次审批状态为 `REJECTED`：阻断
+- 最近一次审批不是 `APPROVED`：阻断
+- 审批通过后，若规则版本又发生了 `SAVE_CONDITIONS` / `SAVE_ACTIONS` / `UPDATE_RULE` 草稿变更：视为审批失效，必须重新提审
+
+这次没有贸然把主档/版本状态扩成“待审核/已审核”整套大状态机，而是先在现有 `DRAFT/PUBLISHED/...` 之上把审批约束真正落地到执行入口，避免扩大改动面时把发布链路再次打散。
+
+对应新增回归测试：
+
+- `RulePublishConflictTests.PublishAsync_RejectsWhenApprovalIsMissing`
+- `RulePublishConflictTests.PublishAsync_RejectsWhenApprovalIsOlderThanLatestDraftChange`
+- `RulePublishConflictTests.PublishAsync_AllowsWhenLatestApprovalPassedAfterLatestDraftChange`
+- `RuleApprovalAppServiceTests.SubmitAsync_CreatesPendingApprovalAndWritesChangeLog`
+- `RuleApprovalAppServiceTests.ApproveAsync_UpdatesLatestPendingApproval`
+- `RuleApprovalAppServiceTests.RejectAsync_UpdatesLatestPendingApproval`
+
 ## 3. 自动化验证
 
 本轮完成后已执行：
 
 ```powershell
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter RuleDefinitionTransactionTests
+dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter "RuleApprovalAppServiceTests|RulePublishConflictTests"
 dotnet test tests\Pricing.RuleCenter.Core.Tests\Pricing.RuleCenter.Core.Tests.csproj --no-restore
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore
 dotnet test src\Pricing.RuleCenter.slnx --no-restore
@@ -456,7 +507,7 @@ git diff --check
 结果：
 
 - Core tests：38 通过
-- API/Application tests：147 通过
+- API/Application tests：153 通过
 - 解决方案测试：全部通过
 - `git diff --check` 通过
 
@@ -477,6 +528,7 @@ git diff --check
 - 测试用例门禁目前还不能自动区分“正向用例/边界用例”，因为现有表结构没有 `CaseType` 或标签字段
 - 规则发布并发一致性已补事务内 `FOR UPDATE` 锁、版本状态 CAS 和主档状态 CAS，但数据库侧仍缺对主档流程的更细粒度错误码和更强约束
 - 多实例部署下的缓存已经具备基于 Oracle 版本号的同步基础设施，但读侧目前只先接了生效规则查询和动作顺序缓存，字典普通查询仍是单机内存 TTL 语义
+- 审批链路目前已经补了最小可用闭环，但还没有单独的“待审核列表分页 / 审批人权限 / 审批撤回 / 多级审批”能力；现阶段先保证“审批存在且执行入口真正消费审批结论”
 - 计价链路（`PricingAppService`）已经开始切换 `BizException`，但仍有部分 `COMMIT_*`、`REVERSE_*` 和其余状态校验分支尚未全部完成结构化
 - 规则条件/动作保存已经补了应用层事务边界，但版本状态校验仍是“事务外先读、事务内写”；如果后续要继续收紧到“草稿编辑串行化”，可再评估是否补 `GetByRuleAndVersionForUpdateAsync` 级别的锁定保存
 - Trace 查询接口若要直接按 `TraceId` 聚合展示，可再补专门查询入口和测试

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Newtonsoft.Json;
 using Pricing.RuleCenter.Api.Dto;
 using Pricing.RuleCenter.Api.Application.Rules;
+using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 using Xunit;
@@ -11,6 +12,211 @@ namespace Pricing.RuleCenter.Tests;
 
 public sealed class RulePublishConflictTests
 {
+    [Fact]
+    public async Task PublishAsync_RejectsWhenApprovalIsMissing()
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var versionRepository = new InMemoryRuleVersionRepository();
+        var conditionRepository = new InMemoryRuleConditionRepository();
+        var actionRepository = new InMemoryRuleActionRepository();
+        var approvalRepository = new InMemoryRuleApprovalRepository();
+        var testCaseRepository = new InMemoryRuleTestCaseRepository();
+        var testRunRepository = new InMemoryRuleTestRunRepository();
+        var service = CreateService(
+            headerRepository,
+            versionRepository,
+            conditionRepository,
+            actionRepository,
+            approvalRepository: approvalRepository,
+            testCaseRepository: testCaseRepository,
+            testRunRepository: testRunRepository);
+
+        headerRepository.Headers.Add(new RuleHeader
+        {
+            RuleId = 101,
+            RuleCode = "R-APPROVAL-MISSING",
+            ItemCode = "ITEM101",
+            CurrentVersion = 0,
+            Status = "DRAFT",
+            IsEnabled = "Y",
+            UpdatedAt = new DateTime(2026, 5, 22, 9, 0, 0)
+        });
+        versionRepository.Versions.Add(new RuleVersion
+        {
+            VersionId = 1001,
+            RuleId = 101,
+            VersionNo = 1,
+            VersionStatus = "DRAFT"
+        });
+        actionRepository.Add(101, 1, new RuleAction
+        {
+            RuleId = 101,
+            VersionNo = 1,
+            ActionType = "FORMULA_CALC",
+            OnError = "STOP",
+            IsEnabled = "Y"
+        });
+        AddPassingTestCase(testCaseRepository, testRunRepository, 101, 1, 2101, 3101);
+
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
+            service.PublishAsync(101, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" }));
+
+        Assert.Equal(BizErrorCode.ApprovalRequired, ex.Code);
+    }
+
+    [Fact]
+    public async Task PublishAsync_RejectsWhenApprovalIsOlderThanLatestDraftChange()
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var versionRepository = new InMemoryRuleVersionRepository();
+        var conditionRepository = new InMemoryRuleConditionRepository();
+        var actionRepository = new InMemoryRuleActionRepository();
+        var approvalRepository = new InMemoryRuleApprovalRepository();
+        var changeLogRepository = new InMemoryRuleChangeLogRepository();
+        var testCaseRepository = new InMemoryRuleTestCaseRepository();
+        var testRunRepository = new InMemoryRuleTestRunRepository();
+        var service = CreateService(
+            headerRepository,
+            versionRepository,
+            conditionRepository,
+            actionRepository,
+            approvalRepository: approvalRepository,
+            changeLogRepository: changeLogRepository,
+            testCaseRepository: testCaseRepository,
+            testRunRepository: testRunRepository);
+
+        headerRepository.Headers.Add(new RuleHeader
+        {
+            RuleId = 102,
+            RuleCode = "R-APPROVAL-STALE",
+            ItemCode = "ITEM102",
+            CurrentVersion = 0,
+            Status = "DRAFT",
+            IsEnabled = "Y",
+            UpdatedAt = new DateTime(2026, 5, 22, 10, 0, 0)
+        });
+        versionRepository.Versions.Add(new RuleVersion
+        {
+            VersionId = 1002,
+            RuleId = 102,
+            VersionNo = 1,
+            VersionStatus = "DRAFT"
+        });
+        actionRepository.Add(102, 1, new RuleAction
+        {
+            RuleId = 102,
+            VersionNo = 1,
+            ActionType = "FORMULA_CALC",
+            OnError = "STOP",
+            IsEnabled = "Y"
+        });
+        approvalRepository.Items.Add(new RuleApproval
+        {
+            ApprovalId = 1,
+            RuleId = 102,
+            VersionNo = 1,
+            ActionType = "PUBLISH",
+            ApprovalStatus = "APPROVED",
+            SubmittedBy = "maker",
+            SubmittedAt = new DateTime(2026, 5, 22, 8, 0, 0),
+            ReviewedBy = "checker",
+            ReviewedAt = new DateTime(2026, 5, 22, 8, 30, 0),
+            ReviewComment = "通过"
+        });
+        changeLogRepository.Items.Add(new RuleChangeLog
+        {
+            ChangeId = 11,
+            RuleId = 102,
+            VersionNo = 1,
+            ChangeType = "SAVE_ACTIONS",
+            ChangedBy = "maker",
+            ChangedAt = new DateTime(2026, 5, 22, 9, 30, 0),
+            ChangeSummary = "审批后又改了动作"
+        });
+        AddPassingTestCase(testCaseRepository, testRunRepository, 102, 1, 2102, 3102);
+
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
+            service.PublishAsync(102, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" }));
+
+        Assert.Equal(BizErrorCode.ApprovalOutdated, ex.Code);
+    }
+
+    [Fact]
+    public async Task PublishAsync_AllowsWhenLatestApprovalPassedAfterLatestDraftChange()
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var versionRepository = new InMemoryRuleVersionRepository();
+        var conditionRepository = new InMemoryRuleConditionRepository();
+        var actionRepository = new InMemoryRuleActionRepository();
+        var approvalRepository = new InMemoryRuleApprovalRepository();
+        var changeLogRepository = new InMemoryRuleChangeLogRepository();
+        var testCaseRepository = new InMemoryRuleTestCaseRepository();
+        var testRunRepository = new InMemoryRuleTestRunRepository();
+        var service = CreateService(
+            headerRepository,
+            versionRepository,
+            conditionRepository,
+            actionRepository,
+            approvalRepository: approvalRepository,
+            changeLogRepository: changeLogRepository,
+            testCaseRepository: testCaseRepository,
+            testRunRepository: testRunRepository);
+
+        headerRepository.Headers.Add(new RuleHeader
+        {
+            RuleId = 103,
+            RuleCode = "R-APPROVAL-OK",
+            ItemCode = "ITEM103",
+            CurrentVersion = 0,
+            Status = "DRAFT",
+            IsEnabled = "Y",
+            UpdatedAt = new DateTime(2026, 5, 22, 9, 0, 0)
+        });
+        versionRepository.Versions.Add(new RuleVersion
+        {
+            VersionId = 1003,
+            RuleId = 103,
+            VersionNo = 1,
+            VersionStatus = "DRAFT"
+        });
+        actionRepository.Add(103, 1, new RuleAction
+        {
+            RuleId = 103,
+            VersionNo = 1,
+            ActionType = "FORMULA_CALC",
+            OnError = "STOP",
+            IsEnabled = "Y"
+        });
+        changeLogRepository.Items.Add(new RuleChangeLog
+        {
+            ChangeId = 12,
+            RuleId = 103,
+            VersionNo = 1,
+            ChangeType = "SAVE_ACTIONS",
+            ChangedBy = "maker",
+            ChangedAt = new DateTime(2026, 5, 22, 9, 30, 0),
+            ChangeSummary = "完成动作调整"
+        });
+        approvalRepository.Items.Add(new RuleApproval
+        {
+            ApprovalId = 2,
+            RuleId = 103,
+            VersionNo = 1,
+            ActionType = "PUBLISH",
+            ApprovalStatus = "APPROVED",
+            SubmittedBy = "maker",
+            SubmittedAt = new DateTime(2026, 5, 22, 9, 40, 0),
+            ReviewedBy = "checker",
+            ReviewedAt = new DateTime(2026, 5, 22, 10, 0, 0),
+            ReviewComment = "通过"
+        });
+        AddPassingTestCase(testCaseRepository, testRunRepository, 103, 1, 2103, 3103);
+
+        await service.PublishAsync(103, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" });
+
+        Assert.Equal("PUBLISHED", headerRepository.Headers.Single(h => h.RuleId == 103).Status);
+    }
+
     [Fact]
     public async Task PublishAsync_BlocksFormulaConflictForSameItemSceneAndEffectiveRange()
     {
@@ -943,6 +1149,8 @@ public sealed class RulePublishConflictTests
         IDictRepository? dictRepository = null,
         IRuleRuntimeCacheInvalidator? runtimeCacheInvalidator = null,
         IRulePublishRepository? publishRepository = null,
+        IRuleApprovalRepository? approvalRepository = null,
+        IRuleChangeLogRepository? changeLogRepository = null,
         IRuleTestCaseRepository? testCaseRepository = null,
         IRuleTestRunRepository? testRunRepository = null) =>
         new(
@@ -950,7 +1158,8 @@ public sealed class RulePublishConflictTests
                 headerRepository,
                 versionRepository,
                 publishRepository ?? new EmptyRulePublishRepository(),
-                new EmptyRuleChangeLogRepository()),
+                changeLogRepository ?? new EmptyRuleChangeLogRepository(),
+                approvalRepository ?? new AutoApprovedRuleApprovalRepository(versionRepository)),
             new RulePublishDefinitionRepositories(
                 conditionRepository,
                 actionRepository,
@@ -1226,6 +1435,119 @@ public sealed class RulePublishConflictTests
     {
         public Task<IReadOnlyList<RuleChangeLog>> GetByRuleIdAsync(long ruleId) => Task.FromResult((IReadOnlyList<RuleChangeLog>)Array.Empty<RuleChangeLog>());
         public Task<long> InsertAsync(RuleChangeLog entity) => Task.FromResult(0L);
+    }
+
+    private sealed class InMemoryRuleChangeLogRepository : IRuleChangeLogRepository
+    {
+        public List<RuleChangeLog> Items { get; } = new();
+
+        public Task<IReadOnlyList<RuleChangeLog>> GetByRuleIdAsync(long ruleId) =>
+            Task.FromResult((IReadOnlyList<RuleChangeLog>)Items
+                .Where(i => i.RuleId == ruleId)
+                .OrderByDescending(i => i.ChangedAt)
+                .ThenByDescending(i => i.ChangeId)
+                .ToList());
+
+        public Task<long> InsertAsync(RuleChangeLog entity)
+        {
+            Items.Add(entity);
+            return Task.FromResult(entity.ChangeId);
+        }
+    }
+
+    private sealed class InMemoryRuleApprovalRepository : IRuleApprovalRepository
+    {
+        public List<RuleApproval> Items { get; } = new();
+        public List<(long ApprovalId, string Status, string ReviewedBy, string ReviewComment)> StatusUpdates { get; } = new();
+
+        public Task<IReadOnlyList<RuleApproval>> GetByRuleIdAsync(long ruleId) =>
+            Task.FromResult((IReadOnlyList<RuleApproval>)Items
+                .Where(i => i.RuleId == ruleId)
+                .OrderByDescending(i => i.SubmittedAt)
+                .ThenByDescending(i => i.ApprovalId)
+                .ToList());
+
+        public Task<IReadOnlyList<RuleApproval>> GetPendingAsync() =>
+            Task.FromResult((IReadOnlyList<RuleApproval>)Items
+                .Where(i => string.Equals(i.ApprovalStatus, "PENDING", StringComparison.OrdinalIgnoreCase))
+                .OrderBy(i => i.SubmittedAt)
+                .ThenBy(i => i.ApprovalId)
+                .ToList());
+
+        public Task<long> InsertAsync(RuleApproval entity)
+        {
+            if (entity.ApprovalId == 0)
+            {
+                entity.ApprovalId = Items.Count == 0 ? 1 : Items.Max(i => i.ApprovalId) + 1;
+            }
+
+            Items.Add(entity);
+            return Task.FromResult(entity.ApprovalId);
+        }
+
+        public Task UpdateStatusAsync(long approvalId, string status, string reviewedBy, string reviewComment)
+        {
+            var item = Items.Single(i => i.ApprovalId == approvalId);
+            item.ApprovalStatus = status;
+            item.ReviewedBy = reviewedBy;
+            item.ReviewComment = reviewComment;
+            item.ReviewedAt = item.ReviewedAt ?? DateTime.Now;
+            StatusUpdates.Add((approvalId, status, reviewedBy, reviewComment));
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class AutoApprovedRuleApprovalRepository : IRuleApprovalRepository
+    {
+        private readonly IRuleVersionRepository _versionRepository;
+
+        public AutoApprovedRuleApprovalRepository(IRuleVersionRepository versionRepository)
+        {
+            _versionRepository = versionRepository;
+        }
+
+        public async Task<IReadOnlyList<RuleApproval>> GetByRuleIdAsync(long ruleId)
+        {
+            var versions = await _versionRepository.GetByRuleIdAsync(ruleId);
+            var approvals = new List<RuleApproval>();
+
+            foreach (var version in versions)
+            {
+                approvals.Add(CreateApproved(ruleId, version.VersionNo, "PUBLISH"));
+                approvals.Add(CreateApproved(ruleId, version.VersionNo, "DISABLE"));
+                approvals.Add(CreateApproved(ruleId, version.VersionNo, "ROLLBACK"));
+            }
+
+            return approvals
+                .OrderByDescending(i => i.SubmittedAt)
+                .ThenByDescending(i => i.ApprovalId)
+                .ToList();
+        }
+
+        public Task<IReadOnlyList<RuleApproval>> GetPendingAsync() =>
+            Task.FromResult((IReadOnlyList<RuleApproval>)Array.Empty<RuleApproval>());
+
+        public Task<long> InsertAsync(RuleApproval entity) => Task.FromResult(entity.ApprovalId);
+
+        public Task UpdateStatusAsync(long approvalId, string status, string reviewedBy, string reviewComment) =>
+            Task.CompletedTask;
+
+        private static RuleApproval CreateApproved(long ruleId, int versionNo, string actionType)
+        {
+            return new RuleApproval
+            {
+                ApprovalId = long.Parse($"{ruleId}{versionNo}{actionType.Length}"),
+                RuleId = ruleId,
+                VersionNo = versionNo,
+                ActionType = actionType,
+                ApprovalStatus = "APPROVED",
+                SubmittedBy = "auto",
+                SubmittedAt = new DateTime(2026, 5, 22, 8, 0, 0),
+                ReviewedBy = "auto-checker",
+                ReviewedAt = new DateTime(2026, 5, 22, 8, 5, 0),
+                ReviewComment = "auto-approved-for-test"
+            };
+        }
     }
 
     private sealed class EmptyDictRepository : IDictRepository

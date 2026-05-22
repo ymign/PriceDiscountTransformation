@@ -90,6 +90,15 @@ public static class BizErrorCode
     /// <summary>子项目重复配置。</summary>
     public const int ChildItemDuplicate = 1019;
 
+    /// <summary>发布/停用/回滚缺少审批通过记录。</summary>
+    public const int ApprovalRequired = 1020;
+
+    /// <summary>审批记录已过期，草稿在审批后又被修改。</summary>
+    public const int ApprovalOutdated = 1021;
+
+    /// <summary>审批记录已驳回，不能继续执行生命周期操作。</summary>
+    public const int ApprovalRejected = 1022;
+
     // ========== 计价计算类错误（2001-2099） ==========
 
     /// <summary>单价校验失败（渠道传入单价与权威单价不一致）。</summary>

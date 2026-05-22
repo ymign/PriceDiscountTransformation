@@ -25,6 +25,7 @@ builder.Services.AddScoped<RuleHeaderAppService>();
 builder.Services.AddScoped<RuleVersionAppService>();
 builder.Services.AddScoped<RuleConditionAppService>();
 builder.Services.AddScoped<RuleActionAppService>();
+builder.Services.AddScoped<RuleApprovalAppService>();
 builder.Services.AddScoped<RulePublishLifecycleRepositories>();
 builder.Services.AddScoped<RulePublishDefinitionRepositories>();
 builder.Services.AddScoped<RulePublishAppService>();

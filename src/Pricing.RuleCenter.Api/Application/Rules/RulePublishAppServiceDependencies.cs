@@ -20,16 +20,19 @@ public sealed class RulePublishLifecycleRepositories
     /// <param name="versionRepository">规则版本仓储。</param>
     /// <param name="publishRepository">发布记录仓储。</param>
     /// <param name="changeLogRepository">规则变更日志仓储。</param>
+    /// <param name="approvalRepository">规则审批仓储。</param>
     public RulePublishLifecycleRepositories(
         IRuleHeaderRepository headerRepository,
         IRuleVersionRepository versionRepository,
         IRulePublishRepository publishRepository,
-        IRuleChangeLogRepository changeLogRepository)
+        IRuleChangeLogRepository changeLogRepository,
+        IRuleApprovalRepository approvalRepository)
     {
         HeaderRepository = headerRepository;
         VersionRepository = versionRepository;
         PublishRepository = publishRepository;
         ChangeLogRepository = changeLogRepository;
+        ApprovalRepository = approvalRepository;
     }
 
     /// <summary>
@@ -51,6 +54,11 @@ public sealed class RulePublishLifecycleRepositories
     /// 变更日志仓储，用于保存面向配置人员和审计人员的变更摘要。
     /// </summary>
     public IRuleChangeLogRepository ChangeLogRepository { get; }
+
+    /// <summary>
+    /// 审批仓储，用于在发布、停用、回滚前校验是否存在最新审批通过记录。
+    /// </summary>
+    public IRuleApprovalRepository ApprovalRepository { get; }
 }
 
 /// <summary>

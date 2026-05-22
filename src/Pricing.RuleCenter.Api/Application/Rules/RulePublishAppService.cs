@@ -43,6 +43,10 @@ public sealed class RulePublishAppService
     /// </summary>
     private readonly IRuleChangeLogRepository _changeLogRepository;
     /// <summary>
+    /// 审批仓储，用于在生命周期操作前校验是否存在最新审核结论。
+    /// </summary>
+    private readonly IRuleApprovalRepository _approvalRepository;
+    /// <summary>
     /// 规则条件仓储，用于发布前读取目标版本和现有发布版本的条件维度。
     /// </summary>
     private readonly IRuleConditionRepository _conditionRepository;
@@ -102,6 +106,16 @@ public sealed class RulePublishAppService
     private const string MutuallyExclusiveActionTypeDictType = "MUTUALLY_EXCLUSIVE_ACTION_TYPE";
 
     /// <summary>
+    /// 会使既有审批结论失效的草稿变更类型。
+    /// </summary>
+    private static readonly HashSet<string> DraftChangeTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "SAVE_CONDITIONS",
+        "SAVE_ACTIONS",
+        "UPDATE_RULE"
+    };
+
+    /// <summary>
     /// 初始化规则发布服务。
     /// </summary>
     /// <param name="lifecycleRepositories">规则发布生命周期仓储集合。</param>
@@ -123,6 +137,7 @@ public sealed class RulePublishAppService
         _versionRepository = lifecycleRepositories.VersionRepository;
         _publishRepository = lifecycleRepositories.PublishRepository;
         _changeLogRepository = lifecycleRepositories.ChangeLogRepository;
+        _approvalRepository = lifecycleRepositories.ApprovalRepository;
         _conditionRepository = definitionRepositories.ConditionRepository;
         _actionRepository = definitionRepositories.ActionRepository;
         _dictRepository = definitionRepositories.DictRepository;
@@ -194,6 +209,7 @@ public sealed class RulePublishAppService
                 $"只有草稿版本可以发布, 当前状态: {version.VersionStatus}");
         }
 
+        await EnsureApprovalPassedAsync(ruleId, request.VersionNo, "PUBLISH");
         await ValidatePublishConflictsAsync(header, request.VersionNo);
 
         // ========== 第三阶段：事务内执行状态变更和流水写入 ==========
@@ -333,6 +349,8 @@ public sealed class RulePublishAppService
                 $"只有已发布的规则可以停用, 当前状态: {header.Status}");
         }
 
+        await EnsureApprovalPassedAsync(ruleId, header.CurrentVersion, "DISABLE");
+
         // ========== 第二阶段：事务内执行状态变更和流水写入 ==========
         await ExecuteInTransactionAsync(async () =>
         {
@@ -434,6 +452,8 @@ public sealed class RulePublishAppService
                 409,
                 $"只有已发布的规则可以回滚, 当前状态: {header.Status}");
         }
+
+        await EnsureApprovalPassedAsync(ruleId, header.CurrentVersion, "ROLLBACK");
 
         // ========== 第三阶段：事务内执行状态变更和流水写入 ==========
         await ExecuteInTransactionAsync(async () =>
@@ -578,6 +598,63 @@ public sealed class RulePublishAppService
                 409,
                 "没有可回滚的历史版本");
         return previousPublished.VersionNo;
+    }
+
+    private async Task EnsureApprovalPassedAsync(long ruleId, int? versionNo, string actionType)
+    {
+        var approvals = (await _approvalRepository.GetByRuleIdAsync(ruleId))
+            .Where(a => a.VersionNo == versionNo)
+            .Where(a => string.Equals(a.ActionType, actionType, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(a => a.ReviewedAt ?? DateTime.MinValue)
+            .ThenByDescending(a => a.SubmittedAt)
+            .ThenByDescending(a => a.ApprovalId)
+            .ToList();
+
+        var latestApproval = approvals.FirstOrDefault();
+        if (latestApproval is null)
+        {
+            throw new BizException(
+                BizErrorCode.ApprovalRequired,
+                409,
+                $"RuleId={ruleId}, VersionNo={versionNo}, ActionType={actionType} 缺少审批通过记录");
+        }
+
+        if (string.Equals(latestApproval.ApprovalStatus, "REJECTED", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new BizException(
+                BizErrorCode.ApprovalRejected,
+                409,
+                $"RuleId={ruleId}, VersionNo={versionNo}, ActionType={actionType} 最近一次审批已驳回");
+        }
+
+        if (!string.Equals(latestApproval.ApprovalStatus, "APPROVED", StringComparison.OrdinalIgnoreCase) ||
+            latestApproval.ReviewedAt is null)
+        {
+            throw new BizException(
+                BizErrorCode.ApprovalRequired,
+                409,
+                $"RuleId={ruleId}, VersionNo={versionNo}, ActionType={actionType} 尚未审批通过");
+        }
+
+        var latestDraftChangeTime = await GetLatestDraftChangeTimeAsync(ruleId, versionNo);
+        if (latestDraftChangeTime.HasValue && latestDraftChangeTime.Value > latestApproval.ReviewedAt.Value)
+        {
+            throw new BizException(
+                BizErrorCode.ApprovalOutdated,
+                409,
+                $"RuleId={ruleId}, VersionNo={versionNo}, ActionType={actionType} 审批后规则又被修改，请重新提审");
+        }
+    }
+
+    private async Task<DateTime?> GetLatestDraftChangeTimeAsync(long ruleId, int? versionNo)
+    {
+        var changeLogs = await _changeLogRepository.GetByRuleIdAsync(ruleId);
+        return changeLogs
+            .Where(log => log.VersionNo == versionNo)
+            .Where(log => DraftChangeTypes.Contains(log.ChangeType ?? string.Empty))
+            .Select(log => (DateTime?)log.ChangedAt)
+            .OrderByDescending(time => time)
+            .FirstOrDefault();
     }
 
     private async Task ValidatePublishConflictsAsync(RuleAggregate targetHeader, int targetVersionNo)
