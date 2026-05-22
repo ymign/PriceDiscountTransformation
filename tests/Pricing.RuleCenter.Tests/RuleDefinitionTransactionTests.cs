@@ -310,6 +310,60 @@ public sealed class RuleDefinitionTransactionTests
         Assert.Equal(BizErrorCode.VersionStatusNotAllowed, ex.Code);
     }
 
+    [Fact]
+    public async Task SaveConditionsAsync_LocksVersionInsideTransactionAndRejectsWhenStatusChangedAfterPreCheck()
+    {
+        var unitOfWork = new FakeUnitOfWork();
+        var repository = new TransactionalRuleConditionRepository(unitOfWork);
+        var versionRepository = new FlippingRuleVersionRepository(
+            firstReadStatus: "DRAFT",
+            lockedReadStatus: "PUBLISHED");
+        var service = new RuleConditionAppService(
+            unitOfWork,
+            repository,
+            versionRepository,
+            new EmptyRuleChangeLogRepository(),
+            NullLogger<RuleConditionAppService>.Instance);
+
+        var ex = await Assert.ThrowsAsync<BizException>(() => service.SaveAsync(300, 3, new RuleConditionSaveRequest
+        {
+            Conditions = Array.Empty<RuleConditionItemRequest>()
+        }));
+
+        Assert.Equal(BizErrorCode.VersionStatusNotAllowed, ex.Code);
+        Assert.True(versionRepository.WasLocked);
+        Assert.Equal(1, unitOfWork.BeginCount);
+        Assert.Equal(0, unitOfWork.CommitCount);
+        Assert.Equal(1, unitOfWork.RollbackCount);
+    }
+
+    [Fact]
+    public async Task SaveActionsAsync_LocksVersionInsideTransactionAndRejectsWhenStatusChangedAfterPreCheck()
+    {
+        var unitOfWork = new FakeUnitOfWork();
+        var repository = new TransactionalRuleActionRepository(unitOfWork);
+        var versionRepository = new FlippingRuleVersionRepository(
+            firstReadStatus: "DRAFT",
+            lockedReadStatus: "DISABLED");
+        var service = new RuleActionAppService(
+            unitOfWork,
+            repository,
+            versionRepository,
+            new EmptyRuleChangeLogRepository(),
+            NullLogger<RuleActionAppService>.Instance);
+
+        var ex = await Assert.ThrowsAsync<BizException>(() => service.SaveAsync(400, 4, new RuleActionSaveRequest
+        {
+            Actions = Array.Empty<RuleActionItemRequest>()
+        }));
+
+        Assert.Equal(BizErrorCode.VersionStatusNotAllowed, ex.Code);
+        Assert.True(versionRepository.WasLocked);
+        Assert.Equal(1, unitOfWork.BeginCount);
+        Assert.Equal(0, unitOfWork.CommitCount);
+        Assert.Equal(1, unitOfWork.RollbackCount);
+    }
+
     private sealed class FakeUnitOfWork : IUnitOfWork
     {
         private readonly List<ITransactionalParticipant> _participants = new();
@@ -634,6 +688,51 @@ public sealed class RuleDefinitionTransactionTests
             Task.FromResult((IReadOnlyList<RuleVersion>)(_version is not null && _version.RuleId == ruleId
                 ? new[] { _version }
                 : Array.Empty<RuleVersion>()));
+
+        public Task<long> InsertAsync(RuleVersion entity) => Task.FromResult(0L);
+
+        public Task<bool> UpdateStatusAsync(long versionId, string status, string? expectedCurrentStatus = null) =>
+            Task.FromResult(true);
+    }
+
+    private sealed class FlippingRuleVersionRepository : IRuleVersionRepository
+    {
+        private readonly string _firstReadStatus;
+        private readonly string _lockedReadStatus;
+
+        public FlippingRuleVersionRepository(string firstReadStatus, string lockedReadStatus)
+        {
+            _firstReadStatus = firstReadStatus;
+            _lockedReadStatus = lockedReadStatus;
+        }
+
+        public bool WasLocked { get; private set; }
+
+        public Task<RuleVersion?> GetByIdAsync(long versionId) => Task.FromResult<RuleVersion?>(null);
+
+        public Task<RuleVersion?> GetByRuleAndVersionAsync(long ruleId, int versionNo)
+        {
+            return Task.FromResult<RuleVersion?>(new RuleVersion
+            {
+                RuleId = ruleId,
+                VersionNo = versionNo,
+                VersionStatus = _firstReadStatus
+            });
+        }
+
+        public Task<RuleVersion?> GetByRuleAndVersionForUpdateAsync(long ruleId, int versionNo)
+        {
+            WasLocked = true;
+            return Task.FromResult<RuleVersion?>(new RuleVersion
+            {
+                RuleId = ruleId,
+                VersionNo = versionNo,
+                VersionStatus = _lockedReadStatus
+            });
+        }
+
+        public Task<IReadOnlyList<RuleVersion>> GetByRuleIdAsync(long ruleId) =>
+            Task.FromResult((IReadOnlyList<RuleVersion>)Array.Empty<RuleVersion>());
 
         public Task<long> InsertAsync(RuleVersion entity) => Task.FromResult(0L);
 

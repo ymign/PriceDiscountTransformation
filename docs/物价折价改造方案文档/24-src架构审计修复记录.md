@@ -724,6 +724,52 @@ Core 聚合 `ChargeRequest` 的 `MarkCommitted` / `MarkReversed` 已统一到现
 - `RuleApprovalAppServiceTests.SubmitAsync_ReturnsResourceAlreadyExistsWhenRepositoryRejectsDuplicatePendingApproval`
 - `RuleApprovalAppServiceTests.SubmitAsync_ReturnsResourceAlreadyExistsWhenInsertHitsUniqueConstraintRace`
 
+### 2.28 条件/动作保存补事务内版本锁，防止发布后仍改已发布内容
+
+此前 `RuleConditionAppService.SaveAsync` / `RuleActionAppService.SaveAsync`
+虽然已经补上了：
+
+- 删除旧定义 + 重建新定义同事务
+
+但还有一个更隐蔽的竞态窗口：
+
+1. 保存接口事务外先读到版本状态 = `DRAFT`
+2. 另一条发布事务把同一版本推进为 `PUBLISHED`
+3. 保存接口随后开启自己的事务，继续执行删旧 + 插新
+
+结果就是：
+
+- 一个已经发布、理论上应冻结的版本
+- 仍然可能被后续保存请求改掉条件/动作内容
+
+这会直接破坏“已发布版本是可追溯快照”的核心前提。
+
+本轮把两条保存链路继续收紧：
+
+- `RuleConditionAppService.SaveAsync`
+- `RuleActionAppService.SaveAsync`
+
+当前口径改为：
+
+- 请求项映射仍可在事务前完成
+- 真正的版本状态读取改到事务内
+- 使用 `GetByRuleAndVersionForUpdateAsync` 对目标版本加锁
+- 在锁内再次校验版本仍然是 `DRAFT`
+- 只有校验通过后才允许执行删除旧定义 + 重建新定义
+
+这样当发布线程已经把版本推进为 `PUBLISHED` 时：
+
+- 保存线程在事务内重新读到的就不再是 `DRAFT`
+- 会直接返回 `VersionStatusNotAllowed`
+- 不会再把已发布版本内容改掉
+
+这一步的重点不是多加一次 if，而是把“状态判断”和“真实写入”放到同一个事务和同一把版本行锁语义下。
+
+对应新增回归测试：
+
+- `RuleDefinitionTransactionTests.SaveConditionsAsync_LocksVersionInsideTransactionAndRejectsWhenStatusChangedAfterPreCheck`
+- `RuleDefinitionTransactionTests.SaveActionsAsync_LocksVersionInsideTransactionAndRejectsWhenStatusChangedAfterPreCheck`
+
 ## 3. 自动化验证
 
 本轮完成后已执行：
@@ -736,6 +782,7 @@ dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter RuleApprovalAppServiceTests
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter "ApproveAsync_RejectsWhenPendingApprovalWasAlreadyProcessed|RejectAsync_RejectsWhenPendingApprovalWasAlreadyProcessed"
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter "SubmitAsync_ReturnsResourceAlreadyExistsWhenRepositoryRejectsDuplicatePendingApproval|SubmitAsync_ReturnsResourceAlreadyExistsWhenInsertHitsUniqueConstraintRace"
+dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter "SaveConditionsAsync_LocksVersionInsideTransactionAndRejectsWhenStatusChangedAfterPreCheck|SaveActionsAsync_LocksVersionInsideTransactionAndRejectsWhenStatusChangedAfterPreCheck"
 dotnet test tests\Pricing.RuleCenter.Core.Tests\Pricing.RuleCenter.Core.Tests.csproj --no-restore
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore
 dotnet test src\Pricing.RuleCenter.slnx --no-restore
@@ -745,7 +792,7 @@ git diff --check
 结果：
 
 - Core tests：38 通过
-- API/Application tests：172 通过
+- API/Application tests：174 通过
 - 解决方案测试：全部通过
 - `git diff --check` 通过
 
@@ -770,7 +817,7 @@ git diff --check
 - 审批接口已经补了动作维度和状态前置校验，但还没有“审批记录唯一键/数据库约束”去彻底阻止并行重复提审，当前主要靠应用层校验
 - 审批状态推进已经改成 CAS，数据库侧也补了 `UK_PR_RAP_PENDING` 唯一索引；如果后续还要继续收口，可再评估是否补“提交审批时的显式申请锁”或更细的操作审计
 - 计价链路（`PricingAppService`）和规则维护主链路已经继续收口到 `BizException`，但普通维护接口与边角分支中仍有少量旧式 `InvalidOperationException` / `KeyNotFoundException` 残留，后续还需继续扫尾
-- 规则条件/动作保存已经补了应用层事务边界，但版本状态校验仍是“事务外先读、事务内写”；如果后续要继续收紧到“草稿编辑串行化”，可再评估是否补 `GetByRuleAndVersionForUpdateAsync` 级别的锁定保存
+- 规则条件/动作保存已经补了事务内版本锁与重验；如果后续还要继续收口，可再评估是否在“提交审批后”到“正式发布前”增加更强的编辑冻结策略
 - Trace 查询接口若要直接按 `TraceId` 聚合展示，可再补专门查询入口和测试
 
 ## 5. 结论

@@ -95,23 +95,7 @@ public sealed class RuleConditionAppService
     /// <exception cref="BizException">规则版本不存在或不是草稿状态时抛出结构化业务错误。</exception>
     public async Task SaveAsync(long ruleId, int versionNo, RuleConditionSaveRequest request)
     {
-        // ========== 第一阶段：校验版本状态 ==========
-        // 条件属于版本快照内容；已发布或历史版本如果允许编辑，会导致追踪记录无法解释当时使用了哪套条件。
-        var version = await _versionRepository.GetByRuleAndVersionAsync(ruleId, versionNo)
-            ?? throw new BizException(
-                BizErrorCode.RuleVersionNotFound,
-                404,
-                $"规则版本不存在: RuleId={ruleId}, VersionNo={versionNo}");
-
-        if (version.VersionStatus != "DRAFT")
-        {
-            throw new BizException(
-                BizErrorCode.VersionStatusNotAllowed,
-                409,
-                $"只有草稿版本可以编辑条件, 当前状态: {version.VersionStatus}");
-        }
-
-        // ========== 第二阶段：把请求项映射为实体 ==========
+        // ========== 第一阶段：把请求项映射为实体 ==========
         // ConditionGroup 用于表达同组条件关系；具体如何求值由 RuleMatchService 和 Evaluator 执行。
         var entities = request.Conditions.Select(c => new RuleCondition
         {
@@ -127,11 +111,26 @@ public sealed class RuleConditionAppService
             IsEnabled = c.IsEnabled
         }).ToList();
 
-        // ========== 第三阶段：事务性整体替换 ==========
-        // 删除和重建必须处于同一事务中，否则批量插入中途失败时，会把原草稿条件整批清空。
+        // ========== 第二阶段：事务内锁版本并整体替换 ==========
+        // 版本状态必须在事务内重新读取并加锁。
+        // 否则会出现：事务外看到 DRAFT，但正式删除/重建时该版本已被发布，导致已发布版本内容被篡改。
         await _unitOfWork.BeginAsync();
         try
         {
+            var version = await _versionRepository.GetByRuleAndVersionForUpdateAsync(ruleId, versionNo)
+                ?? throw new BizException(
+                    BizErrorCode.RuleVersionNotFound,
+                    404,
+                    $"规则版本不存在: RuleId={ruleId}, VersionNo={versionNo}");
+
+            if (version.VersionStatus != "DRAFT")
+            {
+                throw new BizException(
+                    BizErrorCode.VersionStatusNotAllowed,
+                    409,
+                    $"只有草稿版本可以编辑条件, 当前状态: {version.VersionStatus}");
+            }
+
             await _conditionRepository.DeleteByRuleAndVersionAsync(ruleId, versionNo);
 
             // 空集合也是合法保存结果，表示该版本暂时没有额外条件，因此不能强行报错。
@@ -151,7 +150,7 @@ public sealed class RuleConditionAppService
         _logger.LogInformation("保存规则条件 RuleId={RuleId}, VersionNo={VersionNo}, Count={Count}",
             ruleId, versionNo, entities.Count);
 
-        // ========== 第四阶段：写入变更日志 ==========
+        // ========== 第三阶段：写入变更日志 ==========
         // 条件决定了规则的匹配范围（项目、场景、部位、时间等），
         // 每次整体替换都必须记录审计日志，确保条件维度的修改可追溯到具体保存操作。
         // 变更日志保持 best-effort 旁路语义，不反向影响已经提交成功的主配置保存。

@@ -99,23 +99,7 @@ public sealed class RuleActionAppService
     /// <exception cref="BizException">规则版本不存在或不是草稿状态时抛出结构化业务错误。</exception>
     public async Task SaveAsync(long ruleId, int versionNo, RuleActionSaveRequest request)
     {
-        // ========== 第一阶段：校验版本是否可编辑 ==========
-        // 动作会直接影响计价输出，已发布版本必须冻结；需要调整时应创建新草稿版本再发布。
-        var version = await _versionRepository.GetByRuleAndVersionAsync(ruleId, versionNo)
-            ?? throw new BizException(
-                BizErrorCode.RuleVersionNotFound,
-                404,
-                $"规则版本不存在: RuleId={ruleId}, VersionNo={versionNo}");
-
-        if (version.VersionStatus != "DRAFT")
-        {
-            throw new BizException(
-                BizErrorCode.VersionStatusNotAllowed,
-                409,
-                $"只有草稿版本可以编辑动作, 当前状态: {version.VersionStatus}");
-        }
-
-        // ========== 第二阶段：映射动作实体 ==========
+        // ========== 第一阶段：映射动作实体 ==========
         // ExecutorCode 决定运行时使用哪个 IRuleActionExecutor；ParamsJson 作为执行器私有参数保存。
         var entities = request.Actions.Select(a => new RuleAction
         {
@@ -130,11 +114,26 @@ public sealed class RuleActionAppService
             IsEnabled = a.IsEnabled
         }).ToList();
 
-        // ========== 第三阶段：事务性整体替换 ==========
-        // 删除和重建必须处于同一事务中，否则批量插入失败时，会把原草稿动作链整批清空。
+        // ========== 第二阶段：事务内锁版本并整体替换 ==========
+        // 动作链内容必须在事务内重新读取并锁定版本状态。
+        // 否则事务外看到 DRAFT 后，版本在真正落库前被发布，仍可能把已发布版本动作链改掉。
         await _unitOfWork.BeginAsync();
         try
         {
+            var version = await _versionRepository.GetByRuleAndVersionForUpdateAsync(ruleId, versionNo)
+                ?? throw new BizException(
+                    BizErrorCode.RuleVersionNotFound,
+                    404,
+                    $"规则版本不存在: RuleId={ruleId}, VersionNo={versionNo}");
+
+            if (version.VersionStatus != "DRAFT")
+            {
+                throw new BizException(
+                    BizErrorCode.VersionStatusNotAllowed,
+                    409,
+                    $"只有草稿版本可以编辑动作, 当前状态: {version.VersionStatus}");
+            }
+
             await _actionRepository.DeleteByRuleAndVersionAsync(ruleId, versionNo);
 
             // 空动作集合允许保存，表示当前草稿只做条件匹配但不改变价格；发布前可由业务流程再行校验。
@@ -154,7 +153,7 @@ public sealed class RuleActionAppService
         _logger.LogInformation("保存规则动作 RuleId={RuleId}, VersionNo={VersionNo}, Count={Count}",
             ruleId, versionNo, entities.Count);
 
-        // ========== 第四阶段：写入变更日志 ==========
+        // ========== 第三阶段：写入变更日志 ==========
         // 动作决定了规则的计价行为（公式计算、数量限制、金额限制、换算等），
         // 每次整体替换都必须记录审计日志，确保动作链的修改可追溯到具体保存操作。
         // 变更日志保持 best-effort 旁路语义，不反向影响已经提交成功的主配置保存。
