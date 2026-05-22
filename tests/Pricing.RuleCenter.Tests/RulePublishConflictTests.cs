@@ -253,6 +253,123 @@ public sealed class RulePublishConflictTests
     }
 
     [Fact]
+    public async Task PublishAsync_ReEnablesRuleWhenPublishingFromDisabledHeader()
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var versionRepository = new InMemoryRuleVersionRepository();
+        var conditionRepository = new InMemoryRuleConditionRepository();
+        var actionRepository = new InMemoryRuleActionRepository();
+        var service = CreateService(headerRepository, versionRepository, conditionRepository, actionRepository);
+
+        headerRepository.Headers.Add(new RuleHeader
+        {
+            RuleId = 5,
+            RuleCode = "R-REPUBLISH",
+            ItemCode = "ITEM005",
+            CurrentVersion = 1,
+            Status = "DISABLED",
+            IsEnabled = "N",
+            EffectiveFrom = new DateTime(2026, 1, 1),
+            EffectiveTo = new DateTime(2026, 12, 31)
+        });
+        versionRepository.Versions.AddRange(new[]
+        {
+            new RuleVersion
+            {
+                VersionId = 51,
+                RuleId = 5,
+                VersionNo = 1,
+                VersionStatus = "DISABLED"
+            },
+            new RuleVersion
+            {
+                VersionId = 52,
+                RuleId = 5,
+                VersionNo = 2,
+                VersionStatus = "DRAFT"
+            }
+        });
+        actionRepository.Add(5, 2, new RuleAction
+        {
+            RuleId = 5,
+            VersionNo = 2,
+            ActionType = "FORMULA_CALC",
+            IsEnabled = "Y"
+        });
+
+        await service.PublishAsync(5, new RulePublishRequest { VersionNo = 2, PublishedBy = "tester" });
+
+        var header = Assert.Single(headerRepository.Headers);
+        Assert.Equal("PUBLISHED", header.Status);
+        Assert.Equal("Y", header.IsEnabled);
+        Assert.Equal(2, header.CurrentVersion);
+    }
+
+    [Fact]
+    public async Task RollbackAsync_UsesPublishHistoryInsteadOfHighestDisabledVersion()
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var versionRepository = new InMemoryRuleVersionRepository();
+        var conditionRepository = new InMemoryRuleConditionRepository();
+        var actionRepository = new InMemoryRuleActionRepository();
+        var publishRepository = new InMemoryRulePublishRepository();
+        var service = CreateService(
+            headerRepository,
+            versionRepository,
+            conditionRepository,
+            actionRepository,
+            publishRepository: publishRepository);
+
+        headerRepository.Headers.Add(new RuleHeader
+        {
+            RuleId = 6,
+            RuleCode = "R-ROLLBACK",
+            ItemCode = "ITEM006",
+            CurrentVersion = 5,
+            Status = "PUBLISHED",
+            IsEnabled = "Y",
+            EffectiveFrom = new DateTime(2026, 1, 1),
+            EffectiveTo = new DateTime(2026, 12, 31)
+        });
+        versionRepository.Versions.AddRange(new[]
+        {
+            new RuleVersion { VersionId = 61, RuleId = 6, VersionNo = 3, VersionStatus = "DISABLED" },
+            new RuleVersion { VersionId = 62, RuleId = 6, VersionNo = 4, VersionStatus = "DISABLED" },
+            new RuleVersion { VersionId = 63, RuleId = 6, VersionNo = 5, VersionStatus = "PUBLISHED" }
+        });
+        publishRepository.Items.AddRange(new[]
+        {
+            new RulePublish
+            {
+                PublishId = 601,
+                RuleId = 6,
+                FromVersion = null,
+                ToVersion = 3,
+                ActionType = "PUBLISH",
+                PublishedAt = new DateTime(2026, 5, 1, 9, 0, 0)
+            },
+            new RulePublish
+            {
+                PublishId = 602,
+                RuleId = 6,
+                FromVersion = 3,
+                ToVersion = 5,
+                ActionType = "PUBLISH",
+                PublishedAt = new DateTime(2026, 5, 2, 9, 0, 0)
+            }
+        });
+
+        await service.RollbackAsync(6, new RuleRollbackRequest { PublishedBy = "tester" });
+
+        var header = Assert.Single(headerRepository.Headers);
+        Assert.Equal(3, header.CurrentVersion);
+        Assert.Equal("PUBLISHED", header.Status);
+        Assert.Equal("Y", header.IsEnabled);
+        Assert.Equal("PUBLISHED", versionRepository.Versions.Single(v => v.VersionId == 61).VersionStatus);
+        Assert.Equal("ROLLED_BACK", versionRepository.Versions.Single(v => v.VersionId == 63).VersionStatus);
+    }
+
+    [Fact]
     public async Task PublishAsync_RejectsLimitActionMissingRequiredParams()
     {
         var headerRepository = new InMemoryRuleHeaderRepository();
@@ -300,12 +417,13 @@ public sealed class RulePublishConflictTests
         IRuleConditionRepository conditionRepository,
         IRuleActionRepository actionRepository,
         IDictRepository? dictRepository = null,
-        IRuleRuntimeCacheInvalidator? runtimeCacheInvalidator = null) =>
+        IRuleRuntimeCacheInvalidator? runtimeCacheInvalidator = null,
+        IRulePublishRepository? publishRepository = null) =>
         new(
             new RulePublishLifecycleRepositories(
                 headerRepository,
                 versionRepository,
-                new EmptyRulePublishRepository(),
+                publishRepository ?? new EmptyRulePublishRepository(),
                 new EmptyRuleChangeLogRepository()),
             new RulePublishDefinitionRepositories(
                 conditionRepository,
@@ -424,6 +542,24 @@ public sealed class RulePublishConflictTests
     {
         public Task<IReadOnlyList<RulePublish>> GetByRuleIdAsync(long ruleId) => Task.FromResult((IReadOnlyList<RulePublish>)Array.Empty<RulePublish>());
         public Task<long> InsertAsync(RulePublish entity) => Task.FromResult(0L);
+    }
+
+    private sealed class InMemoryRulePublishRepository : IRulePublishRepository
+    {
+        public List<RulePublish> Items { get; } = new();
+
+        public Task<IReadOnlyList<RulePublish>> GetByRuleIdAsync(long ruleId) =>
+            Task.FromResult((IReadOnlyList<RulePublish>)Items
+                .Where(p => p.RuleId == ruleId)
+                .OrderByDescending(p => p.PublishedAt)
+                .ThenByDescending(p => p.PublishId)
+                .ToList());
+
+        public Task<long> InsertAsync(RulePublish entity)
+        {
+            Items.Add(entity);
+            return Task.FromResult(entity.PublishId);
+        }
     }
 
     private sealed class EmptyRuleChangeLogRepository : IRuleChangeLogRepository

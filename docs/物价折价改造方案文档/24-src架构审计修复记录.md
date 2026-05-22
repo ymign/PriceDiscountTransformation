@@ -143,6 +143,43 @@ Core 聚合 `ChargeRequest` 的 `MarkCommitted` / `MarkReversed` 已统一到现
 - reverse 允许从 `CONFIRMED` 进入
 - `COMMITTED` 常量保留为兼容旧数据识别，不再作为新代码正式状态
 
+### 2.11 reverse 全退释放口径修复
+
+`PricingAppService.ReverseAsync` 本轮补了 3 个高风险边界：
+
+- 同日全额退费时，不再同时：
+  - 把原占额整体改成 `REVERSED`
+  - 再额外插入负向 `REVERSE` 占额
+- 原请求是否进入 `REVERSED`，现在同时要求：
+  - 数量结清
+  - 金额也结清
+- 兼容旧数据时，`COMMITTED` 状态的原请求现在也允许进入 reverse
+
+这次修复直接消除了两个资金风险：
+
+- 全退后净占额被冲成负数，导致后续收费可多占额度
+- 只退满数量、没退满金额，却把整单错误标记为 `REVERSED`
+
+对应新增回归测试：
+
+- `ReverseAsync_DoesNotInsertNegativeLimitOccupyForFullRefund`
+- `ReverseAsync_AllowsCommittedLegacyStatus`
+- `ReverseAsync_DoesNotMarkWholeRequestReversedWhenQuantityFullButAmountNotFull`
+
+### 2.12 发布恢复与回滚目标修复
+
+`RulePublishAppService` 本轮补了两类发布状态机缺陷：
+
+- 规则从 `DISABLED` 重新发布时，显式恢复 `IsEnabled = Y`
+- 回滚目标优先按 `PR_RULE_PUBLISH` 发布流水解析，而不是简单取“小于当前版本号的最大 DISABLED 版本”
+
+同时在 `PublishAsync` / `DisableAsync` / `RollbackAsync` 的事务内重新读取当前主档和目标版本，减少事务外陈旧读导致的状态机穿透风险。
+
+对应新增回归测试：
+
+- `PublishAsync_ReEnablesRuleWhenPublishingFromDisabledHeader`
+- `RollbackAsync_UsesPublishHistoryInsteadOfHighestDisabledVersion`
+
 ## 3. 自动化验证
 
 本轮完成后已执行：
@@ -157,7 +194,7 @@ git diff --check
 结果：
 
 - Core tests：38 通过
-- API/Application tests：124 通过
+- API/Application tests：129 通过
 - 解决方案测试：全部通过
 - `git diff --check` 通过
 
@@ -174,6 +211,9 @@ git diff --check
 - `CONVERT_QTY` 的发布参数完整性校验，需要结合历史配置口径再收紧
 - authority price 的时间版本追溯
 - reverse 审计如果需要“一次退费多条逐明细冲正日志”，需补表设计或仓储接口
+- `PR_LIMIT_OCCUPY` 当前仍缺少明细级定位字段（如 `ChargeDetailNo` / `OriginalDiscountId`）；同一请求内相同项目多明细的部分退费，仍只能按项目维度比例释放额度
+- 规则发布并发一致性仍未做到数据库级硬约束；当前通过事务内重读降低了风险，但还没有落到 `SELECT FOR UPDATE` / CAS / 唯一约束
+- 多实例部署下的规则缓存失效仍是进程内语义，未升级为分布式广播
 - Trace 查询接口若要直接按 `TraceId` 聚合展示，可再补专门查询入口和测试
 
 ## 5. 结论

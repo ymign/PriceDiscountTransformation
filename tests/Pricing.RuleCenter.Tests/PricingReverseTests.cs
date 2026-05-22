@@ -311,6 +311,182 @@ public sealed class PricingReverseTests
     }
 
     [Fact]
+    public async Task ReverseAsync_DoesNotInsertNegativeLimitOccupyForFullRefund()
+    {
+        var requestRepository = new ReverseRequestLogRepository();
+        var discountRepository = new ReverseDiscountDetailRepository();
+        var limitRepository = new ReverseLimitOccupyRepository();
+        var reverseRepository = new ReverseLogRepository();
+        var service = CreateService(requestRepository, discountRepository, limitRepository, reverseRepository);
+
+        requestRepository.Log = new ChargeRequestLog
+        {
+            RequestId = 450,
+            BusinessStatus = "CONFIRMED",
+            SourceSystem = "HIS",
+            ChargeNo = "C450",
+            BusinessChargeTime = new DateTime(2026, 5, 10, 9, 30, 0)
+        };
+        discountRepository.Details.Add(new ChargeDiscountDetail
+        {
+            RequestId = 450,
+            ChargeDetailNo = "CD450",
+            ItemCode = "ITEM450",
+            FinalQty = 5m,
+            FinalAmt = 50m,
+            Status = "CONFIRMED"
+        });
+        limitRepository.Occupies.Add(new LimitOccupy
+        {
+            OccupyId = 45,
+            RequestId = 450,
+            PatientId = "P450",
+            ItemCode = "ITEM450",
+            LimitType = "DAY_QTY",
+            LimitKey = "DQ:P450:ITEM450:20260510",
+            LimitDimensionCode = "P450:ITEM450:20260510",
+            OccupyQty = 5m,
+            OccupyAmt = 50m,
+            Status = "CONFIRMED",
+            OccupyType = "CHARGE",
+            BusinessChargeTime = new DateTime(2026, 5, 10, 9, 30, 0)
+        });
+
+        await service.ReverseAsync(new PricingReverseRequest
+        {
+            OriginalRequestId = 450,
+            ReverseNo = "R450",
+            ChargeDetailNo = "CD450",
+            ItemCode = "ITEM450",
+            ReverseQty = 5m,
+            ReverseTime = new DateTime(2026, 5, 10, 11, 0, 0)
+        });
+
+        Assert.Equal("REVERSED", requestRepository.Log.BusinessStatus);
+        Assert.All(discountRepository.Details, detail => Assert.Equal("REVERSED", detail.Status));
+        Assert.All(limitRepository.Occupies, occupy => Assert.Equal("REVERSED", occupy.Status));
+        Assert.Empty(limitRepository.Inserted);
+        Assert.Single(reverseRepository.Inserted);
+    }
+
+    [Fact]
+    public async Task ReverseAsync_AllowsCommittedLegacyStatus()
+    {
+        var requestRepository = new ReverseRequestLogRepository();
+        var discountRepository = new ReverseDiscountDetailRepository();
+        var limitRepository = new ReverseLimitOccupyRepository();
+        var reverseRepository = new ReverseLogRepository();
+        var service = CreateService(requestRepository, discountRepository, limitRepository, reverseRepository);
+
+        requestRepository.Log = new ChargeRequestLog
+        {
+            RequestId = 460,
+            BusinessStatus = "COMMITTED",
+            SourceSystem = "HIS",
+            ChargeNo = "C460",
+            BusinessChargeTime = new DateTime(2026, 5, 10, 9, 30, 0)
+        };
+        discountRepository.Details.Add(new ChargeDiscountDetail
+        {
+            RequestId = 460,
+            ChargeDetailNo = "CD460",
+            ItemCode = "ITEM460",
+            FinalQty = 3m,
+            FinalAmt = 30m,
+            Status = "COMMITTED"
+        });
+        limitRepository.Occupies.Add(new LimitOccupy
+        {
+            OccupyId = 46,
+            RequestId = 460,
+            PatientId = "P460",
+            ItemCode = "ITEM460",
+            LimitType = "DAY_QTY",
+            LimitKey = "DQ:P460:ITEM460:20260510",
+            LimitDimensionCode = "P460:ITEM460:20260510",
+            OccupyQty = 3m,
+            OccupyAmt = 30m,
+            Status = "CONFIRMED",
+            OccupyType = "CHARGE",
+            BusinessChargeTime = new DateTime(2026, 5, 10, 9, 30, 0)
+        });
+
+        await service.ReverseAsync(new PricingReverseRequest
+        {
+            OriginalRequestId = 460,
+            ReverseNo = "R460",
+            ChargeDetailNo = "CD460",
+            ItemCode = "ITEM460",
+            ReverseQty = 1m,
+            ReverseTime = new DateTime(2026, 5, 10, 11, 0, 0)
+        });
+
+        Assert.Single(limitRepository.Inserted);
+        Assert.Single(reverseRepository.Inserted);
+    }
+
+    [Fact]
+    public async Task ReverseAsync_DoesNotMarkWholeRequestReversedWhenQuantityFullButAmountNotFull()
+    {
+        var requestRepository = new ReverseRequestLogRepository();
+        var discountRepository = new ReverseDiscountDetailRepository();
+        var limitRepository = new ReverseLimitOccupyRepository();
+        var reverseRepository = new ReverseLogRepository();
+        var service = CreateService(requestRepository, discountRepository, limitRepository, reverseRepository);
+
+        requestRepository.Log = new ChargeRequestLog
+        {
+            RequestId = 470,
+            BusinessStatus = "CONFIRMED",
+            SourceSystem = "HIS",
+            ChargeNo = "C470",
+            BusinessChargeTime = new DateTime(2026, 5, 10, 9, 30, 0)
+        };
+        discountRepository.Details.Add(new ChargeDiscountDetail
+        {
+            RequestId = 470,
+            ChargeDetailNo = "CD470",
+            ItemCode = "ITEM470",
+            FinalQty = 5m,
+            FinalAmt = 50m,
+            Status = "CONFIRMED"
+        });
+        limitRepository.Occupies.Add(new LimitOccupy
+        {
+            OccupyId = 47,
+            RequestId = 470,
+            PatientId = "P470",
+            ItemCode = "ITEM470",
+            LimitType = "DAY_QTY",
+            LimitKey = "DQ:P470:ITEM470:20260510",
+            LimitDimensionCode = "P470:ITEM470:20260510",
+            OccupyQty = 5m,
+            OccupyAmt = 50m,
+            Status = "CONFIRMED",
+            OccupyType = "CHARGE",
+            BusinessChargeTime = new DateTime(2026, 5, 10, 9, 30, 0)
+        });
+
+        await service.ReverseAsync(new PricingReverseRequest
+        {
+            OriginalRequestId = 470,
+            ReverseNo = "R470",
+            ChargeDetailNo = "CD470",
+            ItemCode = "ITEM470",
+            ReverseQty = 5m,
+            ReverseAmt = 40m,
+            ReverseTime = new DateTime(2026, 5, 10, 11, 0, 0)
+        });
+
+        Assert.Equal("CONFIRMED", requestRepository.Log.BusinessStatus);
+        Assert.All(discountRepository.Details, detail => Assert.Equal("CONFIRMED", detail.Status));
+        var negativeOccupy = Assert.Single(limitRepository.Inserted);
+        Assert.Equal(-5m, negativeOccupy.OccupyQty);
+        Assert.Equal(-40m, negativeOccupy.OccupyAmt);
+        Assert.Single(reverseRepository.Inserted);
+    }
+
+    [Fact]
     public async Task ReverseAsync_ReusesSameReverseNoIdempotently()
     {
         var requestRepository = new ReverseRequestLogRepository();

@@ -13,6 +13,7 @@ using Pricing.RuleCenter.Core.Services;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Aggregates.Charging;
 using Pricing.RuleCenter.Core.Aggregates.Quota;
+using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Models;
 
 namespace Pricing.RuleCenter.Api.Application.Pricing;
@@ -685,13 +686,13 @@ public sealed class PricingAppService
 
             // 只有已落账确认的记录才能 reverse。CONFIRM_PENDING 应该 cancel；
             // CANCELLED/EXPIRED 没有形成正式收费，不应该再冲正。
-            if (log.BusinessStatus != "CONFIRMED")
+            if (!IsCommittedBusinessStatus(log.BusinessStatus))
             {
                 _logger.LogWarning(
-                    "REVERSE 状态校验失败 OriginalRequestId={OriginalRequestId}, 当前状态={Status}, 期望=CONFIRMED",
+                    "REVERSE 状态校验失败 OriginalRequestId={OriginalRequestId}, 当前状态={Status}, 期望=CONFIRMED/COMMITTED",
                     request.OriginalRequestId, log.BusinessStatus);
                 throw new InvalidOperationException(
-                    $"只有CONFIRMED状态可以REVERSE, 当前: {log.BusinessStatus}");
+                    $"只有CONFIRMED或COMMITTED状态可以REVERSE, 当前: {log.BusinessStatus}");
             }
 
             // ========== 第二阶段：定位原折价明细并校验可退数量 ==========
@@ -730,6 +731,10 @@ public sealed class PricingAppService
                 throw new InvalidOperationException(
                     $"REVERSE_AMT_EXCEEDED: 原有效金额={originalAmt}, 历史已退={historicalReversedAmt}, 本次退费={reverseAmt}");
             }
+
+            var isFullReverse =
+                allHistoricalReversedQty + reverseQty == allOriginalQty &&
+                historicalReversedAmt + reverseAmt == originalAmt;
 
             // ========== 第二阶段半：按 ResultGroupNo 分组校验退费数量 ==========
             // 主子项目原子性要求：当原请求包含主子项目（通过 ResultGroupNo 关联）时，
@@ -789,14 +794,14 @@ public sealed class PricingAppService
             // ========== 第三阶段：根据全退或部分退费推进状态 ==========
             // 全退时原请求整体进入 REVERSED，旧占额不再参与累计；部分退费则保留原 CONFIRMED，
             // 并用负向占额扣减当前累计，避免把未退数量也释放掉。
-            if (allHistoricalReversedQty + reverseQty == allOriginalQty)
+            if (isFullReverse)
             {
-                log.BusinessStatus = "REVERSED";
+                log.BusinessStatus = BusinessStatusCodes.Reversed;
                 log.ResponseAt = DateTime.Now;
                 await _requestLogRepository.UpdateAsync(log);
 
-                await _discountRepository.UpdateStatusByRequestIdAsync(request.OriginalRequestId, "REVERSED");
-                await _limitRepository.UpdateStatusByRequestIdAsync(request.OriginalRequestId, "REVERSED");
+                await _discountRepository.UpdateStatusByRequestIdAsync(request.OriginalRequestId, OccupyStatusCodes.Reversed);
+                await _limitRepository.UpdateStatusByRequestIdAsync(request.OriginalRequestId, OccupyStatusCodes.Reversed);
             }
 
             // ========== 第四阶段：当日退费写负向占额 ==========
@@ -810,7 +815,10 @@ public sealed class PricingAppService
                 ReverseAmt = reverseAmt,
                 ReverseTime = reverseTime
             });
-            await InsertNegativeLimitOccupiesAsync(request, reverseRequestId, log.TraceId, reverseQty, reverseAmt, reverseTime);
+            if (!isFullReverse)
+            {
+                await InsertNegativeLimitOccupiesAsync(request, reverseRequestId, log.TraceId, reverseQty, reverseAmt, reverseTime);
+            }
 
             // ========== 第五阶段：写冲正审计 ==========
             // 这张表回答"为什么原来的收费结果被冲掉"，也是后续财务追查和退费口径复盘的入口。
@@ -834,7 +842,7 @@ public sealed class PricingAppService
             _logger.LogInformation(
                 "REVERSE 成功 OriginalRequestId={OriginalRequestId}, ItemCode={ItemCode}, ReverseQty={ReverseQty}, ReverseAmt={ReverseAmt}, 全退={IsFullReverse}",
                 request.OriginalRequestId, matchedDetails.FirstOrDefault()?.ItemCode,
-                reverseQty, reverseAmt, allHistoricalReversedQty + reverseQty == allOriginalQty);
+                reverseQty, reverseAmt, isFullReverse);
         });
     }
 
@@ -1367,6 +1375,12 @@ public sealed class PricingAppService
     {
         return originalBusinessTime.HasValue &&
                originalBusinessTime.Value.Date == reverseTime.Date;
+    }
+
+    private static bool IsCommittedBusinessStatus(string? businessStatus)
+    {
+        return string.Equals(businessStatus, BusinessStatusCodes.Confirmed, StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(businessStatus, BusinessStatusCodes.Committed, StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task ValidateAuthorityPriceAsync(IReadOnlyList<PricingCalculateItemRequest> items)
