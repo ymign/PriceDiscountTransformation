@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Caching.Memory;
+using Newtonsoft.Json;
 using Pricing.RuleCenter.Api.Dto;
 using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
@@ -52,6 +53,14 @@ public sealed class RulePublishAppService
     /// 字典仓储，用于从 PR_DICT 表读取互斥动作类型等可配置数据。
     /// </summary>
     private readonly IDictRepository _dictRepository;
+    /// <summary>
+    /// 规则测试用例仓储，用于发布前校验是否存在启用用例。
+    /// </summary>
+    private readonly IRuleTestCaseRepository _testCaseRepository;
+    /// <summary>
+    /// 规则测试运行仓储，用于发布前校验启用用例的最新运行是否全部通过。
+    /// </summary>
+    private readonly IRuleTestRunRepository _testRunRepository;
     /// <summary>
     /// 内存缓存，用于在发布/停用/回滚后立即清除生效规则缓存。
     /// </summary>
@@ -111,6 +120,8 @@ public sealed class RulePublishAppService
         _conditionRepository = definitionRepositories.ConditionRepository;
         _actionRepository = definitionRepositories.ActionRepository;
         _dictRepository = definitionRepositories.DictRepository;
+        _testCaseRepository = definitionRepositories.TestCaseRepository;
+        _testRunRepository = definitionRepositories.TestRunRepository;
         _cache = cache;
         _unitOfWork = unitOfWork;
         _runtimeCacheInvalidator = runtimeCacheInvalidator;
@@ -453,6 +464,7 @@ public sealed class RulePublishAppService
         }
 
         await ValidateActionParametersAsync(targetHeader.RuleId, targetVersionNo);
+        await ValidateEnabledTestCasesAsync(targetHeader.RuleId, targetVersionNo);
 
         var targetProfile = await BuildRuleProfileAsync(targetHeader, targetVersionNo);
         var sameItemRules = await _headerRepository.GetByItemCodeAsync(targetHeader.ItemCode);
@@ -492,9 +504,102 @@ public sealed class RulePublishAppService
     private async Task ValidateActionParametersAsync(long ruleId, int versionNo)
     {
         var actions = await _actionRepository.GetByRuleAndVersionAsync(ruleId, versionNo);
+        ValidateCriticalActionOnError(actions);
+        ValidateAddChildItemActions(actions);
+
         foreach (var action in actions.Where(a => a.IsEnabled == EnableFlag.Yes))
         {
             ValidateActionParameters(action);
+        }
+    }
+
+    private async Task ValidateEnabledTestCasesAsync(long ruleId, int versionNo)
+    {
+        var enabledCases = (await _testCaseRepository.GetByRuleAndVersionAsync(ruleId, versionNo))
+            .Where(c => string.Equals(c.IsEnabled, EnableFlag.Yes, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (enabledCases.Count == 0)
+        {
+            throw new InvalidOperationException(
+                $"RULE_TEST_CASE_MISSING: 规则 RuleId={ruleId}, VersionNo={versionNo} 缺少启用测试用例");
+        }
+
+        foreach (var testCase in enabledCases)
+        {
+            if (string.IsNullOrWhiteSpace(testCase.InputJson) ||
+                string.IsNullOrWhiteSpace(testCase.ExpectedJson))
+            {
+                throw new InvalidOperationException(
+                    $"RULE_TEST_CASE_INCOMPLETE: TestCaseId={testCase.TestCaseId} 缺少 InputJson 或 ExpectedJson");
+            }
+
+            var latestRun = (await _testRunRepository.GetByTestCaseIdAsync(testCase.TestCaseId))
+                .OrderByDescending(r => r.RunAt)
+                .ThenByDescending(r => r.TestRunId)
+                .FirstOrDefault();
+            if (latestRun is null)
+            {
+                throw new InvalidOperationException(
+                    $"RULE_TEST_RUN_MISSING: TestCaseId={testCase.TestCaseId} 尚未执行测试");
+            }
+
+            if (!string.Equals(latestRun.IsPass, EnableFlag.Yes, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"RULE_TEST_RUN_FAILED: TestCaseId={testCase.TestCaseId} 最新测试未通过");
+            }
+        }
+    }
+
+    private static void ValidateCriticalActionOnError(IReadOnlyList<RuleAction> actions)
+    {
+        foreach (var action in actions.Where(a => a.IsEnabled == EnableFlag.Yes))
+        {
+            var actionType = NormalizeActionType(action.ActionType);
+            if (!CriticalActionTypes.Contains(actionType))
+            {
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(action.OnError) ||
+                string.Equals(action.OnError, "STOP", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            throw new InvalidOperationException(
+                $"RULE_ACTION_ONERROR_INVALID: ActionType={action.ActionType} 的 OnError 必须为 STOP");
+        }
+    }
+
+    private static void ValidateAddChildItemActions(IReadOnlyList<RuleAction> actions)
+    {
+        var normalizedChildCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var action in actions.Where(a =>
+                     a.IsEnabled == EnableFlag.Yes &&
+                     string.Equals(NormalizeActionType(a.ActionType), "ADD_CHILD_ITEM", StringComparison.OrdinalIgnoreCase)))
+        {
+            var config = ParseAddChildItemConfig(action.ParamsJson);
+            if (config?.ChildItems is null || config.ChildItems.Count == 0)
+            {
+                continue;
+            }
+
+            foreach (var child in config.ChildItems)
+            {
+                var normalizedItemCode = NormalizeChildItemCode(child.ItemCode);
+                if (normalizedItemCode is null)
+                {
+                    throw new InvalidOperationException(
+                        "RULE_CHILD_ITEM_INVALID: ADD_CHILD_ITEM 的 childItems[].itemCode 不能为空");
+                }
+
+                if (!normalizedChildCodes.Add(normalizedItemCode))
+                {
+                    throw new InvalidOperationException(
+                        $"RULE_CHILD_ITEM_DUPLICATE: ADD_CHILD_ITEM 重复引用子项目 {normalizedItemCode}");
+                }
+            }
         }
     }
 
@@ -562,6 +667,32 @@ public sealed class RulePublishAppService
         {
             throw new InvalidOperationException("RULE_ACTION_PARAM_INVALID: 动作参数不是合法 JSON");
         }
+    }
+
+    private static AddChildItemConfig? ParseAddChildItemConfig(string? paramsJson)
+    {
+        if (string.IsNullOrWhiteSpace(paramsJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonConvert.DeserializeObject<AddChildItemConfig>(paramsJson);
+        }
+        catch
+        {
+            throw new InvalidOperationException("RULE_ACTION_PARAM_INVALID: ADD_CHILD_ITEM 动作参数不是合法 JSON");
+        }
+    }
+
+    private static string NormalizeActionType(string? actionType) =>
+        actionType?.Trim().ToUpperInvariant() ?? string.Empty;
+
+    private static string? NormalizeChildItemCode(string? itemCode)
+    {
+        var normalized = itemCode?.Trim();
+        return string.IsNullOrEmpty(normalized) ? null : normalized.ToUpperInvariant();
     }
 
     private static bool HasPositiveNumber(JObject? json, params string[] keys)
@@ -831,6 +962,16 @@ public sealed class RulePublishAppService
         IReadOnlyList<RuleConditionScope> ConditionScopes,
         HashSet<string> Actions);
 
+    private sealed class AddChildItemConfig
+    {
+        public List<AddChildItemChildConfig>? ChildItems { get; set; }
+    }
+
+    private sealed class AddChildItemChildConfig
+    {
+        public string? ItemCode { get; set; }
+    }
+
     private sealed record RuleConditionScope(
         HashSet<string> ChargeScenes,
         HashSet<string> BodyParts)
@@ -846,6 +987,21 @@ public sealed class RulePublishAppService
             new HashSet<string>(StringComparer.OrdinalIgnoreCase),
             new HashSet<string>(StringComparer.OrdinalIgnoreCase));
     }
+
+    private static readonly HashSet<string> CriticalActionTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "CONVERT_QTY",
+        "FORMULA_CALC",
+        "APPLY_DAY_LIMIT_QTY",
+        "APPLY_TIME_WINDOW_LIMIT",
+        "APPLY_ONCE_LIMIT_QTY",
+        "SAME_GROUP_MUTEX",
+        "APPLY_MIN_AMOUNT",
+        "APPLY_MAX_AMOUNT",
+        "SAME_OPERATION_CEILING",
+        "ADD_CHILD_ITEM",
+        "DISCOUNT_EXCEED_TO_ZERO"
+    };
 
     /// <summary>
     /// 清除生效规则缓存和互斥动作类型缓存。

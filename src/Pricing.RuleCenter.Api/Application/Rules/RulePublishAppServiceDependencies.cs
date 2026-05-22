@@ -64,14 +64,20 @@ public sealed class RulePublishDefinitionRepositories
     /// <param name="conditionRepository">规则条件仓储。</param>
     /// <param name="actionRepository">规则动作仓储。</param>
     /// <param name="dictRepository">字典仓储。</param>
+    /// <param name="testCaseRepository">规则测试用例仓储。</param>
+    /// <param name="testRunRepository">规则测试运行仓储。</param>
     public RulePublishDefinitionRepositories(
         IRuleConditionRepository conditionRepository,
         IRuleActionRepository actionRepository,
-        IDictRepository dictRepository)
+        IDictRepository dictRepository,
+        IRuleTestCaseRepository testCaseRepository,
+        IRuleTestRunRepository testRunRepository)
     {
         ConditionRepository = conditionRepository;
         ActionRepository = actionRepository;
         DictRepository = dictRepository;
+        TestCaseRepository = testCaseRepository;
+        TestRunRepository = testRunRepository;
     }
 
     /// <summary>
@@ -88,6 +94,16 @@ public sealed class RulePublishDefinitionRepositories
     /// 字典仓储，用于读取可配置的互斥动作类型。
     /// </summary>
     public IDictRepository DictRepository { get; }
+
+    /// <summary>
+    /// 规则测试用例仓储，用于发布前校验是否存在启用用例。
+    /// </summary>
+    public IRuleTestCaseRepository TestCaseRepository { get; }
+
+    /// <summary>
+    /// 规则测试运行仓储，用于发布前校验启用用例的最新运行是否全部通过。
+    /// </summary>
+    public IRuleTestRunRepository TestRunRepository { get; }
 }
 
 

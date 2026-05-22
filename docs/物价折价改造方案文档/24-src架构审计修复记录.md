@@ -205,6 +205,42 @@ Core 聚合 `ChargeRequest` 的 `MarkCommitted` / `MarkReversed` 已统一到现
 - `ReverseAsync_ReleasesOnlyMatchedChargeDetailOccupyWhenSameItemHasMultipleDetails`
 - `ConfirmAsync_PersistsChargeDetailNoIntoLimitOccupies`
 
+### 2.14 发布前门禁补齐首批硬阻断
+
+`RulePublishAppService` 本轮补了三类真正执行的发布前硬阻断：
+
+- 启用测试用例缺失阻断
+- 启用测试用例最新运行未通过阻断
+- `ADD_CHILD_ITEM` 重复子项目阻断
+- 资金关键动作 `OnError != STOP` 阻断
+
+当前门禁口径是“最小可验证闭环”，基于现有模型直接落地：
+
+- 至少存在 1 条启用测试用例
+- 每条启用测试用例必须具备 `InputJson` 和 `ExpectedJson`
+- 每条启用测试用例必须至少有 1 次运行
+- 每条启用测试用例的最新运行必须 `IsPass = Y`
+- `ADD_CHILD_ITEM` 的 `childItems[].itemCode` 不能为空，且同一规则版本内不得重复
+- 以下资金关键动作必须 `OnError = STOP`（空值和大小写 `stop` 视为兼容等价）：
+  - `CONVERT_QTY`
+  - `FORMULA_CALC`
+  - `APPLY_DAY_LIMIT_QTY`
+  - `APPLY_TIME_WINDOW_LIMIT`
+  - `APPLY_ONCE_LIMIT_QTY`
+  - `SAME_GROUP_MUTEX`
+  - `APPLY_MIN_AMOUNT`
+  - `APPLY_MAX_AMOUNT`
+  - `SAME_OPERATION_CEILING`
+  - `ADD_CHILD_ITEM`
+  - `DISCOUNT_EXCEED_TO_ZERO`
+
+对应新增回归测试：
+
+- `PublishAsync_RejectsWhenEnabledTestCasesAreMissing`
+- `PublishAsync_RejectsWhenLatestEnabledTestRunDidNotPass`
+- `PublishAsync_RejectsDuplicateChildItemsInAddChildAction`
+- `PublishAsync_RejectsCriticalActionWhenOnErrorIsNotStop`
+
 ## 3. 自动化验证
 
 本轮完成后已执行：
@@ -219,7 +255,7 @@ git diff --check
 结果：
 
 - Core tests：38 通过
-- API/Application tests：129 通过
+- API/Application tests：135 通过
 - 解决方案测试：全部通过
 - `git diff --check` 通过
 
@@ -237,6 +273,7 @@ git diff --check
 - authority price 的时间版本追溯
 - reverse 审计如果需要“一次退费多条逐明细冲正日志”，需补表设计或仓储接口
 - `PR_LIMIT_OCCUPY` 目前已经补上 `ChargeDetailNo` / `ResultGroupNo`，但还没有补 `OriginalDiscountId`；如果后续要做到“完全按折价明细主键释放”，还需要继续补表和仓储
+- 测试用例门禁目前还不能自动区分“正向用例/边界用例”，因为现有表结构没有 `CaseType` 或标签字段
 - 规则发布并发一致性仍未做到数据库级硬约束；当前通过事务内重读降低了风险，但还没有落到 `SELECT FOR UPDATE` / CAS / 唯一约束
 - 多实例部署下的规则缓存失效仍是进程内语义，未升级为分布式广播
 - Trace 查询接口若要直接按 `TraceId` 聚合展示，可再补专门查询入口和测试

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
+using Newtonsoft.Json;
 using Pricing.RuleCenter.Api.Dto;
 using Pricing.RuleCenter.Api.Application.Rules;
 using Pricing.RuleCenter.Core.Interfaces;
@@ -17,6 +18,8 @@ public sealed class RulePublishConflictTests
         var versionRepository = new InMemoryRuleVersionRepository();
         var conditionRepository = new InMemoryRuleConditionRepository();
         var actionRepository = new InMemoryRuleActionRepository();
+        var testCaseRepository = new InMemoryRuleTestCaseRepository();
+        var testRunRepository = new InMemoryRuleTestRunRepository();
         var service = CreateService(
             headerRepository,
             versionRepository,
@@ -31,7 +34,9 @@ public sealed class RulePublishConflictTests
                     SortNo = 10,
                     IsEnabled = "Y"
                 }
-            }));
+            }),
+            testCaseRepository: testCaseRepository,
+            testRunRepository: testRunRepository);
 
         headerRepository.Headers.AddRange(new[]
         {
@@ -95,6 +100,7 @@ public sealed class RulePublishConflictTests
             ExecutorCode = "INCREMENT_PERCENT",
             IsEnabled = "Y"
         });
+        AddPassingTestCase(testCaseRepository, testRunRepository, 2, 1, 2001, 3001);
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.PublishAsync(2, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" }));
@@ -108,7 +114,15 @@ public sealed class RulePublishConflictTests
         var versionRepository = new InMemoryRuleVersionRepository();
         var conditionRepository = new InMemoryRuleConditionRepository();
         var actionRepository = new InMemoryRuleActionRepository();
-        var service = CreateService(headerRepository, versionRepository, conditionRepository, actionRepository);
+        var testCaseRepository = new InMemoryRuleTestCaseRepository();
+        var testRunRepository = new InMemoryRuleTestRunRepository();
+        var service = CreateService(
+            headerRepository,
+            versionRepository,
+            conditionRepository,
+            actionRepository,
+            testCaseRepository: testCaseRepository,
+            testRunRepository: testRunRepository);
 
         headerRepository.Headers.AddRange(new[]
         {
@@ -144,6 +158,7 @@ public sealed class RulePublishConflictTests
         conditionRepository.Add(2, 1, new RuleCondition { RuleId = 2, VersionNo = 1, ConditionType = "BODY_PART", RightValue = "BODY", IsEnabled = "Y" });
         actionRepository.Add(1, 1, new RuleAction { RuleId = 1, VersionNo = 1, ActionType = "CONVERT_QTY", IsEnabled = "Y" });
         actionRepository.Add(2, 1, new RuleAction { RuleId = 2, VersionNo = 1, ActionType = "CONVERT_QTY", IsEnabled = "Y" });
+        AddPassingTestCase(testCaseRepository, testRunRepository, 2, 1, 2002, 3002);
 
         await service.PublishAsync(2, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" });
 
@@ -157,7 +172,15 @@ public sealed class RulePublishConflictTests
         var versionRepository = new InMemoryRuleVersionRepository();
         var conditionRepository = new InMemoryRuleConditionRepository();
         var actionRepository = new InMemoryRuleActionRepository();
-        var service = CreateService(headerRepository, versionRepository, conditionRepository, actionRepository);
+        var testCaseRepository = new InMemoryRuleTestCaseRepository();
+        var testRunRepository = new InMemoryRuleTestRunRepository();
+        var service = CreateService(
+            headerRepository,
+            versionRepository,
+            conditionRepository,
+            actionRepository,
+            testCaseRepository: testCaseRepository,
+            testRunRepository: testRunRepository);
 
         headerRepository.Headers.AddRange(new[]
         {
@@ -200,6 +223,7 @@ public sealed class RulePublishConflictTests
 
         actionRepository.Add(1, 1, new RuleAction { RuleId = 1, VersionNo = 1, ActionType = "CONVERT_QTY", IsEnabled = "Y" });
         actionRepository.Add(2, 1, new RuleAction { RuleId = 2, VersionNo = 1, ActionType = "CONVERT_QTY", IsEnabled = "Y" });
+        AddPassingTestCase(testCaseRepository, testRunRepository, 2, 1, 2003, 3003);
 
         await service.PublishAsync(2, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" });
 
@@ -213,13 +237,17 @@ public sealed class RulePublishConflictTests
         var versionRepository = new InMemoryRuleVersionRepository();
         var conditionRepository = new InMemoryRuleConditionRepository();
         var actionRepository = new InMemoryRuleActionRepository();
+        var testCaseRepository = new InMemoryRuleTestCaseRepository();
+        var testRunRepository = new InMemoryRuleTestRunRepository();
         var runtimeCache = new CapturingRuleRuntimeCacheInvalidator();
         var service = CreateService(
             headerRepository,
             versionRepository,
             conditionRepository,
             actionRepository,
-            runtimeCacheInvalidator: runtimeCache);
+            runtimeCacheInvalidator: runtimeCache,
+            testCaseRepository: testCaseRepository,
+            testRunRepository: testRunRepository);
 
         headerRepository.Headers.Add(new RuleHeader
         {
@@ -246,6 +274,7 @@ public sealed class RulePublishConflictTests
             ActionType = "FORMULA_CALC",
             IsEnabled = "Y"
         });
+        AddPassingTestCase(testCaseRepository, testRunRepository, 3, 1, 2004, 3004);
 
         await service.PublishAsync(3, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" });
 
@@ -259,7 +288,15 @@ public sealed class RulePublishConflictTests
         var versionRepository = new InMemoryRuleVersionRepository();
         var conditionRepository = new InMemoryRuleConditionRepository();
         var actionRepository = new InMemoryRuleActionRepository();
-        var service = CreateService(headerRepository, versionRepository, conditionRepository, actionRepository);
+        var testCaseRepository = new InMemoryRuleTestCaseRepository();
+        var testRunRepository = new InMemoryRuleTestRunRepository();
+        var service = CreateService(
+            headerRepository,
+            versionRepository,
+            conditionRepository,
+            actionRepository,
+            testCaseRepository: testCaseRepository,
+            testRunRepository: testRunRepository);
 
         headerRepository.Headers.Add(new RuleHeader
         {
@@ -296,6 +333,7 @@ public sealed class RulePublishConflictTests
             ActionType = "FORMULA_CALC",
             IsEnabled = "Y"
         });
+        AddPassingTestCase(testCaseRepository, testRunRepository, 5, 2, 2005, 3005);
 
         await service.PublishAsync(5, new RulePublishRequest { VersionNo = 2, PublishedBy = "tester" });
 
@@ -411,6 +449,277 @@ public sealed class RulePublishConflictTests
         Assert.Contains("RULE_ACTION_PARAM_MISSING", ex.Message);
     }
 
+    [Fact]
+    public async Task PublishAsync_RejectsWhenEnabledTestCasesAreMissing()
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var versionRepository = new InMemoryRuleVersionRepository();
+        var conditionRepository = new InMemoryRuleConditionRepository();
+        var actionRepository = new InMemoryRuleActionRepository();
+        var service = CreateService(
+            headerRepository,
+            versionRepository,
+            conditionRepository,
+            actionRepository,
+            testCaseRepository: new InMemoryRuleTestCaseRepository(),
+            testRunRepository: new InMemoryRuleTestRunRepository());
+
+        headerRepository.Headers.Add(new RuleHeader
+        {
+            RuleId = 7,
+            RuleCode = "R-NO-TEST",
+            ItemCode = "ITEM007",
+            CurrentVersion = 0,
+            Status = "DRAFT",
+            IsEnabled = "Y",
+            EffectiveFrom = new DateTime(2026, 1, 1),
+            EffectiveTo = new DateTime(2026, 12, 31)
+        });
+        versionRepository.Versions.Add(new RuleVersion
+        {
+            VersionId = 71,
+            RuleId = 7,
+            VersionNo = 1,
+            VersionStatus = "DRAFT"
+        });
+        actionRepository.Add(7, 1, new RuleAction
+        {
+            RuleId = 7,
+            VersionNo = 1,
+            ActionType = "FORMULA_CALC",
+            OnError = "STOP",
+            IsEnabled = "Y"
+        });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.PublishAsync(7, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" }));
+
+        Assert.Contains("RULE_TEST_CASE_MISSING", ex.Message);
+    }
+
+    [Fact]
+    public async Task PublishAsync_RejectsWhenLatestEnabledTestRunDidNotPass()
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var versionRepository = new InMemoryRuleVersionRepository();
+        var conditionRepository = new InMemoryRuleConditionRepository();
+        var actionRepository = new InMemoryRuleActionRepository();
+        var testCaseRepository = new InMemoryRuleTestCaseRepository();
+        var testRunRepository = new InMemoryRuleTestRunRepository();
+        var service = CreateService(
+            headerRepository,
+            versionRepository,
+            conditionRepository,
+            actionRepository,
+            testCaseRepository: testCaseRepository,
+            testRunRepository: testRunRepository);
+
+        headerRepository.Headers.Add(new RuleHeader
+        {
+            RuleId = 8,
+            RuleCode = "R-FAILED-TEST",
+            ItemCode = "ITEM008",
+            CurrentVersion = 0,
+            Status = "DRAFT",
+            IsEnabled = "Y",
+            EffectiveFrom = new DateTime(2026, 1, 1),
+            EffectiveTo = new DateTime(2026, 12, 31)
+        });
+        versionRepository.Versions.Add(new RuleVersion
+        {
+            VersionId = 81,
+            RuleId = 8,
+            VersionNo = 1,
+            VersionStatus = "DRAFT"
+        });
+        actionRepository.Add(8, 1, new RuleAction
+        {
+            RuleId = 8,
+            VersionNo = 1,
+            ActionType = "FORMULA_CALC",
+            OnError = "STOP",
+            IsEnabled = "Y"
+        });
+        testCaseRepository.Items.Add(new RuleTestCase
+        {
+            TestCaseId = 801,
+            RuleId = 8,
+            VersionNo = 1,
+            CaseName = "失败用例",
+            InputJson = "{\"itemCode\":\"ITEM008\"}",
+            ExpectedJson = "{\"finalAmount\":10}",
+            IsEnabled = "Y"
+        });
+        testRunRepository.Items.Add(new RuleTestRun
+        {
+            TestRunId = 8001,
+            TestCaseId = 801,
+            RuleId = 8,
+            IsPass = "N",
+            RunAt = new DateTime(2026, 5, 22, 10, 0, 0)
+        });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.PublishAsync(8, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" }));
+
+        Assert.Contains("RULE_TEST_RUN_FAILED", ex.Message);
+    }
+
+    [Fact]
+    public async Task PublishAsync_RejectsDuplicateChildItemsInAddChildAction()
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var versionRepository = new InMemoryRuleVersionRepository();
+        var conditionRepository = new InMemoryRuleConditionRepository();
+        var actionRepository = new InMemoryRuleActionRepository();
+        var testCaseRepository = new InMemoryRuleTestCaseRepository();
+        var testRunRepository = new InMemoryRuleTestRunRepository();
+        var service = CreateService(
+            headerRepository,
+            versionRepository,
+            conditionRepository,
+            actionRepository,
+            testCaseRepository: testCaseRepository,
+            testRunRepository: testRunRepository);
+
+        headerRepository.Headers.Add(new RuleHeader
+        {
+            RuleId = 9,
+            RuleCode = "R-DUP-CHILD",
+            ItemCode = "ITEM009",
+            CurrentVersion = 0,
+            Status = "DRAFT",
+            IsEnabled = "Y",
+            EffectiveFrom = new DateTime(2026, 1, 1),
+            EffectiveTo = new DateTime(2026, 12, 31)
+        });
+        versionRepository.Versions.Add(new RuleVersion
+        {
+            VersionId = 91,
+            RuleId = 9,
+            VersionNo = 1,
+            VersionStatus = "DRAFT"
+        });
+        actionRepository.Add(9, 1, new RuleAction
+        {
+            RuleId = 9,
+            VersionNo = 1,
+            ActionType = "ADD_CHILD_ITEM",
+            OnError = "STOP",
+            IsEnabled = "Y",
+            ParamsJson = JsonConvert.SerializeObject(new
+            {
+                childItems = new[]
+                {
+                    new { itemCode = "CHILD001", itemName = "子项1", qty = 1m, unitPrice = 10m },
+                    new { itemCode = "CHILD001", itemName = "子项1重复", qty = 1m, unitPrice = 10m }
+                }
+            })
+        });
+        testCaseRepository.Items.Add(new RuleTestCase
+        {
+            TestCaseId = 901,
+            RuleId = 9,
+            VersionNo = 1,
+            CaseName = "通过用例",
+            InputJson = "{\"itemCode\":\"ITEM009\"}",
+            ExpectedJson = "{\"finalAmount\":10}",
+            IsEnabled = "Y"
+        });
+        testRunRepository.Items.Add(new RuleTestRun
+        {
+            TestRunId = 9001,
+            TestCaseId = 901,
+            RuleId = 9,
+            IsPass = "Y",
+            RunAt = new DateTime(2026, 5, 22, 10, 0, 0)
+        });
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.PublishAsync(9, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" }));
+
+        Assert.Contains("RULE_CHILD_ITEM_DUPLICATE", ex.Message);
+    }
+
+    [Fact]
+    public async Task PublishAsync_RejectsCriticalActionWhenOnErrorIsNotStop()
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var versionRepository = new InMemoryRuleVersionRepository();
+        var conditionRepository = new InMemoryRuleConditionRepository();
+        var actionRepository = new InMemoryRuleActionRepository();
+        var testCaseRepository = new InMemoryRuleTestCaseRepository();
+        var testRunRepository = new InMemoryRuleTestRunRepository();
+        var service = CreateService(
+            headerRepository,
+            versionRepository,
+            conditionRepository,
+            actionRepository,
+            testCaseRepository: testCaseRepository,
+            testRunRepository: testRunRepository);
+
+        headerRepository.Headers.Add(new RuleHeader
+        {
+            RuleId = 10,
+            RuleCode = "R-ONERROR",
+            ItemCode = "ITEM010",
+            CurrentVersion = 0,
+            Status = "DRAFT",
+            IsEnabled = "Y",
+            EffectiveFrom = new DateTime(2026, 1, 1),
+            EffectiveTo = new DateTime(2026, 12, 31)
+        });
+        versionRepository.Versions.Add(new RuleVersion
+        {
+            VersionId = 101,
+            RuleId = 10,
+            VersionNo = 1,
+            VersionStatus = "DRAFT"
+        });
+        actionRepository.Add(10, 1, new RuleAction
+        {
+            RuleId = 10,
+            VersionNo = 1,
+            ActionType = "FORMULA_CALC",
+            OnError = "SKIP",
+            IsEnabled = "Y"
+        });
+        AddPassingTestCase(testCaseRepository, testRunRepository, 10, 1, 2010, 3010);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.PublishAsync(10, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" }));
+
+        Assert.Contains("RULE_ACTION_ONERROR_INVALID", ex.Message);
+    }
+
+    private static void AddPassingTestCase(
+        InMemoryRuleTestCaseRepository testCaseRepository,
+        InMemoryRuleTestRunRepository testRunRepository,
+        long ruleId,
+        int versionNo,
+        long testCaseId,
+        long testRunId)
+    {
+        testCaseRepository.Items.Add(new RuleTestCase
+        {
+            TestCaseId = testCaseId,
+            RuleId = ruleId,
+            VersionNo = versionNo,
+            CaseName = $"Rule-{ruleId}-V{versionNo}",
+            InputJson = $"{{\"ruleId\":{ruleId},\"versionNo\":{versionNo}}}",
+            ExpectedJson = "{\"isPass\":true}",
+            IsEnabled = "Y"
+        });
+        testRunRepository.Items.Add(new RuleTestRun
+        {
+            TestRunId = testRunId,
+            TestCaseId = testCaseId,
+            RuleId = ruleId,
+            IsPass = "Y",
+            RunAt = new DateTime(2026, 5, 22, 10, 0, 0)
+        });
+    }
+
     private static RulePublishService CreateService(
         IRuleHeaderRepository headerRepository,
         IRuleVersionRepository versionRepository,
@@ -418,7 +727,9 @@ public sealed class RulePublishConflictTests
         IRuleActionRepository actionRepository,
         IDictRepository? dictRepository = null,
         IRuleRuntimeCacheInvalidator? runtimeCacheInvalidator = null,
-        IRulePublishRepository? publishRepository = null) =>
+        IRulePublishRepository? publishRepository = null,
+        IRuleTestCaseRepository? testCaseRepository = null,
+        IRuleTestRunRepository? testRunRepository = null) =>
         new(
             new RulePublishLifecycleRepositories(
                 headerRepository,
@@ -428,7 +739,9 @@ public sealed class RulePublishConflictTests
             new RulePublishDefinitionRepositories(
                 conditionRepository,
                 actionRepository,
-                dictRepository ?? new EmptyDictRepository()),
+                dictRepository ?? new EmptyDictRepository(),
+                testCaseRepository ?? new InMemoryRuleTestCaseRepository(),
+                testRunRepository ?? new InMemoryRuleTestRunRepository()),
             new MemoryCache(new MemoryCacheOptions()),
             new NoopUnitOfWork(),
             runtimeCacheInvalidator ?? new EmptyRuleRuntimeCacheInvalidator(),
@@ -559,6 +872,48 @@ public sealed class RulePublishConflictTests
         {
             Items.Add(entity);
             return Task.FromResult(entity.PublishId);
+        }
+    }
+
+    private sealed class InMemoryRuleTestCaseRepository : IRuleTestCaseRepository
+    {
+        public List<RuleTestCase> Items { get; } = new();
+
+        public Task<IReadOnlyList<RuleTestCase>> GetByRuleAndVersionAsync(long ruleId, int versionNo) =>
+            Task.FromResult((IReadOnlyList<RuleTestCase>)Items
+                .Where(t => t.RuleId == ruleId && t.VersionNo == versionNo)
+                .ToList());
+
+        public Task<RuleTestCase?> GetByIdAsync(long testCaseId) =>
+            Task.FromResult(Items.SingleOrDefault(t => t.TestCaseId == testCaseId));
+
+        public Task<long> InsertAsync(RuleTestCase entity)
+        {
+            Items.Add(entity);
+            return Task.FromResult(entity.TestCaseId);
+        }
+
+        public Task DeleteAsync(long testCaseId)
+        {
+            Items.RemoveAll(t => t.TestCaseId == testCaseId);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class InMemoryRuleTestRunRepository : IRuleTestRunRepository
+    {
+        public List<RuleTestRun> Items { get; } = new();
+
+        public Task<IReadOnlyList<RuleTestRun>> GetByTestCaseIdAsync(long testCaseId) =>
+            Task.FromResult((IReadOnlyList<RuleTestRun>)Items
+                .Where(r => r.TestCaseId == testCaseId)
+                .OrderByDescending(r => r.RunAt)
+                .ToList());
+
+        public Task<long> InsertAsync(RuleTestRun entity)
+        {
+            Items.Add(entity);
+            return Task.FromResult(entity.TestRunId);
         }
     }
 
