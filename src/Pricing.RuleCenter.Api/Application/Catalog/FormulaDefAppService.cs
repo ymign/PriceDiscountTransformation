@@ -88,7 +88,7 @@ public sealed class FormulaDefAppService
     /// </summary>
     /// <param name="request">新增请求，包含公式编码、执行器编码、参数结构和说明。</param>
     /// <returns>新增公式定义主键。</returns>
-    /// <exception cref="InvalidOperationException">公式编码已存在时抛出。</exception>
+    /// <exception cref="BizException">公式编码已存在或公式定义不存在时抛出结构化业务错误。</exception>
     public async Task<long> CreateAsync(FormulaDefCreateRequest request)
     {
         // ========== 第一阶段：校验公式编码唯一 ==========
@@ -96,7 +96,10 @@ public sealed class FormulaDefAppService
         var existing = await _repository.GetByCodeAsync(request.FormulaCode);
         if (existing is not null)
         {
-            throw new InvalidOperationException($"公式编码已存在: {request.FormulaCode}");
+            throw new BizException(
+                BizErrorCode.ResourceAlreadyExists,
+                409,
+                $"公式编码已存在: {request.FormulaCode}");
         }
 
         // ========== 第二阶段：组装定义实体 ==========
@@ -137,13 +140,16 @@ public sealed class FormulaDefAppService
     /// </remarks>
     /// <param name="formulaId">公式定义主键。</param>
     /// <param name="request">更新请求；不包含公式编码字段，避免外部修改稳定业务键。</param>
-    /// <exception cref="KeyNotFoundException">公式定义不存在时抛出。</exception>
+    /// <exception cref="BizException">公式定义不存在时抛出结构化业务错误。</exception>
     public async Task UpdateAsync(long formulaId, FormulaDefUpdateRequest request)
     {
         // 公式编码是外部引用键，更新时保持稳定；可调整名称、描述、执行器和参数结构。
         // 如果执行器编码变更，已发布规则中引用该公式的动作在下次发布时会使用新执行器。
         var entity = await _repository.GetByIdAsync(formulaId)
-            ?? throw new KeyNotFoundException($"公式定义不存在: {formulaId}");
+            ?? throw new BizException(
+                BizErrorCode.FormulaNotFound,
+                404,
+                $"公式定义不存在: {formulaId}");
 
         entity.FormulaName = request.FormulaName;
         entity.FormulaDesc = request.FormulaDesc;
@@ -165,13 +171,16 @@ public sealed class FormulaDefAppService
     /// 切换公式定义启用状态。
     /// </summary>
     /// <param name="formulaId">公式定义主键。</param>
-    /// <exception cref="KeyNotFoundException">公式定义不存在时抛出。</exception>
+    /// <exception cref="BizException">公式定义不存在时抛出结构化业务错误。</exception>
     public async Task ToggleAsync(long formulaId)
     {
         // ========== 第一阶段：读取当前状态 ==========
         // 这里采用显式查询后切换，便于返回"不存在"的业务错误，而不是静默影响 0 行。
         var entity = await _repository.GetByIdAsync(formulaId)
-            ?? throw new KeyNotFoundException($"公式定义不存在: {formulaId}");
+            ?? throw new BizException(
+                BizErrorCode.FormulaNotFound,
+                404,
+                $"公式定义不存在: {formulaId}");
 
         // ========== 第二阶段：在 Y/N 之间翻转 ==========
         // 停用后历史规则中的动作仍保留，但配置页面可以据此限制新增选择。

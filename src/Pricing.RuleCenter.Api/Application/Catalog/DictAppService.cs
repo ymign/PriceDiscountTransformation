@@ -172,7 +172,7 @@ public sealed class DictAppService
     /// </summary>
     /// <param name="request">新增字典项请求，包含类型、编码、名称、排序和备注。</param>
     /// <returns>新增字典项的数据库主键。</returns>
-    /// <exception cref="InvalidOperationException">同一字典类型下已存在相同字典编码时抛出。</exception>
+    /// <exception cref="BizException">字典项重复或字典项不存在时抛出结构化业务错误。</exception>
     public async Task<long> CreateAsync(DictCreateRequest request)
     {
         // ========== 第一阶段：做业务唯一性校验 ==========
@@ -180,7 +180,9 @@ public sealed class DictAppService
         // 而不是依赖数据库唯一索引异常向外泄漏存储细节。
         if (await _repository.ExistsAsync(request.DictType, request.DictCode))
         {
-            throw new InvalidOperationException(
+            throw new BizException(
+                BizErrorCode.ResourceAlreadyExists,
+                409,
                 $"字典项已存在: {request.DictType}/{request.DictCode}");
         }
 
@@ -218,12 +220,15 @@ public sealed class DictAppService
     /// </summary>
     /// <param name="dictId">要更新的字典项主键。</param>
     /// <param name="request">更新请求；不包含字典类型和字典编码，避免外部修改稳定业务键。</param>
-    /// <exception cref="KeyNotFoundException">字典项不存在时抛出。</exception>
+    /// <exception cref="BizException">字典项不存在时抛出结构化业务错误。</exception>
     public async Task UpdateAsync(long dictId, DictUpdateRequest request)
     {
         // 字典编码是规则配置引用的稳定键，这里只允许改名称、父级、排序和备注。
         var entity = await _repository.GetByIdAsync(dictId)
-            ?? throw new KeyNotFoundException($"字典项不存在: {dictId}");
+            ?? throw new BizException(
+                BizErrorCode.DictNotFound,
+                404,
+                $"字典项不存在: {dictId}");
 
         entity.DictName = request.DictName;
         entity.ParentCode = request.ParentCode;
@@ -246,14 +251,17 @@ public sealed class DictAppService
     /// 停用字典项。
     /// </summary>
     /// <param name="dictId">要停用的字典项主键。</param>
-    /// <exception cref="KeyNotFoundException">字典项不存在时抛出。</exception>
+    /// <exception cref="BizException">字典项不存在时抛出结构化业务错误。</exception>
     public async Task DeleteAsync(long dictId)
     {
         // ========== 第一阶段：确认目标存在并记录类型 ==========
         // 即使停用动作最终只是写 IsEnabled，也要先区分"不存在"和"已存在但停用"，便于接口返回明确错误。
         // 同时记录 DictType 用于后续清除缓存。
         var entity = await _repository.GetByIdAsync(dictId)
-            ?? throw new KeyNotFoundException($"字典项不存在: {dictId}");
+            ?? throw new BizException(
+                BizErrorCode.DictNotFound,
+                404,
+                $"字典项不存在: {dictId}");
 
         // ========== 第二阶段：软停用并清缓存 ==========
         // 不物理删除字典项，是为了保留历史规则配置中已保存编码的可解释性。

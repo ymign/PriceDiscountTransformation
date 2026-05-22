@@ -770,6 +770,39 @@ Core 聚合 `ChargeRequest` 的 `MarkCommitted` / `MarkReversed` 已统一到现
 - `RuleDefinitionTransactionTests.SaveConditionsAsync_LocksVersionInsideTransactionAndRejectsWhenStatusChangedAfterPreCheck`
 - `RuleDefinitionTransactionTests.SaveActionsAsync_LocksVersionInsideTransactionAndRejectsWhenStatusChangedAfterPreCheck`
 
+### 2.29 Catalog 维护域补齐结构化业务错误
+
+在主计价链路、规则维护链路和审批链路逐步切到 `BizException` 之后，
+`Catalog` 维护域还残留一批明显不一致的旧式异常：
+
+- `FormulaDefAppService.CreateAsync`：公式编码重复时仍抛 `InvalidOperationException`
+- `FormulaDefAppService.UpdateAsync` / `ToggleAsync`：公式不存在时仍抛 `KeyNotFoundException`
+- `DictAppService.CreateAsync`：字典项重复时仍抛 `InvalidOperationException`
+- `DictAppService.UpdateAsync` / `DeleteAsync`：字典项不存在时仍抛 `KeyNotFoundException`
+
+这类接口虽然不直接参与收费落账，但它们属于配置维护工作台的正式接口，继续保留旧式异常会带来两个问题：
+
+1. 前端/SDK 在同一个系统里不得不同时兼容“结构化业务码”和“通用异常映射”
+2. 配置人员在联调时得到的错误语义不稳定，某些场景只能靠异常文本判断
+
+本轮把这批入口统一改成结构化业务错误：
+
+- 公式编码重复 → `ResourceAlreadyExists`
+- 公式不存在 → `FormulaNotFound`
+- 字典项重复 → `ResourceAlreadyExists`
+- 字典项不存在 → `DictNotFound`
+
+这样之后，规则中心的配置维护主入口在“重复 / 不存在”这一类最基础的业务错误上，接口语义已经明显更一致。
+
+对应新增回归测试：
+
+- `FormulaDefAppServiceTests.CreateAsync_ReturnsResourceAlreadyExistsBizCodeWhenFormulaCodeExists`
+- `FormulaDefAppServiceTests.UpdateAsync_ReturnsFormulaNotFoundBizCodeWhenEntityMissing`
+- `FormulaDefAppServiceTests.ToggleAsync_ReturnsFormulaNotFoundBizCodeWhenEntityMissing`
+- `DictAppServiceTests.CreateAsync_ReturnsResourceAlreadyExistsBizCodeWhenDictCodeExists`
+- `DictAppServiceTests.UpdateAsync_ReturnsDictNotFoundBizCodeWhenEntityMissing`
+- `DictAppServiceTests.DeleteAsync_ReturnsDictNotFoundBizCodeWhenEntityMissing`
+
 ## 3. 自动化验证
 
 本轮完成后已执行：
@@ -783,6 +816,7 @@ dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter "ApproveAsync_RejectsWhenPendingApprovalWasAlreadyProcessed|RejectAsync_RejectsWhenPendingApprovalWasAlreadyProcessed"
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter "SubmitAsync_ReturnsResourceAlreadyExistsWhenRepositoryRejectsDuplicatePendingApproval|SubmitAsync_ReturnsResourceAlreadyExistsWhenInsertHitsUniqueConstraintRace"
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter "SaveConditionsAsync_LocksVersionInsideTransactionAndRejectsWhenStatusChangedAfterPreCheck|SaveActionsAsync_LocksVersionInsideTransactionAndRejectsWhenStatusChangedAfterPreCheck"
+dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore --filter "FormulaDefAppServiceTests|DictAppServiceTests"
 dotnet test tests\Pricing.RuleCenter.Core.Tests\Pricing.RuleCenter.Core.Tests.csproj --no-restore
 dotnet test tests\Pricing.RuleCenter.Tests\Pricing.RuleCenter.Tests.csproj --no-restore
 dotnet test src\Pricing.RuleCenter.slnx --no-restore
@@ -792,7 +826,7 @@ git diff --check
 结果：
 
 - Core tests：38 通过
-- API/Application tests：174 通过
+- API/Application tests：180 通过
 - 解决方案测试：全部通过
 - `git diff --check` 通过
 
@@ -816,7 +850,7 @@ git diff --check
 - 审批链路目前已经补了最小可用闭环，但还没有单独的“待审核列表分页 / 审批人权限 / 审批撤回 / 多级审批”能力；现阶段先保证“审批存在且执行入口真正消费审批结论”
 - 审批接口已经补了动作维度和状态前置校验，但还没有“审批记录唯一键/数据库约束”去彻底阻止并行重复提审，当前主要靠应用层校验
 - 审批状态推进已经改成 CAS，数据库侧也补了 `UK_PR_RAP_PENDING` 唯一索引；如果后续还要继续收口，可再评估是否补“提交审批时的显式申请锁”或更细的操作审计
-- 计价链路（`PricingAppService`）和规则维护主链路已经继续收口到 `BizException`，但普通维护接口与边角分支中仍有少量旧式 `InvalidOperationException` / `KeyNotFoundException` 残留，后续还需继续扫尾
+- 计价链路、规则维护主链路和 `Catalog` 维护入口已经继续收口到 `BizException`，但领域聚合、基础设施边角分支和少量非关键接口里仍有旧式异常残留，后续还需继续扫尾
 - 规则条件/动作保存已经补了事务内版本锁与重验；如果后续还要继续收口，可再评估是否在“提交审批后”到“正式发布前”增加更强的编辑冻结策略
 - Trace 查询接口若要直接按 `TraceId` 聚合展示，可再补专门查询入口和测试
 

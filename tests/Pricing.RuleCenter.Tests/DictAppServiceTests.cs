@@ -10,6 +10,35 @@ namespace Pricing.RuleCenter.Tests;
 public sealed class DictAppServiceTests
 {
     [Fact]
+    public async Task CreateAsync_ReturnsResourceAlreadyExistsBizCodeWhenDictCodeExists()
+    {
+        var repository = new InMemoryDictRepository(new Dict
+        {
+            DictId = 1,
+            DictType = "ACTION_TYPE",
+            DictCode = "FORMULA_CALC",
+            DictName = "公式计算",
+            IsEnabled = "Y"
+        });
+        var service = new DictAppService(
+            repository,
+            new EmptyRuleChangeLogRepository(),
+            new MemoryCache(new MemoryCacheOptions()),
+            new NoopCacheVersionSynchronizer(),
+            new CapturingRuleRuntimeCacheInvalidator(),
+            NullLogger<DictAppService>.Instance);
+
+        var ex = await Assert.ThrowsAsync<BizException>(() => service.CreateAsync(new DictCreateRequest
+        {
+            DictType = "ACTION_TYPE",
+            DictCode = "FORMULA_CALC",
+            DictName = "重复项"
+        }));
+
+        Assert.Equal(BizErrorCode.ResourceAlreadyExists, ex.Code);
+    }
+
+    [Fact]
     public async Task UpdateAsync_ClearsRuntimeCacheWhenActionTypeOrderChanges()
     {
         var repository = new InMemoryDictRepository(new Dict
@@ -39,6 +68,43 @@ public sealed class DictAppServiceTests
 
         Assert.Equal(1, runtimeCache.ClearCount);
         Assert.Equal(1, cacheVersionSynchronizer.IncreaseCount);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ReturnsDictNotFoundBizCodeWhenEntityMissing()
+    {
+        var repository = new InMemoryDictRepository();
+        var service = new DictAppService(
+            repository,
+            new EmptyRuleChangeLogRepository(),
+            new MemoryCache(new MemoryCacheOptions()),
+            new NoopCacheVersionSynchronizer(),
+            new CapturingRuleRuntimeCacheInvalidator(),
+            NullLogger<DictAppService>.Instance);
+
+        var ex = await Assert.ThrowsAsync<BizException>(() => service.UpdateAsync(999, new DictUpdateRequest
+        {
+            DictName = "不存在"
+        }));
+
+        Assert.Equal(BizErrorCode.DictNotFound, ex.Code);
+    }
+
+    [Fact]
+    public async Task DeleteAsync_ReturnsDictNotFoundBizCodeWhenEntityMissing()
+    {
+        var repository = new InMemoryDictRepository();
+        var service = new DictAppService(
+            repository,
+            new EmptyRuleChangeLogRepository(),
+            new MemoryCache(new MemoryCacheOptions()),
+            new NoopCacheVersionSynchronizer(),
+            new CapturingRuleRuntimeCacheInvalidator(),
+            NullLogger<DictAppService>.Instance);
+
+        var ex = await Assert.ThrowsAsync<BizException>(() => service.DeleteAsync(999));
+
+        Assert.Equal(BizErrorCode.DictNotFound, ex.Code);
     }
 
     private sealed class CapturingRuleRuntimeCacheInvalidator : IRuleRuntimeCacheInvalidator
