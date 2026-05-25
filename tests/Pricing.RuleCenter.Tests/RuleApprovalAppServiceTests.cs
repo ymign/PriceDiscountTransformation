@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Pricing.RuleCenter.Api.Application.Rules;
 using Pricing.RuleCenter.Api.Dto;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
+using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
 using Xunit;
 
@@ -343,6 +344,7 @@ public sealed class RuleApprovalAppServiceTests
             versionRepository,
             approvalRepository,
             changeLogRepository,
+            new NoopUnitOfWork(),
             NullLogger<RuleApprovalAppService>.Instance);
 
     private sealed class InMemoryRuleHeaderRepository : IRuleHeaderRepository
@@ -440,6 +442,16 @@ public sealed class RuleApprovalAppServiceTests
         {
             Items.Add(entity);
             return Task.FromResult(entity.ChangeId);
+        }
+    }
+
+    private sealed class NoopUnitOfWork : IUnitOfWork
+    {
+        public Task BeginAsync() => Task.CompletedTask;
+        public Task CommitAsync() => Task.CompletedTask;
+        public Task RollbackAsync() => Task.CompletedTask;
+        public void Dispose()
+        {
         }
     }
 }

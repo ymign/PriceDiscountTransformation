@@ -298,6 +298,7 @@ public sealed class RuleHeaderAppService
                 404,
                 $"规则不存在: {ruleId}");
 
+        await EnsureNoPendingPublishApprovalAsync(ruleId, entity.CurrentVersion);
         ValidatePublishedRuleUpdate(entity, request);
 
         // ========== 第二阶段：只更新主档可维护字段 ==========
@@ -371,6 +372,30 @@ public sealed class RuleHeaderAppService
     private static string? NormalizeString(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private async Task EnsureNoPendingPublishApprovalAsync(long ruleId, int versionNo)
+    {
+        if (versionNo <= 0)
+        {
+            return;
+        }
+
+        var logs = await _changeLogRepository.GetByRuleIdAsync(ruleId);
+        var latestApprovalSubmit = logs
+            .Where(log => log.VersionNo == versionNo)
+            .Where(log => string.Equals(log.ChangeType, "SUBMIT_APPROVAL", StringComparison.OrdinalIgnoreCase))
+            .Where(log => log.ChangeSummary?.Contains("PUBLISH", StringComparison.OrdinalIgnoreCase) == true)
+            .OrderByDescending(log => log.ChangedAt)
+            .FirstOrDefault();
+
+        if (latestApprovalSubmit is not null)
+        {
+            throw new BizException(
+                BizErrorCode.ApprovalPendingEditNotAllowed,
+                409,
+                $"RuleId={ruleId}, VersionNo={versionNo} 已提交发布审批，审批完成前不允许继续编辑");
+        }
     }
 
     /// <summary>

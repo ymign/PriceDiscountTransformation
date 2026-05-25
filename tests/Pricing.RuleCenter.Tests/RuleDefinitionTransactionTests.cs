@@ -338,6 +338,31 @@ public sealed class RuleDefinitionTransactionTests
     }
 
     [Fact]
+    public async Task SaveConditionsAsync_RejectsWhenPublishApprovalIsPending()
+    {
+        var unitOfWork = new FakeUnitOfWork();
+        var repository = new TransactionalRuleConditionRepository(unitOfWork);
+        var service = new RuleConditionAppService(
+            unitOfWork,
+            repository,
+            new FixedRuleVersionRepository(new RuleVersion
+            {
+                RuleId = 500,
+                VersionNo = 5,
+                VersionStatus = "DRAFT"
+            }),
+            new PendingPublishRuleChangeLogRepository(500, 5),
+            NullLogger<RuleConditionAppService>.Instance);
+
+        var ex = await Assert.ThrowsAsync<BizException>(() => service.SaveAsync(500, 5, new RuleConditionSaveRequest
+        {
+            Conditions = Array.Empty<RuleConditionItemRequest>()
+        }));
+
+        Assert.Equal(BizErrorCode.ApprovalPendingEditNotAllowed, ex.Code);
+    }
+
+    [Fact]
     public async Task SaveActionsAsync_LocksVersionInsideTransactionAndRejectsWhenStatusChangedAfterPreCheck()
     {
         var unitOfWork = new FakeUnitOfWork();
@@ -362,6 +387,31 @@ public sealed class RuleDefinitionTransactionTests
         Assert.Equal(1, unitOfWork.BeginCount);
         Assert.Equal(0, unitOfWork.CommitCount);
         Assert.Equal(1, unitOfWork.RollbackCount);
+    }
+
+    [Fact]
+    public async Task SaveActionsAsync_RejectsWhenPublishApprovalIsPending()
+    {
+        var unitOfWork = new FakeUnitOfWork();
+        var repository = new TransactionalRuleActionRepository(unitOfWork);
+        var service = new RuleActionAppService(
+            unitOfWork,
+            repository,
+            new FixedRuleVersionRepository(new RuleVersion
+            {
+                RuleId = 600,
+                VersionNo = 6,
+                VersionStatus = "DRAFT"
+            }),
+            new PendingPublishRuleChangeLogRepository(600, 6),
+            NullLogger<RuleActionAppService>.Instance);
+
+        var ex = await Assert.ThrowsAsync<BizException>(() => service.SaveAsync(600, 6, new RuleActionSaveRequest
+        {
+            Actions = Array.Empty<RuleActionItemRequest>()
+        }));
+
+        Assert.Equal(BizErrorCode.ApprovalPendingEditNotAllowed, ex.Code);
     }
 
     private sealed class FakeUnitOfWork : IUnitOfWork
@@ -738,6 +788,40 @@ public sealed class RuleDefinitionTransactionTests
 
         public Task<bool> UpdateStatusAsync(long versionId, string status, string? expectedCurrentStatus = null) =>
             Task.FromResult(true);
+    }
+
+    private sealed class PendingPublishRuleChangeLogRepository : IRuleChangeLogRepository
+    {
+        private readonly long _ruleId;
+        private readonly int _versionNo;
+
+        public PendingPublishRuleChangeLogRepository(long ruleId, int versionNo)
+        {
+            _ruleId = ruleId;
+            _versionNo = versionNo;
+        }
+
+        public Task<IReadOnlyList<RuleChangeLog>> GetByRuleIdAsync(long ruleId)
+        {
+            if (ruleId != _ruleId)
+            {
+                return Task.FromResult((IReadOnlyList<RuleChangeLog>)Array.Empty<RuleChangeLog>());
+            }
+
+            return Task.FromResult((IReadOnlyList<RuleChangeLog>)new[]
+            {
+                new RuleChangeLog
+                {
+                    RuleId = _ruleId,
+                    VersionNo = _versionNo,
+                    ChangeType = "SUBMIT_APPROVAL",
+                    ChangeSummary = "提交PUBLISH审批",
+                    ChangedAt = new DateTime(2026, 5, 22, 9, 0, 0)
+                }
+            });
+        }
+
+        public Task<long> InsertAsync(RuleChangeLog entity) => Task.FromResult(0L);
     }
 
     private sealed class EmptyRuleChangeLogRepository : IRuleChangeLogRepository

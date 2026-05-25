@@ -102,6 +102,9 @@ public static class BizErrorCode
     /// <summary>审批动作类型不合法或与当前状态不匹配。</summary>
     public const int ApprovalActionInvalid = 1023;
 
+    /// <summary>存在待审核发布申请时不允许继续编辑。</summary>
+    public const int ApprovalPendingEditNotAllowed = 1024;
+
     // ========== 计价计算类错误（2001-2099） ==========
 
     /// <summary>单价校验失败（渠道传入单价与权威单价不一致）。</summary>

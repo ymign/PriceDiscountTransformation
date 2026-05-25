@@ -157,6 +157,53 @@ public sealed class RuleHeaderServiceTests
     }
 
     [Fact]
+    public async Task UpdateAsync_RejectsWhenPublishApprovalIsPending()
+    {
+        var repository = new CapturingRuleHeaderRepository
+        {
+            Entity = new RuleHeader
+            {
+                RuleId = 102,
+                RuleCode = "RULE102",
+                RuleName = "待审规则",
+                RuleCategory = "MIXED",
+                RuleScope = "ITEM",
+                ItemCode = "ITEM102",
+                Status = "DRAFT",
+                IsEnabled = "Y"
+            }
+        };
+        using var cache = new MemoryCache(new MemoryCacheOptions());
+        var service = new RuleHeaderService(
+            repository,
+            new ApprovalAwareRuleChangeLogRepository(new RuleApproval
+            {
+                ApprovalId = 5001,
+                RuleId = 102,
+                VersionNo = 1,
+                ActionType = "PUBLISH",
+                ApprovalStatus = "PENDING",
+                SubmittedBy = "maker",
+                SubmittedAt = new DateTime(2026, 5, 22, 9, 0, 0)
+            }),
+            cache,
+            new NoopCacheVersionSynchronizer(),
+            NullLogger<RuleHeaderService>.Instance);
+
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
+            service.UpdateAsync(102, new RuleHeaderUpdateRequest
+            {
+                RuleName = "待审规则-修改",
+                RuleCategory = "MIXED",
+                RuleScope = "ITEM",
+                ItemCode = "ITEM102"
+            }));
+
+        Assert.Equal(BizErrorCode.ApprovalPendingEditNotAllowed, ex.Code);
+        Assert.False(repository.WasUpdated);
+    }
+
+    [Fact]
     public async Task UpdateAsync_AllowsPublishedRuleDisplayFieldChanges()
     {
         var repository = new CapturingRuleHeaderRepository
@@ -260,6 +307,39 @@ public sealed class RuleHeaderServiceTests
     private sealed class EmptyRuleChangeLogRepository : IRuleChangeLogRepository
     {
         public Task<IReadOnlyList<RuleChangeLog>> GetByRuleIdAsync(long ruleId) => Task.FromResult((IReadOnlyList<RuleChangeLog>)Array.Empty<RuleChangeLog>());
+        public Task<long> InsertAsync(RuleChangeLog entity) => Task.FromResult(0L);
+    }
+
+    private sealed class ApprovalAwareRuleChangeLogRepository : IRuleChangeLogRepository
+    {
+        private readonly RuleApproval _pendingApproval;
+
+        public ApprovalAwareRuleChangeLogRepository(RuleApproval pendingApproval)
+        {
+            _pendingApproval = pendingApproval;
+        }
+
+        public Task<IReadOnlyList<RuleChangeLog>> GetByRuleIdAsync(long ruleId)
+        {
+            if (ruleId != _pendingApproval.RuleId)
+            {
+                return Task.FromResult((IReadOnlyList<RuleChangeLog>)Array.Empty<RuleChangeLog>());
+            }
+
+            var logs = new List<RuleChangeLog>
+            {
+                new RuleChangeLog
+                {
+                    RuleId = _pendingApproval.RuleId,
+                    VersionNo = _pendingApproval.VersionNo,
+                    ChangeType = "SUBMIT_APPROVAL",
+                    ChangeSummary = _pendingApproval.ActionType,
+                    ChangedAt = _pendingApproval.SubmittedAt
+                }
+            };
+            return Task.FromResult((IReadOnlyList<RuleChangeLog>)logs);
+        }
+
         public Task<long> InsertAsync(RuleChangeLog entity) => Task.FromResult(0L);
     }
 

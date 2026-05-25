@@ -1,6 +1,7 @@
 using Pricing.RuleCenter.Api.Dto;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Models;
+using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
 
 namespace Pricing.RuleCenter.Api.Application.Rules;
@@ -21,6 +22,7 @@ public sealed class RuleApprovalAppService
     private readonly IRuleVersionRepository _versionRepository;
     private readonly IRuleApprovalRepository _approvalRepository;
     private readonly IRuleChangeLogRepository _changeLogRepository;
+    private readonly IUnitOfWork _unitOfWork;
     private readonly ILogger<RuleApprovalAppService> _logger;
 
     public RuleApprovalAppService(
@@ -28,12 +30,14 @@ public sealed class RuleApprovalAppService
         IRuleVersionRepository versionRepository,
         IRuleApprovalRepository approvalRepository,
         IRuleChangeLogRepository changeLogRepository,
+        IUnitOfWork unitOfWork,
         ILogger<RuleApprovalAppService> logger)
     {
         _headerRepository = headerRepository;
         _versionRepository = versionRepository;
         _approvalRepository = approvalRepository;
         _changeLogRepository = changeLogRepository;
+        _unitOfWork = unitOfWork;
         _logger = logger;
     }
 
@@ -45,12 +49,61 @@ public sealed class RuleApprovalAppService
 
     public async Task<long> SubmitAsync(long ruleId, int versionNo, RuleApprovalSubmitRequest request)
     {
-        var (header, version) = await EnsureRuleAndVersionExistAsync(ruleId, versionNo);
-
         var normalizedActionType = NormalizeActionType(request.ActionType);
-        ValidateApprovalActionState(header, version, normalizedActionType);
+        return string.Equals(normalizedActionType, "PUBLISH", StringComparison.OrdinalIgnoreCase)
+            ? await SubmitPublishApprovalWithVersionLockAsync(ruleId, versionNo, request, normalizedActionType)
+            : await SubmitApprovalAsync(ruleId, versionNo, request, normalizedActionType);
+    }
 
+    private async Task<long> SubmitApprovalAsync(
+        long ruleId,
+        int versionNo,
+        RuleApprovalSubmitRequest request,
+        string normalizedActionType)
+    {
+        var (header, version) = await EnsureRuleAndVersionExistAsync(ruleId, versionNo);
+        ValidateApprovalActionState(header, version, normalizedActionType);
+        return await InsertPendingApprovalAsync(ruleId, versionNo, request, normalizedActionType);
+    }
+
+    private async Task<long> SubmitPublishApprovalWithVersionLockAsync(
+        long ruleId,
+        int versionNo,
+        RuleApprovalSubmitRequest request,
+        string normalizedActionType)
+    {
+        await _unitOfWork.BeginAsync();
+        try
+        {
+            var header = await _headerRepository.GetByIdAsync(ruleId)
+                ?? throw new BizException(BizErrorCode.RuleNotFound, 404, $"规则不存在: {ruleId}");
+            var version = await _versionRepository.GetByRuleAndVersionForUpdateAsync(ruleId, versionNo)
+                ?? throw new BizException(
+                    BizErrorCode.RuleVersionNotFound,
+                    404,
+                    $"规则版本不存在: RuleId={ruleId}, VersionNo={versionNo}");
+
+            ValidateApprovalActionState(header, version, normalizedActionType);
+
+            var approvalId = await InsertPendingApprovalAsync(ruleId, versionNo, request, normalizedActionType);
+            await _unitOfWork.CommitAsync();
+            return approvalId;
+        }
+        catch
+        {
+            await _unitOfWork.RollbackAsync();
+            throw;
+        }
+    }
+
+    private async Task<long> InsertPendingApprovalAsync(
+        long ruleId,
+        int versionNo,
+        RuleApprovalSubmitRequest request,
+        string normalizedActionType)
+    {
         var approvals = await _approvalRepository.GetByRuleIdAsync(ruleId);
+
         var latest = approvals
             .Where(a => a.VersionNo == versionNo)
             .Where(a => string.Equals(a.ActionType, normalizedActionType, StringComparison.OrdinalIgnoreCase))
