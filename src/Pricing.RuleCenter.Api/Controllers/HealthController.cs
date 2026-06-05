@@ -1,5 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
-using Pricing.RuleCenter.Api.Dto;
+using Pricing.RuleCenter.Application.Dto;
 using SqlSugar;
 
 namespace Pricing.RuleCenter.Api.Controllers;
@@ -178,5 +178,6 @@ public sealed class HealthResult
     /// </summary>
     public string ProtocolVersion { get; init; } = PricingProtocolVersion;
 }
+
 
 

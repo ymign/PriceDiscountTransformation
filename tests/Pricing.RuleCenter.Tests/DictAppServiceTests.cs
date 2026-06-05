@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
-using Pricing.RuleCenter.Api.Application.Catalog;
-using Pricing.RuleCenter.Api.Dto;
+using Pricing.RuleCenter.Application.Catalog;
+using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Core.Interfaces;
 using Xunit;
 
@@ -181,3 +181,5 @@ public sealed class DictAppServiceTests
         public Task<long> InsertAsync(RuleChangeLog entity) => Task.FromResult(0L);
     }
 }
+
+

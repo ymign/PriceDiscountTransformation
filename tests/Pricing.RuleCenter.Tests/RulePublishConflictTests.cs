@@ -1,8 +1,8 @@
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using Newtonsoft.Json;
-using Pricing.RuleCenter.Api.Dto;
-using Pricing.RuleCenter.Api.Application.Rules;
+using Pricing.RuleCenter.Application.Dto;
+using Pricing.RuleCenter.Application.Rules;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
@@ -1602,3 +1602,5 @@ public sealed class RulePublishConflictTests
         public Task<bool> ExistsAsync(string dictType, string dictCode) => Task.FromResult(false);
     }
 }
+
+

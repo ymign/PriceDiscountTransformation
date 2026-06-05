@@ -1,4 +1,4 @@
-using Pricing.RuleCenter.Api.Dto;
+using Pricing.RuleCenter.Application.Dto;
 using Xunit;
 
 namespace Pricing.RuleCenter.Tests;
@@ -50,3 +50,4 @@ public sealed class PricingCalculateRequestTests
         Assert.Equal("SKIN001", request.Items[1].ItemCode);
     }
 }
+

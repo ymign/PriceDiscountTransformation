@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
-using Pricing.RuleCenter.Api.Application.Rules;
-using Pricing.RuleCenter.Api.Dto;
+using Pricing.RuleCenter.Application.Rules;
+using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
 using Xunit;
@@ -135,3 +135,5 @@ public sealed class RuleVersionAppServiceTests
         public Task<bool> UpdateStatusAsync(long versionId, string status, string? expectedCurrentStatus = null) => Task.FromResult(true);
     }
 }
+
+

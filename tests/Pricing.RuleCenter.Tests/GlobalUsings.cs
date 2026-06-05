@@ -7,9 +7,11 @@ global using Pricing.RuleCenter.Core.Interfaces.Charging;
 global using Pricing.RuleCenter.Core.Interfaces.Quota;
 global using Pricing.RuleCenter.Core.Interfaces.Rules;
 global using ChargeRequestLog = Pricing.RuleCenter.Core.Aggregates.Charging.ChargeRequest;
-global using PricingApiCalculationDependencies = Pricing.RuleCenter.Api.Application.Pricing.PricingAppCalculationDependencies;
-global using PricingApiPersistenceRepositories = Pricing.RuleCenter.Api.Application.Pricing.PricingAppPersistenceRepositories;
-global using PricingApiService = Pricing.RuleCenter.Api.Application.Pricing.PricingAppService;
-global using RuleHeaderService = Pricing.RuleCenter.Api.Application.Rules.RuleHeaderAppService;
+global using PricingApiCalculationDependencies = Pricing.RuleCenter.Application.Pricing.PricingAppCalculationDependencies;
+global using PricingApiPersistenceRepositories = Pricing.RuleCenter.Application.Pricing.PricingAppPersistenceRepositories;
+global using PricingApiService = Pricing.RuleCenter.Application.Pricing.PricingAppService;
+global using RuleHeaderService = Pricing.RuleCenter.Application.Rules.RuleHeaderAppService;
 global using RuleHeader = Pricing.RuleCenter.Core.Aggregates.Rules.RuleAggregate;
-global using RulePublishService = Pricing.RuleCenter.Api.Application.Rules.RulePublishAppService;
+global using RulePublishService = Pricing.RuleCenter.Application.Rules.RulePublishAppService;
+
+

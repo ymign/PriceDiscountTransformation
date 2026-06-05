@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
+    <ProjectReference Include="..\Pricing.RuleCenter.Application\Pricing.RuleCenter.Application.csproj" />
     <ProjectReference Include="..\Pricing.RuleCenter.Core\Pricing.RuleCenter.Core.csproj" />
     <ProjectReference Include="..\Pricing.RuleCenter.Infrastructure\Pricing.RuleCenter.Infrastructure.csproj" />
   </ItemGroup>

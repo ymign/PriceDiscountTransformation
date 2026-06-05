@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
-using Pricing.RuleCenter.Api.Application.Background;
-using Pricing.RuleCenter.Api.Application.Rules;
+using Pricing.RuleCenter.Application.Background;
+using Pricing.RuleCenter.Application.Rules;
 using Pricing.RuleCenter.Core.Aggregates.Catalog;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Catalog;
@@ -110,3 +110,5 @@ public sealed class CacheVersionSynchronizerTests
         }
     }
 }
+
+

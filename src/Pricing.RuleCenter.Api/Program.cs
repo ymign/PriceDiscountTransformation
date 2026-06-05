@@ -1,9 +1,9 @@
 using Pricing.RuleCenter.Api.Filters;
-using Pricing.RuleCenter.Api.Application.Pricing;
-using Pricing.RuleCenter.Api.Application.Rules;
-using Pricing.RuleCenter.Api.Application.Catalog;
-using Pricing.RuleCenter.Api.Application.Trace;
-using Pricing.RuleCenter.Api.Application.Background;
+using Pricing.RuleCenter.Application.Pricing;
+using Pricing.RuleCenter.Application.Rules;
+using Pricing.RuleCenter.Application.Catalog;
+using Pricing.RuleCenter.Application.Trace;
+using Pricing.RuleCenter.Application.Background;
 using Pricing.RuleCenter.Core.Engine;
 using Pricing.RuleCenter.Core.Engine.Evaluators;
 using Pricing.RuleCenter.Core.Engine.Executors;
@@ -25,6 +25,7 @@ builder.Services.AddScoped<RuleHeaderAppService>();
 builder.Services.AddScoped<RuleVersionAppService>();
 builder.Services.AddScoped<RuleConditionAppService>();
 builder.Services.AddScoped<RuleActionAppService>();
+builder.Services.AddScoped<RuleEditGuard>();
 builder.Services.AddScoped<RuleApprovalAppService>();
 builder.Services.AddScoped<RulePublishLifecycleRepositories>();
 builder.Services.AddScoped<RulePublishDefinitionRepositories>();
@@ -107,3 +108,5 @@ var app = builder.Build();
 app.MapControllers();
 
 app.Run();
+
+

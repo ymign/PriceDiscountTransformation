@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging.Abstractions;
-using Pricing.RuleCenter.Api.Dto;
+using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Api.Filters;
 using Pricing.RuleCenter.Core.Exceptions;
 using Xunit;
@@ -75,3 +75,4 @@ public sealed class GlobalExceptionFilterTests
         Assert.True(context.ExceptionHandled);
     }
 }
+

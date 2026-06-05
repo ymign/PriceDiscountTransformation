@@ -1,10 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
-using Pricing.RuleCenter.Api.Dto;
-using Pricing.RuleCenter.Api.Application.Pricing;
-using Pricing.RuleCenter.Api.Application.Rules;
-using Pricing.RuleCenter.Api.Application.Catalog;
-using Pricing.RuleCenter.Api.Application.Trace;
-using Pricing.RuleCenter.Api.Application.Background;
+using Pricing.RuleCenter.Application.Dto;
+using Pricing.RuleCenter.Application.Pricing;
+using Pricing.RuleCenter.Application.Rules;
+using Pricing.RuleCenter.Application.Catalog;
+using Pricing.RuleCenter.Application.Trace;
+using Pricing.RuleCenter.Application.Background;
 
 namespace Pricing.RuleCenter.Api.Controllers;
 
@@ -181,5 +181,7 @@ public sealed class DictController : ControllerBase
         return ApiResponse.Ok();
     }
 }
+
+
 
 

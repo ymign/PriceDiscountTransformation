@@ -1,11 +1,11 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
-using Pricing.RuleCenter.Api.Application.Background;
-using Pricing.RuleCenter.Api.Application.Catalog;
-using Pricing.RuleCenter.Api.Application.Rules;
+using Pricing.RuleCenter.Application.Background;
+using Pricing.RuleCenter.Application.Catalog;
+using Pricing.RuleCenter.Application.Rules;
 using Pricing.RuleCenter.Api.Controllers;
-using Pricing.RuleCenter.Api.Dto;
+using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Catalog;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
@@ -149,3 +149,5 @@ public sealed class ControllerNotFoundTests
         }
     }
 }
+
+

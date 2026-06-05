@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
-using Pricing.RuleCenter.Api.Application.Rules;
-using Pricing.RuleCenter.Api.Dto;
+using Pricing.RuleCenter.Application.Rules;
+using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 using Xunit;
@@ -351,3 +351,5 @@ public sealed class RuleHeaderServiceTests
             Task.FromResult(0L);
     }
 }
+
+

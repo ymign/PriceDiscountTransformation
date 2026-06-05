@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
-using Pricing.RuleCenter.Api.Application.Catalog;
-using Pricing.RuleCenter.Api.Dto;
+using Pricing.RuleCenter.Application.Catalog;
+using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Core.Aggregates.Catalog;
 using Pricing.RuleCenter.Core.Interfaces.Catalog;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
@@ -96,3 +96,5 @@ public sealed class FormulaDefAppServiceTests
         public Task<long> InsertAsync(RuleChangeLog entity) => Task.FromResult(0L);
     }
 }
+
+

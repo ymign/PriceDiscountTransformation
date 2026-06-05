@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
-using Pricing.RuleCenter.Api.Dto;
-using Pricing.RuleCenter.Api.Application.Pricing;
+using Pricing.RuleCenter.Application.Dto;
+using Pricing.RuleCenter.Application.Pricing;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 using Pricing.RuleCenter.Core.Options;
@@ -928,3 +928,5 @@ public sealed class PricingReverseTests
         public Task<decimal?> GetUnitPriceAsync(string itemCode) => Task.FromResult<decimal?>(null);
     }
 }
+
+

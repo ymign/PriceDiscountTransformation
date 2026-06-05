@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
-using Pricing.RuleCenter.Api.Dto;
+using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Core.Exceptions;
 
 namespace Pricing.RuleCenter.Api.Filters;
@@ -132,3 +132,4 @@ public sealed class GlobalExceptionFilter : IExceptionFilter
         context.ExceptionHandled = true;
     }
 }
+
