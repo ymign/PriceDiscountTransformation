@@ -27,7 +27,7 @@ public sealed class GlobalExceptionFilterTests
 
         var result = Assert.IsType<ObjectResult>(context.Result);
         Assert.Equal(409, result.StatusCode);
-        var response = Assert.IsType<ApiResponse>(result.Value);
+        var response = Assert.IsType<ApiResult>(result.Value);
         Assert.Equal(BizErrorCode.RuleVersionConcurrencyConflict, response.Code);
         Assert.Equal("版本并发冲突", response.Message);
         Assert.True(context.ExceptionHandled);
@@ -48,7 +48,7 @@ public sealed class GlobalExceptionFilterTests
 
         var result = Assert.IsType<ObjectResult>(context.Result);
         Assert.Equal(409, result.StatusCode);
-        var response = Assert.IsType<ApiResponse>(result.Value);
+        var response = Assert.IsType<ApiResult>(result.Value);
         Assert.Equal(BizErrorCode.ConcurrencyConflict, response.Code);
         Assert.Equal("锁竞争失败", response.Message);
         Assert.True(context.ExceptionHandled);
@@ -69,7 +69,7 @@ public sealed class GlobalExceptionFilterTests
 
         var result = Assert.IsType<ObjectResult>(context.Result);
         Assert.Equal(500, result.StatusCode);
-        var response = Assert.IsType<ApiResponse>(result.Value);
+        var response = Assert.IsType<ApiResult>(result.Value);
         Assert.Equal(BizErrorCode.LimitLockFailed, response.Code);
         Assert.Equal("锁表数据库故障", response.Message);
         Assert.True(context.ExceptionHandled);

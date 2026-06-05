@@ -30,7 +30,7 @@ public sealed class ControllerNotFoundTests
         var result = await controller.GetByIdAsync(999);
 
         var notFound = Assert.IsType<NotFoundObjectResult>(result.Result);
-        var response = Assert.IsType<ApiResponse>(notFound.Value);
+        var response = Assert.IsType<ApiResult>(notFound.Value);
         Assert.Equal(404, response.Code);
     }
 
@@ -46,7 +46,7 @@ public sealed class ControllerNotFoundTests
         var result = await controller.GetByIdAsync(999);
 
         var notFound = Assert.IsType<NotFoundObjectResult>(result.Result);
-        var response = Assert.IsType<ApiResponse>(notFound.Value);
+        var response = Assert.IsType<ApiResult>(notFound.Value);
         Assert.Equal(404, response.Code);
     }
 
@@ -62,7 +62,7 @@ public sealed class ControllerNotFoundTests
         var result = await controller.GetByIdAsync(999);
 
         var notFound = Assert.IsType<NotFoundObjectResult>(result.Result);
-        var response = Assert.IsType<ApiResponse>(notFound.Value);
+        var response = Assert.IsType<ApiResult>(notFound.Value);
         Assert.Equal(404, response.Code);
     }
 
@@ -82,7 +82,7 @@ public sealed class ControllerNotFoundTests
         var result = await controller.GetByIdAsync(999);
 
         var notFound = Assert.IsType<NotFoundObjectResult>(result.Result);
-        var response = Assert.IsType<ApiResponse>(notFound.Value);
+        var response = Assert.IsType<ApiResult>(notFound.Value);
         Assert.Equal(404, response.Code);
     }
 

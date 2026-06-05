@@ -28,6 +28,7 @@
 *.bak
 *.orig
 *.rej
+TestResults/
 
 # Legacy Visual SourceSafe metadata
 *.scc

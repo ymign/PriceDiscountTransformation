@@ -1,0 +1,181 @@
+using Pricing.RuleCenter.Core.Interfaces;
+using Pricing.RuleCenter.Core.Interfaces.Quota;
+using Pricing.RuleCenter.Core.Aggregates.Quota;
+using SqlSugar;
+
+namespace Pricing.RuleCenter.Infrastructure.Repositories.Quota;
+
+/// <summary>
+/// 限额占用仓储实现。
+/// </summary>
+/// <remarks>
+/// <para>
+/// 【职责范围】
+/// 封装 PR_LIMIT_OCCUPY 与 PR_LIMIT_LOCK 两张表的全部数据访问操作，包括：
+/// 占用数量/金额查询、占用明细查询、锁行创建与锁定、占用记录插入、状态更新。
+/// </para>
+/// <para>
+/// 【并发控制模型】
+/// 限额占用是资金安全中的并发控制点。采用 SELECT FOR UPDATE 模式实现悲观锁：
+///   1. 规则执行器在 confirm 阶段先调用 EnsureAndLockAsync 锁定 PR_LIMIT_LOCK
+///   2. 锁定后查询 PR_LIMIT_OCCUPY 的 PENDING/CONFIRMED 净占用
+///   3. 校验未超限后写入新的 PENDING 占用
+///   4. 事务提交后锁自动释放
+/// </para>
+/// <para>
+/// 【两张表的分工】
+///   - PR_LIMIT_LOCK：纯锁表，只存储 LOCK_KEY，用于 SELECT FOR UPDATE 的加锁目标
+///   - PR_LIMIT_OCCUPY：占用明细表，存储每次计价的限额占用记录
+/// 分离设计避免占用表的行数膨胀影响锁性能。
+/// </para>
+/// <para>
+/// 【锁键排序策略】
+/// 多个锁键按字典序（StringComparer.Ordinal）排序后逐个锁定，
+/// 保证不同请求在锁多个小时桶时保持同一加锁顺序，降低死锁概率。
+/// </para>
+/// <para>
+/// 【状态枚举】
+///   - PENDING   — 已占用但未确认（confirm 后、commit 前）
+///   - CONFIRMED — 已确认（HIS 落账成功）
+///   - CANCELLED — 已取消（cancel 后释放）
+///   - EXPIRED   — 已过期（保护期超时自动释放）
+///   - REVERSED  — 已冲销（退费后释放）
+/// </para>
+/// <para>
+/// 【事务要求】
+/// EnsureAndLockAsync 必须在外层事务中调用，否则 SELECT FOR UPDATE 的锁
+/// 会在语句结束后立即释放，失去并发控制意义。
+/// </para>
+/// </remarks>
+public sealed class LimitOccupyRepository : ILimitOccupyRepository
+{
+    private readonly ISqlSugarClient _db;
+    private readonly ILimitLockRepository _limitLockRepository;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="LimitOccupyRepository"/> class.
+    /// </summary>
+    /// <param name="db">SqlSugar 数据库访问客户端。</param>
+    /// <param name="limitLockRepository">限额锁仓储，用于在写入占用前获取悲观锁。</param>
+    public LimitOccupyRepository(ISqlSugarClient db, ILimitLockRepository limitLockRepository)
+    {
+        _db = db;
+        _limitLockRepository = limitLockRepository;
+    }
+
+    /// <summary>
+    /// 按单个限额键和状态查询占用数量合计。
+    /// </summary>
+    public async Task<decimal> GetOccupiedQtyAsync(string limitKey, string status)
+    {
+        var result = await _db.Queryable<LimitOccupy>()
+            .Where(o => o.LimitKey == limitKey && o.Status == status)
+            .SumAsync(o => o.OccupyQty);
+        return result;
+    }
+
+    /// <summary>
+    /// 按限额类型、业务维度和业务时间窗口查询净占用数量。
+    /// </summary>
+    public async Task<decimal> GetOccupiedQtyAsync(LimitOccupyRangeQuery query)
+    {
+        var statusArray = query.Statuses.ToArray();
+
+        var result = await _db.Queryable<LimitOccupy>()
+            .Where(o =>
+                o.LimitType == query.LimitType &&
+                o.LimitDimensionCode == query.LimitDimensionCode &&
+                statusArray.Contains(o.Status) &&
+                o.BusinessChargeTime >= query.StartTime &&
+                o.BusinessChargeTime <= query.EndTime)
+            .SumAsync(o => o.OccupyQty);
+        return result;
+    }
+
+    /// <summary>
+    /// 按单个限额键和状态查询占用金额合计。
+    /// </summary>
+    public async Task<decimal> GetOccupiedAmtAsync(string limitKey, string status)
+    {
+        var result = await _db.Queryable<LimitOccupy>()
+            .Where(o => o.LimitKey == limitKey && o.Status == status)
+            .SumAsync(o => o.OccupyAmt);
+        return result;
+    }
+
+    /// <summary>
+    /// 按维度编码查询指定状态下的已占用金额。
+    /// </summary>
+    public async Task<decimal> GetOccupiedAmtByDimensionAsync(string dimensionCode, string status)
+    {
+        var result = await _db.Queryable<LimitOccupy>()
+            .Where(o => o.LimitDimensionCode == dimensionCode && o.Status == status)
+            .SumAsync(o => o.OccupyAmt);
+        return result;
+    }
+
+    /// <summary>
+    /// 按请求日志主键读取限额占用明细。
+    /// </summary>
+    public async Task<IReadOnlyList<LimitOccupy>> GetByRequestIdAsync(long requestId)
+    {
+        return await _db.Queryable<LimitOccupy>()
+            .Where(o => o.RequestId == requestId)
+            .ToListAsync();
+    }
+
+    /// <summary>
+    /// 确保限额锁行存在，并按固定顺序执行数据库行锁。
+    /// </summary>
+    /// <remarks>
+    /// 多个锁键按字典序排序后逐个锁定，保证不同请求保持同一加锁顺序，降低死锁概率。
+    /// EXPIRE_AT 设置为当前时间 + 10 分钟，供 CleanupExpiredAsync 清理长时间未释放的锁行。
+    /// </remarks>
+    public async Task EnsureAndLockAsync(IReadOnlyCollection<string> lockKeys)
+    {
+        var expireAt = DateTime.Now.AddMinutes(10);
+        foreach (var lockKey in lockKeys.OrderBy(k => k, StringComparer.Ordinal))
+        {
+            await _limitLockRepository.AcquireLockAsync(lockKey, expireAt);
+        }
+    }
+
+    /// <summary>
+    /// 插入限额占用记录。
+    /// </summary>
+    public async Task<long> InsertAsync(LimitOccupy entity)
+    {
+        var seq = await _db.Ado.GetLongAsync("SELECT SEQ_PR_LIMIT_OCCUPY.NEXTVAL FROM DUAL");
+        entity.OccupyId = seq;
+        await _db.Insertable(entity).ExecuteCommandAsync();
+        return seq;
+    }
+
+    /// <summary>
+    /// 按占用主键更新单条限额占用状态。
+    /// </summary>
+    public async Task UpdateStatusAsync(long occupyId, string status)
+    {
+        await _db.Updateable<LimitOccupy>()
+            .SetColumns(o => o.Status == status)
+            .Where(o => o.OccupyId == occupyId)
+            .ExecuteCommandAsync();
+    }
+
+    /// <summary>
+    /// 按请求日志主键批量更新限额占用状态。
+    /// </summary>
+    public async Task UpdateStatusByRequestIdAsync(long requestId, string status)
+    {
+        var update = _db.Updateable<LimitOccupy>()
+            .SetColumns(o => o.Status == status);
+
+        if (status == "CONFIRMED")
+        {
+            var now = DateTime.Now;
+            update = update.SetColumns(o => o.ConfirmedAt == now);
+        }
+
+        await update.Where(o => o.RequestId == requestId).ExecuteCommandAsync();
+    }
+}
