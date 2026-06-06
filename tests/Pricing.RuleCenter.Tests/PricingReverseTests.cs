@@ -2,6 +2,10 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Pricing;
+using Pricing.RuleCenter.Application.Pricing.AuthorityPrice;
+using Pricing.RuleCenter.Application.Pricing.Idempotency;
+using Pricing.RuleCenter.Application.Pricing.Persistence;
+using Pricing.RuleCenter.Application.Pricing.UseCases;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 using Pricing.RuleCenter.Core.Options;
@@ -766,21 +770,123 @@ public sealed class PricingReverseTests
         IChargeRequestLogRepository requestRepository,
         IChargeDiscountDetailRepository discountRepository,
         ILimitOccupyRepository limitRepository,
-        IChargeReverseLogRepository reverseRepository) =>
-        new(
-            new PricingApiCalculationDependencies(
-                new EmptyPricingEngine(),
-                new EmptyRuleHeaderRepository(),
-                new EmptyPriceMasterRepository()),
-            new PricingApiPersistenceRepositories(
-                requestRepository,
-                discountRepository,
-                new EmptyTraceStepRepository(),
-                limitRepository,
-                reverseRepository),
-            new NoopUnitOfWork(),
-            Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
-            NullLogger<PricingApiService>.Instance);
+        IChargeReverseLogRepository reverseRepository)
+    {
+        var options = Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false });
+        var unitOfWork = new NoopUnitOfWork();
+        var traceStepRepository = new EmptyTraceStepRepository();
+        var calculationDependencies = new PricingApiCalculationDependencies(
+            new EmptyPricingEngine(),
+            new EmptyRuleHeaderRepository(),
+            new EmptyPriceMasterRepository());
+        var repositories = new PricingApiPersistenceRepositories(
+            requestRepository,
+            discountRepository,
+            traceStepRepository,
+            limitRepository,
+            reverseRepository);
+        var authorityPriceChecker = new AuthorityPriceChecker(
+            new EmptyPriceMasterRepository(),
+            options,
+            NullLogger<AuthorityPriceChecker>.Instance);
+        var idempotencyService = new PricingIdempotencyService(requestRepository);
+        var clock = new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0));
+        var requestLogWriter = new PricingRequestLogWriter(requestRepository, clock);
+        var traceStepWriter = new PricingTraceStepWriter(traceStepRepository, clock);
+        var discountDetailWriter = new PricingDiscountDetailWriter(discountRepository, clock);
+        var limitOccupyWriter = new PricingLimitOccupyWriter(
+            limitRepository,
+            options,
+            NullLogger<PricingLimitOccupyWriter>.Instance,
+            clock);
+        var reverseLogWriter = new PricingReverseLogWriter(requestRepository, reverseRepository, clock);
+
+        return new PricingApiService(
+            new SimulatePricingUseCase(
+                calculationDependencies,
+                repositories,
+                authorityPriceChecker,
+                idempotencyService,
+                requestLogWriter,
+                traceStepWriter,
+                discountDetailWriter,
+                limitOccupyWriter,
+                reverseLogWriter,
+                unitOfWork,
+                options,
+                clock,
+                NullLogger<SimulatePricingUseCase>.Instance),
+            new ConfirmPricingUseCase(
+                calculationDependencies,
+                repositories,
+                authorityPriceChecker,
+                idempotencyService,
+                requestLogWriter,
+                traceStepWriter,
+                discountDetailWriter,
+                limitOccupyWriter,
+                reverseLogWriter,
+                unitOfWork,
+                options,
+                clock,
+                NullLogger<ConfirmPricingUseCase>.Instance),
+            new CommitPricingUseCase(
+                calculationDependencies,
+                repositories,
+                authorityPriceChecker,
+                idempotencyService,
+                requestLogWriter,
+                traceStepWriter,
+                discountDetailWriter,
+                limitOccupyWriter,
+                reverseLogWriter,
+                unitOfWork,
+                options,
+                clock,
+                NullLogger<CommitPricingUseCase>.Instance),
+            new CancelPricingUseCase(
+                calculationDependencies,
+                repositories,
+                authorityPriceChecker,
+                idempotencyService,
+                requestLogWriter,
+                traceStepWriter,
+                discountDetailWriter,
+                limitOccupyWriter,
+                reverseLogWriter,
+                unitOfWork,
+                options,
+                clock,
+                NullLogger<CancelPricingUseCase>.Instance),
+            new ReversePricingUseCase(
+                calculationDependencies,
+                repositories,
+                authorityPriceChecker,
+                idempotencyService,
+                requestLogWriter,
+                traceStepWriter,
+                discountDetailWriter,
+                limitOccupyWriter,
+                reverseLogWriter,
+                unitOfWork,
+                options,
+                clock,
+                NullLogger<ReversePricingUseCase>.Instance),
+            new GetSpecialFlagUseCase(
+                calculationDependencies,
+                repositories,
+                authorityPriceChecker,
+                idempotencyService,
+                requestLogWriter,
+                traceStepWriter,
+                discountDetailWriter,
+                limitOccupyWriter,
+                reverseLogWriter,
+                unitOfWork,
+                options,
+                clock,
+                NullLogger<GetSpecialFlagUseCase>.Instance));
+    }
 
     private sealed class NoopUnitOfWork : IUnitOfWork
     {

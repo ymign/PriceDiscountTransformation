@@ -2,10 +2,13 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using Newtonsoft.Json;
 using Pricing.RuleCenter.Application.Background;
-using Pricing.RuleCenter.Application.Rules.Publishing;
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Rules;
+using Pricing.RuleCenter.Application.Rules.Guards;
+using Pricing.RuleCenter.Application.Rules.Publishing;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
+using Pricing.RuleCenter.Core.Constants;
+using Pricing.RuleCenter.Core.Engine.Formula;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 using Xunit;
@@ -492,114 +495,6 @@ public sealed class RulePublishConflictTests
 
         Assert.Equal(1, runtimeCache.ClearCount);
     }
-    [Fact]
-    public async Task PublishAsync_WhenCacheVersionBroadcastFails_KeepsRetryableOutboxRows()
-    {
-        var headerRepository = new InMemoryRuleHeaderRepository();
-        var versionRepository = new InMemoryRuleVersionRepository();
-        var conditionRepository = new InMemoryRuleConditionRepository();
-        var actionRepository = new InMemoryRuleActionRepository();
-        var testCaseRepository = new InMemoryRuleTestCaseRepository();
-        var testRunRepository = new InMemoryRuleTestRunRepository();
-        var runtimeCache = new CapturingRuleRuntimeCacheInvalidator();
-        var outboxRepository = new InMemoryRuleCacheInvalidationOutboxRepository();
-        var service = CreateService(
-            headerRepository,
-            versionRepository,
-            conditionRepository,
-            actionRepository,
-            runtimeCacheInvalidator: runtimeCache,
-            testCaseRepository: testCaseRepository,
-            testRunRepository: testRunRepository,
-            cacheVersionSynchronizer: new ThrowingCacheVersionSynchronizer(),
-            cacheInvalidationOutboxRepository: outboxRepository);
-
-        headerRepository.Headers.Add(new RuleHeader
-        {
-            RuleId = 14,
-            RuleCode = "R-OUTBOX",
-            ItemCode = "ITEM014",
-            CurrentVersion = 0,
-            Status = "DRAFT",
-            IsEnabled = "Y",
-            EffectiveFrom = new DateTime(2026, 1, 1),
-            EffectiveTo = new DateTime(2026, 12, 31)
-        });
-        versionRepository.Versions.Add(new RuleVersion
-        {
-            VersionId = 141,
-            RuleId = 14,
-            VersionNo = 1,
-            VersionStatus = "DRAFT"
-        });
-        actionRepository.Add(14, 1, new RuleAction
-        {
-            RuleId = 14,
-            VersionNo = 1,
-            ActionType = "FORMULA_CALC",
-            ExecutorCode = "INCREMENT_PERCENT",
-            OnError = "STOP",
-            IsEnabled = "Y"
-        });
-        AddPassingTestCase(testCaseRepository, testRunRepository, 14, 1, 2014, 3014);
-
-        await service.PublishAsync(14, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" });
-
-        Assert.Equal("PUBLISHED", headerRepository.Headers.Single().Status);
-        Assert.Equal(1, runtimeCache.ClearCount);
-        Assert.Equal(2, outboxRepository.Items.Count);
-        Assert.Contains(outboxRepository.Items, item => item.CacheScope == CacheVersionSynchronizer.EffectiveRulesScope);
-        Assert.Contains(outboxRepository.Items, item => item.CacheScope == CacheVersionSynchronizer.ActionTypeOrderScope);
-        Assert.All(outboxRepository.Items, item =>
-        {
-            Assert.Equal(CacheInvalidationOutboxStatusCodes.Failed, item.Status);
-            Assert.Equal(1, item.RetryCount);
-            Assert.NotNull(item.NextRetryAt);
-        });
-    }
-
-    [Fact]
-    public async Task RuleCacheInvalidationOutboxProcessor_QueriesPendingRowsWithInjectedClock()
-    {
-        var now = new DateTime(2026, 5, 22, 10, 30, 0);
-        var outboxRepository = new InMemoryRuleCacheInvalidationOutboxRepository();
-        var processor = new RuleCacheInvalidationOutboxProcessor(
-            outboxRepository,
-            new NoopCacheVersionSynchronizer(),
-            new FixedClock(now),
-            NullLogger<RuleCacheInvalidationOutboxProcessor>.Instance);
-
-        await processor.ProcessPendingAsync();
-
-        Assert.Equal(now, outboxRepository.LastPendingQueryNow);
-    }
-
-    [Fact]
-    public async Task RuleCacheInvalidationOutboxProcessor_ComputesRetryTimeFromInjectedClock()
-    {
-        var now = new DateTime(2026, 5, 22, 10, 30, 0);
-        var outboxRepository = new InMemoryRuleCacheInvalidationOutboxRepository();
-        outboxRepository.Items.Add(new RuleCacheInvalidationOutbox
-        {
-            OutboxId = 1,
-            CacheScope = CacheVersionSynchronizer.EffectiveRulesScope,
-            Status = CacheInvalidationOutboxStatusCodes.Pending,
-            RetryCount = 0,
-            CreatedAt = now.AddMinutes(-1)
-        });
-        var processor = new RuleCacheInvalidationOutboxProcessor(
-            outboxRepository,
-            new ThrowingCacheVersionSynchronizer(),
-            new FixedClock(now),
-            NullLogger<RuleCacheInvalidationOutboxProcessor>.Instance);
-
-        await processor.ProcessPendingAsync();
-
-        var item = Assert.Single(outboxRepository.Items);
-        Assert.Equal(CacheInvalidationOutboxStatusCodes.Failed, item.Status);
-        Assert.Equal(1, item.RetryCount);
-        Assert.Equal(now.AddSeconds(2), item.NextRetryAt);
-    }
 
     [Fact]
     public async Task PublishAsync_ReEnablesRuleWhenPublishingFromDisabledHeader()
@@ -662,6 +557,55 @@ public sealed class RulePublishConflictTests
         Assert.Equal("PUBLISHED", header.Status);
         Assert.Equal("Y", header.IsEnabled);
         Assert.Equal(2, header.CurrentVersion);
+    }
+
+    [Fact]
+    public async Task PublishAsync_WhenCacheVersionBroadcastFails_KeepsRetryableOutboxRows()
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var versionRepository = new InMemoryRuleVersionRepository();
+        var conditionRepository = new InMemoryRuleConditionRepository();
+        var actionRepository = new InMemoryRuleActionRepository();
+        var testCaseRepository = new InMemoryRuleTestCaseRepository();
+        var testRunRepository = new InMemoryRuleTestRunRepository();
+        var runtimeCache = new CapturingRuleRuntimeCacheInvalidator();
+        var outboxRepository = new InMemoryRuleCacheInvalidationOutboxRepository();
+        var service = CreateService(
+            headerRepository,
+            versionRepository,
+            conditionRepository,
+            actionRepository,
+            runtimeCacheInvalidator: runtimeCache,
+            testCaseRepository: testCaseRepository,
+            testRunRepository: testRunRepository,
+            cacheVersionSynchronizer: new ThrowingCacheVersionSynchronizer(),
+            cacheInvalidationOutboxRepository: outboxRepository);
+
+        AddDraftRule(headerRepository, versionRepository, 14, "ITEM014");
+        actionRepository.Add(14, 1, new RuleAction
+        {
+            RuleId = 14,
+            VersionNo = 1,
+            ActionType = "FORMULA_CALC",
+            ExecutorCode = "INCREMENT_PERCENT",
+            OnError = "STOP",
+            IsEnabled = "Y"
+        });
+        AddPassingTestCase(testCaseRepository, testRunRepository, 14, 1, 2014, 3014);
+
+        await service.PublishAsync(14, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" });
+
+        Assert.Equal("PUBLISHED", headerRepository.Headers.Single().Status);
+        Assert.Equal(1, runtimeCache.ClearCount);
+        Assert.Equal(2, outboxRepository.Items.Count);
+        Assert.Contains(outboxRepository.Items, item => item.CacheScope == CacheVersionSynchronizer.EffectiveRulesScope);
+        Assert.Contains(outboxRepository.Items, item => item.CacheScope == CacheVersionSynchronizer.ActionTypeOrderScope);
+        Assert.All(outboxRepository.Items, item =>
+        {
+            Assert.Equal(CacheInvalidationOutboxStatusCodes.Failed, item.Status);
+            Assert.Equal(1, item.RetryCount);
+            Assert.NotNull(item.NextRetryAt);
+        });
     }
 
     [Fact]
@@ -770,7 +714,6 @@ public sealed class RulePublishConflictTests
         Assert.Equal(BizErrorCode.ActionParamMissing, ex.Code);
     }
 
-
     [Fact]
     public async Task PublishAsync_RejectsUnknownConditionType()
     {
@@ -811,7 +754,7 @@ public sealed class RulePublishConflictTests
         var ex = await Assert.ThrowsAsync<BizException>(() =>
             service.PublishAsync(91, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" }));
 
-        Assert.Equal(1026, ex.Code);
+        Assert.Equal(BizErrorCode.RuleConditionUnsupported, ex.Code);
     }
 
     [Fact]
@@ -846,7 +789,7 @@ public sealed class RulePublishConflictTests
         var ex = await Assert.ThrowsAsync<BizException>(() =>
             service.PublishAsync(92, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" }));
 
-        Assert.Equal(1027, ex.Code);
+        Assert.Equal(BizErrorCode.RuleActionUnsupported, ex.Code);
     }
 
     [Fact]
@@ -881,13 +824,13 @@ public sealed class RulePublishConflictTests
         var ex = await Assert.ThrowsAsync<BizException>(() =>
             service.PublishAsync(93, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" }));
 
-        Assert.Equal(1025, ex.Code);
+        Assert.Equal(BizErrorCode.RuleCapabilityUnsupported, ex.Code);
     }
 
     [Theory]
-    [InlineData("ConvertQtyByPartExecutor")]
-    [InlineData("AreaStepIncrementExecutor")]
-    [InlineData("ChildItemPercentExecutor")]
+    [InlineData(FormulaExecutorCodes.ConvertQtyByPartExecutor)]
+    [InlineData(FormulaExecutorCodes.AreaStepIncrementExecutor)]
+    [InlineData(FormulaExecutorCodes.ChildItemPercentExecutor)]
     public async Task PublishAsync_AllowsSeededFormulaExecutorAliases(string executorCode)
     {
         var headerRepository = new InMemoryRuleHeaderRepository();
@@ -909,22 +852,22 @@ public sealed class RulePublishConflictTests
         {
             RuleId = 95,
             VersionNo = 1,
-            ActionType = "FORMULA_CALC",
+            ActionType = RuleActionTypeCodes.FormulaCalc,
             ExecutorCode = executorCode,
-            OnError = "STOP",
-            IsEnabled = "Y"
+            OnError = ActionOnErrorCodes.Stop,
+            IsEnabled = EnableFlag.Yes
         });
         AddPassingTestCase(testCaseRepository, testRunRepository, 95, 1, 2095, 3095);
 
         await service.PublishAsync(95, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" });
 
-        Assert.Equal("PUBLISHED", headerRepository.Headers.Single(h => h.RuleId == 95).Status);
+        Assert.Equal(RuleStatusCodes.Published, headerRepository.Headers.Single(h => h.RuleId == 95).Status);
     }
 
     [Theory]
-    [InlineData("CHARGE_SCENE_MATCH")]
-    [InlineData("BODY_PART_MATCH")]
-    [InlineData("ITEM_CODE")]
+    [InlineData(RuleConditionTypeCodes.ChargeSceneMatch)]
+    [InlineData(RuleConditionTypeCodes.BodyPartMatch)]
+    [InlineData(RuleConditionTypeCodes.ItemCode)]
     public async Task PublishAsync_AllowsConditionAliasesHandledByRuntime(string conditionType)
     {
         var headerRepository = new InMemoryRuleHeaderRepository();
@@ -948,22 +891,58 @@ public sealed class RulePublishConflictTests
             VersionNo = 1,
             ConditionType = conditionType,
             RightValue = "ITEM096",
-            IsEnabled = "Y"
+            IsEnabled = EnableFlag.Yes
         });
         actionRepository.Add(96, 1, new RuleAction
         {
             RuleId = 96,
             VersionNo = 1,
-            ActionType = "FORMULA_CALC",
-            ExecutorCode = "INCREMENT_PERCENT",
-            OnError = "STOP",
-            IsEnabled = "Y"
+            ActionType = RuleActionTypeCodes.FormulaCalc,
+            ExecutorCode = FormulaExecutorCodes.IncrementPercent,
+            OnError = ActionOnErrorCodes.Stop,
+            IsEnabled = EnableFlag.Yes
         });
         AddPassingTestCase(testCaseRepository, testRunRepository, 96, 1, 2096, 3096);
 
         await service.PublishAsync(96, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" });
 
-        Assert.Equal("PUBLISHED", headerRepository.Headers.Single(h => h.RuleId == 96).Status);
+        Assert.Equal(RuleStatusCodes.Published, headerRepository.Headers.Single(h => h.RuleId == 96).Status);
+    }
+
+    [Fact]
+    public async Task PublishAsync_RejectsExpressionFormulaWithUnknownVariable()
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var versionRepository = new InMemoryRuleVersionRepository();
+        var conditionRepository = new InMemoryRuleConditionRepository();
+        var actionRepository = new InMemoryRuleActionRepository();
+        var testCaseRepository = new InMemoryRuleTestCaseRepository();
+        var testRunRepository = new InMemoryRuleTestRunRepository();
+        var service = CreateService(
+            headerRepository,
+            versionRepository,
+            conditionRepository,
+            actionRepository,
+            testCaseRepository: testCaseRepository,
+            testRunRepository: testRunRepository);
+
+        AddDraftRule(headerRepository, versionRepository, 94, "ITEM094");
+        actionRepository.Add(94, 1, new RuleAction
+        {
+            RuleId = 94,
+            VersionNo = 1,
+            ActionType = "FORMULA_CALC",
+            ExecutorCode = "EXPRESSION_FORMULA",
+            ParamsJson = JsonConvert.SerializeObject(new { expression = "unitPrice * unknownQty" }),
+            OnError = "STOP",
+            IsEnabled = "Y"
+        });
+        AddPassingTestCase(testCaseRepository, testRunRepository, 94, 1, 2094, 3094);
+
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
+            service.PublishAsync(94, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" }));
+
+        Assert.Equal(BizErrorCode.RuleFormulaUnsupported, ex.Code);
     }
 
     [Fact]
@@ -1430,33 +1409,6 @@ public sealed class RulePublishConflictTests
         Assert.Equal("PUBLISHED", versionRepository.Versions.Single(v => v.VersionId == 132).VersionStatus);
     }
 
-
-    private static void AddDraftRule(
-        InMemoryRuleHeaderRepository headerRepository,
-        InMemoryRuleVersionRepository versionRepository,
-        long ruleId,
-        string itemCode)
-    {
-        headerRepository.Headers.Add(new RuleHeader
-        {
-            RuleId = ruleId,
-            RuleCode = $"R-{ruleId}",
-            ItemCode = itemCode,
-            CurrentVersion = 0,
-            Status = "DRAFT",
-            IsEnabled = "Y",
-            EffectiveFrom = new DateTime(2026, 1, 1),
-            EffectiveTo = new DateTime(2026, 12, 31)
-        });
-        versionRepository.Versions.Add(new RuleVersion
-        {
-            VersionId = ruleId * 10,
-            RuleId = ruleId,
-            VersionNo = 1,
-            VersionStatus = "DRAFT"
-        });
-    }
-
     private static void AddPassingTestCase(
         InMemoryRuleTestCaseRepository testCaseRepository,
         InMemoryRuleTestRunRepository testRunRepository,
@@ -1485,6 +1437,32 @@ public sealed class RulePublishConflictTests
         });
     }
 
+    private static void AddDraftRule(
+        InMemoryRuleHeaderRepository headerRepository,
+        InMemoryRuleVersionRepository versionRepository,
+        long ruleId,
+        string itemCode)
+    {
+        headerRepository.Headers.Add(new RuleHeader
+        {
+            RuleId = ruleId,
+            RuleCode = $"R-{ruleId}",
+            ItemCode = itemCode,
+            CurrentVersion = 0,
+            Status = "DRAFT",
+            IsEnabled = "Y",
+            EffectiveFrom = new DateTime(2026, 1, 1),
+            EffectiveTo = new DateTime(2026, 12, 31)
+        });
+        versionRepository.Versions.Add(new RuleVersion
+        {
+            VersionId = ruleId * 10,
+            RuleId = ruleId,
+            VersionNo = 1,
+            VersionStatus = "DRAFT"
+        });
+    }
+
     private static RulePublishService CreateService(
         IRuleHeaderRepository headerRepository,
         IRuleVersionRepository versionRepository,
@@ -1500,34 +1478,99 @@ public sealed class RulePublishConflictTests
         ICacheVersionSynchronizer? cacheVersionSynchronizer = null,
         IRuleCacheInvalidationOutboxRepository? cacheInvalidationOutboxRepository = null)
     {
+        var lifecycleRepositories = new RulePublishLifecycleRepositories(
+            headerRepository,
+            versionRepository,
+            publishRepository ?? new EmptyRulePublishRepository(),
+            changeLogRepository ?? new EmptyRuleChangeLogRepository(),
+            approvalRepository ?? new AutoApprovedRuleApprovalRepository(versionRepository));
+        var definitionRepositories = new RulePublishDefinitionRepositories(
+            conditionRepository,
+            actionRepository,
+            dictRepository ?? new EmptyDictRepository(),
+            testCaseRepository ?? new InMemoryRuleTestCaseRepository(),
+            testRunRepository ?? new InMemoryRuleTestRunRepository());
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        var unitOfWork = new NoopUnitOfWork();
+        var transactionWriter = new RulePublishTransactionWriter(
+            unitOfWork,
+            NullLogger<RulePublishTransactionWriter>.Instance);
         cacheVersionSynchronizer ??= new NoopCacheVersionSynchronizer();
+        var clock = new FixedClock(new DateTime(2026, 5, 22, 10, 0, 0));
+        var cacheInvalidator = runtimeCacheInvalidator ?? new EmptyRuleRuntimeCacheInvalidator();
+        var publishCacheInvalidator = new RulePublishCacheInvalidator(
+            cache,
+            cacheInvalidator,
+            NullLogger<RulePublishCacheInvalidator>.Instance);
         cacheInvalidationOutboxRepository ??= new InMemoryRuleCacheInvalidationOutboxRepository();
         var outboxProcessor = new RuleCacheInvalidationOutboxProcessor(
             cacheInvalidationOutboxRepository,
             cacheVersionSynchronizer,
-            new FixedClock(new DateTime(2026, 5, 22, 10, 0, 0)),
+            clock,
             NullLogger<RuleCacheInvalidationOutboxProcessor>.Instance);
+        var expressionValidator = new FormulaExpressionValidator(
+            new FormulaExpressionEvaluator(new FormulaFunctionRegistry()));
+        var actionParameterValidator = new RuleActionParameterValidator(expressionValidator);
+        var criticalActionGuard = new RuleCriticalActionGuard();
+        var childItemGuard = new RuleChildItemGuard();
+        var testCaseGate = new RuleTestCaseGate(
+            definitionRepositories.TestCaseRepository,
+            definitionRepositories.TestRunRepository);
+        var approvalGate = new RuleApprovalGate(
+            lifecycleRepositories.ApprovalRepository,
+            lifecycleRepositories.ChangeLogRepository);
+        var conflictDetector = new RuleConflictDetector(
+            lifecycleRepositories.HeaderRepository,
+            definitionRepositories.ConditionRepository,
+            definitionRepositories.ActionRepository,
+            definitionRepositories.DictRepository,
+            NullLogger<RuleConflictDetector>.Instance);
+        var capabilityGuard = new RuleCapabilityGuard(expressionValidator);
+        var publishGuard = new RulePublishGuard(
+            definitionRepositories.ConditionRepository,
+            definitionRepositories.ActionRepository,
+            actionParameterValidator,
+            criticalActionGuard,
+            childItemGuard,
+            testCaseGate,
+            conflictDetector,
+            capabilityGuard);
 
         return new RulePublishService(
-            new RulePublishLifecycleRepositories(
-                headerRepository,
-                versionRepository,
-                publishRepository ?? new EmptyRulePublishRepository(),
-                changeLogRepository ?? new EmptyRuleChangeLogRepository(),
-                approvalRepository ?? new AutoApprovedRuleApprovalRepository(versionRepository)),
-            new RulePublishDefinitionRepositories(
-                conditionRepository,
-                actionRepository,
-                dictRepository ?? new EmptyDictRepository(),
-                testCaseRepository ?? new InMemoryRuleTestCaseRepository(),
-                testRunRepository ?? new InMemoryRuleTestRunRepository()),
-            new MemoryCache(new MemoryCacheOptions()),
-            new NoopUnitOfWork(),
-            cacheVersionSynchronizer,
-            cacheInvalidationOutboxRepository,
-            outboxProcessor,
-            runtimeCacheInvalidator ?? new EmptyRuleRuntimeCacheInvalidator(),
-            NullLogger<RulePublishService>.Instance);
+            lifecycleRepositories,
+            new PublishRuleUseCase(
+                lifecycleRepositories,
+                definitionRepositories,
+                transactionWriter,
+                publishCacheInvalidator,
+                cacheInvalidationOutboxRepository,
+                outboxProcessor,
+                clock,
+                approvalGate,
+                publishGuard,
+                NullLogger<PublishRuleUseCase>.Instance),
+            new DisableRuleUseCase(
+                lifecycleRepositories,
+                definitionRepositories,
+                transactionWriter,
+                publishCacheInvalidator,
+                cacheInvalidationOutboxRepository,
+                outboxProcessor,
+                clock,
+                approvalGate,
+                publishGuard,
+                NullLogger<DisableRuleUseCase>.Instance),
+            new RollbackRuleUseCase(
+                lifecycleRepositories,
+                definitionRepositories,
+                transactionWriter,
+                publishCacheInvalidator,
+                cacheInvalidationOutboxRepository,
+                outboxProcessor,
+                clock,
+                approvalGate,
+                publishGuard,
+                NullLogger<RollbackRuleUseCase>.Instance));
     }
 
     private sealed class NoopUnitOfWork : IUnitOfWork
@@ -1567,6 +1610,7 @@ public sealed class RulePublishConflictTests
         public Task<long> IncreaseVersionAsync(string cacheScope, CancellationToken cancellationToken = default) =>
             Task.FromResult(0L);
     }
+
     private sealed class ThrowingCacheVersionSynchronizer : ICacheVersionSynchronizer
     {
         public Task SyncAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
@@ -1577,21 +1621,9 @@ public sealed class RulePublishConflictTests
         }
     }
 
-    private sealed class FixedClock : IClock
-    {
-        public FixedClock(DateTime now)
-        {
-            Now = now;
-        }
-
-        public DateTime Now { get; }
-    }
-
     private sealed class InMemoryRuleCacheInvalidationOutboxRepository : IRuleCacheInvalidationOutboxRepository
     {
         public List<RuleCacheInvalidationOutbox> Items { get; } = new();
-
-        public DateTime? LastPendingQueryNow { get; private set; }
 
         public Task<long> InsertAsync(RuleCacheInvalidationOutbox entity)
         {
@@ -1602,7 +1634,6 @@ public sealed class RulePublishConflictTests
 
         public Task<IReadOnlyList<RuleCacheInvalidationOutbox>> GetPendingAsync(DateTime now, int maxCount)
         {
-            LastPendingQueryNow = now;
             var items = Items
                 .Where(i => i.Status != CacheInvalidationOutboxStatusCodes.Processed)
                 .Where(i => i.NextRetryAt is null || i.NextRetryAt <= now)

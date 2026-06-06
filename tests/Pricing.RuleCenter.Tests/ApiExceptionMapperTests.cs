@@ -42,6 +42,47 @@ public sealed class ApiExceptionMapperTests
     }
 
     [Theory]
+    [InlineData(2014, "RequestId=100 ResponseJson={not-json", "幂等响应快照异常，请联系管理员处理")]
+    [InlineData(BizErrorCode.CommitAmountMismatch, "ITEM001 expected=20 actual=21", "HIS实际落账明细与确认计价结果不一致")]
+    [InlineData(BizErrorCode.CommitQtyMismatch, "ITEM001 expectedQty=2 actualQty=3", "HIS实际落账明细与确认计价结果不一致")]
+    [InlineData(BizErrorCode.CommitDetailMismatch, "ChargeDetailNo=CD001 缺失", "HIS实际落账明细与确认计价结果不一致")]
+    public void Map_ShouldHideSensitiveBusinessDetails(
+        int code,
+        string internalMessage,
+        string expectedClientMessage)
+    {
+        var mapped = ApiExceptionMapper.Map(new BizException(code, 409, internalMessage));
+
+        Assert.Equal(409, mapped.StatusCode);
+        Assert.Equal(code, mapped.Code);
+        Assert.Equal(expectedClientMessage, mapped.Message);
+        Assert.DoesNotContain("ITEM001", mapped.Message);
+        Assert.DoesNotContain("RequestId", mapped.Message);
+        Assert.DoesNotContain("ChargeDetailNo", mapped.Message);
+    }
+
+    [Theory]
+    [InlineData(true, 409, BizErrorCode.ConcurrencyConflict, "限额锁竞争失败，请稍后重试")]
+    [InlineData(false, 500, BizErrorCode.LimitLockFailed, "限额锁处理失败")]
+    public void Map_ShouldHideLimitLockDetails(
+        bool isConcurrencyConflict,
+        int expectedStatusCode,
+        int expectedCode,
+        string expectedMessage)
+    {
+        var mapped = ApiExceptionMapper.Map(new LimitLockException(
+            "LIMIT:P001:ITEM001:20260510",
+            isConcurrencyConflict,
+            "锁表数据库故障: LIMIT:P001:ITEM001:20260510"));
+
+        Assert.Equal(expectedStatusCode, mapped.StatusCode);
+        Assert.Equal(expectedCode, mapped.Code);
+        Assert.Equal(expectedMessage, mapped.Message);
+        Assert.DoesNotContain("P001", mapped.Message);
+        Assert.DoesNotContain("ITEM001", mapped.Message);
+    }
+
+    [Theory]
     [MemberData(nameof(ExceptionCases))]
     public void Map_ShouldUseSameStatusCodeAndBusinessCodeForSupportedExceptions(
         Exception exception,
@@ -85,14 +126,14 @@ public sealed class ApiExceptionMapperTests
             new LimitLockException("LK-001", true, "锁竞争失败"),
             409,
             BizErrorCode.ConcurrencyConflict,
-            "锁竞争失败"
+            "限额锁竞争失败，请稍后重试"
         };
         yield return new object[]
         {
             new LimitLockException("LK-002", false, "锁表数据库故障"),
             500,
             BizErrorCode.LimitLockFailed,
-            "锁表数据库故障"
+            "限额锁处理失败"
         };
         yield return new object[]
         {

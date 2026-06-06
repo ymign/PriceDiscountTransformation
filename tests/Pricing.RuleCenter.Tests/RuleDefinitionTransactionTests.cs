@@ -37,6 +37,7 @@ public sealed class RuleDefinitionTransactionTests
             repository,
             new DraftRuleVersionRepository(100, 1),
             new EmptyRuleChangeLogRepository(),
+            new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0)),
             NullLogger<RuleConditionAppService>.Instance);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.SaveAsync(100, 1, new RuleConditionSaveRequest
@@ -89,6 +90,7 @@ public sealed class RuleDefinitionTransactionTests
             repository,
             new DraftRuleVersionRepository(100, 1),
             new EmptyRuleChangeLogRepository(),
+            new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0)),
             NullLogger<RuleConditionAppService>.Instance);
 
         await service.SaveAsync(100, 1, new RuleConditionSaveRequest
@@ -143,6 +145,7 @@ public sealed class RuleDefinitionTransactionTests
             repository,
             new DraftRuleVersionRepository(200, 2),
             new EmptyRuleChangeLogRepository(),
+            new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0)),
             NullLogger<RuleActionAppService>.Instance);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.SaveAsync(200, 2, new RuleActionSaveRequest
@@ -193,6 +196,7 @@ public sealed class RuleDefinitionTransactionTests
             repository,
             new DraftRuleVersionRepository(200, 2),
             new EmptyRuleChangeLogRepository(),
+            new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0)),
             NullLogger<RuleActionAppService>.Instance);
 
         await service.SaveAsync(200, 2, new RuleActionSaveRequest
@@ -230,6 +234,7 @@ public sealed class RuleDefinitionTransactionTests
             repository,
             new DraftRuleVersionRepository(999, 9),
             new EmptyRuleChangeLogRepository(),
+            new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0)),
             NullLogger<RuleConditionAppService>.Instance);
 
         var ex = await Assert.ThrowsAsync<BizException>(() => service.SaveAsync(100, 1, new RuleConditionSaveRequest
@@ -255,6 +260,7 @@ public sealed class RuleDefinitionTransactionTests
                 VersionStatus = "PUBLISHED"
             }),
             new EmptyRuleChangeLogRepository(),
+            new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0)),
             NullLogger<RuleConditionAppService>.Instance);
 
         var ex = await Assert.ThrowsAsync<BizException>(() => service.SaveAsync(100, 1, new RuleConditionSaveRequest
@@ -275,6 +281,7 @@ public sealed class RuleDefinitionTransactionTests
             repository,
             new DraftRuleVersionRepository(999, 9),
             new EmptyRuleChangeLogRepository(),
+            new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0)),
             NullLogger<RuleActionAppService>.Instance);
 
         var ex = await Assert.ThrowsAsync<BizException>(() => service.SaveAsync(200, 2, new RuleActionSaveRequest
@@ -300,6 +307,7 @@ public sealed class RuleDefinitionTransactionTests
                 VersionStatus = "DISABLED"
             }),
             new EmptyRuleChangeLogRepository(),
+            new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0)),
             NullLogger<RuleActionAppService>.Instance);
 
         var ex = await Assert.ThrowsAsync<BizException>(() => service.SaveAsync(200, 2, new RuleActionSaveRequest
@@ -323,6 +331,7 @@ public sealed class RuleDefinitionTransactionTests
             repository,
             versionRepository,
             new EmptyRuleChangeLogRepository(),
+            new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0)),
             NullLogger<RuleConditionAppService>.Instance);
 
         var ex = await Assert.ThrowsAsync<BizException>(() => service.SaveAsync(300, 3, new RuleConditionSaveRequest
@@ -352,6 +361,7 @@ public sealed class RuleDefinitionTransactionTests
                 VersionStatus = "DRAFT"
             }),
             new PendingPublishRuleChangeLogRepository(500, 5),
+            new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0)),
             NullLogger<RuleConditionAppService>.Instance);
 
         var ex = await Assert.ThrowsAsync<BizException>(() => service.SaveAsync(500, 5, new RuleConditionSaveRequest
@@ -375,6 +385,7 @@ public sealed class RuleDefinitionTransactionTests
             repository,
             versionRepository,
             new EmptyRuleChangeLogRepository(),
+            new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0)),
             NullLogger<RuleActionAppService>.Instance);
 
         var ex = await Assert.ThrowsAsync<BizException>(() => service.SaveAsync(400, 4, new RuleActionSaveRequest
@@ -404,6 +415,7 @@ public sealed class RuleDefinitionTransactionTests
                 VersionStatus = "DRAFT"
             }),
             new PendingPublishRuleChangeLogRepository(600, 6),
+            new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0)),
             NullLogger<RuleActionAppService>.Instance);
 
         var ex = await Assert.ThrowsAsync<BizException>(() => service.SaveAsync(600, 6, new RuleActionSaveRequest

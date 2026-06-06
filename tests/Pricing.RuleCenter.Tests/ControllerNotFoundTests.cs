@@ -24,6 +24,7 @@ public sealed class ControllerNotFoundTests
             new EmptyRuleChangeLogRepository(),
             cache,
             new NoopCacheVersionSynchronizer(),
+            new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0)),
             NullLogger<RuleHeaderService>.Instance);
         var controller = new RuleHeaderController(service);
 
@@ -56,6 +57,7 @@ public sealed class ControllerNotFoundTests
         var service = new FormulaDefAppService(
             new EmptyFormulaDefRepository(),
             new EmptyRuleChangeLogRepository(),
+            new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0)),
             NullLogger<FormulaDefAppService>.Instance);
         var controller = new FormulaDefController(service);
 
@@ -76,6 +78,7 @@ public sealed class ControllerNotFoundTests
             cache,
             new NoopCacheVersionSynchronizer(),
             new EmptyRuleRuntimeCacheInvalidator(),
+            new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0)),
             NullLogger<DictAppService>.Instance);
         var controller = new DictController(service);
 

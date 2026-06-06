@@ -43,7 +43,7 @@ public sealed class ConvertQtyByPartExecutor : IRuleActionExecutor
     /// <summary>
     /// 获取动作类型编码。与其他公式执行器共享 FORMULA_CALC，通过 ExecutorCode 做二级分派。
     /// </summary>
-    public string ActionType => "FORMULA_CALC";
+    public string ActionType => RuleActionTypeCodes.FormulaCalc;
 
     /// <summary>
     /// 判断当前公式动作是否应由按部位面积换算公式执行器处理。

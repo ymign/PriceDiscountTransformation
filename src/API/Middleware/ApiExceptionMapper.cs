@@ -23,7 +23,7 @@ public static class ApiExceptionMapper
             LimitLockException ex => new ApiExceptionMapping(
                 ex.IsConcurrencyConflict ? 409 : 500,
                 ex.IsConcurrencyConflict ? BizErrorCode.ConcurrencyConflict : BizErrorCode.LimitLockFailed,
-                ex.Message),
+                GetLimitLockClientMessage(ex)),
             ArgumentException ex => new ApiExceptionMapping(400, 400, ex.Message),
             KeyNotFoundException ex => new ApiExceptionMapping(404, 404, ex.Message),
             InvalidOperationException ex => new ApiExceptionMapping(409, 409, ex.Message),
@@ -33,9 +33,22 @@ public static class ApiExceptionMapper
 
     private static string GetBizExceptionClientMessage(BizException exception)
     {
-        return exception.Code == BizErrorCode.PriceMismatch
-            ? "单价与权威物价不一致"
-            : exception.Message;
+        return exception.Code switch
+        {
+            BizErrorCode.PriceMismatch => "单价与权威物价不一致",
+            BizErrorCode.IdempotencyResponseSnapshotInvalid => "幂等响应快照异常，请联系管理员处理",
+            BizErrorCode.CommitDetailMismatch
+                or BizErrorCode.CommitQtyMismatch
+                or BizErrorCode.CommitAmountMismatch => "HIS实际落账明细与确认计价结果不一致",
+            _ => exception.Message
+        };
+    }
+
+    private static string GetLimitLockClientMessage(LimitLockException exception)
+    {
+        return exception.IsConcurrencyConflict
+            ? "限额锁竞争失败，请稍后重试"
+            : "限额锁处理失败";
     }
 }
 

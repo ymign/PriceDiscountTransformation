@@ -25,6 +25,7 @@ public sealed class FormulaDefAppServiceTests
         var service = new FormulaDefAppService(
             repository,
             new EmptyRuleChangeLogRepository(),
+            new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0)),
             NullLogger<FormulaDefAppService>.Instance);
 
         var ex = await Assert.ThrowsAsync<BizException>(() => service.CreateAsync(new FormulaDefCreateRequest
@@ -44,6 +45,7 @@ public sealed class FormulaDefAppServiceTests
         var service = new FormulaDefAppService(
             repository,
             new EmptyRuleChangeLogRepository(),
+            new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0)),
             NullLogger<FormulaDefAppService>.Instance);
 
         var ex = await Assert.ThrowsAsync<BizException>(() => service.UpdateAsync(999, new FormulaDefUpdateRequest
@@ -62,6 +64,7 @@ public sealed class FormulaDefAppServiceTests
         var service = new FormulaDefAppService(
             repository,
             new EmptyRuleChangeLogRepository(),
+            new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0)),
             NullLogger<FormulaDefAppService>.Instance);
 
         var ex = await Assert.ThrowsAsync<BizException>(() => service.ToggleAsync(999));

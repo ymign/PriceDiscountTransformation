@@ -41,6 +41,15 @@ public static class RuleConditionTypeCodes
     /// <summary>收费科室排除条件。</summary>
     public const string ChargeDeptExclude = "CHARGE_DEPT_EXCLUDE";
 
+    /// <summary>医保类型匹配条件。</summary>
+    public const string InsuranceTypeMatch = "INSURANCE_TYPE_MATCH";
+
+    /// <summary>诊断匹配条件。</summary>
+    public const string DiagnosisMatch = "DIAGNOSIS_MATCH";
+
+    /// <summary>设备类型匹配条件。</summary>
+    public const string DeviceTypeMatch = "DEVICE_TYPE_MATCH";
+
     private static readonly HashSet<string> Supported = CreateSet(
         ItemMatch,
         ItemCode,
@@ -53,7 +62,10 @@ public static class RuleConditionTypeCodes
         VisitTypeMatch,
         AgeMatch,
         GroupMatch,
-        ChargeDeptExclude);
+        ChargeDeptExclude,
+        InsuranceTypeMatch,
+        DiagnosisMatch,
+        DeviceTypeMatch);
 
     private static readonly Dictionary<string, string[]> Aliases = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -65,12 +77,16 @@ public static class RuleConditionTypeCodes
     /// <summary>
     /// 判断条件类型是否可由当前规则引擎表达。
     /// </summary>
+    /// <param name="conditionType">条件类型编码。</param>
+    /// <returns><see langword="true" /> 表示支持；否则为 <see langword="false" />。</returns>
     public static bool IsSupported(string? conditionType) =>
         !string.IsNullOrWhiteSpace(conditionType) && Supported.Contains(conditionType);
 
     /// <summary>
     /// 获取条件类型的标准码和兼容别名。
     /// </summary>
+    /// <param name="conditionType">条件类型标准编码。</param>
+    /// <returns>可映射到同一评估器的一组条件类型编码。</returns>
     public static IReadOnlyList<string> GetAliases(string conditionType) =>
         Aliases.TryGetValue(conditionType, out var aliases)
             ? aliases
@@ -134,11 +150,28 @@ public static class RuleActionTypeCodes
     /// <summary>
     /// 判断动作类型是否可由当前规则引擎表达。
     /// </summary>
+    /// <param name="actionType">动作类型编码。</param>
+    /// <returns><see langword="true" /> 表示支持；否则为 <see langword="false" />。</returns>
     public static bool IsSupported(string? actionType) =>
         !string.IsNullOrWhiteSpace(actionType) && Supported.Contains(actionType);
 
     private static HashSet<string> CreateSet(params string[] codes) =>
         new(codes, StringComparer.OrdinalIgnoreCase);
+}
+
+/// <summary>
+/// 规则动作异常处理策略编码。
+/// </summary>
+public static class ActionOnErrorCodes
+{
+    /// <summary>动作失败时中断后续计价。</summary>
+    public const string Stop = "STOP";
+
+    /// <summary>动作失败时跳过当前动作。</summary>
+    public const string Skip = "SKIP";
+
+    /// <summary>动作失败时记录警告并继续。</summary>
+    public const string Warn = "WARN";
 }
 
 /// <summary>
@@ -170,6 +203,9 @@ public static class FormulaExecutorCodes
     /// <summary>子项百分比加收公式种子执行器别名。</summary>
     public const string ChildItemPercentExecutor = "ChildItemPercentExecutor";
 
+    /// <summary>表达式公式编码。</summary>
+    public const string ExpressionFormula = "EXPRESSION_FORMULA";
+
     private static readonly HashSet<string> Supported = CreateSet(
         IncrementPercent,
         IncrementPercentExecutor,
@@ -178,37 +214,56 @@ public static class FormulaExecutorCodes
         ConvertQtyByPart,
         ConvertQtyByPartExecutor,
         ChildItemPercent,
-        ChildItemPercentExecutor);
+        ChildItemPercentExecutor,
+        ExpressionFormula);
 
     /// <summary>
     /// 判断公式执行器编码是否可由当前规则引擎表达。
     /// </summary>
+    /// <param name="executorCode">公式执行器编码。</param>
+    /// <returns><see langword="true" /> 表示支持；否则为 <see langword="false" />。</returns>
     public static bool IsSupported(string? executorCode) =>
         !string.IsNullOrWhiteSpace(executorCode) && Supported.Contains(executorCode);
 
     /// <summary>
     /// 判断是否为增量比例公式编码或别名。
     /// </summary>
+    /// <param name="executorCode">公式执行器编码。</param>
+    /// <returns><see langword="true" /> 表示匹配；否则为 <see langword="false" />。</returns>
     public static bool IsIncrementPercent(string? executorCode) =>
         IsAny(executorCode, IncrementPercent, IncrementPercentExecutor);
 
     /// <summary>
     /// 判断是否为面积分段递增公式编码或别名。
     /// </summary>
+    /// <param name="executorCode">公式执行器编码。</param>
+    /// <returns><see langword="true" /> 表示匹配；否则为 <see langword="false" />。</returns>
     public static bool IsAreaStepIncrement(string? executorCode) =>
         IsAny(executorCode, AreaStepIncrement, AreaStepIncrementExecutor);
 
     /// <summary>
     /// 判断是否为分部位数量换算公式编码或别名。
     /// </summary>
+    /// <param name="executorCode">公式执行器编码。</param>
+    /// <returns><see langword="true" /> 表示匹配；否则为 <see langword="false" />。</returns>
     public static bool IsConvertQtyByPart(string? executorCode) =>
         IsAny(executorCode, ConvertQtyByPart, ConvertQtyByPartExecutor);
 
     /// <summary>
     /// 判断是否为子项百分比加收公式编码或别名。
     /// </summary>
+    /// <param name="executorCode">公式执行器编码。</param>
+    /// <returns><see langword="true" /> 表示匹配；否则为 <see langword="false" />。</returns>
     public static bool IsChildItemPercent(string? executorCode) =>
         IsAny(executorCode, ChildItemPercent, ChildItemPercentExecutor);
+
+    /// <summary>
+    /// 判断是否为表达式公式编码。
+    /// </summary>
+    /// <param name="executorCode">公式执行器编码。</param>
+    /// <returns><see langword="true" /> 表示匹配；否则为 <see langword="false" />。</returns>
+    public static bool IsExpressionFormula(string? executorCode) =>
+        IsAny(executorCode, ExpressionFormula);
 
     private static bool IsAny(string? value, params string[] candidates) =>
         candidates.Any(candidate => string.Equals(value, candidate, StringComparison.OrdinalIgnoreCase));

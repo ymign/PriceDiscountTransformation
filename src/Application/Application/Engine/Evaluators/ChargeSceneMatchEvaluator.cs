@@ -1,3 +1,4 @@
+using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Models;
@@ -26,7 +27,7 @@ public sealed class ChargeSceneMatchEvaluator : IRuleConditionEvaluator
     /// <summary>
     /// 获取条件类型编码，对应 PR_RULE_CONDITION.CONDITION_TYPE = "CHARGE_SCENE"。
     /// </summary>
-    public string ConditionType => "CHARGE_SCENE";
+    public string ConditionType => RuleConditionTypeCodes.ChargeScene;
 
     /// <summary>
     /// 异步评估收费场景条件。当前评估只依赖内存上下文，使用 <see cref="ValueTask{TResult}"/> 避免额外任务分配。

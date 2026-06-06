@@ -48,6 +48,7 @@ public sealed class RuleConditionAppService
     /// </summary>
     private readonly IRuleChangeLogRepository _changeLogRepository;
     private readonly RuleEditGuard _editGuard;
+    private readonly IClock _clock;
 
     /// <summary>
     /// 服务日志，用于记录条件集合保存数量，便于追溯某次保存是否清空了所有条件。
@@ -61,6 +62,7 @@ public sealed class RuleConditionAppService
     /// <param name="conditionRepository">规则条件仓储。</param>
     /// <param name="versionRepository">规则版本仓储。</param>
     /// <param name="changeLogRepository">变更日志仓储，用于写入条件保存的审计记录。</param>
+    /// <param name="clock">系统技术时间提供者。</param>
     /// <param name="logger">日志对象。</param>
     /// <param name="editGuard">规则编辑保护器；为空时基于变更日志仓储创建默认保护器。</param>
     public RuleConditionAppService(
@@ -68,6 +70,7 @@ public sealed class RuleConditionAppService
         IRuleConditionRepository conditionRepository,
         IRuleVersionRepository versionRepository,
         IRuleChangeLogRepository changeLogRepository,
+        IClock clock,
         ILogger<RuleConditionAppService> logger,
         RuleEditGuard? editGuard = null)
     {
@@ -75,6 +78,7 @@ public sealed class RuleConditionAppService
         _conditionRepository = conditionRepository;
         _versionRepository = versionRepository;
         _changeLogRepository = changeLogRepository;
+        _clock = clock;
         _logger = logger;
         _editGuard = editGuard ?? new RuleEditGuard(changeLogRepository);
     }
@@ -185,7 +189,7 @@ public sealed class RuleConditionAppService
                 ChangeType = changeType,
                 ChangeSummary = changeSummary,
                 ChangedBy = "SYSTEM",
-                ChangedAt = DateTime.Now,
+                ChangedAt = _clock.Now,
                 SourceSystem = "API"
             });
         }

@@ -1,8 +1,10 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Caching.Memory;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Catalog;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
+using Pricing.RuleCenter.Core.Engine.RuleRuntimeSnapshot;
 using Pricing.RuleCenter.Core.Models;
 
 namespace Pricing.RuleCenter.Core.Engine;
@@ -42,20 +44,7 @@ namespace Pricing.RuleCenter.Core.Engine;
 /// </remarks>
 public sealed class RuleMatchService : IRuleRuntimeCacheInvalidator
 {
-    /// <summary>
-    /// 规则主档仓储，用于按项目编码读取候选规则（PR_RULE_HEADER）。
-    /// </summary>
-    private readonly IRuleHeaderRepository _headerRepository;
-
-    /// <summary>
-    /// 规则条件仓储，用于读取候选规则当前版本下的条件集合（PR_RULE_CONDITION）。
-    /// </summary>
-    private readonly IRuleConditionRepository _conditionRepository;
-
-    /// <summary>
-    /// 规则动作仓储，用于读取命中规则当前版本下的动作链（PR_RULE_ACTION）。
-    /// </summary>
-    private readonly IRuleActionRepository _actionRepository;
+    private readonly EffectiveRuleSnapshotCache _snapshotCache;
 
     /// <summary>
     /// 条件评估器工厂，用于按条件类型（ConditionType）选择具体评估器。
@@ -73,7 +62,7 @@ public sealed class RuleMatchService : IRuleRuntimeCacheInvalidator
     private readonly ILogger<RuleMatchService> _logger;
 
     /// <summary>
-    /// 默认动作执行顺序。在字典数据尚未加载时使用，确保向后兼容。
+    /// 内置动作执行顺序。在字典未维护时作为首次部署基线；已知动作之外的类型必须通过字典显式登记。
     /// </summary>
     /// <remarks>
     /// 顺序设计依据旧 HIS 正式环境的实际收费链路：
@@ -90,7 +79,7 @@ public sealed class RuleMatchService : IRuleRuntimeCacheInvalidator
     ///   <item><description>ADD_CHILD_ITEM — 子项加收，不参与 FIN_DISCOUNT_FEE 公式</description></item>
     ///   <item><description>DISCOUNT_EXCEED_TO_ZERO — 超出部分归零兜底，必须最后同步超限状态</description></item>
     /// </list>
-    /// 新增动作类型不再需要修改此默认列表——只需在 PR_DICT 表的 ACTION_TYPE_ORDER 类型中插入记录即可。
+    /// 新增动作类型必须在 PR_DICT 表的 ACTION_TYPE_ORDER 类型中插入记录，否则运行期直接失败。
     /// </remarks>
     private static readonly Dictionary<string, int> DefaultActionTypeOrder = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -135,13 +124,37 @@ public sealed class RuleMatchService : IRuleRuntimeCacheInvalidator
         RuleMatchRepositories repositories,
         ConditionEvaluatorFactory evaluatorFactory,
         ILogger<RuleMatchService> logger)
+        : this(repositories, CreateDefaultSnapshotCache(repositories), evaluatorFactory, logger)
     {
-        _headerRepository = repositories.HeaderRepository;
-        _conditionRepository = repositories.ConditionRepository;
-        _actionRepository = repositories.ActionRepository;
+    }
+
+    /// <summary>
+    /// 初始化规则匹配服务。
+    /// </summary>
+    /// <param name="repositories">规则匹配只读仓储集合。</param>
+    /// <param name="snapshotCache">运行期生效规则快照缓存。</param>
+    /// <param name="evaluatorFactory">条件评估器工厂。</param>
+    /// <param name="logger">日志对象。</param>
+    public RuleMatchService(
+        RuleMatchRepositories repositories,
+        EffectiveRuleSnapshotCache snapshotCache,
+        ConditionEvaluatorFactory evaluatorFactory,
+        ILogger<RuleMatchService> logger)
+    {
+        _snapshotCache = snapshotCache;
         _evaluatorFactory = evaluatorFactory;
         _dictRepository = repositories.DictRepository;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// 为直接构造规则匹配服务的测试创建默认快照缓存。
+    /// </summary>
+    public static EffectiveRuleSnapshotCache CreateDefaultSnapshotCache(RuleMatchRepositories repositories)
+    {
+        return new EffectiveRuleSnapshotCache(
+            new MemoryCache(new MemoryCacheOptions()),
+            new EffectiveRuleSnapshotLoader(repositories));
     }
 
     /// <summary>
@@ -160,7 +173,7 @@ public sealed class RuleMatchService : IRuleRuntimeCacheInvalidator
         // ========== 第一阶段：按项目编码取候选规则 ==========
         // 初筛只看 ITEM_CODE，避免全表扫描。项目组规则后续可扩展为按 GROUP_CODE 查询。
         // 仓储实现应利用索引 PR_RULE_HEADER(ITEM_CODE, STATUS, IS_ENABLED) 加速查询。
-        var candidates = await _headerRepository.GetByItemCodeAsync(context.ItemCode);
+        var candidates = await _snapshotCache.GetByItemCodeAsync(context.ItemCode);
 
         // ========== 第二阶段：过滤已发布、启用、业务时间有效的规则 ==========
         // 三重过滤：
@@ -169,8 +182,8 @@ public sealed class RuleMatchService : IRuleRuntimeCacheInvalidator
         //   业务时间在生效区间内：EffectiveFrom <= BusinessChargeTime <= EffectiveTo
         // 业务时间使用 BusinessChargeTime，而不是当前系统时间，确保补录按真实收费时间匹配历史规则。
         var published = candidates
-            .Where(r => r.Status == "PUBLISHED" && r.IsEnabled == "Y")
-            .Where(r => IsInEffectiveRange(r, context.BusinessChargeTime))
+            .Where(snapshot => snapshot.Header.Status == "PUBLISHED" && snapshot.Header.IsEnabled == "Y")
+            .Where(snapshot => IsInEffectiveRange(snapshot.Header, context.BusinessChargeTime))
             .ToList();
 
         // ========== 第三阶段：逐条评估条件组 ==========
@@ -178,16 +191,11 @@ public sealed class RuleMatchService : IRuleRuntimeCacheInvalidator
         // 只要任一条件组全部满足，该规则就命中。这是"OR 组，AND 组内"的经典规则引擎模式。
         var matchedRules = new List<RuleAggregate>();
 
-        foreach (var rule in published)
+        foreach (var snapshot in published)
         {
-            // 读取该规则当前版本下的所有条件。版本号由规则主档 CurrentVersion 控制，
-            // 确保始终使用最新发布版本的条件，而不是历史版本。
-            var conditions = await _conditionRepository.GetByRuleAndVersionAsync(
-                rule.RuleId, rule.CurrentVersion);
-
-            if (await EvaluateConditionsAsync(conditions, context))
+            if (await EvaluateConditionsAsync(snapshot.Conditions, context))
             {
-                matchedRules.Add(rule);
+                matchedRules.Add(snapshot.Header);
             }
         }
 
@@ -202,9 +210,8 @@ public sealed class RuleMatchService : IRuleRuntimeCacheInvalidator
         var allActions = new List<RuleAction>();
         foreach (var rule in matchedRules)
         {
-            var actions = await _actionRepository.GetByRuleAndVersionAsync(
-                rule.RuleId, rule.CurrentVersion);
-            allActions.AddRange(actions.Where(a => a.IsEnabled == "Y"));
+            var snapshot = published.First(item => item.Header.RuleId == rule.RuleId);
+            allActions.AddRange(snapshot.Actions.Where(a => a.IsEnabled == "Y"));
         }
         var ruleOrder = BuildRuleOrder(matchedRules);
         var executableActions = ApplyExclusiveGroups(allActions, ruleOrder);
@@ -402,12 +409,10 @@ public sealed class RuleMatchService : IRuleRuntimeCacheInvalidator
     /// </summary>
     /// <param name="actionType">动作类型编码（如 "CONVERT_QTY"、"FORMULA_CALC"）。</param>
     /// <returns>
-    /// 动作排序序号（数字越小越先执行）；未知动作返回 999 作为兜底序号排到最后。
+    /// 动作排序序号（数字越小越先执行）。
     /// </returns>
     /// <remarks>
-    /// 未识别的动作排到最后。正常情况下发布校验应阻断未知动作类型；
-    /// 这里保留兜底排序，避免运行期因新动作暂未登记到字典中导致排序异常抛出。
-    ///
+    /// 未识别动作表示发布校验或字典配置漏网。运行期必须失败，避免动作被静默排到最后造成资金口径错误。
     /// 使用 OrdinalIgnoreCase 比较，确保动作类型编码大小写不敏感。
     /// </remarks>
     private int GetActionTypeSortOrder(string actionType)
@@ -417,9 +422,8 @@ public sealed class RuleMatchService : IRuleRuntimeCacheInvalidator
             return order;
         }
 
-        // 未识别的动作排到最后。运维可通过追溯查询中的警告日志发现未登记的动作类型。
-        _logger.LogWarning("动作类型 {ActionType} 未在 ACTION_TYPE_ORDER 字典中登记，使用兜底排序 999", actionType);
-        return 999;
+        throw new InvalidOperationException(
+            $"动作类型 {actionType} 未在 {ActionTypeOrderDictType} 字典中登记");
     }
 
     /// <summary>
@@ -430,7 +434,7 @@ public sealed class RuleMatchService : IRuleRuntimeCacheInvalidator
     ///
     /// 加载策略：
     ///   - 使用 SemaphoreSlim 保证线程安全，避免并发重复加载。
-    ///   - 加载失败时保留默认顺序（DefaultActionTypeOrder），确保系统可用性。
+    ///   - 加载失败时直接抛出异常，避免字典异常被静默降级成旧顺序。
     ///   - 加载成功后设置 s_cacheLoaded 标记，后续调用跳过数据库查询。
     /// </summary>
     private async Task EnsureActionTypeOrderLoadedAsync()
@@ -464,8 +468,7 @@ public sealed class RuleMatchService : IRuleRuntimeCacheInvalidator
     /// 读取 DICT_TYPE = "ACTION_TYPE_ORDER" 的所有启用字典项，
     /// 以 DICT_CODE 为动作类型编码、SORT_NO 为排序序号，构建映射字典。
     ///
-    /// 加载失败时保留当前缓存（可能是默认顺序），记录错误日志但不抛出异常。
-    /// 这确保字典表不可用时计价引擎仍能使用默认顺序正常工作。
+    /// 加载失败时抛出异常。动作顺序是资金安全配置，不能在字典不可用时静默继续。
     /// </summary>
     /// <remarks>
     /// <para>
@@ -529,10 +532,10 @@ public sealed class RuleMatchService : IRuleRuntimeCacheInvalidator
         }
         catch (Exception ex)
         {
-            // 加载失败时保留当前缓存（可能是默认顺序），记录错误日志但不抛出异常。
-            // 这确保字典表不可用时计价引擎仍能使用默认顺序正常工作。
             _logger.LogError(ex,
-                "从 PR_DICT 加载动作执行顺序失败，保留当前缓存顺序（可能是默认顺序）");
+                "从 PR_DICT 加载动作执行顺序失败");
+            throw new InvalidOperationException(
+                $"加载 {ActionTypeOrderDictType} 动作执行顺序失败", ex);
         }
     }
 
@@ -565,6 +568,7 @@ public sealed class RuleMatchService : IRuleRuntimeCacheInvalidator
     public void ClearRuntimeCache()
     {
         ClearActionTypeOrderCache();
+        _snapshotCache.Clear();
     }
 
     /// <summary>

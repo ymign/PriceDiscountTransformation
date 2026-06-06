@@ -345,6 +345,7 @@ public sealed class RuleApprovalAppServiceTests
             approvalRepository,
             changeLogRepository,
             new NoopUnitOfWork(),
+            new FixedClock(new DateTime(2026, 5, 22, 10, 0, 0)),
             NullLogger<RuleApprovalAppService>.Instance);
 
     private sealed class InMemoryRuleHeaderRepository : IRuleHeaderRepository

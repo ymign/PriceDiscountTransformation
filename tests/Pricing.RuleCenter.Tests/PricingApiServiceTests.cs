@@ -3,7 +3,10 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Pricing;
-using Pricing.RuleCenter.Core.Constants;
+using Pricing.RuleCenter.Application.Pricing.AuthorityPrice;
+using Pricing.RuleCenter.Application.Pricing.Idempotency;
+using Pricing.RuleCenter.Application.Pricing.Persistence;
+using Pricing.RuleCenter.Application.Pricing.UseCases;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 using Pricing.RuleCenter.Core.Options;
@@ -201,7 +204,7 @@ public sealed class PricingApiServiceTests
     [Fact]
     public async Task GetSpecialFlagAsync_IgnoresRulesOutsideEffectiveRange()
     {
-        var now = DateTime.Now;
+        var now = new DateTime(2026, 5, 10, 10, 0, 0);
         var repository = new SpecialFlagRuleHeaderRepository(new[]
         {
             new RuleHeader
@@ -434,75 +437,6 @@ public sealed class PricingApiServiceTests
         Assert.Equal(
             2m,
             secondContext.InRequestOccupiedQtyByLimitDimension["TIME_WINDOW:P001:ITEM001"]);
-    }
-
-    [Theory]
-    [InlineData(null)]
-    [InlineData("{broken-json")]
-    public async Task ConfirmAsync_RejectsIdempotentReplayWhenResponseSnapshotIsMissingOrInvalid(string? responseJson)
-    {
-        var request = CreateValidCalculateRequest(
-            businessRequestNo: "BR-IDEM",
-            items: new[]
-            {
-                new PricingCalculateItemRequest
-                {
-                    ChargeDetailNo = "CD-IDEM",
-                    ItemCode = "ITEM001",
-                    InputQty = 1m,
-                    UnitPrice = 10m
-                }
-            });
-
-        var existingLog = new ChargeRequestLog
-        {
-            RequestId = 301,
-            RequestNo = "REQ-FIRST",
-            BusinessRequestNo = request.BusinessRequestNo,
-            RequestFingerprint = BuildConfirmFingerprint(request),
-            CallType = "CONFIRM",
-            BusinessStatus = BusinessStatusCodes.ConfirmPending,
-            SourceSystem = request.SourceSystem,
-            PatientId = request.PatientId,
-            ChargeDetailNo = "CD-IDEM",
-            ItemCode = "ITEM001",
-            InputQty = 1m,
-            RequestAt = new DateTime(2026, 5, 10, 9, 30, 0),
-            ResponseJson = responseJson
-        };
-        var requestLogRepository = new ExistingBusinessKeyRequestLogRepository(existingLog);
-        var discountRepository = new CommitDiscountDetailRepository(new[]
-        {
-            new ChargeDiscountDetail
-            {
-                RequestId = existingLog.RequestId,
-                DiscountId = 401,
-                ChargeDetailNo = "CD-IDEM",
-                ItemCode = "ITEM001",
-                OriginalQty = 1m,
-                ConvertedQty = 1m,
-                FinalQty = 1m,
-                UnitPrice = 10m,
-                FinalAmt = 10m,
-                DiscountAmt = 0m
-            }
-        });
-        var service = CreatePricingApiService(
-            new CapturingPricingEngine(),
-            new EmptyRuleHeaderRepository(),
-            requestLogRepository,
-            discountRepository,
-            new EmptyChargeTraceStepRepository(),
-            new EmptyLimitOccupyRepository(),
-            new EmptyChargeReverseLogRepository(),
-            new EmptyPriceMasterRepository(),
-            new NoopUnitOfWork(),
-            Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
-            NullLogger<PricingApiService>.Instance);
-
-        var ex = await Assert.ThrowsAsync<BizException>(() => service.ConfirmAsync(request));
-
-        Assert.Equal(BizErrorCode.IdempotencyResponseSnapshotInvalid, ex.Code);
     }
 
     [Fact]
@@ -801,6 +735,58 @@ public sealed class PricingApiServiceTests
         var occupy = Assert.Single(limitRepository.Inserted);
         Assert.Equal("CD-TRACE-DETAIL", occupy.ChargeDetailNo);
         Assert.Null(occupy.ResultGroupNo);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_RejectsIdempotentRetryWhenResponseSnapshotIsMissing()
+    {
+        var requestRepository = new InMemoryChargeRequestLogRepository();
+        var service = CreatePricingApiService(
+            new CapturingPricingEngine(),
+            new EmptyRuleHeaderRepository(),
+            requestRepository,
+            new CapturingChargeDiscountDetailRepository(),
+            new EmptyChargeTraceStepRepository(),
+            new EmptyLimitOccupyRepository(),
+            new EmptyChargeReverseLogRepository(),
+            new EmptyPriceMasterRepository(),
+            new NoopUnitOfWork(),
+            Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
+            NullLogger<PricingApiService>.Instance);
+        var request = CreateConfirmRequest("REQ-IDEMPOTENT-MISSING", "BR-IDEMPOTENT-MISSING");
+
+        await service.ConfirmAsync(request);
+        requestRepository.Inserted.Single().ResponseJson = null;
+
+        var ex = await Assert.ThrowsAsync<BizException>(() => service.ConfirmAsync(request));
+
+        Assert.Equal(2014, ex.Code);
+    }
+
+    [Fact]
+    public async Task ConfirmAsync_RejectsIdempotentRetryWhenResponseSnapshotIsInvalid()
+    {
+        var requestRepository = new InMemoryChargeRequestLogRepository();
+        var service = CreatePricingApiService(
+            new CapturingPricingEngine(),
+            new EmptyRuleHeaderRepository(),
+            requestRepository,
+            new CapturingChargeDiscountDetailRepository(),
+            new EmptyChargeTraceStepRepository(),
+            new EmptyLimitOccupyRepository(),
+            new EmptyChargeReverseLogRepository(),
+            new EmptyPriceMasterRepository(),
+            new NoopUnitOfWork(),
+            Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
+            NullLogger<PricingApiService>.Instance);
+        var request = CreateConfirmRequest("REQ-IDEMPOTENT-INVALID", "BR-IDEMPOTENT-INVALID");
+
+        await service.ConfirmAsync(request);
+        requestRepository.Inserted.Single().ResponseJson = "{not-json";
+
+        var ex = await Assert.ThrowsAsync<BizException>(() => service.ConfirmAsync(request));
+
+        Assert.Equal(2014, ex.Code);
     }
 
     [Fact]
@@ -1123,21 +1109,120 @@ public sealed class PricingApiServiceTests
         IPriceMasterRepository priceMasterRepository,
         IUnitOfWork unitOfWork,
         IOptions<PricingOptions> options,
-        ILogger<PricingApiService> logger) =>
-        new(
-            new PricingApiCalculationDependencies(
-                engine,
-                headerRepository,
-                priceMasterRepository),
-            new PricingApiPersistenceRepositories(
-                requestLogRepository,
-                discountRepository,
-                traceStepRepository,
-                limitRepository,
-                reverseLogRepository),
-            unitOfWork,
+        ILogger<PricingApiService> logger)
+    {
+        var calculationDependencies = new PricingApiCalculationDependencies(
+            engine,
+            headerRepository,
+            priceMasterRepository);
+        var repositories = new PricingApiPersistenceRepositories(
+            requestLogRepository,
+            discountRepository,
+            traceStepRepository,
+            limitRepository,
+            reverseLogRepository);
+        var authorityPriceChecker = new AuthorityPriceChecker(
+            priceMasterRepository,
             options,
-            logger);
+            NullLogger<AuthorityPriceChecker>.Instance);
+        var idempotencyService = new PricingIdempotencyService(requestLogRepository);
+        var clock = new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0));
+        var requestLogWriter = new PricingRequestLogWriter(requestLogRepository, clock);
+        var traceStepWriter = new PricingTraceStepWriter(traceStepRepository, clock);
+        var discountDetailWriter = new PricingDiscountDetailWriter(discountRepository, clock);
+        var limitOccupyWriter = new PricingLimitOccupyWriter(
+            limitRepository,
+            options,
+            NullLogger<PricingLimitOccupyWriter>.Instance,
+            clock);
+        var reverseLogWriter = new PricingReverseLogWriter(requestLogRepository, reverseLogRepository, clock);
+
+        return new PricingApiService(
+            new SimulatePricingUseCase(
+                calculationDependencies,
+                repositories,
+                authorityPriceChecker,
+                idempotencyService,
+                requestLogWriter,
+                traceStepWriter,
+                discountDetailWriter,
+                limitOccupyWriter,
+                reverseLogWriter,
+                unitOfWork,
+                options,
+                clock,
+                NullLogger<SimulatePricingUseCase>.Instance),
+            new ConfirmPricingUseCase(
+                calculationDependencies,
+                repositories,
+                authorityPriceChecker,
+                idempotencyService,
+                requestLogWriter,
+                traceStepWriter,
+                discountDetailWriter,
+                limitOccupyWriter,
+                reverseLogWriter,
+                unitOfWork,
+                options,
+                clock,
+                NullLogger<ConfirmPricingUseCase>.Instance),
+            new CommitPricingUseCase(
+                calculationDependencies,
+                repositories,
+                authorityPriceChecker,
+                idempotencyService,
+                requestLogWriter,
+                traceStepWriter,
+                discountDetailWriter,
+                limitOccupyWriter,
+                reverseLogWriter,
+                unitOfWork,
+                options,
+                clock,
+                NullLogger<CommitPricingUseCase>.Instance),
+            new CancelPricingUseCase(
+                calculationDependencies,
+                repositories,
+                authorityPriceChecker,
+                idempotencyService,
+                requestLogWriter,
+                traceStepWriter,
+                discountDetailWriter,
+                limitOccupyWriter,
+                reverseLogWriter,
+                unitOfWork,
+                options,
+                clock,
+                NullLogger<CancelPricingUseCase>.Instance),
+            new ReversePricingUseCase(
+                calculationDependencies,
+                repositories,
+                authorityPriceChecker,
+                idempotencyService,
+                requestLogWriter,
+                traceStepWriter,
+                discountDetailWriter,
+                limitOccupyWriter,
+                reverseLogWriter,
+                unitOfWork,
+                options,
+                clock,
+                NullLogger<ReversePricingUseCase>.Instance),
+            new GetSpecialFlagUseCase(
+                calculationDependencies,
+                repositories,
+                authorityPriceChecker,
+                idempotencyService,
+                requestLogWriter,
+                traceStepWriter,
+                discountDetailWriter,
+                limitOccupyWriter,
+                reverseLogWriter,
+                unitOfWork,
+                options,
+                clock,
+                NullLogger<GetSpecialFlagUseCase>.Instance));
+    }
 
     private sealed class NoopUnitOfWork : IUnitOfWork
     {
@@ -1154,7 +1239,6 @@ public sealed class PricingApiServiceTests
 
     private static PricingCalculateRequest CreateValidCalculateRequest(
         string sourceSystem = "HIS",
-        string? businessRequestNo = null,
         string patientId = "P001",
         DateTime? businessChargeTime = null,
         IReadOnlyList<PricingCalculateItemRequest>? items = null) =>
@@ -1162,7 +1246,6 @@ public sealed class PricingApiServiceTests
         {
             RequestNo = "REQ-VALID",
             SourceSystem = sourceSystem,
-            BusinessRequestNo = businessRequestNo,
             PatientId = patientId,
             BusinessChargeTime = businessChargeTime ?? new DateTime(2026, 5, 10, 9, 30, 0),
             Items = items ?? new[]
@@ -1177,18 +1260,29 @@ public sealed class PricingApiServiceTests
             }
         };
 
-    private static string BuildConfirmFingerprint(PricingCalculateRequest request)
-    {
-        var method = typeof(PricingApiService)
-            .Assembly
-            .GetType("Pricing.RuleCenter.Application.Pricing.PricingRequestFingerprintBuilder")!
-            .GetMethod(
-                "BuildConfirmFingerprint",
-                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)!;
-        return (string)method.Invoke(
-            null,
-            new object?[] { request, request.Items!.ToList(), PricingCallTypeCodes.Confirm })!;
-    }
+    private static PricingCalculateRequest CreateConfirmRequest(
+        string requestNo,
+        string businessRequestNo) =>
+        new()
+        {
+            RequestNo = requestNo,
+            BusinessRequestNo = businessRequestNo,
+            SourceSystem = "HIS",
+            PatientId = "P001",
+            ChargeNo = $"C-{businessRequestNo}",
+            BusinessChargeTime = new DateTime(2026, 5, 10, 9, 30, 0),
+            Items = new[]
+            {
+                new PricingCalculateItemRequest
+                {
+                    ChargeDetailNo = $"CD-{businessRequestNo}",
+                    ItemCode = "ITEM001",
+                    ItemName = "测试项目",
+                    InputQty = 1m,
+                    UnitPrice = 10m
+                }
+            }
+        };
 
     private sealed class CapturingPricingEngine : IPricingEngine
     {
@@ -1394,7 +1488,10 @@ public sealed class PricingApiServiceTests
 
         public Task<ChargeRequestLog?> GetByBusinessKeyAsync(
             string sourceSystem, string businessRequestNo, string callType) =>
-            Task.FromResult<ChargeRequestLog?>(null);
+            Task.FromResult<ChargeRequestLog?>(Inserted.FirstOrDefault(log =>
+                string.Equals(log.SourceSystem, sourceSystem, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(log.BusinessRequestNo, businessRequestNo, StringComparison.Ordinal) &&
+                string.Equals(log.CallType, callType, StringComparison.OrdinalIgnoreCase)));
 
         public Task<ChargeRequestLog?> GetByFingerprintAsync(string fingerprint) =>
             Task.FromResult<ChargeRequestLog?>(null);
@@ -1414,54 +1511,6 @@ public sealed class PricingApiServiceTests
                 Inserted[index] = entity;
             }
 
-            return Task.CompletedTask;
-        }
-
-        public Task<(IReadOnlyList<ChargeRequestLog> Items, int Total)> GetPagedAsync(
-            string? patientId,
-            string? itemCode,
-            string? chargeNo,
-            DateTime? startTime,
-            DateTime? endTime,
-            int pageIndex,
-            int pageSize) =>
-            Task.FromResult(((IReadOnlyList<ChargeRequestLog>)Array.Empty<ChargeRequestLog>(), 0));
-
-        public Task<IReadOnlyList<ChargeRequestLog>> GetPendingExpiredAsync(DateTime expireBefore) =>
-            Task.FromResult((IReadOnlyList<ChargeRequestLog>)Array.Empty<ChargeRequestLog>());
-    }
-
-    private sealed class ExistingBusinessKeyRequestLogRepository : IChargeRequestLogRepository
-    {
-        public ExistingBusinessKeyRequestLogRepository(ChargeRequestLog log)
-        {
-            Log = log;
-        }
-
-        public ChargeRequestLog Log { get; private set; }
-
-        public Task<ChargeRequestLog?> GetByIdAsync(long requestId) =>
-            Task.FromResult<ChargeRequestLog?>(Log.RequestId == requestId ? Log : null);
-
-        public Task<ChargeRequestLog?> GetByBusinessKeyAsync(
-            string sourceSystem,
-            string businessRequestNo,
-            string callType) =>
-            Task.FromResult<ChargeRequestLog?>(
-                string.Equals(Log.SourceSystem, sourceSystem, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(Log.BusinessRequestNo, businessRequestNo, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(Log.CallType, callType, StringComparison.OrdinalIgnoreCase)
-                    ? Log
-                    : null);
-
-        public Task<ChargeRequestLog?> GetByFingerprintAsync(string fingerprint) =>
-            Task.FromResult<ChargeRequestLog?>(null);
-
-        public Task<long> InsertAsync(ChargeRequestLog entity) => Task.FromResult(0L);
-
-        public Task UpdateAsync(ChargeRequestLog entity)
-        {
-            Log = entity;
             return Task.CompletedTask;
         }
 

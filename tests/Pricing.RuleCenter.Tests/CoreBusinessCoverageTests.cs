@@ -347,18 +347,18 @@ public sealed class CoreBusinessCoverageTests
         var floor = new AmountFloorExecutor();
         var executorFactory = new ActionExecutorFactory(new IRuleActionExecutor[] { ceiling, floor });
 
-        Assert.Same(itemEvaluator, evaluatorFactory.GetEvaluator("item_match"));
-        Assert.Same(itemEvaluator, evaluatorFactory.GetEvaluator("ITEM_CODE"));
-        Assert.Same(chargeSceneEvaluator, evaluatorFactory.GetEvaluator("CHARGE_SCENE_MATCH"));
-        Assert.Same(bodyPartEvaluator, evaluatorFactory.GetEvaluator("BODY_PART_MATCH"));
+        Assert.Same(itemEvaluator, evaluatorFactory.GetEvaluator(RuleConditionTypeCodes.ItemMatch.ToLowerInvariant()));
+        Assert.Same(itemEvaluator, evaluatorFactory.GetEvaluator(RuleConditionTypeCodes.ItemCode));
+        Assert.Same(chargeSceneEvaluator, evaluatorFactory.GetEvaluator(RuleConditionTypeCodes.ChargeSceneMatch));
+        Assert.Same(bodyPartEvaluator, evaluatorFactory.GetEvaluator(RuleConditionTypeCodes.BodyPartMatch));
         Assert.Null(evaluatorFactory.GetEvaluator("missing"));
         Assert.Contains(ceiling, executorFactory.GetExecutors("apply_max_amount"));
         Assert.Empty(executorFactory.GetExecutors("missing"));
         Assert.Same(floor, executorFactory.GetExecutor("APPLY_MIN_AMOUNT"));
         Assert.Null(executorFactory.GetExecutor("missing"));
 
-        var itemCodeEvaluator = evaluatorFactory.GetEvaluator("ITEM_CODE");
-        var itemCodeCondition = new RuleCondition { ConditionType = "ITEM_CODE", RightValue = "ITEM001" };
+        var itemCodeEvaluator = evaluatorFactory.GetEvaluator(RuleConditionTypeCodes.ItemCode);
+        var itemCodeCondition = new RuleCondition { ConditionType = RuleConditionTypeCodes.ItemCode, RightValue = "ITEM001" };
         Assert.True(await itemCodeEvaluator!.EvaluateAsync(itemCodeCondition, new PricingContext { ItemCode = "ITEM001" }));
     }
 

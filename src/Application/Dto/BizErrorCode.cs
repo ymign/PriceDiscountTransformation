@@ -105,14 +105,17 @@ public static class BizErrorCode
     /// <summary>存在待审核发布申请时不允许继续编辑。</summary>
     public const int ApprovalPendingEditNotAllowed = 1024;
 
-    /// <summary>规则能力不支持当前公式执行器或配置。</summary>
+    /// <summary>规则能力当前引擎不支持。</summary>
     public const int RuleCapabilityUnsupported = 1025;
 
-    /// <summary>规则条件类型不受当前引擎支持。</summary>
+    /// <summary>规则条件类型当前引擎不支持。</summary>
     public const int RuleConditionUnsupported = 1026;
 
-    /// <summary>规则动作类型不受当前引擎支持。</summary>
+    /// <summary>规则动作类型当前引擎不支持。</summary>
     public const int RuleActionUnsupported = 1027;
+
+    /// <summary>规则公式表达当前引擎不支持。</summary>
+    public const int RuleFormulaUnsupported = 1028;
 
     // ========== 计价计算类错误（2001-2099） ==========
 
@@ -155,7 +158,7 @@ public static class BizErrorCode
     /// <summary>commit 金额不匹配。</summary>
     public const int CommitAmountMismatch = 2013;
 
-    /// <summary>confirm 幂等响应快照缺失或损坏。</summary>
+    /// <summary>幂等响应快照缺失或不可解析。</summary>
     public const int IdempotencyResponseSnapshotInvalid = 2014;
 
     // ========== 状态流转类错误（3001-3099） ==========

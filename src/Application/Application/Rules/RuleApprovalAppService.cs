@@ -24,6 +24,7 @@ public sealed class RuleApprovalAppService
     private readonly IRuleApprovalRepository _approvalRepository;
     private readonly IRuleChangeLogRepository _changeLogRepository;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IClock _clock;
     private readonly ILogger<RuleApprovalAppService> _logger;
 
     /// <summary>
@@ -34,6 +35,7 @@ public sealed class RuleApprovalAppService
     /// <param name="approvalRepository">规则审批仓储。</param>
     /// <param name="changeLogRepository">规则变更日志仓储。</param>
     /// <param name="unitOfWork">工作单元，用于发布审批提交时保护版本状态。</param>
+    /// <param name="clock">系统技术时间提供者。</param>
     /// <param name="logger">日志对象。</param>
     public RuleApprovalAppService(
         IRuleHeaderRepository headerRepository,
@@ -41,6 +43,7 @@ public sealed class RuleApprovalAppService
         IRuleApprovalRepository approvalRepository,
         IRuleChangeLogRepository changeLogRepository,
         IUnitOfWork unitOfWork,
+        IClock clock,
         ILogger<RuleApprovalAppService> logger)
     {
         _headerRepository = headerRepository;
@@ -48,6 +51,7 @@ public sealed class RuleApprovalAppService
         _approvalRepository = approvalRepository;
         _changeLogRepository = changeLogRepository;
         _unitOfWork = unitOfWork;
+        _clock = clock;
         _logger = logger;
     }
 
@@ -142,7 +146,7 @@ public sealed class RuleApprovalAppService
                 $"RuleId={ruleId}, VersionNo={versionNo}, ActionType={normalizedActionType} 已存在待审核记录");
         }
 
-        var now = DateTime.Now;
+        var now = _clock.Now;
         var approval = new RuleApproval
         {
             RuleId = ruleId,
@@ -208,7 +212,7 @@ public sealed class RuleApprovalAppService
                 $"ApprovalId={pending.ApprovalId} 状态已变化，请刷新后重试");
         }
 
-        pending.ReviewedAt = DateTime.Now;
+        pending.ReviewedAt = _clock.Now;
         await TryWriteChangeLogAsync(new RuleChangeLog
         {
             RuleId = ruleId,
@@ -245,7 +249,7 @@ public sealed class RuleApprovalAppService
                 $"ApprovalId={pending.ApprovalId} 状态已变化，请刷新后重试");
         }
 
-        pending.ReviewedAt = DateTime.Now;
+        pending.ReviewedAt = _clock.Now;
         await TryWriteChangeLogAsync(new RuleChangeLog
         {
             RuleId = ruleId,

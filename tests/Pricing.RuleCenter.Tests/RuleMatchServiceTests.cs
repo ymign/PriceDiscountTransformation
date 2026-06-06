@@ -305,6 +305,87 @@ public sealed class RuleMatchServiceTests
             second => Assert.Equal(2, second.RuleId));
     }
 
+    [Fact]
+    public async Task MatchAsync_ThrowsWhenActionTypeIsNotRegisteredInOrderDictionary()
+    {
+        var rule = new RuleHeader
+        {
+            RuleId = 1,
+            ItemCode = "ITEM001",
+            Status = "PUBLISHED",
+            IsEnabled = "Y",
+            CurrentVersion = 1
+        };
+        var service = CreateRuleMatchService(
+            new FixedRuleHeaderRepository(rule),
+            new EmptyRuleConditionRepository(),
+            new FixedRuleActionRepository(new[]
+            {
+                new RuleAction
+                {
+                    RuleId = 1,
+                    VersionNo = 1,
+                    ActionType = "NEW_UNREGISTERED_ACTION",
+                    SortNo = 10,
+                    IsEnabled = "Y"
+                }
+            }),
+            new ConditionEvaluatorFactory(Array.Empty<IRuleConditionEvaluator>()),
+            new FixedDictRepository(Array.Empty<Dict>()),
+            NullLogger<RuleMatchService>.Instance);
+        service.ClearActionTypeOrderCache();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.MatchAsync(new PricingContext
+            {
+                ItemCode = "ITEM001",
+                BusinessChargeTime = new DateTime(2026, 5, 10, 10, 0, 0)
+            }));
+
+        Assert.Contains("NEW_UNREGISTERED_ACTION", ex.Message);
+        Assert.Contains("ACTION_TYPE_ORDER", ex.Message);
+    }
+
+    [Fact]
+    public async Task MatchAsync_ThrowsWhenActionTypeOrderDictionaryCannotBeLoaded()
+    {
+        var rule = new RuleHeader
+        {
+            RuleId = 1,
+            ItemCode = "ITEM001",
+            Status = "PUBLISHED",
+            IsEnabled = "Y",
+            CurrentVersion = 1
+        };
+        var service = CreateRuleMatchService(
+            new FixedRuleHeaderRepository(rule),
+            new EmptyRuleConditionRepository(),
+            new FixedRuleActionRepository(new[]
+            {
+                new RuleAction
+                {
+                    RuleId = 1,
+                    VersionNo = 1,
+                    ActionType = "FORMULA_CALC",
+                    SortNo = 10,
+                    IsEnabled = "Y"
+                }
+            }),
+            new ConditionEvaluatorFactory(Array.Empty<IRuleConditionEvaluator>()),
+            new ThrowingDictRepository(),
+            NullLogger<RuleMatchService>.Instance);
+        service.ClearActionTypeOrderCache();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.MatchAsync(new PricingContext
+            {
+                ItemCode = "ITEM001",
+                BusinessChargeTime = new DateTime(2026, 5, 10, 10, 0, 0)
+            }));
+
+        Assert.Contains("ACTION_TYPE_ORDER", ex.Message);
+    }
+
     private static RuleMatchService CreateRuleMatchService(
         IRuleHeaderRepository headerRepository,
         IRuleConditionRepository conditionRepository,
@@ -392,6 +473,20 @@ public sealed class RuleMatchServiceTests
                 .Where(d => d.DictType == dictType && d.IsEnabled == "Y")
                 .OrderBy(d => d.SortNo)
                 .ToList());
+        public Task<Dict?> GetByIdAsync(long dictId) => Task.FromResult<Dict?>(null);
+        public Task<IReadOnlyList<string>> GetAllTypesAsync() =>
+            Task.FromResult((IReadOnlyList<string>)Array.Empty<string>());
+        public Task<long> InsertAsync(Dict entity) => Task.FromResult(0L);
+        public Task<bool> UpdateAsync(Dict entity) => Task.FromResult(false);
+        public Task<bool> SetEnabledAsync(long dictId, string isEnabled) => Task.FromResult(false);
+        public Task<bool> ExistsAsync(string dictType, string dictCode) => Task.FromResult(false);
+    }
+
+    private sealed class ThrowingDictRepository : IDictRepository
+    {
+        public Task<IReadOnlyList<Dict>> GetByTypeAsync(string dictType) =>
+            throw new InvalidOperationException($"无法读取 {dictType}");
+
         public Task<Dict?> GetByIdAsync(long dictId) => Task.FromResult<Dict?>(null);
         public Task<IReadOnlyList<string>> GetAllTypesAsync() =>
             Task.FromResult((IReadOnlyList<string>)Array.Empty<string>());

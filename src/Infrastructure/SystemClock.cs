@@ -3,7 +3,7 @@ using Pricing.RuleCenter.Core.Interfaces;
 namespace Pricing.RuleCenter.Infrastructure;
 
 /// <summary>
-/// 系统本地时间源的默认实现。
+/// 默认系统技术时间提供者。
 /// </summary>
 public sealed class SystemClock : IClock
 {

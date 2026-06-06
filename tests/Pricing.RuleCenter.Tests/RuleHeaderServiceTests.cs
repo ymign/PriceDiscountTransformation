@@ -20,6 +20,7 @@ public sealed class RuleHeaderServiceTests
             new EmptyRuleChangeLogRepository(),
             cache,
             new NoopCacheVersionSynchronizer(),
+            new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0)),
             NullLogger<RuleHeaderService>.Instance);
 
         var firstTime = new DateTime(2026, 5, 10, 9, 0, 0);
@@ -41,6 +42,7 @@ public sealed class RuleHeaderServiceTests
             new EmptyRuleChangeLogRepository(),
             cache,
             new NoopCacheVersionSynchronizer(),
+            new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0)),
             NullLogger<RuleHeaderService>.Instance);
 
         await service.GetEffectiveAsync("ITEM001", new DateTime(2026, 5, 10, 9, 0, 0));
@@ -63,6 +65,7 @@ public sealed class RuleHeaderServiceTests
             new EmptyRuleChangeLogRepository(),
             cache,
             new NoopCacheVersionSynchronizer(),
+            new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0)),
             NullLogger<RuleHeaderService>.Instance);
 
         var ex = await Assert.ThrowsAsync<BizException>(() =>
@@ -110,6 +113,7 @@ public sealed class RuleHeaderServiceTests
             new EmptyRuleChangeLogRepository(),
             cache,
             new NoopCacheVersionSynchronizer(),
+            new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0)),
             NullLogger<RuleHeaderService>.Instance);
 
         var ex = await Assert.ThrowsAsync<BizException>(() =>
@@ -142,6 +146,7 @@ public sealed class RuleHeaderServiceTests
             new EmptyRuleChangeLogRepository(),
             cache,
             new NoopCacheVersionSynchronizer(),
+            new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0)),
             NullLogger<RuleHeaderService>.Instance);
 
         var ex = await Assert.ThrowsAsync<BizException>(() =>
@@ -188,6 +193,7 @@ public sealed class RuleHeaderServiceTests
             }),
             cache,
             new NoopCacheVersionSynchronizer(),
+            new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0)),
             NullLogger<RuleHeaderService>.Instance);
 
         var ex = await Assert.ThrowsAsync<BizException>(() =>
@@ -235,6 +241,7 @@ public sealed class RuleHeaderServiceTests
             new EmptyRuleChangeLogRepository(),
             cache,
             new NoopCacheVersionSynchronizer(),
+            new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0)),
             NullLogger<RuleHeaderService>.Instance);
 
         await service.UpdateAsync(101, new RuleHeaderUpdateRequest

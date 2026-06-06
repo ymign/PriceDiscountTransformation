@@ -10,7 +10,12 @@ using Pricing.RuleCenter.Api.Middleware;
 using Pricing.RuleCenter.Application.Common;
 using Pricing.RuleCenter.Application.Common.Behaviors;
 using Pricing.RuleCenter.Application.Pricing;
+using Pricing.RuleCenter.Application.Pricing.AuthorityPrice;
+using Pricing.RuleCenter.Application.Pricing.Idempotency;
+using Pricing.RuleCenter.Application.Pricing.Persistence;
+using Pricing.RuleCenter.Application.Pricing.UseCases;
 using Pricing.RuleCenter.Application.Rules;
+using Pricing.RuleCenter.Application.Rules.Guards;
 using Pricing.RuleCenter.Application.Rules.Publishing;
 using Pricing.RuleCenter.Application.Catalog;
 using Pricing.RuleCenter.Application.Trace;
@@ -19,6 +24,8 @@ using Pricing.RuleCenter.Api.Security;
 using Pricing.RuleCenter.Core.Engine;
 using Pricing.RuleCenter.Core.Engine.Evaluators;
 using Pricing.RuleCenter.Core.Engine.Executors;
+using Pricing.RuleCenter.Core.Engine.Formula;
+using Pricing.RuleCenter.Core.Engine.RuleRuntimeSnapshot;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Infrastructure;
 
@@ -50,10 +57,39 @@ builder.Services.AddScoped<RuleEditGuard>();
 builder.Services.AddScoped<RuleApprovalAppService>();
 builder.Services.AddScoped<RulePublishLifecycleRepositories>();
 builder.Services.AddScoped<RulePublishDefinitionRepositories>();
+builder.Services.AddScoped<RulePublishTransactionWriter>();
+builder.Services.AddScoped<RulePublishCacheInvalidator>();
 builder.Services.AddScoped<RuleCacheInvalidationOutboxProcessor>();
+builder.Services.AddScoped<FormulaFunctionRegistry>();
+builder.Services.AddScoped<FormulaExpressionEvaluator>();
+builder.Services.AddScoped<FormulaExpressionValidator>();
+builder.Services.AddScoped<RuleActionParameterValidator>();
+builder.Services.AddScoped<RuleCapabilityGuard>();
+builder.Services.AddScoped<RuleCriticalActionGuard>();
+builder.Services.AddScoped<RuleChildItemGuard>();
+builder.Services.AddScoped<RuleTestCaseGate>();
+builder.Services.AddScoped<RuleApprovalGate>();
+builder.Services.AddScoped<RuleConflictDetector>();
+builder.Services.AddScoped<RulePublishGuard>();
+builder.Services.AddScoped<PublishRuleUseCase>();
+builder.Services.AddScoped<DisableRuleUseCase>();
+builder.Services.AddScoped<RollbackRuleUseCase>();
 builder.Services.AddScoped<RulePublishAppService>();
 builder.Services.AddScoped<PricingAppCalculationDependencies>();
 builder.Services.AddScoped<PricingAppPersistenceRepositories>();
+builder.Services.AddScoped<AuthorityPriceChecker>();
+builder.Services.AddScoped<PricingIdempotencyService>();
+builder.Services.AddScoped<PricingRequestLogWriter>();
+builder.Services.AddScoped<PricingTraceStepWriter>();
+builder.Services.AddScoped<PricingDiscountDetailWriter>();
+builder.Services.AddScoped<PricingLimitOccupyWriter>();
+builder.Services.AddScoped<PricingReverseLogWriter>();
+builder.Services.AddScoped<SimulatePricingUseCase>();
+builder.Services.AddScoped<ConfirmPricingUseCase>();
+builder.Services.AddScoped<CommitPricingUseCase>();
+builder.Services.AddScoped<CancelPricingUseCase>();
+builder.Services.AddScoped<ReversePricingUseCase>();
+builder.Services.AddScoped<GetSpecialFlagUseCase>();
 builder.Services.AddScoped<PricingAppService>();
 builder.Services.AddScoped<TraceQueryAppService>();
 builder.Services.AddScoped<ICacheVersionSynchronizer, CacheVersionSynchronizer>();
@@ -107,6 +143,7 @@ builder.Services.AddAuthorization(options =>
         policy.RequireRole("pricing.admin");
     });
 });
+
 // ExpireCleanupService 位于 Api 层，在此注册为后台服务。
 // 它是 Singleton BackgroundService，通过 IServiceScopeFactory 创建 Scoped 依赖。
 builder.Services.AddHostedService<ExpireCleanupAppService>();
@@ -124,6 +161,9 @@ builder.Services.AddScoped<IRuleConditionEvaluator, VisitTypeMatchEvaluator>();
 builder.Services.AddScoped<IRuleConditionEvaluator, AgeMatchEvaluator>();
 builder.Services.AddScoped<IRuleConditionEvaluator, GroupMatchEvaluator>();
 builder.Services.AddScoped<IRuleConditionEvaluator, ChargeDeptExcludeEvaluator>();
+builder.Services.AddScoped<IRuleConditionEvaluator, InsuranceTypeMatchEvaluator>();
+builder.Services.AddScoped<IRuleConditionEvaluator, DiagnosisMatchEvaluator>();
+builder.Services.AddScoped<IRuleConditionEvaluator, DeviceTypeMatchEvaluator>();
 
 // 动作执行器负责规则命中后的具体计算动作（金额上下限、数量限制、换算、公式等）。
 // 动作类型是一级分派；FORMULA_CALC 等大类可注册多个执行器，再由 ExecutorCode 做二级分派。
@@ -142,11 +182,14 @@ builder.Services.AddScoped<IRuleActionExecutor, AddChildItemExecutor>();
 builder.Services.AddScoped<IRuleActionExecutor, AreaStepIncrementExecutor>();
 builder.Services.AddScoped<IRuleActionExecutor, ConvertQtyByPartExecutor>();
 builder.Services.AddScoped<IRuleActionExecutor, ChildItemPercentExecutor>();
+builder.Services.AddScoped<IRuleActionExecutor, ExpressionFormulaExecutor>();
 
 // 引擎核心组件：工厂负责按名称分发执行器，管道负责按优先级串联所有动作执行器。
 builder.Services.AddScoped<ConditionEvaluatorFactory>();
 builder.Services.AddScoped<ActionExecutorFactory>();
 builder.Services.AddScoped<RuleMatchRepositories>();
+builder.Services.AddScoped<EffectiveRuleSnapshotLoader>();
+builder.Services.AddScoped<EffectiveRuleSnapshotCache>();
 builder.Services.AddScoped<RuleMatchService>();
 builder.Services.AddScoped<IRuleRuntimeCacheInvalidator>(provider =>
     provider.GetRequiredService<RuleMatchService>());

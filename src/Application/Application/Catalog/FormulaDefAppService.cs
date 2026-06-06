@@ -46,20 +46,24 @@ public sealed class FormulaDefAppService
     /// 公式新增会改变规则动作可选项，切换状态会限制或放开配置页面的选择范围。
     /// </summary>
     private readonly ILogger<FormulaDefAppService> _logger;
+    private readonly IClock _clock;
 
     /// <summary>
     /// 初始化公式定义服务。
     /// </summary>
     /// <param name="repository">公式定义仓储，用于隔离 PR_FORMULA_DEF 表的持久化实现。</param>
     /// <param name="changeLogRepository">变更日志仓储，用于写入公式增删改的审计记录。</param>
+    /// <param name="clock">系统技术时间提供者。</param>
     /// <param name="logger">日志对象，用于输出公式新增和状态切换的审计线索。</param>
     public FormulaDefAppService(
         IFormulaDefRepository repository,
         IRuleChangeLogRepository changeLogRepository,
+        IClock clock,
         ILogger<FormulaDefAppService> logger)
     {
         _repository = repository;
         _changeLogRepository = changeLogRepository;
+        _clock = clock;
         _logger = logger;
     }
 
@@ -223,7 +227,7 @@ public sealed class FormulaDefAppService
                 ChangeType = changeType,
                 ChangeSummary = changeSummary,
                 ChangedBy = "SYSTEM",
-                ChangedAt = DateTime.Now,
+                ChangedAt = _clock.Now,
                 SourceSystem = "API"
             });
         }

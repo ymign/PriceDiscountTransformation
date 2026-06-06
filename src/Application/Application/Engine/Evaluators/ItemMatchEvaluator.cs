@@ -1,3 +1,4 @@
+using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Models;
@@ -33,7 +34,7 @@ public sealed class ItemMatchEvaluator : IRuleConditionEvaluator
     /// <summary>
     /// 获取条件类型编码，对应 PR_RULE_CONDITION.CONDITION_TYPE = "ITEM_MATCH"。
     /// </summary>
-    public string ConditionType => "ITEM_MATCH";
+    public string ConditionType => RuleConditionTypeCodes.ItemMatch;
 
     /// <summary>
     /// 异步评估项目编码条件。当前评估只依赖内存上下文，使用 <see cref="ValueTask{TResult}"/> 避免额外任务分配。

@@ -26,6 +26,7 @@ public sealed class DictAppServiceTests
             new MemoryCache(new MemoryCacheOptions()),
             new NoopCacheVersionSynchronizer(),
             new CapturingRuleRuntimeCacheInvalidator(),
+            new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0)),
             NullLogger<DictAppService>.Instance);
 
         var ex = await Assert.ThrowsAsync<BizException>(() => service.CreateAsync(new DictCreateRequest
@@ -58,6 +59,7 @@ public sealed class DictAppServiceTests
             new MemoryCache(new MemoryCacheOptions()),
             cacheVersionSynchronizer,
             runtimeCache,
+            new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0)),
             NullLogger<DictAppService>.Instance);
 
         await service.UpdateAsync(1, new DictUpdateRequest
@@ -80,6 +82,7 @@ public sealed class DictAppServiceTests
             new MemoryCache(new MemoryCacheOptions()),
             new NoopCacheVersionSynchronizer(),
             new CapturingRuleRuntimeCacheInvalidator(),
+            new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0)),
             NullLogger<DictAppService>.Instance);
 
         var ex = await Assert.ThrowsAsync<BizException>(() => service.UpdateAsync(999, new DictUpdateRequest
@@ -100,6 +103,7 @@ public sealed class DictAppServiceTests
             new MemoryCache(new MemoryCacheOptions()),
             new NoopCacheVersionSynchronizer(),
             new CapturingRuleRuntimeCacheInvalidator(),
+            new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0)),
             NullLogger<DictAppService>.Instance);
 
         var ex = await Assert.ThrowsAsync<BizException>(() => service.DeleteAsync(999));

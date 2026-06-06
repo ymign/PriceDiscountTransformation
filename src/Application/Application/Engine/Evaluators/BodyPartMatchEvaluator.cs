@@ -1,3 +1,4 @@
+using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Models;
@@ -27,7 +28,7 @@ public sealed class BodyPartMatchEvaluator : IRuleConditionEvaluator
     /// <summary>
     /// 获取条件类型编码，对应 PR_RULE_CONDITION.CONDITION_TYPE = "BODY_PART"。
     /// </summary>
-    public string ConditionType => "BODY_PART";
+    public string ConditionType => RuleConditionTypeCodes.BodyPart;
 
     /// <summary>
     /// 异步评估检查部位条件。当前评估只依赖内存上下文，使用 <see cref="ValueTask{TResult}"/> 避免额外任务分配。

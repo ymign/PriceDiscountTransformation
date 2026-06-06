@@ -55,6 +55,7 @@ public sealed class RuleHeaderAppService
     /// </summary>
     private readonly ICacheVersionSynchronizer _cacheVersionSynchronizer;
     private readonly RuleEditGuard _editGuard;
+    private readonly IClock _clock;
 
     /// <summary>
     /// 服务日志，用于记录规则主档新增和更新等配置变更。
@@ -94,6 +95,7 @@ public sealed class RuleHeaderAppService
     /// <param name="changeLogRepository">变更日志仓储，用于写入主档创建和更新的审计记录。</param>
     /// <param name="cache">内存缓存，用于缓存生效规则查询结果。</param>
     /// <param name="cacheVersionSynchronizer">跨实例缓存版本同步器，用于读取生效规则前校验本机缓存版本。</param>
+    /// <param name="clock">系统技术时间提供者。</param>
     /// <param name="logger">日志对象。</param>
     /// <param name="editGuard">规则编辑保护器；为空时基于变更日志仓储创建默认保护器。</param>
     public RuleHeaderAppService(
@@ -101,6 +103,7 @@ public sealed class RuleHeaderAppService
         IRuleChangeLogRepository changeLogRepository,
         IMemoryCache cache,
         ICacheVersionSynchronizer cacheVersionSynchronizer,
+        IClock clock,
         ILogger<RuleHeaderAppService> logger,
         RuleEditGuard? editGuard = null)
     {
@@ -108,6 +111,7 @@ public sealed class RuleHeaderAppService
         _changeLogRepository = changeLogRepository;
         _cache = cache;
         _cacheVersionSynchronizer = cacheVersionSynchronizer;
+        _clock = clock;
         _logger = logger;
         _editGuard = editGuard ?? new RuleEditGuard(changeLogRepository);
     }
@@ -179,7 +183,7 @@ public sealed class RuleHeaderAppService
         DateTime? chargeTime = null)
     {
         await _cacheVersionSynchronizer.SyncAsync();
-        var businessTime = chargeTime ?? DateTime.Now;
+        var businessTime = chargeTime ?? _clock.Now;
 
         // 构造缓存 key：itemCode 为空时用 "all"，避免 null 参与 key 拼接产生歧义。
         var itemKey = string.IsNullOrWhiteSpace(itemCode) ? "all" : itemCode.Trim().ToUpperInvariant();
@@ -244,7 +248,7 @@ public sealed class RuleHeaderAppService
         }
 
         // 主档创建后还没有版本、条件和动作，因此 CurrentVersion 为 0，状态保持 DRAFT。
-        var now = DateTime.Now;
+        var now = _clock.Now;
         var entity = new RuleAggregate
         {
             RuleCode = request.RuleCode,
@@ -315,7 +319,7 @@ public sealed class RuleHeaderAppService
         entity.RollbackMode = request.RollbackMode;
         entity.Remark = request.Remark;
         entity.UpdatedBy = request.UpdatedBy;
-        entity.UpdatedAt = DateTime.Now;
+        entity.UpdatedAt = _clock.Now;
 
         await _repository.UpdateAsync(entity);
         _logger.LogInformation("更新规则主档 RuleId={RuleId}", ruleId);
@@ -398,7 +402,7 @@ public sealed class RuleHeaderAppService
                 ChangeType = input.ChangeType,
                 ChangeSummary = input.ChangeSummary,
                 ChangedBy = input.ChangedBy ?? "SYSTEM",
-                ChangedAt = DateTime.Now,
+                ChangedAt = _clock.Now,
                 SourceSystem = "API"
             });
         }

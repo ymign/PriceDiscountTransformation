@@ -65,6 +65,7 @@ public sealed class DictAppService
     /// 字典变更会直接影响前端可选项，保留操作线索便于定位"页面选项为什么变化"。
     /// </summary>
     private readonly ILogger<DictAppService> _logger;
+    private readonly IClock _clock;
 
     /// <summary>
     /// 字典缓存 key 前缀。
@@ -85,6 +86,7 @@ public sealed class DictAppService
     /// <param name="cache">内存缓存，用于缓存字典查询结果。</param>
     /// <param name="cacheVersionSynchronizer">跨实例缓存版本同步器，用于传播字典相关缓存失效。</param>
     /// <param name="runtimeCacheInvalidator">规则运行期缓存失效器，用于清理动作顺序等引擎缓存。</param>
+    /// <param name="clock">系统技术时间提供者。</param>
     /// <param name="logger">日志对象，用于输出配置变更审计线索。</param>
     public DictAppService(
         IDictRepository repository,
@@ -92,6 +94,7 @@ public sealed class DictAppService
         IMemoryCache cache,
         ICacheVersionSynchronizer cacheVersionSynchronizer,
         IRuleRuntimeCacheInvalidator runtimeCacheInvalidator,
+        IClock clock,
         ILogger<DictAppService> logger)
     {
         _repository = repository;
@@ -99,6 +102,7 @@ public sealed class DictAppService
         _cache = cache;
         _cacheVersionSynchronizer = cacheVersionSynchronizer;
         _runtimeCacheInvalidator = runtimeCacheInvalidator;
+        _clock = clock;
         _logger = logger;
     }
 
@@ -303,7 +307,7 @@ public sealed class DictAppService
                 ChangeType = changeType,
                 ChangeSummary = changeSummary,
                 ChangedBy = "SYSTEM",
-                ChangedAt = DateTime.Now,
+                ChangedAt = _clock.Now,
                 SourceSystem = "API"
             });
         }

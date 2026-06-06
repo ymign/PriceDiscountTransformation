@@ -50,7 +50,7 @@ public sealed class GlobalExceptionFilterTests
         Assert.Equal(409, result.StatusCode);
         var response = Assert.IsType<ApiResult>(result.Value);
         Assert.Equal(BizErrorCode.ConcurrencyConflict, response.Code);
-        Assert.Equal("锁竞争失败", response.Message);
+        Assert.Equal("限额锁竞争失败，请稍后重试", response.Message);
         Assert.True(context.ExceptionHandled);
     }
 
@@ -71,7 +71,7 @@ public sealed class GlobalExceptionFilterTests
         Assert.Equal(500, result.StatusCode);
         var response = Assert.IsType<ApiResult>(result.Value);
         Assert.Equal(BizErrorCode.LimitLockFailed, response.Code);
-        Assert.Equal("锁表数据库故障", response.Message);
+        Assert.Equal("限额锁处理失败", response.Message);
         Assert.True(context.ExceptionHandled);
     }
 }

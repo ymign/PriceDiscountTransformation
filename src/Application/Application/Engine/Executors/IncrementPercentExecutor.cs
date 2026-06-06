@@ -51,7 +51,7 @@ public sealed class IncrementPercentExecutor : IRuleActionExecutor
     /// 本执行器内部再按 ExecutorCode 判断是否由自己处理。好处是新增公式类型时只需新增执行器类，
     /// 无需在 ActionTypeOrder 中新增条目。
     /// </remarks>
-    public string ActionType => "FORMULA_CALC";
+    public string ActionType => RuleActionTypeCodes.FormulaCalc;
 
     /// <summary>
     /// 判断当前公式动作是否应由增量比例公式执行器处理。
