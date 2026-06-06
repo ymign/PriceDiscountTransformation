@@ -1,5 +1,6 @@
 using System.Reflection;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.Authorization;
 using MediatR;
 using Microsoft.OpenApi.Models;
 using Serilog;
@@ -13,6 +14,7 @@ using Pricing.RuleCenter.Application.Rules;
 using Pricing.RuleCenter.Application.Catalog;
 using Pricing.RuleCenter.Application.Trace;
 using Pricing.RuleCenter.Application.Background;
+using Pricing.RuleCenter.Api.Security;
 using Pricing.RuleCenter.Core.Engine;
 using Pricing.RuleCenter.Core.Engine.Evaluators;
 using Pricing.RuleCenter.Core.Engine.Executors;
@@ -58,6 +60,51 @@ builder.Services.AddValidatorsFromAssemblyContaining<ApplicationAssemblyMarker>(
 builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
 builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
 
+// ========== 第二点五阶段：注册认证和授权 ==========
+// 规则中心是服务间 API，不在代码层依赖外部网关兜底。默认所有控制器都要求 API Key；
+// 规则维护/发布类接口再通过 policy 限定管理员角色。
+builder.Services.AddAuthentication(ApiKeyAuthenticationOptions.SchemeName)
+    .AddScheme<ApiKeyAuthenticationOptions, ApiKeyAuthenticationHandler>(
+        ApiKeyAuthenticationOptions.SchemeName,
+        options =>
+        {
+            options.HeaderName = builder.Configuration["Authentication:ApiKey:HeaderName"]
+                ?? ApiKeyAuthenticationOptions.DefaultHeaderName;
+
+            foreach (var item in builder.Configuration.GetSection("Authentication:ApiKey:Keys").GetChildren())
+            {
+                var key = item["Key"];
+                if (string.IsNullOrWhiteSpace(key))
+                {
+                    continue;
+                }
+
+                var credential = new ApiKeyCredential
+                {
+                    Key = key,
+                    Name = item["Name"] ?? "api-key"
+                };
+                credential.Roles.AddRange(item.GetSection("Roles")
+                    .GetChildren()
+                    .Select(role => role.Value)
+                    .Where(role => !string.IsNullOrWhiteSpace(role))
+                    .Select(role => role!));
+                options.Keys.Add(credential);
+            }
+        });
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("PricingService", policy =>
+    {
+        policy.AddAuthenticationSchemes(ApiKeyAuthenticationOptions.SchemeName);
+        policy.RequireRole("pricing.service", "pricing.admin");
+    });
+    options.AddPolicy("RuleAdmin", policy =>
+    {
+        policy.AddAuthenticationSchemes(ApiKeyAuthenticationOptions.SchemeName);
+        policy.RequireRole("pricing.admin");
+    });
+});
 // ExpireCleanupService 位于 Api 层，在此注册为后台服务。
 // 它是 Singleton BackgroundService，通过 IServiceScopeFactory 创建 Scoped 依赖。
 builder.Services.AddHostedService<ExpireCleanupAppService>();
@@ -178,10 +225,13 @@ if (swaggerEnabled)
     });
 }
 
+app.UseAuthentication();
+app.UseAuthorization();
+
 app.MapHealthChecks("/health", new HealthCheckOptions
 {
     ResponseWriter = HealthCheckResponseWriter.WriteAsync
-});
+}).AllowAnonymous();
 app.MapControllers();
 
 app.Run();

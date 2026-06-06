@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Pricing;
@@ -36,6 +37,7 @@ namespace Pricing.RuleCenter.Api.Controllers;
 /// </para>
 /// </summary>
 [ApiController]
+[Authorize(Policy = "RuleAdmin")]
 [Route("api/pricing/rules")]
 public sealed class RuleHeaderController : ControllerBase
 {

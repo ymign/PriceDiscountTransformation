@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Pricing.RuleCenter.Application.Rules;
 using Pricing.RuleCenter.Application.Dto;
@@ -8,6 +9,7 @@ namespace Pricing.RuleCenter.Api.Controllers;
 /// 规则审批控制器。
 /// </summary>
 [ApiController]
+[Authorize(Policy = "RuleAdmin")]
 [Route("api/pricing/rules/{ruleId:long}/versions/{versionNo:int}")]
 public sealed class RuleApprovalController : ControllerBase
 {

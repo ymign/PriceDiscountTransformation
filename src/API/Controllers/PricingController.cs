@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Pricing.Commands;
@@ -53,6 +54,7 @@ namespace Pricing.RuleCenter.Api.Controllers;
 /// </list>
 /// </remarks>
 [ApiController]
+[Authorize(Policy = "PricingService")]
 [Route("api/pricing")]
 public sealed class PricingController : ControllerBase
 {

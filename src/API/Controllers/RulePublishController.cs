@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Pricing;
@@ -45,6 +46,7 @@ namespace Pricing.RuleCenter.Api.Controllers;
 /// 状态机约束和缓存失效由 <see cref="RulePublishAppService"/> 统一执行。
 /// </remarks>
 [ApiController]
+[Authorize(Policy = "RuleAdmin")]
 [Route("api/pricing/rules/{ruleId:long}")]
 public sealed class RulePublishController : ControllerBase
 {

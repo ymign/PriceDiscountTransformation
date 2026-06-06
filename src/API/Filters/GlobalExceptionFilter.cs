@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using Pricing.RuleCenter.Api.Middleware;
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Core.Exceptions;
 
@@ -90,39 +91,15 @@ public sealed class GlobalExceptionFilter : IExceptionFilter
         // ========== 第二阶段：按异常类型映射业务响应 ==========
         // 参数错误、资源不存在和状态冲突是可预期业务错误；其他异常统一隐藏内部细节，返回 500。
         // 这样前端可以按 HTTP 状态码做分支处理，同时 ApiResult.Code 提供更细粒度的错误码。
-        var response = context.Exception switch
-        {
-            BizException ex => ApiResult.Fail(ex.Code, ex.Message),
-            LimitLockException ex => ApiResult.Fail(
-                ex.IsConcurrencyConflict ? BizErrorCode.ConcurrencyConflict : BizErrorCode.LimitLockFailed,
-                ex.Message),
-            // ArgumentException — 参数校验失败，如缺少必填字段、格式不合法
-            ArgumentException ex => ApiResult.Fail(400, ex.Message),
-            // KeyNotFoundException — 资源不存在，如按ID查询无结果
-            KeyNotFoundException ex => ApiResult.Fail(404, ex.Message),
-            // InvalidOperationException — 状态冲突，如重复确认、状态不允许流转
-            InvalidOperationException ex => ApiResult.Fail(409, ex.Message),
-            // 其他异常 — 隐藏内部细节，返回通用错误信息
-            _ => ApiResult.Fail(500, "服务器内部错误")
-        };
+        var mapping = ApiExceptionMapper.Map(context.Exception);
+        var response = ApiResult.Fail(mapping.Code, mapping.Message, errors: mapping.Errors);
 
         // ========== 第三阶段：设置 HTTP 状态码 ==========
         // ApiResult.Code 与 HTTP StatusCode 保持一致，方便前端既能按 HTTP 状态处理，也能读统一响应体。
         // 前端推荐优先使用 HTTP 状态码做分支，ApiResult.Message 做用户提示。
         context.Result = new ObjectResult(response)
         {
-            StatusCode = context.Exception switch
-            {
-                BizException ex => ex.HttpStatusCode,
-                LimitLockException ex => ex.IsConcurrencyConflict ? 409 : 500,
-                _ => response.Code switch
-                {
-                    400 => 400,
-                    404 => 404,
-                    409 => 409,
-                    _ => 500
-                }
-            }
+            StatusCode = mapping.StatusCode
         };
 
         // ========== 第四阶段：终止异常继续冒泡 ==========

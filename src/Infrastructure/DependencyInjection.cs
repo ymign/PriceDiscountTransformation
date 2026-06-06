@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
 using Pricing.RuleCenter.Core.Interfaces.Charging;
@@ -52,7 +54,10 @@ public static class DependencyInjection
     {
         var pricingOptions = new PricingOptions();
         configuration.GetSection("Pricing").Bind(pricingOptions);
-        services.Configure<PricingOptions>(options => configuration.GetSection("Pricing").Bind(options));
+        services.AddOptions<PricingOptions>()
+            .Configure(options => configuration.GetSection("Pricing").Bind(options));
+        services.AddSingleton<IValidateOptions<PricingOptions>, PricingOptionsValidator>();
+        services.AddHostedService<OptionsValidationStartupService>();
 
         services.AddSqlSugarOracle(pricingOptions);
         services.AddMemoryCache();

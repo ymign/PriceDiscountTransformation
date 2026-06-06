@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Pricing.RuleCenter.Application.Dto;
 using SqlSugar;
@@ -37,6 +38,7 @@ namespace Pricing.RuleCenter.Api.Controllers;
 /// 因为健康检查需要绕过业务层直接探测基础设施可用性。
 /// </remarks>
 [ApiController]
+[AllowAnonymous]
 [Route("[controller]")]
 public sealed class HealthController : ControllerBase
 {
