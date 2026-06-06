@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using Pricing.RuleCenter.Application.Rules.Publishing;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Options;
 
@@ -47,6 +48,9 @@ public sealed class CacheVersionSyncService : BackgroundService
                 using var scope = _scopeFactory.CreateScope();
                 var synchronizer = scope.ServiceProvider.GetRequiredService<ICacheVersionSynchronizer>();
                 await synchronizer.SyncAsync(stoppingToken);
+
+                var outboxProcessor = scope.ServiceProvider.GetRequiredService<RuleCacheInvalidationOutboxProcessor>();
+                await outboxProcessor.ProcessPendingAsync(cancellationToken: stoppingToken);
             }
             catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
             {

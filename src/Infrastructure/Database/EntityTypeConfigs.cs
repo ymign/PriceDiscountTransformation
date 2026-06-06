@@ -27,6 +27,7 @@ public static class EntityTypeConfigs
             [typeof(RuleChangeLog)] = nameof(RuleChangeLog.ChangeId),
             [typeof(Dict)] = nameof(Dict.DictId),
             [typeof(CacheVersion)] = nameof(CacheVersion.CacheScope),
+            [typeof(RuleCacheInvalidationOutbox)] = nameof(RuleCacheInvalidationOutbox.OutboxId),
             [typeof(FormulaDef)] = nameof(FormulaDef.FormulaId),
             [typeof(ItemGroup)] = nameof(ItemGroup.GroupId),
             [typeof(ItemGroupDetail)] = nameof(ItemGroupDetail.DetailId),
@@ -214,6 +215,25 @@ public static class EntityTypeConfigs
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(CacheVersion), PropertyName = nameof(CacheVersion.CacheScope), DbColumnName = "CACHE_SCOPE" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(CacheVersion), PropertyName = nameof(CacheVersion.VersionNo), DbColumnName = "VERSION_NO" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(CacheVersion), PropertyName = nameof(CacheVersion.UpdatedAt), DbColumnName = "UPDATED_AT" });
+    }
+
+    /// <summary>
+    /// 配置 PR_CACHE_INVALIDATION_OUTBOX 表映射。
+    /// </summary>
+    public static void ConfigureRuleCacheInvalidationOutbox(SqlSugarClient db)
+    {
+        db.MappingTables.Add(typeof(RuleCacheInvalidationOutbox).Name, "PR_CACHE_INVALIDATION_OUTBOX");
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleCacheInvalidationOutbox), PropertyName = nameof(RuleCacheInvalidationOutbox.OutboxId), DbColumnName = "OUTBOX_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleCacheInvalidationOutbox), PropertyName = nameof(RuleCacheInvalidationOutbox.CacheScope), DbColumnName = "CACHE_SCOPE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleCacheInvalidationOutbox), PropertyName = nameof(RuleCacheInvalidationOutbox.OperationType), DbColumnName = "OPERATION_TYPE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleCacheInvalidationOutbox), PropertyName = nameof(RuleCacheInvalidationOutbox.RuleId), DbColumnName = "RULE_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleCacheInvalidationOutbox), PropertyName = nameof(RuleCacheInvalidationOutbox.VersionNo), DbColumnName = "VERSION_NO" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleCacheInvalidationOutbox), PropertyName = nameof(RuleCacheInvalidationOutbox.Status), DbColumnName = "STATUS" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleCacheInvalidationOutbox), PropertyName = nameof(RuleCacheInvalidationOutbox.RetryCount), DbColumnName = "RETRY_COUNT" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleCacheInvalidationOutbox), PropertyName = nameof(RuleCacheInvalidationOutbox.NextRetryAt), DbColumnName = "NEXT_RETRY_AT" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleCacheInvalidationOutbox), PropertyName = nameof(RuleCacheInvalidationOutbox.LastError), DbColumnName = "LAST_ERROR" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleCacheInvalidationOutbox), PropertyName = nameof(RuleCacheInvalidationOutbox.CreatedAt), DbColumnName = "CREATED_AT" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuleCacheInvalidationOutbox), PropertyName = nameof(RuleCacheInvalidationOutbox.ProcessedAt), DbColumnName = "PROCESSED_AT" });
     }
 
     /// <summary>
@@ -499,6 +519,7 @@ public static class EntityTypeConfigs
         ConfigureRuleChangeLog(db);
         ConfigureDict(db);
         ConfigureCacheVersion(db);
+        ConfigureRuleCacheInvalidationOutbox(db);
         ConfigureFormulaDef(db);
         ConfigureItemGroup(db);
         ConfigureItemGroupDetail(db);

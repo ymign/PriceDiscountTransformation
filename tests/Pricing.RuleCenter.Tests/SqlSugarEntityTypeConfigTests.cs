@@ -19,6 +19,8 @@ public sealed class SqlSugarEntityTypeConfigTests
         AssertPrimaryKey<RulePublish>(db, nameof(RulePublish.PublishId));
         AssertPrimaryKey<RuleChangeLog>(db, nameof(RuleChangeLog.ChangeId));
         AssertPrimaryKey<Dict>(db, nameof(Dict.DictId));
+        AssertPrimaryKey<CacheVersion>(db, nameof(CacheVersion.CacheScope));
+        AssertPrimaryKey<RuleCacheInvalidationOutbox>(db, nameof(RuleCacheInvalidationOutbox.OutboxId));
         AssertPrimaryKey<FormulaDef>(db, nameof(FormulaDef.FormulaId));
         AssertPrimaryKey<ItemGroup>(db, nameof(ItemGroup.GroupId));
         AssertPrimaryKey<ItemGroupDetail>(db, nameof(ItemGroupDetail.DetailId));

@@ -9,7 +9,9 @@ FROM user_tables
 WHERE table_name LIKE 'PR_%'
 ORDER BY table_name;
 
--- 预期 19 张表:
+-- 预期 21 张表:
+-- PR_CACHE_INVALIDATION_OUTBOX
+-- PR_CACHE_VERSION
 -- PR_CHARGE_DISCOUNT_DETAIL
 -- PR_CHARGE_REQUEST_LOG
 -- PR_CHARGE_REVERSE_LOG
@@ -44,7 +46,7 @@ FROM user_sequences
 WHERE sequence_name LIKE 'SEQ_PR_%'
 ORDER BY sequence_name;
 
--- 预期 18 个序列
+-- 预期 19 个序列
 
 
 -- 3. 检查索引

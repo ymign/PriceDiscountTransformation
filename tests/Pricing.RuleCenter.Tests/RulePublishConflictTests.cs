@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using Newtonsoft.Json;
+using Pricing.RuleCenter.Application.Background;
+using Pricing.RuleCenter.Application.Rules.Publishing;
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Rules;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
@@ -485,6 +487,70 @@ public sealed class RulePublishConflictTests
         await service.PublishAsync(3, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" });
 
         Assert.Equal(1, runtimeCache.ClearCount);
+    }
+    [Fact]
+    public async Task PublishAsync_WhenCacheVersionBroadcastFails_KeepsRetryableOutboxRows()
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var versionRepository = new InMemoryRuleVersionRepository();
+        var conditionRepository = new InMemoryRuleConditionRepository();
+        var actionRepository = new InMemoryRuleActionRepository();
+        var testCaseRepository = new InMemoryRuleTestCaseRepository();
+        var testRunRepository = new InMemoryRuleTestRunRepository();
+        var runtimeCache = new CapturingRuleRuntimeCacheInvalidator();
+        var outboxRepository = new InMemoryRuleCacheInvalidationOutboxRepository();
+        var service = CreateService(
+            headerRepository,
+            versionRepository,
+            conditionRepository,
+            actionRepository,
+            runtimeCacheInvalidator: runtimeCache,
+            testCaseRepository: testCaseRepository,
+            testRunRepository: testRunRepository,
+            cacheVersionSynchronizer: new ThrowingCacheVersionSynchronizer(),
+            cacheInvalidationOutboxRepository: outboxRepository);
+
+        headerRepository.Headers.Add(new RuleHeader
+        {
+            RuleId = 14,
+            RuleCode = "R-OUTBOX",
+            ItemCode = "ITEM014",
+            CurrentVersion = 0,
+            Status = "DRAFT",
+            IsEnabled = "Y",
+            EffectiveFrom = new DateTime(2026, 1, 1),
+            EffectiveTo = new DateTime(2026, 12, 31)
+        });
+        versionRepository.Versions.Add(new RuleVersion
+        {
+            VersionId = 141,
+            RuleId = 14,
+            VersionNo = 1,
+            VersionStatus = "DRAFT"
+        });
+        actionRepository.Add(14, 1, new RuleAction
+        {
+            RuleId = 14,
+            VersionNo = 1,
+            ActionType = "FORMULA_CALC",
+            OnError = "STOP",
+            IsEnabled = "Y"
+        });
+        AddPassingTestCase(testCaseRepository, testRunRepository, 14, 1, 2014, 3014);
+
+        await service.PublishAsync(14, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" });
+
+        Assert.Equal("PUBLISHED", headerRepository.Headers.Single().Status);
+        Assert.Equal(1, runtimeCache.ClearCount);
+        Assert.Equal(2, outboxRepository.Items.Count);
+        Assert.Contains(outboxRepository.Items, item => item.CacheScope == CacheVersionSynchronizer.EffectiveRulesScope);
+        Assert.Contains(outboxRepository.Items, item => item.CacheScope == CacheVersionSynchronizer.ActionTypeOrderScope);
+        Assert.All(outboxRepository.Items, item =>
+        {
+            Assert.Equal(CacheInvalidationOutboxStatusCodes.Failed, item.Status);
+            Assert.Equal(1, item.RetryCount);
+            Assert.NotNull(item.NextRetryAt);
+        });
     }
 
     [Fact]
@@ -1152,8 +1218,18 @@ public sealed class RulePublishConflictTests
         IRuleApprovalRepository? approvalRepository = null,
         IRuleChangeLogRepository? changeLogRepository = null,
         IRuleTestCaseRepository? testCaseRepository = null,
-        IRuleTestRunRepository? testRunRepository = null) =>
-        new(
+        IRuleTestRunRepository? testRunRepository = null,
+        ICacheVersionSynchronizer? cacheVersionSynchronizer = null,
+        IRuleCacheInvalidationOutboxRepository? cacheInvalidationOutboxRepository = null)
+    {
+        cacheVersionSynchronizer ??= new NoopCacheVersionSynchronizer();
+        cacheInvalidationOutboxRepository ??= new InMemoryRuleCacheInvalidationOutboxRepository();
+        var outboxProcessor = new RuleCacheInvalidationOutboxProcessor(
+            cacheInvalidationOutboxRepository,
+            cacheVersionSynchronizer,
+            NullLogger<RuleCacheInvalidationOutboxProcessor>.Instance);
+
+        return new RulePublishService(
             new RulePublishLifecycleRepositories(
                 headerRepository,
                 versionRepository,
@@ -1168,9 +1244,12 @@ public sealed class RulePublishConflictTests
                 testRunRepository ?? new InMemoryRuleTestRunRepository()),
             new MemoryCache(new MemoryCacheOptions()),
             new NoopUnitOfWork(),
-            new NoopCacheVersionSynchronizer(),
+            cacheVersionSynchronizer,
+            cacheInvalidationOutboxRepository,
+            outboxProcessor,
             runtimeCacheInvalidator ?? new EmptyRuleRuntimeCacheInvalidator(),
             NullLogger<RulePublishService>.Instance);
+    }
 
     private sealed class NoopUnitOfWork : IUnitOfWork
     {
@@ -1208,6 +1287,59 @@ public sealed class RulePublishConflictTests
 
         public Task<long> IncreaseVersionAsync(string cacheScope, CancellationToken cancellationToken = default) =>
             Task.FromResult(0L);
+    }
+    private sealed class ThrowingCacheVersionSynchronizer : ICacheVersionSynchronizer
+    {
+        public Task SyncAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task<long> IncreaseVersionAsync(string cacheScope, CancellationToken cancellationToken = default)
+        {
+            throw new InvalidOperationException($"broadcast failed: {cacheScope}");
+        }
+    }
+
+    private sealed class InMemoryRuleCacheInvalidationOutboxRepository : IRuleCacheInvalidationOutboxRepository
+    {
+        public List<RuleCacheInvalidationOutbox> Items { get; } = new();
+
+        public Task<long> InsertAsync(RuleCacheInvalidationOutbox entity)
+        {
+            entity.OutboxId = Items.Count == 0 ? 1 : Items.Max(i => i.OutboxId) + 1;
+            Items.Add(entity);
+            return Task.FromResult(entity.OutboxId);
+        }
+
+        public Task<IReadOnlyList<RuleCacheInvalidationOutbox>> GetPendingAsync(DateTime now, int maxCount)
+        {
+            var items = Items
+                .Where(i => i.Status != CacheInvalidationOutboxStatusCodes.Processed)
+                .Where(i => i.NextRetryAt is null || i.NextRetryAt <= now)
+                .OrderBy(i => i.CreatedAt)
+                .ThenBy(i => i.OutboxId)
+                .Take(maxCount)
+                .ToList();
+            return Task.FromResult((IReadOnlyList<RuleCacheInvalidationOutbox>)items);
+        }
+
+        public Task<bool> MarkProcessedAsync(long outboxId, DateTime processedAt)
+        {
+            var item = Items.Single(i => i.OutboxId == outboxId);
+            item.Status = CacheInvalidationOutboxStatusCodes.Processed;
+            item.ProcessedAt = processedAt;
+            item.NextRetryAt = null;
+            item.LastError = null;
+            return Task.FromResult(true);
+        }
+
+        public Task<bool> MarkFailedAsync(long outboxId, string lastError, int retryCount, DateTime nextRetryAt)
+        {
+            var item = Items.Single(i => i.OutboxId == outboxId);
+            item.Status = CacheInvalidationOutboxStatusCodes.Failed;
+            item.LastError = lastError;
+            item.RetryCount = retryCount;
+            item.NextRetryAt = nextRetryAt;
+            return Task.FromResult(true);
+        }
     }
 
     private sealed class InMemoryRuleHeaderRepository : IRuleHeaderRepository

@@ -2,12 +2,14 @@ using Microsoft.Extensions.Caching.Memory;
 using Newtonsoft.Json;
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Background;
+using Pricing.RuleCenter.Application.Rules.Publishing;
 using Pricing.RuleCenter.Application.Pricing.Queries;
 using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
 using Pricing.RuleCenter.Core.Interfaces.Catalog;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
+using Pricing.RuleCenter.Core.Aggregates.Catalog;
 using Newtonsoft.Json.Linq;
 
 namespace Pricing.RuleCenter.Application.Rules;
@@ -88,6 +90,14 @@ public sealed class RulePublishAppService
     /// 跨实例缓存版本同步器，用于在发布状态变更后递增共享缓存版本。
     /// </summary>
     private readonly ICacheVersionSynchronizer _cacheVersionSynchronizer;
+    /// <summary>
+    /// 规则缓存失效 outbox 仓储，用于在事务内记录跨实例缓存失效任务。
+    /// </summary>
+    private readonly IRuleCacheInvalidationOutboxRepository _cacheInvalidationOutboxRepository;
+    /// <summary>
+    /// 规则缓存失效 outbox 处理器，用于事务提交后广播缓存版本并保留失败重试记录。
+    /// </summary>
+    private readonly RuleCacheInvalidationOutboxProcessor _cacheInvalidationOutboxProcessor;
 
     /// <summary>
     /// 互斥动作类型缓存。从 PR_DICT 表中 DICT_TYPE = "MUTUALLY_EXCLUSIVE_ACTION_TYPE" 的字典项加载。
@@ -124,6 +134,8 @@ public sealed class RulePublishAppService
     /// <param name="cache">内存缓存，用于在状态变更后清除生效规则缓存。</param>
     /// <param name="unitOfWork">工作单元，用于事务支持。</param>
     /// <param name="cacheVersionSynchronizer">跨实例缓存版本同步器，用于发布、停用和回滚后传播缓存失效。</param>
+    /// <param name="cacheInvalidationOutboxRepository">规则缓存失效 outbox 仓储，用于事务内记录待广播任务。</param>
+    /// <param name="cacheInvalidationOutboxProcessor">规则缓存失效 outbox 处理器，用于事务提交后处理缓存版本广播。</param>
     /// <param name="runtimeCacheInvalidator">运行期缓存失效器，用于清除规则匹配服务的动作顺序缓存。</param>
     /// <param name="logger">日志对象。</param>
     public RulePublishAppService(
@@ -132,6 +144,8 @@ public sealed class RulePublishAppService
         IMemoryCache cache,
         IUnitOfWork unitOfWork,
         ICacheVersionSynchronizer cacheVersionSynchronizer,
+        IRuleCacheInvalidationOutboxRepository cacheInvalidationOutboxRepository,
+        RuleCacheInvalidationOutboxProcessor cacheInvalidationOutboxProcessor,
         IRuleRuntimeCacheInvalidator runtimeCacheInvalidator,
         ILogger<RulePublishAppService> logger)
     {
@@ -148,6 +162,8 @@ public sealed class RulePublishAppService
         _cache = cache;
         _unitOfWork = unitOfWork;
         _cacheVersionSynchronizer = cacheVersionSynchronizer;
+        _cacheInvalidationOutboxRepository = cacheInvalidationOutboxRepository;
+        _cacheInvalidationOutboxProcessor = cacheInvalidationOutboxProcessor;
         _runtimeCacheInvalidator = runtimeCacheInvalidator;
         _logger = logger;
     }
@@ -318,13 +334,12 @@ public sealed class RulePublishAppService
                 ChangedBy = request.PublishedBy,
                 ChangedAt = DateTime.Now
             });
+            await AddCacheInvalidationOutboxAsync(ruleId, request.VersionNo, ApprovalActionCodes.Publish, DateTime.Now);
         });
 
         // ========== 第四阶段：清除生效规则缓存（事务外） ==========
         // 发布改变了当前生效版本，必须立即清除缓存，确保计价引擎读到最新规则集。
-        ClearEffectiveCache();
-        await _cacheVersionSynchronizer.IncreaseVersionAsync(CacheVersionSynchronizer.EffectiveRulesScope);
-        await _cacheVersionSynchronizer.IncreaseVersionAsync(CacheVersionSynchronizer.ActionTypeOrderScope);
+        await InvalidateCachesAfterCommitAsync();
 
         _logger.LogInformation("发布规则 RuleId={RuleId}, VersionNo={VersionNo}", ruleId, request.VersionNo);
     }
@@ -423,12 +438,15 @@ public sealed class RulePublishAppService
                 ChangedBy = request.PublishedBy,
                 ChangedAt = DateTime.Now
             });
+            await AddCacheInvalidationOutboxAsync(
+                ruleId,
+                currentHeader.CurrentVersion,
+                ApprovalActionCodes.Disable,
+                DateTime.Now);
         });
 
         // ========== 第三阶段：清除生效规则缓存 ==========
-        ClearEffectiveCache();
-        await _cacheVersionSynchronizer.IncreaseVersionAsync(CacheVersionSynchronizer.EffectiveRulesScope);
-        await _cacheVersionSynchronizer.IncreaseVersionAsync(CacheVersionSynchronizer.ActionTypeOrderScope);
+        await InvalidateCachesAfterCommitAsync();
 
         _logger.LogInformation("停用规则 RuleId={RuleId}", ruleId);
     }
@@ -545,12 +563,11 @@ public sealed class RulePublishAppService
                 ChangedBy = request.PublishedBy,
                 ChangedAt = DateTime.Now
             });
+            await AddCacheInvalidationOutboxAsync(ruleId, rollbackVersionNo, ApprovalActionCodes.Rollback, DateTime.Now);
         });
 
         // ========== 第四阶段：清除生效规则缓存 ==========
-        ClearEffectiveCache();
-        await _cacheVersionSynchronizer.IncreaseVersionAsync(CacheVersionSynchronizer.EffectiveRulesScope);
-        await _cacheVersionSynchronizer.IncreaseVersionAsync(CacheVersionSynchronizer.ActionTypeOrderScope);
+        await InvalidateCachesAfterCommitAsync();
 
         var currentHeaderAfterRollback = await _headerRepository.GetByIdAsync(ruleId)
             ?? throw new KeyNotFoundException($"规则不存在: {ruleId}");
@@ -1258,6 +1275,51 @@ public sealed class RulePublishAppService
             specialFlagRemoved);
     }
 
+    private async Task AddCacheInvalidationOutboxAsync(
+        long ruleId,
+        int versionNo,
+        string operationType,
+        DateTime now)
+    {
+        await AddCacheInvalidationOutboxAsync(
+            CacheVersionSynchronizer.EffectiveRulesScope,
+            ruleId,
+            versionNo,
+            operationType,
+            now);
+        await AddCacheInvalidationOutboxAsync(
+            CacheVersionSynchronizer.ActionTypeOrderScope,
+            ruleId,
+            versionNo,
+            operationType,
+            now);
+    }
+
+    private async Task AddCacheInvalidationOutboxAsync(
+        string cacheScope,
+        long ruleId,
+        int versionNo,
+        string operationType,
+        DateTime now)
+    {
+        await _cacheInvalidationOutboxRepository.InsertAsync(new RuleCacheInvalidationOutbox
+        {
+            CacheScope = cacheScope,
+            OperationType = operationType,
+            RuleId = ruleId,
+            VersionNo = versionNo,
+            Status = CacheInvalidationOutboxStatusCodes.Pending,
+            RetryCount = 0,
+            CreatedAt = now
+        });
+    }
+
+    private async Task InvalidateCachesAfterCommitAsync()
+    {
+        ClearEffectiveCache();
+        await _cacheInvalidationOutboxProcessor.ProcessPendingAsync();
+    }
+
     /// <summary>
     /// 将发布流水实体映射为接口响应。
     /// </summary>
@@ -1324,7 +1386,3 @@ public sealed class RulePublishAppService
         }
     }
 }
-
-
-
-
