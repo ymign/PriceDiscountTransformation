@@ -1676,74 +1676,48 @@ public sealed class PricingAppService
         };
     }
 
-    private async Task<PricingCalculateResponse> BuildIdempotentResponse(ChargeRequest log)
+    private Task<PricingCalculateResponse> BuildIdempotentResponse(ChargeRequest log)
     {
         // 这是最严格的幂等语义。即使后来规则配置发生变化，重试同一业务号也必须得到首次 confirm 的结果。
-        if (!string.IsNullOrWhiteSpace(log.ResponseJson))
+        // 如果首次响应快照缺失或损坏，不能从折价明细重新拼装一个近似响应；这会隐藏数据完整性问题，
+        // 也会丢失首次返回给渠道的 traceSteps、matchedRuleIds、过期时间等关键字段。
+        if (string.IsNullOrWhiteSpace(log.ResponseJson))
+        {
+            _logger.LogError(
+                "CONFIRM 幂等响应快照缺失 RequestId={RequestId}, BusinessRequestNo={BusinessRequestNo}, Status={Status}",
+                log.RequestId, log.BusinessRequestNo, log.BusinessStatus);
+            throw BuildIdempotencyResponseSnapshotInvalidException(log, "响应快照缺失");
+        }
+
+        try
         {
             var response = JsonConvert.DeserializeObject<PricingCalculateResponse>(log.ResponseJson);
             if (response is not null)
             {
-                return response;
+                return Task.FromResult(response);
             }
         }
-
-        // 正常情况下不应该走到这里。保留兜底是为了兼容历史数据或响应快照缺失的异常记录。
-        var details = await _discountRepository.GetByRequestIdAsync(log.RequestId);
-        var detail = details.FirstOrDefault(d => d.ParentDiscountId is null) ?? details.FirstOrDefault();
-        var replacement = detail is null
-            ? null
-            : details.FirstOrDefault(d => d.ParentDiscountId == detail.DiscountId);
-        var expireAt = log.BusinessStatus == BusinessStatusCodes.ConfirmPending
-            ? log.RequestAt.AddMinutes(_options.ConfirmExpireMinutes)
-            : (DateTime?)null;
-        var expireSeconds = expireAt.HasValue
-            ? Math.Max(0, (int)Math.Ceiling((expireAt.Value - DateTime.Now).TotalSeconds))
-            : (int?)null;
-
-        return new PricingCalculateResponse
+        catch (JsonException ex)
         {
-            RequestId = log.RequestId,
-            IsSpecialItem = detail is not null,
-            InputQty = log.InputQty ?? 0,
-            FinalQty = detail?.FinalQty ?? 0,
-            UnitPrice = detail?.UnitPrice ?? 0,
-            FinalAmount = (detail?.FinalAmt ?? 0) + (replacement?.FinalAmt ?? 0),
-            DiscountAmount = (detail?.DiscountAmt ?? 0) + (replacement?.DiscountAmt ?? 0),
-            ExpireAt = expireAt,
-            ExpireSeconds = expireSeconds,
-            Items = detail is null
-                ? Array.Empty<PricingCalculateItemResponse>()
-                : new[]
-                {
-                    new PricingCalculateItemResponse
-                    {
-                        RequestId = log.RequestId,
-                        ItemCode = detail.ItemCode ?? string.Empty,
-                        ItemName = detail.ItemName,
-                        IsSpecialItem = true,
-                        InputQty = detail.OriginalQty ?? 0,
-                        ConvertedQty = detail.ConvertedQty ?? detail.FinalQty ?? 0,
-                        FinalQty = detail.FinalQty ?? 0,
-                        UnitPrice = detail.UnitPrice ?? 0,
-                        FinalAmount = (detail.FinalAmt ?? 0) + (replacement?.FinalAmt ?? 0),
-                        DiscountAmount = (detail.DiscountAmt ?? 0) + (replacement?.DiscountAmt ?? 0),
-                        ExceedQty = replacement?.FinalQty ?? Math.Max((detail.ConvertedQty ?? 0) - (detail.FinalQty ?? 0), 0m),
-                        ReplacementItem = replacement is null
-                            ? null
-                            : new PricingReplacementItemResponse
-                            {
-                                ItemCode = replacement.ItemCode ?? string.Empty,
-                                ItemName = replacement.ItemName,
-                                Qty = replacement.FinalQty ?? 0,
-                                UnitPrice = replacement.UnitPrice ?? 0,
-                                Amount = replacement.FinalAmt ?? 0
-                            }
-                    }
-                },
-            TraceSteps = Array.Empty<PricingTraceStepResponse>(),
-            MatchedRuleIds = detail?.RuleId is long ruleId ? new[] { ruleId } : Array.Empty<long>()
-        };
+            _logger.LogError(
+                ex,
+                "CONFIRM 幂等响应快照反序列化失败 RequestId={RequestId}, BusinessRequestNo={BusinessRequestNo}, Status={Status}",
+                log.RequestId, log.BusinessRequestNo, log.BusinessStatus);
+            throw BuildIdempotencyResponseSnapshotInvalidException(log, "响应快照损坏");
+        }
+
+        _logger.LogError(
+            "CONFIRM 幂等响应快照为空对象 RequestId={RequestId}, BusinessRequestNo={BusinessRequestNo}, Status={Status}",
+            log.RequestId, log.BusinessRequestNo, log.BusinessStatus);
+        throw BuildIdempotencyResponseSnapshotInvalidException(log, "响应快照为空");
+    }
+
+    private static BizException BuildIdempotencyResponseSnapshotInvalidException(ChargeRequest log, string reason)
+    {
+        return new BizException(
+            BizErrorCode.IdempotencyResponseSnapshotInvalid,
+            500,
+            $"CONFIRM 幂等响应快照不可用，{reason}，RequestId={log.RequestId}");
     }
 
     private async Task<T> ExecuteInTransactionAsync<T>(Func<Task<T>> action)

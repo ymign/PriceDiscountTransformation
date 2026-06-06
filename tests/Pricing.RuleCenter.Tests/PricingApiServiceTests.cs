@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Pricing;
+using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 using Pricing.RuleCenter.Core.Options;
@@ -433,6 +434,75 @@ public sealed class PricingApiServiceTests
         Assert.Equal(
             2m,
             secondContext.InRequestOccupiedQtyByLimitDimension["TIME_WINDOW:P001:ITEM001"]);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("{broken-json")]
+    public async Task ConfirmAsync_RejectsIdempotentReplayWhenResponseSnapshotIsMissingOrInvalid(string? responseJson)
+    {
+        var request = CreateValidCalculateRequest(
+            businessRequestNo: "BR-IDEM",
+            items: new[]
+            {
+                new PricingCalculateItemRequest
+                {
+                    ChargeDetailNo = "CD-IDEM",
+                    ItemCode = "ITEM001",
+                    InputQty = 1m,
+                    UnitPrice = 10m
+                }
+            });
+
+        var existingLog = new ChargeRequestLog
+        {
+            RequestId = 301,
+            RequestNo = "REQ-FIRST",
+            BusinessRequestNo = request.BusinessRequestNo,
+            RequestFingerprint = BuildConfirmFingerprint(request),
+            CallType = "CONFIRM",
+            BusinessStatus = BusinessStatusCodes.ConfirmPending,
+            SourceSystem = request.SourceSystem,
+            PatientId = request.PatientId,
+            ChargeDetailNo = "CD-IDEM",
+            ItemCode = "ITEM001",
+            InputQty = 1m,
+            RequestAt = new DateTime(2026, 5, 10, 9, 30, 0),
+            ResponseJson = responseJson
+        };
+        var requestLogRepository = new ExistingBusinessKeyRequestLogRepository(existingLog);
+        var discountRepository = new CommitDiscountDetailRepository(new[]
+        {
+            new ChargeDiscountDetail
+            {
+                RequestId = existingLog.RequestId,
+                DiscountId = 401,
+                ChargeDetailNo = "CD-IDEM",
+                ItemCode = "ITEM001",
+                OriginalQty = 1m,
+                ConvertedQty = 1m,
+                FinalQty = 1m,
+                UnitPrice = 10m,
+                FinalAmt = 10m,
+                DiscountAmt = 0m
+            }
+        });
+        var service = CreatePricingApiService(
+            new CapturingPricingEngine(),
+            new EmptyRuleHeaderRepository(),
+            requestLogRepository,
+            discountRepository,
+            new EmptyChargeTraceStepRepository(),
+            new EmptyLimitOccupyRepository(),
+            new EmptyChargeReverseLogRepository(),
+            new EmptyPriceMasterRepository(),
+            new NoopUnitOfWork(),
+            Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
+            NullLogger<PricingApiService>.Instance);
+
+        var ex = await Assert.ThrowsAsync<BizException>(() => service.ConfirmAsync(request));
+
+        Assert.Equal(BizErrorCode.IdempotencyResponseSnapshotInvalid, ex.Code);
     }
 
     [Fact]
@@ -1084,6 +1154,7 @@ public sealed class PricingApiServiceTests
 
     private static PricingCalculateRequest CreateValidCalculateRequest(
         string sourceSystem = "HIS",
+        string? businessRequestNo = null,
         string patientId = "P001",
         DateTime? businessChargeTime = null,
         IReadOnlyList<PricingCalculateItemRequest>? items = null) =>
@@ -1091,6 +1162,7 @@ public sealed class PricingApiServiceTests
         {
             RequestNo = "REQ-VALID",
             SourceSystem = sourceSystem,
+            BusinessRequestNo = businessRequestNo,
             PatientId = patientId,
             BusinessChargeTime = businessChargeTime ?? new DateTime(2026, 5, 10, 9, 30, 0),
             Items = items ?? new[]
@@ -1104,6 +1176,19 @@ public sealed class PricingApiServiceTests
                 }
             }
         };
+
+    private static string BuildConfirmFingerprint(PricingCalculateRequest request)
+    {
+        var method = typeof(PricingApiService)
+            .Assembly
+            .GetType("Pricing.RuleCenter.Application.Pricing.PricingRequestFingerprintBuilder")!
+            .GetMethod(
+                "BuildConfirmFingerprint",
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)!;
+        return (string)method.Invoke(
+            null,
+            new object?[] { request, request.Items!.ToList(), PricingCallTypeCodes.Confirm })!;
+    }
 
     private sealed class CapturingPricingEngine : IPricingEngine
     {
@@ -1329,6 +1414,54 @@ public sealed class PricingApiServiceTests
                 Inserted[index] = entity;
             }
 
+            return Task.CompletedTask;
+        }
+
+        public Task<(IReadOnlyList<ChargeRequestLog> Items, int Total)> GetPagedAsync(
+            string? patientId,
+            string? itemCode,
+            string? chargeNo,
+            DateTime? startTime,
+            DateTime? endTime,
+            int pageIndex,
+            int pageSize) =>
+            Task.FromResult(((IReadOnlyList<ChargeRequestLog>)Array.Empty<ChargeRequestLog>(), 0));
+
+        public Task<IReadOnlyList<ChargeRequestLog>> GetPendingExpiredAsync(DateTime expireBefore) =>
+            Task.FromResult((IReadOnlyList<ChargeRequestLog>)Array.Empty<ChargeRequestLog>());
+    }
+
+    private sealed class ExistingBusinessKeyRequestLogRepository : IChargeRequestLogRepository
+    {
+        public ExistingBusinessKeyRequestLogRepository(ChargeRequestLog log)
+        {
+            Log = log;
+        }
+
+        public ChargeRequestLog Log { get; private set; }
+
+        public Task<ChargeRequestLog?> GetByIdAsync(long requestId) =>
+            Task.FromResult<ChargeRequestLog?>(Log.RequestId == requestId ? Log : null);
+
+        public Task<ChargeRequestLog?> GetByBusinessKeyAsync(
+            string sourceSystem,
+            string businessRequestNo,
+            string callType) =>
+            Task.FromResult<ChargeRequestLog?>(
+                string.Equals(Log.SourceSystem, sourceSystem, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(Log.BusinessRequestNo, businessRequestNo, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(Log.CallType, callType, StringComparison.OrdinalIgnoreCase)
+                    ? Log
+                    : null);
+
+        public Task<ChargeRequestLog?> GetByFingerprintAsync(string fingerprint) =>
+            Task.FromResult<ChargeRequestLog?>(null);
+
+        public Task<long> InsertAsync(ChargeRequestLog entity) => Task.FromResult(0L);
+
+        public Task UpdateAsync(ChargeRequestLog entity)
+        {
+            Log = entity;
             return Task.CompletedTask;
         }
 

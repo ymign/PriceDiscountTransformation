@@ -155,6 +155,9 @@ public static class BizErrorCode
     /// <summary>commit 金额不匹配。</summary>
     public const int CommitAmountMismatch = 2013;
 
+    /// <summary>confirm 幂等响应快照缺失或损坏。</summary>
+    public const int IdempotencyResponseSnapshotInvalid = 2014;
+
     // ========== 状态流转类错误（3001-3099） ==========
 
     /// <summary>版本状态不允许发布（如已 DISABLED 或已有草稿）。</summary>
