@@ -132,12 +132,13 @@ public sealed class ExpireCleanupAppService : BackgroundService
         var discountRepo = scope.ServiceProvider.GetRequiredService<IChargeDiscountDetailRepository>();
         var limitRepo = scope.ServiceProvider.GetRequiredService<ILimitOccupyRepository>();
         var unitOfWork = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        var clock = scope.ServiceProvider.GetRequiredService<IClock>();
 
         // ========== 第二阶段：筛选超时的 CONFIRM_PENDING ==========
         // 过期时间 = 当前时间 - ConfirmExpireMinutes，与 confirm 接口返回给调用方的有效期口径一致。
         // GetPendingExpiredAsync 在仓储层实现筛选逻辑，只返回 BusinessStatus=BusinessStatusCodes.ConfirmPending
         // 且 RequestAt 早于 expireBefore 的记录。
-        var expireBefore = DateTime.Now.AddMinutes(-_options.ConfirmExpireMinutes);
+        var expireBefore = clock.Now.AddMinutes(-_options.ConfirmExpireMinutes);
         var expired = await requestLogRepo.GetPendingExpiredAsync(expireBefore);
 
         // ========== 第三阶段：逐笔事务处理 ==========
@@ -169,7 +170,7 @@ public sealed class ExpireCleanupAppService : BackgroundService
                 // 如果只更新请求日志而不释放限额占用，会导致患者额度被永久占用；
                 // 如果只释放限额而不更新请求日志，会导致报表和追溯数据不一致。
                 current.BusinessStatus = BusinessStatusCodes.Expired;
-                current.ResponseAt = DateTime.Now;
+                current.ResponseAt = clock.Now;
                 await requestLogRepo.UpdateAsync(current);
 
                 await discountRepo.UpdateStatusByRequestIdAsync(log.RequestId, BusinessStatusCodes.Expired);
