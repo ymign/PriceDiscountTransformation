@@ -559,6 +559,49 @@ public sealed class RulePublishConflictTests
     }
 
     [Fact]
+    public async Task RuleCacheInvalidationOutboxProcessor_QueriesPendingRowsWithInjectedClock()
+    {
+        var now = new DateTime(2026, 5, 22, 10, 30, 0);
+        var outboxRepository = new InMemoryRuleCacheInvalidationOutboxRepository();
+        var processor = new RuleCacheInvalidationOutboxProcessor(
+            outboxRepository,
+            new NoopCacheVersionSynchronizer(),
+            new FixedClock(now),
+            NullLogger<RuleCacheInvalidationOutboxProcessor>.Instance);
+
+        await processor.ProcessPendingAsync();
+
+        Assert.Equal(now, outboxRepository.LastPendingQueryNow);
+    }
+
+    [Fact]
+    public async Task RuleCacheInvalidationOutboxProcessor_ComputesRetryTimeFromInjectedClock()
+    {
+        var now = new DateTime(2026, 5, 22, 10, 30, 0);
+        var outboxRepository = new InMemoryRuleCacheInvalidationOutboxRepository();
+        outboxRepository.Items.Add(new RuleCacheInvalidationOutbox
+        {
+            OutboxId = 1,
+            CacheScope = CacheVersionSynchronizer.EffectiveRulesScope,
+            Status = CacheInvalidationOutboxStatusCodes.Pending,
+            RetryCount = 0,
+            CreatedAt = now.AddMinutes(-1)
+        });
+        var processor = new RuleCacheInvalidationOutboxProcessor(
+            outboxRepository,
+            new ThrowingCacheVersionSynchronizer(),
+            new FixedClock(now),
+            NullLogger<RuleCacheInvalidationOutboxProcessor>.Instance);
+
+        await processor.ProcessPendingAsync();
+
+        var item = Assert.Single(outboxRepository.Items);
+        Assert.Equal(CacheInvalidationOutboxStatusCodes.Failed, item.Status);
+        Assert.Equal(1, item.RetryCount);
+        Assert.Equal(now.AddSeconds(2), item.NextRetryAt);
+    }
+
+    [Fact]
     public async Task PublishAsync_ReEnablesRuleWhenPublishingFromDisabledHeader()
     {
         var headerRepository = new InMemoryRuleHeaderRepository();
@@ -1462,6 +1505,7 @@ public sealed class RulePublishConflictTests
         var outboxProcessor = new RuleCacheInvalidationOutboxProcessor(
             cacheInvalidationOutboxRepository,
             cacheVersionSynchronizer,
+            new FixedClock(new DateTime(2026, 5, 22, 10, 0, 0)),
             NullLogger<RuleCacheInvalidationOutboxProcessor>.Instance);
 
         return new RulePublishService(
@@ -1533,9 +1577,21 @@ public sealed class RulePublishConflictTests
         }
     }
 
+    private sealed class FixedClock : IClock
+    {
+        public FixedClock(DateTime now)
+        {
+            Now = now;
+        }
+
+        public DateTime Now { get; }
+    }
+
     private sealed class InMemoryRuleCacheInvalidationOutboxRepository : IRuleCacheInvalidationOutboxRepository
     {
         public List<RuleCacheInvalidationOutbox> Items { get; } = new();
+
+        public DateTime? LastPendingQueryNow { get; private set; }
 
         public Task<long> InsertAsync(RuleCacheInvalidationOutbox entity)
         {
@@ -1546,6 +1602,7 @@ public sealed class RulePublishConflictTests
 
         public Task<IReadOnlyList<RuleCacheInvalidationOutbox>> GetPendingAsync(DateTime now, int maxCount)
         {
+            LastPendingQueryNow = now;
             var items = Items
                 .Where(i => i.Status != CacheInvalidationOutboxStatusCodes.Processed)
                 .Where(i => i.NextRetryAt is null || i.NextRetryAt <= now)

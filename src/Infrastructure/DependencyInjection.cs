@@ -62,6 +62,7 @@ public static class DependencyInjection
         services.AddSqlSugarOracle(pricingOptions);
         services.AddMemoryCache();
         services.AddDistributedMemoryCache();
+        services.AddSingleton<IClock, SystemClock>();
         services.AddScoped<IUnitOfWork, SqlSugarUnitOfWork>();
 
         // --- 规则配置仓储 ---

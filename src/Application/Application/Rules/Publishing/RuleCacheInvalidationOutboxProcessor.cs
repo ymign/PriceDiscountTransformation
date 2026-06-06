@@ -13,6 +13,7 @@ public sealed class RuleCacheInvalidationOutboxProcessor
 
     private readonly IRuleCacheInvalidationOutboxRepository _outboxRepository;
     private readonly ICacheVersionSynchronizer _cacheVersionSynchronizer;
+    private readonly IClock _clock;
     private readonly ILogger<RuleCacheInvalidationOutboxProcessor> _logger;
 
     /// <summary>
@@ -21,10 +22,12 @@ public sealed class RuleCacheInvalidationOutboxProcessor
     public RuleCacheInvalidationOutboxProcessor(
         IRuleCacheInvalidationOutboxRepository outboxRepository,
         ICacheVersionSynchronizer cacheVersionSynchronizer,
+        IClock clock,
         ILogger<RuleCacheInvalidationOutboxProcessor> logger)
     {
         _outboxRepository = outboxRepository;
         _cacheVersionSynchronizer = cacheVersionSynchronizer;
+        _clock = clock;
         _logger = logger;
     }
 
@@ -37,8 +40,7 @@ public sealed class RuleCacheInvalidationOutboxProcessor
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var now = DateTime.Now;
-        var items = await _outboxRepository.GetPendingAsync(now, maxCount);
+        var items = await _outboxRepository.GetPendingAsync(_clock.Now, maxCount);
         foreach (var item in items)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -53,12 +55,12 @@ public sealed class RuleCacheInvalidationOutboxProcessor
         try
         {
             await _cacheVersionSynchronizer.IncreaseVersionAsync(item.CacheScope, cancellationToken);
-            await _outboxRepository.MarkProcessedAsync(item.OutboxId, DateTime.Now);
+            await _outboxRepository.MarkProcessedAsync(item.OutboxId, _clock.Now);
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             var retryCount = item.RetryCount + 1;
-            var nextRetryAt = DateTime.Now + GetRetryDelay(retryCount);
+            var nextRetryAt = _clock.Now + GetRetryDelay(retryCount);
             await _outboxRepository.MarkFailedAsync(
                 item.OutboxId,
                 Truncate(ex.Message, 1000),
