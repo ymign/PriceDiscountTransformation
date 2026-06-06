@@ -1,4 +1,5 @@
 using Newtonsoft.Json;
+using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Models;
@@ -59,8 +60,7 @@ public sealed class IncrementPercentExecutor : IRuleActionExecutor
     /// <returns>匹配增量比例公式时返回 <c>true</c>，否则返回 <c>false</c>。</returns>
     public bool CanHandle(RuleAction action)
     {
-        return string.Equals(action.ExecutorCode, "INCREMENT_PERCENT", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(action.ExecutorCode, "IncrementPercentExecutor", StringComparison.OrdinalIgnoreCase);
+        return FormulaExecutorCodes.IsIncrementPercent(action.ExecutorCode);
     }
 
     /// <summary>

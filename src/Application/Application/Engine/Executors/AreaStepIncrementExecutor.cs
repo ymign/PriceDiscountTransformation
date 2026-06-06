@@ -1,4 +1,5 @@
 using Newtonsoft.Json;
+using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Models;
@@ -50,8 +51,7 @@ public sealed class AreaStepIncrementExecutor : IRuleActionExecutor
     /// <returns>匹配面积分段递增公式时返回 <c>true</c>，否则返回 <c>false</c>。</returns>
     public bool CanHandle(RuleAction action)
     {
-        return string.Equals(action.ExecutorCode, "AREA_STEP_INCREMENT", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(action.ExecutorCode, "AreaStepIncrementExecutor", StringComparison.OrdinalIgnoreCase);
+        return FormulaExecutorCodes.IsAreaStepIncrement(action.ExecutorCode);
     }
 
     /// <summary>

@@ -1,3 +1,4 @@
+using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
 
 namespace Pricing.RuleCenter.Core.Engine;
@@ -55,7 +56,11 @@ public sealed class ConditionEvaluatorFactory
     {
         // 构造时建索引，匹配规则时每个条件都可以 O(1) 查到对应评估器。
         // 规则匹配阶段可能评估数百条条件，O(1) 查找对性能至关重要。
-        _evaluators = evaluators.ToDictionary(e => e.ConditionType, StringComparer.OrdinalIgnoreCase);
+        _evaluators = evaluators
+            .SelectMany(evaluator => RuleConditionTypeCodes
+                .GetAliases(evaluator.ConditionType)
+                .Select(alias => new { Alias = alias, Evaluator = evaluator }))
+            .ToDictionary(item => item.Alias, item => item.Evaluator, StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>

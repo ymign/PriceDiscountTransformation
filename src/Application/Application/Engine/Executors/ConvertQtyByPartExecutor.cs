@@ -1,4 +1,5 @@
 using Newtonsoft.Json;
+using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Models;
@@ -51,8 +52,7 @@ public sealed class ConvertQtyByPartExecutor : IRuleActionExecutor
     /// <returns>匹配按部位换算公式时返回 <c>true</c>，否则返回 <c>false</c>。</returns>
     public bool CanHandle(RuleAction action)
     {
-        return string.Equals(action.ExecutorCode, "CONVERT_QTY_BY_PART", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(action.ExecutorCode, "ConvertQtyByPartExecutor", StringComparison.OrdinalIgnoreCase);
+        return FormulaExecutorCodes.IsConvertQtyByPart(action.ExecutorCode);
     }
 
     /// <summary>

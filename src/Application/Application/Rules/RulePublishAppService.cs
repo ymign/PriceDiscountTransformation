@@ -711,8 +711,8 @@ public sealed class RulePublishAppService
                     $"项目 {targetHeader.ItemCode} 在相同场景和生效期内已存在 {conflictActionType} 规则，RuleId={existingRule.RuleId}");
             }
 
-            if (targetProfile.Actions.Contains("CONVERT_QTY") &&
-                existingProfile.Actions.Contains("CONVERT_QTY") &&
+            if (targetProfile.Actions.Contains(RuleActionTypeCodes.ConvertQty) &&
+                existingProfile.Actions.Contains(RuleActionTypeCodes.ConvertQty) &&
                 HasSceneAndBodyPartOverlap(targetProfile.ConditionScopes, existingProfile.ConditionScopes))
             {
                 throw new BizException(
@@ -725,13 +725,54 @@ public sealed class RulePublishAppService
 
     private async Task ValidateActionParametersAsync(long ruleId, int versionNo)
     {
+        var conditions = await _conditionRepository.GetByRuleAndVersionAsync(ruleId, versionNo);
+        ValidateSupportedConditions(conditions);
+
         var actions = await _actionRepository.GetByRuleAndVersionAsync(ruleId, versionNo);
+        ValidateSupportedActions(actions);
         ValidateCriticalActionOnError(actions);
         ValidateAddChildItemActions(actions);
 
         foreach (var action in actions.Where(a => a.IsEnabled == EnableFlag.Yes))
         {
             ValidateActionParameters(action);
+        }
+    }
+
+    private static void ValidateSupportedConditions(IReadOnlyList<RuleCondition> conditions)
+    {
+        foreach (var condition in conditions.Where(c => c.IsEnabled == EnableFlag.Yes))
+        {
+            if (!RuleConditionTypeCodes.IsSupported(condition.ConditionType))
+            {
+                throw new BizException(
+                    BizErrorCode.RuleConditionUnsupported,
+                    409,
+                    $"不支持的规则条件类型: {condition.ConditionType}");
+            }
+        }
+    }
+
+    private static void ValidateSupportedActions(IReadOnlyList<RuleAction> actions)
+    {
+        foreach (var action in actions.Where(a => a.IsEnabled == EnableFlag.Yes))
+        {
+            if (!RuleActionTypeCodes.IsSupported(action.ActionType))
+            {
+                throw new BizException(
+                    BizErrorCode.RuleActionUnsupported,
+                    409,
+                    $"不支持的规则动作类型: {action.ActionType}");
+            }
+
+            if (string.Equals(action.ActionType, RuleActionTypeCodes.FormulaCalc, StringComparison.OrdinalIgnoreCase) &&
+                !FormulaExecutorCodes.IsSupported(action.ExecutorCode))
+            {
+                throw new BizException(
+                    BizErrorCode.RuleCapabilityUnsupported,
+                    409,
+                    $"不支持的公式执行器: {action.ExecutorCode}");
+            }
         }
     }
 
@@ -809,7 +850,7 @@ public sealed class RulePublishAppService
         var normalizedChildCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var action in actions.Where(a =>
                      a.IsEnabled == EnableFlag.Yes &&
-                     string.Equals(NormalizeActionType(a.ActionType), "ADD_CHILD_ITEM", StringComparison.OrdinalIgnoreCase)))
+                     string.Equals(NormalizeActionType(a.ActionType), RuleActionTypeCodes.AddChildItem, StringComparison.OrdinalIgnoreCase)))
         {
             var config = ParseAddChildItemConfig(action.ParamsJson);
             if (config?.ChildItems is null || config.ChildItems.Count == 0)
@@ -844,7 +885,7 @@ public sealed class RulePublishAppService
         var json = ParseParams(action.ParamsJson);
         switch (action.ActionType?.Trim().ToUpperInvariant())
         {
-            case "APPLY_TIME_WINDOW_LIMIT":
+            case RuleActionTypeCodes.ApplyTimeWindowLimit:
                 if (!HasPositiveNumber(json, "limitQty", "maxQty") ||
                     !HasPositiveNumber(json, "windowMinutes", "windowHours"))
                 {
@@ -855,7 +896,7 @@ public sealed class RulePublishAppService
                 }
                 break;
 
-            case "APPLY_DAY_LIMIT_QTY":
+            case RuleActionTypeCodes.ApplyDayLimitQty:
                 if (!HasPositiveNumber(json, "maxDailyQty"))
                 {
                     throw new BizException(
@@ -865,7 +906,7 @@ public sealed class RulePublishAppService
                 }
                 break;
 
-            case "APPLY_ONCE_LIMIT_QTY":
+            case RuleActionTypeCodes.ApplyOnceLimitQty:
                 if (!HasNonNegativeNumber(json, "maxOnceQty", "maxQty"))
                 {
                     throw new BizException(
@@ -875,7 +916,7 @@ public sealed class RulePublishAppService
                 }
                 break;
 
-            case "APPLY_MAX_AMOUNT":
+            case RuleActionTypeCodes.ApplyMaxAmount:
                 if (!HasNonNegativeNumber(json, "maxAmount", "ceilingAmount"))
                 {
                     throw new BizException(
@@ -885,7 +926,7 @@ public sealed class RulePublishAppService
                 }
                 break;
 
-            case "APPLY_MIN_AMOUNT":
+            case RuleActionTypeCodes.ApplyMinAmount:
                 if (!HasNonNegativeNumber(json, "minAmount", "floorAmount"))
                 {
                     throw new BizException(
@@ -1008,8 +1049,8 @@ public sealed class RulePublishAppService
                 ? "DEFAULT"
                 : c.ConditionGroup.Trim())
             .Select(group => new RuleConditionScope(
-                GetConditionValues(group, "CHARGE_SCENE", "CHARGE_SCENE_MATCH"),
-                GetConditionValues(group, "BODY_PART", "BODY_PART_MATCH")))
+                GetConditionValues(group, RuleConditionTypeCodes.GetAliases(RuleConditionTypeCodes.ChargeScene).ToArray()),
+                GetConditionValues(group, RuleConditionTypeCodes.GetAliases(RuleConditionTypeCodes.BodyPart).ToArray())))
             .ToList();
     }
 
@@ -1201,12 +1242,12 @@ public sealed class RulePublishAppService
     /// </remarks>
     private static readonly HashSet<string> DefaultMutuallyExclusiveActions = new(StringComparer.OrdinalIgnoreCase)
     {
-        "FORMULA_CALC",
-        "APPLY_MIN_AMOUNT",
-        "APPLY_MAX_AMOUNT",
-        "APPLY_DAY_LIMIT_QTY",
-        "APPLY_ONCE_LIMIT_QTY",
-        "APPLY_TIME_WINDOW_LIMIT"
+        RuleActionTypeCodes.FormulaCalc,
+        RuleActionTypeCodes.ApplyMinAmount,
+        RuleActionTypeCodes.ApplyMaxAmount,
+        RuleActionTypeCodes.ApplyDayLimitQty,
+        RuleActionTypeCodes.ApplyOnceLimitQty,
+        RuleActionTypeCodes.ApplyTimeWindowLimit
     };
 
     private sealed record RuleConflictProfile(
@@ -1241,17 +1282,17 @@ public sealed class RulePublishAppService
 
     private static readonly HashSet<string> CriticalActionTypes = new(StringComparer.OrdinalIgnoreCase)
     {
-        "CONVERT_QTY",
-        "FORMULA_CALC",
-        "APPLY_DAY_LIMIT_QTY",
-        "APPLY_TIME_WINDOW_LIMIT",
-        "APPLY_ONCE_LIMIT_QTY",
-        "SAME_GROUP_MUTEX",
-        "APPLY_MIN_AMOUNT",
-        "APPLY_MAX_AMOUNT",
-        "SAME_OPERATION_CEILING",
-        "ADD_CHILD_ITEM",
-        "DISCOUNT_EXCEED_TO_ZERO"
+        RuleActionTypeCodes.ConvertQty,
+        RuleActionTypeCodes.FormulaCalc,
+        RuleActionTypeCodes.ApplyDayLimitQty,
+        RuleActionTypeCodes.ApplyTimeWindowLimit,
+        RuleActionTypeCodes.ApplyOnceLimitQty,
+        RuleActionTypeCodes.SameGroupMutex,
+        RuleActionTypeCodes.ApplyMinAmount,
+        RuleActionTypeCodes.ApplyMaxAmount,
+        RuleActionTypeCodes.SameOperationCeiling,
+        RuleActionTypeCodes.AddChildItem,
+        RuleActionTypeCodes.DiscountExceedToZero
     };
 
     /// <summary>

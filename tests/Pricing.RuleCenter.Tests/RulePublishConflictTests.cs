@@ -55,6 +55,7 @@ public sealed class RulePublishConflictTests
             RuleId = 101,
             VersionNo = 1,
             ActionType = "FORMULA_CALC",
+            ExecutorCode = "INCREMENT_PERCENT",
             OnError = "STOP",
             IsEnabled = "Y"
         });
@@ -109,6 +110,7 @@ public sealed class RulePublishConflictTests
             RuleId = 102,
             VersionNo = 1,
             ActionType = "FORMULA_CALC",
+            ExecutorCode = "INCREMENT_PERCENT",
             OnError = "STOP",
             IsEnabled = "Y"
         });
@@ -186,6 +188,7 @@ public sealed class RulePublishConflictTests
             RuleId = 103,
             VersionNo = 1,
             ActionType = "FORMULA_CALC",
+            ExecutorCode = "INCREMENT_PERCENT",
             OnError = "STOP",
             IsEnabled = "Y"
         });
@@ -480,6 +483,7 @@ public sealed class RulePublishConflictTests
             RuleId = 3,
             VersionNo = 1,
             ActionType = "FORMULA_CALC",
+            ExecutorCode = "INCREMENT_PERCENT",
             IsEnabled = "Y"
         });
         AddPassingTestCase(testCaseRepository, testRunRepository, 3, 1, 2004, 3004);
@@ -533,6 +537,7 @@ public sealed class RulePublishConflictTests
             RuleId = 14,
             VersionNo = 1,
             ActionType = "FORMULA_CALC",
+            ExecutorCode = "INCREMENT_PERCENT",
             OnError = "STOP",
             IsEnabled = "Y"
         });
@@ -603,6 +608,7 @@ public sealed class RulePublishConflictTests
             RuleId = 5,
             VersionNo = 2,
             ActionType = "FORMULA_CALC",
+            ExecutorCode = "INCREMENT_PERCENT",
             IsEnabled = "Y"
         });
         AddPassingTestCase(testCaseRepository, testRunRepository, 5, 2, 2005, 3005);
@@ -721,6 +727,202 @@ public sealed class RulePublishConflictTests
         Assert.Equal(BizErrorCode.ActionParamMissing, ex.Code);
     }
 
+
+    [Fact]
+    public async Task PublishAsync_RejectsUnknownConditionType()
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var versionRepository = new InMemoryRuleVersionRepository();
+        var conditionRepository = new InMemoryRuleConditionRepository();
+        var actionRepository = new InMemoryRuleActionRepository();
+        var testCaseRepository = new InMemoryRuleTestCaseRepository();
+        var testRunRepository = new InMemoryRuleTestRunRepository();
+        var service = CreateService(
+            headerRepository,
+            versionRepository,
+            conditionRepository,
+            actionRepository,
+            testCaseRepository: testCaseRepository,
+            testRunRepository: testRunRepository);
+
+        AddDraftRule(headerRepository, versionRepository, 91, "ITEM091");
+        conditionRepository.Add(91, 1, new RuleCondition
+        {
+            RuleId = 91,
+            VersionNo = 1,
+            ConditionType = "UNKNOWN_CONDITION",
+            RightValue = "A",
+            IsEnabled = "Y"
+        });
+        actionRepository.Add(91, 1, new RuleAction
+        {
+            RuleId = 91,
+            VersionNo = 1,
+            ActionType = "FORMULA_CALC",
+            ExecutorCode = "INCREMENT_PERCENT",
+            OnError = "STOP",
+            IsEnabled = "Y"
+        });
+        AddPassingTestCase(testCaseRepository, testRunRepository, 91, 1, 2091, 3091);
+
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
+            service.PublishAsync(91, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" }));
+
+        Assert.Equal(1026, ex.Code);
+    }
+
+    [Fact]
+    public async Task PublishAsync_RejectsUnknownActionType()
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var versionRepository = new InMemoryRuleVersionRepository();
+        var conditionRepository = new InMemoryRuleConditionRepository();
+        var actionRepository = new InMemoryRuleActionRepository();
+        var testCaseRepository = new InMemoryRuleTestCaseRepository();
+        var testRunRepository = new InMemoryRuleTestRunRepository();
+        var service = CreateService(
+            headerRepository,
+            versionRepository,
+            conditionRepository,
+            actionRepository,
+            testCaseRepository: testCaseRepository,
+            testRunRepository: testRunRepository);
+
+        AddDraftRule(headerRepository, versionRepository, 92, "ITEM092");
+        actionRepository.Add(92, 1, new RuleAction
+        {
+            RuleId = 92,
+            VersionNo = 1,
+            ActionType = "UNKNOWN_ACTION",
+            ExecutorCode = "UNKNOWN",
+            OnError = "STOP",
+            IsEnabled = "Y"
+        });
+        AddPassingTestCase(testCaseRepository, testRunRepository, 92, 1, 2092, 3092);
+
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
+            service.PublishAsync(92, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" }));
+
+        Assert.Equal(1027, ex.Code);
+    }
+
+    [Fact]
+    public async Task PublishAsync_RejectsUnknownExecutorCode()
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var versionRepository = new InMemoryRuleVersionRepository();
+        var conditionRepository = new InMemoryRuleConditionRepository();
+        var actionRepository = new InMemoryRuleActionRepository();
+        var testCaseRepository = new InMemoryRuleTestCaseRepository();
+        var testRunRepository = new InMemoryRuleTestRunRepository();
+        var service = CreateService(
+            headerRepository,
+            versionRepository,
+            conditionRepository,
+            actionRepository,
+            testCaseRepository: testCaseRepository,
+            testRunRepository: testRunRepository);
+
+        AddDraftRule(headerRepository, versionRepository, 93, "ITEM093");
+        actionRepository.Add(93, 1, new RuleAction
+        {
+            RuleId = 93,
+            VersionNo = 1,
+            ActionType = "FORMULA_CALC",
+            ExecutorCode = "UNKNOWN_FORMULA",
+            OnError = "STOP",
+            IsEnabled = "Y"
+        });
+        AddPassingTestCase(testCaseRepository, testRunRepository, 93, 1, 2093, 3093);
+
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
+            service.PublishAsync(93, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" }));
+
+        Assert.Equal(1025, ex.Code);
+    }
+
+    [Theory]
+    [InlineData("ConvertQtyByPartExecutor")]
+    [InlineData("AreaStepIncrementExecutor")]
+    [InlineData("ChildItemPercentExecutor")]
+    public async Task PublishAsync_AllowsSeededFormulaExecutorAliases(string executorCode)
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var versionRepository = new InMemoryRuleVersionRepository();
+        var conditionRepository = new InMemoryRuleConditionRepository();
+        var actionRepository = new InMemoryRuleActionRepository();
+        var testCaseRepository = new InMemoryRuleTestCaseRepository();
+        var testRunRepository = new InMemoryRuleTestRunRepository();
+        var service = CreateService(
+            headerRepository,
+            versionRepository,
+            conditionRepository,
+            actionRepository,
+            testCaseRepository: testCaseRepository,
+            testRunRepository: testRunRepository);
+
+        AddDraftRule(headerRepository, versionRepository, 95, "ITEM095");
+        actionRepository.Add(95, 1, new RuleAction
+        {
+            RuleId = 95,
+            VersionNo = 1,
+            ActionType = "FORMULA_CALC",
+            ExecutorCode = executorCode,
+            OnError = "STOP",
+            IsEnabled = "Y"
+        });
+        AddPassingTestCase(testCaseRepository, testRunRepository, 95, 1, 2095, 3095);
+
+        await service.PublishAsync(95, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" });
+
+        Assert.Equal("PUBLISHED", headerRepository.Headers.Single(h => h.RuleId == 95).Status);
+    }
+
+    [Theory]
+    [InlineData("CHARGE_SCENE_MATCH")]
+    [InlineData("BODY_PART_MATCH")]
+    [InlineData("ITEM_CODE")]
+    public async Task PublishAsync_AllowsConditionAliasesHandledByRuntime(string conditionType)
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var versionRepository = new InMemoryRuleVersionRepository();
+        var conditionRepository = new InMemoryRuleConditionRepository();
+        var actionRepository = new InMemoryRuleActionRepository();
+        var testCaseRepository = new InMemoryRuleTestCaseRepository();
+        var testRunRepository = new InMemoryRuleTestRunRepository();
+        var service = CreateService(
+            headerRepository,
+            versionRepository,
+            conditionRepository,
+            actionRepository,
+            testCaseRepository: testCaseRepository,
+            testRunRepository: testRunRepository);
+
+        AddDraftRule(headerRepository, versionRepository, 96, "ITEM096");
+        conditionRepository.Add(96, 1, new RuleCondition
+        {
+            RuleId = 96,
+            VersionNo = 1,
+            ConditionType = conditionType,
+            RightValue = "ITEM096",
+            IsEnabled = "Y"
+        });
+        actionRepository.Add(96, 1, new RuleAction
+        {
+            RuleId = 96,
+            VersionNo = 1,
+            ActionType = "FORMULA_CALC",
+            ExecutorCode = "INCREMENT_PERCENT",
+            OnError = "STOP",
+            IsEnabled = "Y"
+        });
+        AddPassingTestCase(testCaseRepository, testRunRepository, 96, 1, 2096, 3096);
+
+        await service.PublishAsync(96, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" });
+
+        Assert.Equal("PUBLISHED", headerRepository.Headers.Single(h => h.RuleId == 96).Status);
+    }
+
     [Fact]
     public async Task PublishAsync_RejectsWhenEnabledTestCasesAreMissing()
     {
@@ -759,6 +961,7 @@ public sealed class RulePublishConflictTests
             RuleId = 7,
             VersionNo = 1,
             ActionType = "FORMULA_CALC",
+            ExecutorCode = "INCREMENT_PERCENT",
             OnError = "STOP",
             IsEnabled = "Y"
         });
@@ -854,6 +1057,7 @@ public sealed class RulePublishConflictTests
             RuleId = 8,
             VersionNo = 1,
             ActionType = "FORMULA_CALC",
+            ExecutorCode = "INCREMENT_PERCENT",
             OnError = "STOP",
             IsEnabled = "Y"
         });
@@ -998,6 +1202,7 @@ public sealed class RulePublishConflictTests
             RuleId = 10,
             VersionNo = 1,
             ActionType = "FORMULA_CALC",
+            ExecutorCode = "INCREMENT_PERCENT",
             OnError = "SKIP",
             IsEnabled = "Y"
         });
@@ -1049,6 +1254,7 @@ public sealed class RulePublishConflictTests
             RuleId = 11,
             VersionNo = 1,
             ActionType = "FORMULA_CALC",
+            ExecutorCode = "INCREMENT_PERCENT",
             OnError = "STOP",
             IsEnabled = "Y"
         });
@@ -1100,6 +1306,7 @@ public sealed class RulePublishConflictTests
             RuleId = 12,
             VersionNo = 1,
             ActionType = "FORMULA_CALC",
+            ExecutorCode = "INCREMENT_PERCENT",
             OnError = "STOP",
             IsEnabled = "Y"
         });
@@ -1165,6 +1372,7 @@ public sealed class RulePublishConflictTests
             RuleId = 13,
             VersionNo = 2,
             ActionType = "FORMULA_CALC",
+            ExecutorCode = "INCREMENT_PERCENT",
             OnError = "STOP",
             IsEnabled = "Y"
         });
@@ -1177,6 +1385,33 @@ public sealed class RulePublishConflictTests
         Assert.Equal(2, headerRepository.Headers.Single().CurrentVersion);
         Assert.Equal("DISABLED", versionRepository.Versions.Single(v => v.VersionId == 131).VersionStatus);
         Assert.Equal("PUBLISHED", versionRepository.Versions.Single(v => v.VersionId == 132).VersionStatus);
+    }
+
+
+    private static void AddDraftRule(
+        InMemoryRuleHeaderRepository headerRepository,
+        InMemoryRuleVersionRepository versionRepository,
+        long ruleId,
+        string itemCode)
+    {
+        headerRepository.Headers.Add(new RuleHeader
+        {
+            RuleId = ruleId,
+            RuleCode = $"R-{ruleId}",
+            ItemCode = itemCode,
+            CurrentVersion = 0,
+            Status = "DRAFT",
+            IsEnabled = "Y",
+            EffectiveFrom = new DateTime(2026, 1, 1),
+            EffectiveTo = new DateTime(2026, 12, 31)
+        });
+        versionRepository.Versions.Add(new RuleVersion
+        {
+            VersionId = ruleId * 10,
+            RuleId = ruleId,
+            VersionNo = 1,
+            VersionStatus = "DRAFT"
+        });
     }
 
     private static void AddPassingTestCase(
@@ -1734,5 +1969,3 @@ public sealed class RulePublishConflictTests
         public Task<bool> ExistsAsync(string dictType, string dictCode) => Task.FromResult(false);
     }
 }
-
-

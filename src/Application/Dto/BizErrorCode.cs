@@ -105,6 +105,15 @@ public static class BizErrorCode
     /// <summary>存在待审核发布申请时不允许继续编辑。</summary>
     public const int ApprovalPendingEditNotAllowed = 1024;
 
+    /// <summary>规则能力不支持当前公式执行器或配置。</summary>
+    public const int RuleCapabilityUnsupported = 1025;
+
+    /// <summary>规则条件类型不受当前引擎支持。</summary>
+    public const int RuleConditionUnsupported = 1026;
+
+    /// <summary>规则动作类型不受当前引擎支持。</summary>
+    public const int RuleActionUnsupported = 1027;
+
     // ========== 计价计算类错误（2001-2099） ==========
 
     /// <summary>单价校验失败（渠道传入单价与权威单价不一致）。</summary>
@@ -185,4 +194,3 @@ public static class BizErrorCode
     /// <summary>服务降级（计价服务不可用，需转人工或降级处理）。</summary>
     public const int ServiceDegraded = 9002;
 }
-

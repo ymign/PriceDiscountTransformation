@@ -332,20 +332,34 @@ public sealed class CoreBusinessCoverageTests
     }
 
     [Fact]
-    public void Factories_ReturnRegisteredStrategiesAndFallbacks()
+    public async Task Factories_ReturnRegisteredStrategiesAndFallbacks()
     {
         var itemEvaluator = new ItemMatchEvaluator();
-        var evaluatorFactory = new ConditionEvaluatorFactory(new[] { itemEvaluator });
+        var chargeSceneEvaluator = new ChargeSceneMatchEvaluator();
+        var bodyPartEvaluator = new BodyPartMatchEvaluator();
+        var evaluatorFactory = new ConditionEvaluatorFactory(new IRuleConditionEvaluator[]
+        {
+            itemEvaluator,
+            chargeSceneEvaluator,
+            bodyPartEvaluator
+        });
         var ceiling = new AmountCeilingExecutor();
         var floor = new AmountFloorExecutor();
         var executorFactory = new ActionExecutorFactory(new IRuleActionExecutor[] { ceiling, floor });
 
         Assert.Same(itemEvaluator, evaluatorFactory.GetEvaluator("item_match"));
+        Assert.Same(itemEvaluator, evaluatorFactory.GetEvaluator("ITEM_CODE"));
+        Assert.Same(chargeSceneEvaluator, evaluatorFactory.GetEvaluator("CHARGE_SCENE_MATCH"));
+        Assert.Same(bodyPartEvaluator, evaluatorFactory.GetEvaluator("BODY_PART_MATCH"));
         Assert.Null(evaluatorFactory.GetEvaluator("missing"));
         Assert.Contains(ceiling, executorFactory.GetExecutors("apply_max_amount"));
         Assert.Empty(executorFactory.GetExecutors("missing"));
         Assert.Same(floor, executorFactory.GetExecutor("APPLY_MIN_AMOUNT"));
         Assert.Null(executorFactory.GetExecutor("missing"));
+
+        var itemCodeEvaluator = evaluatorFactory.GetEvaluator("ITEM_CODE");
+        var itemCodeCondition = new RuleCondition { ConditionType = "ITEM_CODE", RightValue = "ITEM001" };
+        Assert.True(await itemCodeEvaluator!.EvaluateAsync(itemCodeCondition, new PricingContext { ItemCode = "ITEM001" }));
     }
 
     [Fact]
