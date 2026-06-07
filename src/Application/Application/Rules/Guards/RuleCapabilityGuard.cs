@@ -1,5 +1,6 @@
 using Newtonsoft.Json.Linq;
 using Pricing.RuleCenter.Application.Dto;
+using Pricing.RuleCenter.Application.Rules;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Engine.Formula;
 using Pricing.RuleCenter.Core.Constants;
@@ -13,13 +14,17 @@ public sealed class RuleCapabilityGuard
 {
     private const string ExpressionParamName = "expression";
 
+    private readonly RuleCapabilityRegistry _capabilityRegistry;
     private readonly FormulaExpressionValidator _expressionValidator;
 
     /// <summary>
     /// 初始化规则能力可表达性门禁。
     /// </summary>
-    public RuleCapabilityGuard(FormulaExpressionValidator expressionValidator)
+    public RuleCapabilityGuard(
+        RuleCapabilityRegistry capabilityRegistry,
+        FormulaExpressionValidator expressionValidator)
     {
+        _capabilityRegistry = capabilityRegistry;
         _expressionValidator = expressionValidator;
     }
 
@@ -32,7 +37,7 @@ public sealed class RuleCapabilityGuard
     {
         foreach (var condition in conditions.Where(c => c.IsEnabled == EnableFlag.Yes))
         {
-            if (!RuleConditionTypeCodes.IsSupported(condition.ConditionType))
+            if (!_capabilityRegistry.SupportsConditionType(condition.ConditionType))
             {
                 throw new BizException(
                     BizErrorCode.RuleConditionUnsupported,
@@ -49,7 +54,7 @@ public sealed class RuleCapabilityGuard
 
     private void EnsureActionSupported(RuleAction action)
     {
-        if (!RuleActionTypeCodes.IsSupported(action.ActionType))
+        if (!_capabilityRegistry.SupportsActionType(action.ActionType))
         {
             throw new BizException(
                 BizErrorCode.RuleActionUnsupported,
@@ -62,7 +67,7 @@ public sealed class RuleCapabilityGuard
             return;
         }
 
-        if (!FormulaExecutorCodes.IsSupported(action.ExecutorCode))
+        if (!_capabilityRegistry.SupportsFormulaExecutorCode(action.ExecutorCode))
         {
             throw new BizException(
                 BizErrorCode.RuleCapabilityUnsupported,

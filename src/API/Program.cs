@@ -65,6 +65,7 @@ builder.Services.AddScoped<FormulaFunctionRegistry>();
 builder.Services.AddScoped<FormulaExpressionEvaluator>();
 builder.Services.AddScoped<FormulaExpressionValidator>();
 builder.Services.AddScoped<RuleActionParameterValidator>();
+builder.Services.AddScoped<RuleCapabilityRegistry>();
 builder.Services.AddScoped<RuleCapabilityGuard>();
 builder.Services.AddScoped<RuleCriticalActionGuard>();
 builder.Services.AddScoped<RuleChildItemGuard>();

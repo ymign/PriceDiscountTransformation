@@ -41,8 +41,15 @@ namespace Pricing.RuleCenter.Core.Engine.Executors;
 /// </list>
 /// </para>
 /// </remarks>
-public sealed class IncrementPercentExecutor : IRuleActionExecutor
+public sealed class IncrementPercentExecutor : IRuleActionExecutor, IFormulaExecutorCapabilityMetadata
 {
+    /// <inheritdoc />
+    public IReadOnlyCollection<string> SupportedExecutorCodes { get; } = new[]
+    {
+        FormulaExecutorCodes.IncrementPercent,
+        FormulaExecutorCodes.IncrementPercentExecutor
+    };
+
     /// <summary>
     /// 获取动作类型编码。多个公式执行器共享 FORMULA_CALC，再通过 ExecutorCode 做二级分派。
     /// </summary>

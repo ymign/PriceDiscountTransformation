@@ -10,9 +10,15 @@ namespace Pricing.RuleCenter.Core.Engine.Executors;
 /// <summary>
 /// 表达式公式执行器。
 /// </summary>
-public sealed class ExpressionFormulaExecutor : IRuleActionExecutor
+public sealed class ExpressionFormulaExecutor : IRuleActionExecutor, IFormulaExecutorCapabilityMetadata
 {
     private readonly FormulaExpressionEvaluator _evaluator;
+
+    /// <inheritdoc />
+    public IReadOnlyCollection<string> SupportedExecutorCodes { get; } = new[]
+    {
+        FormulaExecutorCodes.ExpressionFormula
+    };
 
     /// <summary>
     /// 初始化表达式公式执行器。

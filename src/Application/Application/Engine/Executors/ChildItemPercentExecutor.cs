@@ -32,8 +32,15 @@ namespace Pricing.RuleCenter.Core.Engine.Executors;
 /// 其他 FORMULA_CALC 动作不匹配时静默跳过。
 /// </para>
 /// </remarks>
-public sealed class ChildItemPercentExecutor : IRuleActionExecutor
+public sealed class ChildItemPercentExecutor : IRuleActionExecutor, IFormulaExecutorCapabilityMetadata
 {
+    /// <inheritdoc />
+    public IReadOnlyCollection<string> SupportedExecutorCodes { get; } = new[]
+    {
+        FormulaExecutorCodes.ChildItemPercent,
+        FormulaExecutorCodes.ChildItemPercentExecutor
+    };
+
     /// <summary>
     /// 获取动作类型编码。与其他公式执行器共享 FORMULA_CALC，通过 ExecutorCode 做二级分派。
     /// </summary>

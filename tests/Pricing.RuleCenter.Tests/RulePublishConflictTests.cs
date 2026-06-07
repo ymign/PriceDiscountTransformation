@@ -6,10 +6,16 @@ using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Rules;
 using Pricing.RuleCenter.Application.Rules.Guards;
 using Pricing.RuleCenter.Application.Rules.Publishing;
+using Pricing.RuleCenter.Core.Aggregates.Catalog;
+using Pricing.RuleCenter.Core.Aggregates.Quota;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Constants;
+using Pricing.RuleCenter.Core.Engine.Evaluators;
+using Pricing.RuleCenter.Core.Engine.Executors;
 using Pricing.RuleCenter.Core.Engine.Formula;
 using Pricing.RuleCenter.Core.Interfaces;
+using Pricing.RuleCenter.Core.Interfaces.Catalog;
+using Pricing.RuleCenter.Core.Interfaces.Quota;
 using Pricing.RuleCenter.Core.Models;
 using Xunit;
 
@@ -1525,7 +1531,8 @@ public sealed class RulePublishConflictTests
             definitionRepositories.ActionRepository,
             definitionRepositories.DictRepository,
             NullLogger<RuleConflictDetector>.Instance);
-        var capabilityGuard = new RuleCapabilityGuard(expressionValidator);
+        var capabilityRegistry = CreateRuntimeCapabilityRegistry(expressionValidator);
+        var capabilityGuard = new RuleCapabilityGuard(capabilityRegistry, expressionValidator);
         var publishGuard = new RulePublishGuard(
             definitionRepositories.ConditionRepository,
             definitionRepositories.ActionRepository,
@@ -1573,6 +1580,45 @@ public sealed class RulePublishConflictTests
                 NullLogger<RollbackRuleUseCase>.Instance));
     }
 
+    private static RuleCapabilityRegistry CreateRuntimeCapabilityRegistry(FormulaExpressionValidator expressionValidator)
+    {
+        var limitRepository = new NoopLimitOccupyRepository();
+        return new RuleCapabilityRegistry(
+            new IRuleConditionEvaluator[]
+            {
+                new ItemMatchEvaluator(),
+                new ChargeSceneMatchEvaluator(),
+                new BodyPartMatchEvaluator(),
+                new TimeRangeEvaluator(),
+                new PregnancyMatchEvaluator(),
+                new VisitTypeMatchEvaluator(),
+                new AgeMatchEvaluator(),
+                new GroupMatchEvaluator(new EmptyItemGroupRepository(), new EmptyItemGroupDetailRepository()),
+                new ChargeDeptExcludeEvaluator(),
+                new InsuranceTypeMatchEvaluator(),
+                new DiagnosisMatchEvaluator(),
+                new DeviceTypeMatchEvaluator()
+            },
+            new IRuleActionExecutor[]
+            {
+                new AmountFloorExecutor(),
+                new AmountCeilingExecutor(),
+                new IncrementPercentExecutor(),
+                new TimeWindowLimitExecutor(limitRepository),
+                new DailyQtyLimitExecutor(limitRepository),
+                new OnceQtyLimitExecutor(limitRepository),
+                new ExceedToZeroExecutor(),
+                new UnitConvertExecutor(),
+                new SameGroupMutexExecutor(),
+                new SameOperationCeilingExecutor(limitRepository),
+                new AddChildItemExecutor(),
+                new AreaStepIncrementExecutor(),
+                new ConvertQtyByPartExecutor(),
+                new ChildItemPercentExecutor(),
+                new ExpressionFormulaExecutor(new FormulaExpressionEvaluator(new FormulaFunctionRegistry()))
+            });
+    }
+
     private sealed class NoopUnitOfWork : IUnitOfWork
     {
         public Task BeginAsync() => Task.CompletedTask;
@@ -1591,6 +1637,36 @@ public sealed class RulePublishConflictTests
         public void ClearRuntimeCache()
         {
         }
+    }
+
+    private sealed class NoopLimitOccupyRepository : ILimitOccupyRepository
+    {
+        public Task<decimal> GetOccupiedQtyAsync(string limitKey, string status) => Task.FromResult(0m);
+        public Task<decimal> GetOccupiedQtyAsync(LimitOccupyRangeQuery query) => Task.FromResult(0m);
+        public Task<decimal> GetOccupiedAmtAsync(string limitKey, string status) => Task.FromResult(0m);
+        public Task<decimal> GetOccupiedAmtByDimensionAsync(string dimensionCode, string status) => Task.FromResult(0m);
+        public Task<IReadOnlyList<LimitOccupy>> GetByRequestIdAsync(long requestId) => Task.FromResult((IReadOnlyList<LimitOccupy>)Array.Empty<LimitOccupy>());
+        public Task EnsureAndLockAsync(IReadOnlyCollection<string> lockKeys) => Task.CompletedTask;
+        public Task<long> InsertAsync(LimitOccupy entity) => Task.FromResult(0L);
+        public Task UpdateStatusAsync(long occupyId, string status) => Task.CompletedTask;
+        public Task UpdateStatusByRequestIdAsync(long requestId, string status) => Task.CompletedTask;
+    }
+
+    private sealed class EmptyItemGroupRepository : IItemGroupRepository
+    {
+        public Task<ItemGroup?> GetByIdAsync(long groupId) => Task.FromResult<ItemGroup?>(null);
+        public Task<ItemGroup?> GetByCodeAsync(string groupCode) => Task.FromResult<ItemGroup?>(null);
+        public Task<IReadOnlyList<ItemGroup>> GetByTypeAsync(string groupType) => Task.FromResult((IReadOnlyList<ItemGroup>)Array.Empty<ItemGroup>());
+        public Task<long> InsertAsync(ItemGroup entity) => Task.FromResult(0L);
+        public Task UpdateAsync(ItemGroup entity) => Task.CompletedTask;
+    }
+
+    private sealed class EmptyItemGroupDetailRepository : IItemGroupDetailRepository
+    {
+        public Task<IReadOnlyList<ItemGroupDetail>> GetByGroupIdAsync(long groupId) => Task.FromResult((IReadOnlyList<ItemGroupDetail>)Array.Empty<ItemGroupDetail>());
+        public Task<IReadOnlyList<ItemGroupDetail>> GetByItemCodeAsync(string itemCode) => Task.FromResult((IReadOnlyList<ItemGroupDetail>)Array.Empty<ItemGroupDetail>());
+        public Task InsertBatchAsync(IReadOnlyList<ItemGroupDetail> entities) => Task.CompletedTask;
+        public Task DeleteByGroupIdAsync(long groupId) => Task.CompletedTask;
     }
 
     private sealed class CapturingRuleRuntimeCacheInvalidator : IRuleRuntimeCacheInvalidator
