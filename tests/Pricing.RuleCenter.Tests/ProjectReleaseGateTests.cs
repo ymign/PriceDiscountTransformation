@@ -48,14 +48,19 @@ public sealed class ProjectReleaseGateTests
         var root = FindRepositoryRoot();
         var workflowPath = Path.Combine(root, ".github", "workflows", "rule-center-ci.yml");
         var scriptPath = Path.Combine(root, "scripts", "validate-release-assets.ps1");
+        var oracleScriptPath = Path.Combine(root, "scripts", "run-oracle-integration-tests.ps1");
 
         Assert.True(File.Exists(workflowPath), $"Missing workflow: {workflowPath}");
         Assert.True(File.Exists(scriptPath), $"Missing release validation script: {scriptPath}");
+        Assert.True(File.Exists(oracleScriptPath), $"Missing Oracle integration script: {oracleScriptPath}");
 
         var workflowContent = File.ReadAllText(workflowPath);
         Assert.Contains("runs-on: windows-latest", workflowContent, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Validate release assets", workflowContent, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(@".\scripts\validate-release-assets.ps1", workflowContent, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Oracle integration tests", workflowContent, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(@".\scripts\run-oracle-integration-tests.ps1", workflowContent, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("PRICING_ORACLE_CONNECTION_STRING", workflowContent, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("docker", workflowContent, StringComparison.OrdinalIgnoreCase);
     }
 

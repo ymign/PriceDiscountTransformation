@@ -31,5 +31,12 @@ jobs:
       - name: Test
         run: dotnet test .\src\Pricing.RuleCenter.slnx --no-restore --configuration Release --verbosity normal
 
+      - name: Oracle integration tests
+        if: ${{ secrets.PRICING_ORACLE_CONNECTION_STRING != '' }}
+        shell: pwsh
+        env:
+          PRICING_ORACLE_CONNECTION_STRING: ${{ secrets.PRICING_ORACLE_CONNECTION_STRING }}
+        run: .\scripts\run-oracle-integration-tests.ps1
+
       - name: Vulnerability audit
         run: dotnet list .\src\Pricing.RuleCenter.slnx package --vulnerable --include-transitive
