@@ -94,6 +94,7 @@ builder.Services.AddScoped<ReversePricingUseCase>();
 builder.Services.AddScoped<GetSpecialFlagUseCase>();
 builder.Services.AddScoped<PricingAppService>();
 builder.Services.AddScoped<TraceQueryAppService>();
+builder.Services.AddSingleton<CacheVersionLocalState>();
 builder.Services.AddScoped<ICacheVersionSynchronizer, CacheVersionSynchronizer>();
 builder.Services.AddMediatR(typeof(ApplicationAssemblyMarker));
 builder.Services.AddValidatorsFromAssemblyContaining<ApplicationAssemblyMarker>();

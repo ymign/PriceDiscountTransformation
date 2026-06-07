@@ -25,11 +25,10 @@ public sealed class CacheVersionSynchronizer : ICacheVersionSynchronizer
     /// </summary>
     public const string ActionTypeOrderScope = "ACTION_TYPE_ORDER";
 
-    private static readonly ConcurrentDictionary<string, long> LocalVersions = new(StringComparer.OrdinalIgnoreCase);
-
     private readonly ICacheVersionRepository _cacheVersionRepository;
     private readonly IMemoryCache _cache;
     private readonly IRuleRuntimeCacheInvalidator _runtimeCacheInvalidator;
+    private readonly CacheVersionLocalState _localState;
     private readonly ILogger<CacheVersionSynchronizer> _logger;
 
     /// <summary>
@@ -38,16 +37,19 @@ public sealed class CacheVersionSynchronizer : ICacheVersionSynchronizer
     /// <param name="cacheVersionRepository">缓存版本仓储。</param>
     /// <param name="cache">本机内存缓存。</param>
     /// <param name="runtimeCacheInvalidator">运行期规则缓存失效器。</param>
+    /// <param name="localState">当前实例的本地版本状态。</param>
     /// <param name="logger">日志对象。</param>
     public CacheVersionSynchronizer(
         ICacheVersionRepository cacheVersionRepository,
         IMemoryCache cache,
         IRuleRuntimeCacheInvalidator runtimeCacheInvalidator,
+        CacheVersionLocalState localState,
         ILogger<CacheVersionSynchronizer> logger)
     {
         _cacheVersionRepository = cacheVersionRepository;
         _cache = cache;
         _runtimeCacheInvalidator = runtimeCacheInvalidator;
+        _localState = localState;
         _logger = logger;
     }
 
@@ -74,7 +76,7 @@ public sealed class CacheVersionSynchronizer : ICacheVersionSynchronizer
     {
         cancellationToken.ThrowIfCancellationRequested();
         var version = await _cacheVersionRepository.IncreaseVersionAsync(cacheScope);
-        LocalVersions[cacheScope] = version;
+        _localState.SetVersion(cacheScope, version);
         return version;
     }
 
@@ -88,7 +90,7 @@ public sealed class CacheVersionSynchronizer : ICacheVersionSynchronizer
 
         var current = await _cacheVersionRepository.GetByScopeAsync(cacheScope);
         var remoteVersion = current?.VersionNo ?? 0L;
-        var localVersion = LocalVersions.TryGetValue(cacheScope, out var version) ? version : 0L;
+        var localVersion = _localState.GetVersion(cacheScope);
         if (remoteVersion <= localVersion)
         {
             return;
@@ -106,7 +108,7 @@ public sealed class CacheVersionSynchronizer : ICacheVersionSynchronizer
             _logger.LogInformation("检测到缓存版本变化，已清理运行期规则缓存 Scope={Scope}", cacheScope);
         }
 
-        LocalVersions[cacheScope] = remoteVersion;
+        _localState.SetVersion(cacheScope, remoteVersion);
     }
 }
 

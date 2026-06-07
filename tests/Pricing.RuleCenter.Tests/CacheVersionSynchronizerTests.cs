@@ -21,6 +21,7 @@ public sealed class CacheVersionSynchronizerTests
             repository,
             cache,
             runtimeCache,
+            new CacheVersionLocalState(),
             NullLogger<CacheVersionSynchronizer>.Instance);
 
         var version = await synchronizer.IncreaseVersionAsync(CacheVersionSynchronizer.ActionTypeOrderScope);
@@ -40,6 +41,7 @@ public sealed class CacheVersionSynchronizerTests
             repository,
             cache,
             runtimeCache,
+            new CacheVersionLocalState(),
             NullLogger<CacheVersionSynchronizer>.Instance);
 
         repository.Items.Add(new CacheVersion
@@ -68,6 +70,67 @@ public sealed class CacheVersionSynchronizerTests
         Assert.Equal(2L, repository.Items.Single(i => i.CacheScope == CacheVersionSynchronizer.ActionTypeOrderScope).VersionNo);
     }
 
+    [Fact]
+    public async Task SyncAsync_ShouldInvalidateOtherInstanceWhenSharedVersionChanges()
+    {
+        var repository = new InMemoryCacheVersionRepository();
+        repository.Items.Add(new CacheVersion
+        {
+            CacheScope = CacheVersionSynchronizer.EffectiveRulesScope,
+            VersionNo = 1,
+            UpdatedAt = DateTime.Now
+        });
+        repository.Items.Add(new CacheVersion
+        {
+            CacheScope = CacheVersionSynchronizer.ActionTypeOrderScope,
+            VersionNo = 1,
+            UpdatedAt = DateTime.Now
+        });
+
+        using var cacheA = new MemoryCache(new MemoryCacheOptions());
+        using var cacheB = new MemoryCache(new MemoryCacheOptions());
+        var runtimeA = new CapturingRuleRuntimeCacheInvalidator();
+        var runtimeB = new CapturingRuleRuntimeCacheInvalidator();
+        var instanceA = new CacheVersionSynchronizer(
+            repository,
+            cacheA,
+            runtimeA,
+            new CacheVersionLocalState(),
+            NullLogger<CacheVersionSynchronizer>.Instance);
+        var instanceB = new CacheVersionSynchronizer(
+            repository,
+            cacheB,
+            runtimeB,
+            new CacheVersionLocalState(),
+            NullLogger<CacheVersionSynchronizer>.Instance);
+
+        await instanceA.SyncAsync();
+        await instanceB.SyncAsync();
+        runtimeA.Reset();
+        runtimeB.Reset();
+
+        var trackedKey = "rules:effective:item:ITEM001";
+        TrackEffectiveRuleCacheKey(trackedKey);
+        cacheB.Set(trackedKey, new object());
+
+        await instanceA.IncreaseVersionAsync(CacheVersionSynchronizer.EffectiveRulesScope);
+        await instanceA.IncreaseVersionAsync(CacheVersionSynchronizer.ActionTypeOrderScope);
+
+        await instanceB.SyncAsync();
+
+        Assert.False(cacheB.TryGetValue(trackedKey, out _));
+        Assert.Equal(1, runtimeB.ClearCount);
+        Assert.Equal(0, runtimeA.ClearCount);
+    }
+
+    private static void TrackEffectiveRuleCacheKey(string cacheKey)
+    {
+        var assembly = typeof(CacheVersionSynchronizer).Assembly;
+        var type = assembly.GetType("Pricing.RuleCenter.Application.Rules.EffectiveRuleCacheKeys", throwOnError: true)!;
+        var method = type.GetMethod("Track", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public)!;
+        method.Invoke(null, new object[] { cacheKey });
+    }
+
     private sealed class CapturingRuleRuntimeCacheInvalidator : IRuleRuntimeCacheInvalidator
     {
         public int ClearCount { get; private set; }
@@ -75,6 +138,11 @@ public sealed class CacheVersionSynchronizerTests
         public void ClearRuntimeCache()
         {
             ClearCount++;
+        }
+
+        public void Reset()
+        {
+            ClearCount = 0;
         }
     }
 
