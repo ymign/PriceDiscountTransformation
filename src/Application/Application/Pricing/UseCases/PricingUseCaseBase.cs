@@ -76,6 +76,7 @@ public abstract class PricingUseCaseBase
     private readonly PricingTransactionExecutor _transactionExecutor;
     private readonly PricingSpecialFlagResolver _specialFlagResolver;
     private readonly PricingReverseHistoryReader _reverseHistoryReader;
+    private readonly PricingSimulateWorkflow _simulateWorkflow;
     private readonly PricingConfirmWorkflow _confirmWorkflow;
     private readonly PricingCommitWorkflow _commitWorkflow;
     private readonly PricingCancelWorkflow _cancelWorkflow;
@@ -131,6 +132,13 @@ public abstract class PricingUseCaseBase
         _transactionExecutor = new PricingTransactionExecutor(unitOfWork, NullLogger<PricingTransactionExecutor>.Instance);
         _specialFlagResolver = new PricingSpecialFlagResolver(calculationDependencies.HeaderRepository, clock);
         _reverseHistoryReader = new PricingReverseHistoryReader(repositories.ReverseLogRepository);
+        _simulateWorkflow = new PricingSimulateWorkflow(
+            _engine,
+            _authorityPriceChecker,
+            _requestLogWriter,
+            _traceStepWriter,
+            _clock,
+            _logger);
         _confirmWorkflow = new PricingConfirmWorkflow(
             _engine,
             _requestLogRepository,
@@ -186,55 +194,7 @@ public abstract class PricingUseCaseBase
     /// </remarks>
     protected async Task<PricingCalculateResponse> ExecuteSimulateAsync(PricingCalculateRequest request)
     {
-        var items = PricingRequestGuard.GetRequiredItems(request);
-
-        var firstItem = items[0];
-        _logger.LogInformation(
-            "SIMULATE 开始 SourceSystem={SourceSystem}, PatientId={PatientId}, ItemCode={ItemCode}, InputQty={InputQty}",
-            request.SourceSystem, request.PatientId, firstItem.ItemCode, firstItem.InputQty);
-
-        // 即使是试算，也不允许在启用权威单价校验时用错误单价继续计算。
-        // 这样可以提前暴露 HIS、自助机或公众号传参错误，避免试算展示和最终确认口径不一致。
-        await _authorityPriceChecker.CheckAsync(items);
-
-        // shouldLockLimits=false 表示执行器只按历史 PENDING/CONFIRMED 数据试算，
-        // 不创建 PR_LIMIT_LOCK 锁，也不写 PR_LIMIT_OCCUPY 占用。
-        // 批量场景下创建 BatchPricingContext，确保同批内多个项目的限额累计和互斥判断正确。
-        var inRequestOccupiedQtyByLimitDimension = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
-        var inRequestLimitOccupies = new List<LimitOccupy>();
-        var batchContext = items.Count > 1 ? new BatchPricingContext() : null;
-        var calculations = new List<ItemPricingCalculation>(items.Count);
-        foreach (var item in items)
-        {
-            var context = PricingContextFactory.Create(new PricingContextBuildInput
-            {
-                Request = request,
-                Item = item,
-                CallType = "SIMULATE",
-                ShouldLockLimits = false,
-                InRequestOccupiedQtyByLimitDimension = inRequestOccupiedQtyByLimitDimension,
-                InRequestLimitOccupies = inRequestLimitOccupies
-            });
-            var result = await _engine.CalculateAsync(context, batchContext);
-            AccumulateInRequestLimits(inRequestOccupiedQtyByLimitDimension, inRequestLimitOccupies, result);
-            calculations.Add(new ItemPricingCalculation(item, result));
-        }
-
-        // 试算不会进入资金状态机，但保留请求和步骤日志可以支持后续页面解释、问题复盘和影子对账。
-        var requestLog = await _requestLogWriter.SaveAsync(new RequestLogSaveInput
-        {
-            Request = request,
-            Items = items,
-            Calculations = calculations,
-            CallType = "SIMULATE",
-            BusinessStatus = BusinessStatusCodes.Simulated
-        });
-        await _traceStepWriter.SaveAsync(requestLog.RequestId, requestLog.TraceId, calculations);
-
-        // 响应快照不是幂等必需，但可以让追溯查询直接展示当时返回给渠道的结果。
-        var response = PricingResponseBuilder.Build(requestLog.RequestId, calculations, _clock.Now);
-        await _requestLogWriter.SaveResponseJsonAsync(requestLog, response);
-        return response;
+        return await _simulateWorkflow.ExecuteAsync(request);
     }
 
     /// <summary>
@@ -333,54 +293,4 @@ public abstract class PricingUseCaseBase
         return await _specialFlagResolver.ResolveAsync(itemCode);
     }
 
-    private static bool IsCommittedBusinessStatus(string? businessStatus)
-    {
-        return string.Equals(businessStatus, BusinessStatusCodes.Confirmed, StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(businessStatus, BusinessStatusCodes.Committed, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static void AccumulateInRequestLimits(
-        Dictionary<string, decimal> inRequestOccupiedQtyByLimitDimension,
-        List<LimitOccupy> inRequestLimitOccupies,
-        PricingResult result)
-    {
-        foreach (var occupy in result.LimitOccupies.Where(o =>
-                     !string.IsNullOrWhiteSpace(o.LimitType) &&
-                     !string.IsNullOrWhiteSpace(o.LimitDimensionCode)))
-        {
-            var key = BuildInRequestLimitKey(occupy.LimitType, occupy.LimitDimensionCode);
-            inRequestOccupiedQtyByLimitDimension.TryGetValue(key, out var existingQty);
-            inRequestOccupiedQtyByLimitDimension[key] = existingQty + occupy.OccupyQty;
-            inRequestLimitOccupies.Add(occupy);
-        }
-    }
-
-    private static string BuildInRequestLimitKey(string limitType, string? limitDimensionCode)
-    {
-        return $"{limitType.Trim().ToUpperInvariant()}:{limitDimensionCode?.Trim().ToUpperInvariant()}";
-    }
-
-    private static string BuildIdempotencyLockKey(
-        string sourceSystem,
-        string businessRequestNo,
-        string callType)
-    {
-        return PricingLockKeyBuilder.BuildIdempotencyLockKey(sourceSystem, businessRequestNo, callType);
-    }
-
-    internal static string BuildRequestLockKey(long requestId)
-    {
-        return PricingLockKeyBuilder.BuildRequestLockKey(requestId);
-    }
-
-    private static string BuildReverseLockKey(long originalRequestId, string reverseNo)
-    {
-        return PricingLockKeyBuilder.BuildReverseLockKey(originalRequestId, reverseNo);
-    }
-
-    private static string? NormalizeString(string? value)
-    {
-        var normalized = value?.Trim();
-        return string.IsNullOrEmpty(normalized) ? null : normalized;
-    }
 }

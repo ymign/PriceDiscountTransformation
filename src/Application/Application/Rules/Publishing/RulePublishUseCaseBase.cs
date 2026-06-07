@@ -55,6 +55,9 @@ public abstract class RulePublishUseCaseBase
     private readonly RulePublishGuard _publishGuard;
     private readonly RulePublishCacheCoordinator _cacheCoordinator;
     private readonly RuleRollbackTargetResolver _rollbackTargetResolver;
+    private readonly RulePublishExecutionWorkflow _publishWorkflow;
+    private readonly RuleDisableExecutionWorkflow _disableWorkflow;
+    private readonly RuleRollbackExecutionWorkflow _rollbackWorkflow;
 
     /// <summary>
     /// 初始化规则发布服务。
@@ -98,6 +101,32 @@ public abstract class RulePublishUseCaseBase
         _rollbackTargetResolver = new RuleRollbackTargetResolver(
             lifecycleRepositories.PublishRepository,
             lifecycleRepositories.VersionRepository);
+        _publishWorkflow = new RulePublishExecutionWorkflow(
+            lifecycleRepositories.HeaderRepository,
+            lifecycleRepositories.VersionRepository,
+            lifecycleRepositories.PublishRepository,
+            lifecycleRepositories.ChangeLogRepository,
+            transactionWriter,
+            _cacheCoordinator,
+            clock,
+            logger);
+        _disableWorkflow = new RuleDisableExecutionWorkflow(
+            lifecycleRepositories.HeaderRepository,
+            lifecycleRepositories.VersionRepository,
+            lifecycleRepositories.PublishRepository,
+            lifecycleRepositories.ChangeLogRepository,
+            transactionWriter,
+            _cacheCoordinator,
+            clock);
+        _rollbackWorkflow = new RuleRollbackExecutionWorkflow(
+            lifecycleRepositories.HeaderRepository,
+            lifecycleRepositories.VersionRepository,
+            lifecycleRepositories.PublishRepository,
+            lifecycleRepositories.ChangeLogRepository,
+            transactionWriter,
+            _cacheCoordinator,
+            _rollbackTargetResolver,
+            clock);
     }
 
     /// <summary>
@@ -162,113 +191,7 @@ public abstract class RulePublishUseCaseBase
         await _approvalGate.EnsurePassedAsync(ruleId, request.VersionNo, ApprovalActionCodes.Publish);
         await ValidatePublishConflictsAsync(header, request.VersionNo);
 
-        // ========== 第三阶段：事务内执行状态变更和流水写入 ==========
-        // 版本状态、主档状态、发布流水、变更日志必须在同一事务中更新。
-        // 如果任何一步失败，整体回滚，避免数据不一致。
-        await _transactionWriter.ExecuteAsync(async () =>
-        {
-            var currentHeader = await _headerRepository.GetByIdForUpdateAsync(ruleId)
-                ?? throw new BizException(BizErrorCode.RuleNotFound, 404, $"规则不存在: {ruleId}");
-            var currentVersion = await _versionRepository.GetByRuleAndVersionForUpdateAsync(ruleId, request.VersionNo)
-                ?? throw new BizException(
-                    BizErrorCode.RuleVersionNotFound,
-                    404,
-                    $"规则版本不存在: RuleId={ruleId}, VersionNo={request.VersionNo}");
-            if (currentVersion.VersionStatus != VersionStatusCodes.Draft)
-            {
-                throw new BizException(
-                    BizErrorCode.VersionStatusNotAllowed,
-                    409,
-                    $"只有草稿版本可以发布, 当前状态: {currentVersion.VersionStatus}");
-            }
-
-            var oldVersion = currentHeader.CurrentVersion;
-            var previousHeaderStatus = currentHeader.Status;
-
-            // 禁用旧生效版本
-            if (oldVersion > 0)
-            {
-                var oldVersionEntity = await _versionRepository.GetByRuleAndVersionForUpdateAsync(ruleId, oldVersion);
-                if (oldVersionEntity is null)
-                {
-                    _logger.LogWarning("发布规则时未找到旧版本记录 RuleId={RuleId}, OldVersion={OldVersion}", ruleId, oldVersion);
-                }
-                else
-                {
-                    if (string.Equals(oldVersionEntity.VersionStatus, VersionStatusCodes.Published, StringComparison.OrdinalIgnoreCase))
-                    {
-                        var disableOldVersionUpdated = await _versionRepository.UpdateStatusAsync(
-                            oldVersionEntity.VersionId,
-                            VersionStatusCodes.Disabled,
-                            VersionStatusCodes.Published);
-                        if (!disableOldVersionUpdated)
-                        {
-                            throw new BizException(
-                                BizErrorCode.RuleVersionConcurrencyConflict,
-                                409,
-                                $"RuleId={ruleId}, OldVersionNo={oldVersion} 状态已变化，请刷新后重试");
-                        }
-                    }
-                }
-            }
-
-            // 发布目标版本并推进主档
-            var now = _clock.Now;
-            var publishVersionUpdated = await _versionRepository.UpdateStatusAsync(
-                currentVersion.VersionId,
-                VersionStatusCodes.Published,
-                VersionStatusCodes.Draft);
-            if (!publishVersionUpdated)
-            {
-                throw new BizException(
-                    BizErrorCode.RuleVersionConcurrencyConflict,
-                    409,
-                    $"RuleId={ruleId}, VersionNo={request.VersionNo} 状态已变化，请刷新后重试");
-            }
-
-            currentHeader.CurrentVersion = request.VersionNo;
-            currentHeader.Status = RuleStatusCodes.Published;
-            // 规则从停用态重新发布时，必须同步恢复启用标志；
-            // 否则 GetEffective/GetSpecialFlag 仍会把它排除，形成“已发布但不生效”的假发布。
-            currentHeader.IsEnabled = EnableFlag.Yes;
-            currentHeader.UpdatedAt = now;
-            var publishHeaderUpdated = await _headerRepository.UpdateAsync(
-                currentHeader,
-                previousHeaderStatus);
-            if (!publishHeaderUpdated)
-            {
-                throw new BizException(
-                    BizErrorCode.RuleHeaderConcurrencyConflict,
-                    409,
-                    $"RuleId={ruleId} 主档状态已变化，请刷新后重试");
-            }
-
-            // 写发布流水
-            var publishNo = $"PUB-{ruleId}-{request.VersionNo}-{now:yyyyMMddHHmmss}";
-            await _publishRepository.InsertAsync(new RulePublish
-            {
-                PublishNo = publishNo,
-                RuleId = ruleId,
-                FromVersion = oldVersion > 0 ? oldVersion : null,
-                ToVersion = request.VersionNo,
-                ActionType = ApprovalActionCodes.Publish,
-                PublishedBy = request.PublishedBy,
-                PublishedAt = now,
-                Remark = request.Remark
-            });
-
-            // 写变更摘要
-            await _changeLogRepository.InsertAsync(new RuleChangeLog
-            {
-                RuleId = ruleId,
-                VersionNo = request.VersionNo,
-                ChangeType = ApprovalActionCodes.Publish,
-                ChangeSummary = $"发布版本 V{request.VersionNo}",
-                ChangedBy = request.PublishedBy,
-                ChangedAt = now
-            });
-            await _cacheCoordinator.EnqueueAsync(ruleId, request.VersionNo, ApprovalActionCodes.Publish, now);
-        });
+        await _publishWorkflow.ExecuteAsync(ruleId, request);
 
         // ========== 第四阶段：清除生效规则缓存（事务外） ==========
         // 发布改变了当前生效版本，必须立即清除缓存，确保计价引擎读到最新规则集。
@@ -301,83 +224,7 @@ public abstract class RulePublishUseCaseBase
 
         await _approvalGate.EnsurePassedAsync(ruleId, header.CurrentVersion, ApprovalActionCodes.Disable);
 
-        // ========== 第二阶段：事务内执行状态变更和流水写入 ==========
-        await _transactionWriter.ExecuteAsync(async () =>
-        {
-            var currentHeader = await _headerRepository.GetByIdForUpdateAsync(ruleId)
-                ?? throw new BizException(BizErrorCode.RuleNotFound, 404, $"规则不存在: {ruleId}");
-            if (currentHeader.Status != RuleStatusCodes.Published)
-            {
-                throw new BizException(
-                    BizErrorCode.RuleAlreadyDisabled,
-                    409,
-                    $"只有已发布的规则可以停用, 当前状态: {currentHeader.Status}");
-            }
-
-            // 禁用当前版本
-            if (currentHeader.CurrentVersion > 0)
-            {
-                var currentVersion = await _versionRepository.GetByRuleAndVersionForUpdateAsync(ruleId, currentHeader.CurrentVersion);
-                if (currentVersion is not null)
-                {
-                    var disableCurrentVersionUpdated = await _versionRepository.UpdateStatusAsync(
-                        currentVersion.VersionId,
-                        VersionStatusCodes.Disabled,
-                        VersionStatusCodes.Published);
-                    if (!disableCurrentVersionUpdated)
-                    {
-                        throw new BizException(
-                            BizErrorCode.RuleVersionConcurrencyConflict,
-                            409,
-                            $"RuleId={ruleId}, CurrentVersionNo={currentHeader.CurrentVersion} 状态已变化，请刷新后重试");
-                    }
-                }
-            }
-
-            // 更新主档启用状态
-            var now = _clock.Now;
-            currentHeader.Status = RuleStatusCodes.Disabled;
-            currentHeader.IsEnabled = EnableFlag.No;
-            currentHeader.UpdatedAt = now;
-            var disableHeaderUpdated = await _headerRepository.UpdateAsync(
-                currentHeader,
-                RuleStatusCodes.Published);
-            if (!disableHeaderUpdated)
-            {
-                throw new BizException(
-                    BizErrorCode.RuleHeaderConcurrencyConflict,
-                    409,
-                    $"RuleId={ruleId} 主档状态已变化，请刷新后重试");
-            }
-
-            // 写停用流水和变更日志
-            await _publishRepository.InsertAsync(new RulePublish
-            {
-                PublishNo = $"DIS-{ruleId}-{now:yyyyMMddHHmmss}",
-                RuleId = ruleId,
-                FromVersion = currentHeader.CurrentVersion,
-                ToVersion = currentHeader.CurrentVersion,
-                ActionType = ApprovalActionCodes.Disable,
-                PublishedBy = request.PublishedBy,
-                PublishedAt = now,
-                Remark = request.Remark
-            });
-
-            await _changeLogRepository.InsertAsync(new RuleChangeLog
-            {
-                RuleId = ruleId,
-                VersionNo = currentHeader.CurrentVersion,
-                ChangeType = ApprovalActionCodes.Disable,
-                ChangeSummary = $"停用规则, 当前版本 V{currentHeader.CurrentVersion}",
-                ChangedBy = request.PublishedBy,
-                ChangedAt = now
-            });
-            await _cacheCoordinator.EnqueueAsync(
-                ruleId,
-                currentHeader.CurrentVersion,
-                ApprovalActionCodes.Disable,
-                now);
-        });
+        await _disableWorkflow.ExecuteAsync(ruleId, request);
 
         // ========== 第三阶段：清除生效规则缓存 ==========
         await _cacheCoordinator.InvalidateAfterCommitAsync();
@@ -409,97 +256,7 @@ public abstract class RulePublishUseCaseBase
 
         await _approvalGate.EnsurePassedAsync(ruleId, header.CurrentVersion, ApprovalActionCodes.Rollback);
 
-        // ========== 第三阶段：事务内执行状态变更和流水写入 ==========
-        await _transactionWriter.ExecuteAsync(async () =>
-        {
-            var currentHeader = await _headerRepository.GetByIdForUpdateAsync(ruleId)
-                ?? throw new BizException(BizErrorCode.RuleNotFound, 404, $"规则不存在: {ruleId}");
-            if (currentHeader.Status != RuleStatusCodes.Published)
-            {
-                throw new BizException(
-                    BizErrorCode.RollbackTargetNotAvailable,
-                    409,
-                    $"只有已发布的规则可以回滚, 当前状态: {currentHeader.Status}");
-            }
-
-            var oldVersionNo = currentHeader.CurrentVersion;
-            var rollbackVersionNo = await _rollbackTargetResolver.ResolveAsync(ruleId, oldVersionNo);
-
-            // 把当前版本标记为已回滚
-            var currentVersion = await _versionRepository.GetByRuleAndVersionForUpdateAsync(ruleId, oldVersionNo);
-            if (currentVersion is not null)
-            {
-                var rollbackCurrentVersionUpdated = await _versionRepository.UpdateStatusAsync(
-                    currentVersion.VersionId,
-                    VersionStatusCodes.RolledBack,
-                    VersionStatusCodes.Published);
-                if (!rollbackCurrentVersionUpdated)
-                {
-                    throw new BizException(
-                        BizErrorCode.RuleVersionConcurrencyConflict,
-                        409,
-                        $"RuleId={ruleId}, CurrentVersionNo={oldVersionNo} 状态已变化，请刷新后重试");
-                }
-            }
-
-            // 恢复历史版本为发布状态
-            var rollbackVersion = await _versionRepository.GetByRuleAndVersionForUpdateAsync(ruleId, rollbackVersionNo)
-                ?? throw new BizException(
-                    BizErrorCode.RollbackTargetNotAvailable,
-                    409,
-                    $"回滚目标版本不存在: RuleId={ruleId}, VersionNo={rollbackVersionNo}");
-            var rollbackVersionUpdated = await _versionRepository.UpdateStatusAsync(
-                rollbackVersion.VersionId,
-                VersionStatusCodes.Published,
-                VersionStatusCodes.Disabled);
-            if (!rollbackVersionUpdated)
-            {
-                throw new BizException(
-                    BizErrorCode.RuleVersionConcurrencyConflict,
-                    409,
-                    $"RuleId={ruleId}, RollbackVersionNo={rollbackVersionNo} 状态已变化，请刷新后重试");
-            }
-
-            currentHeader.CurrentVersion = rollbackVersionNo;
-            var now = _clock.Now;
-            currentHeader.Status = RuleStatusCodes.Published;
-            currentHeader.IsEnabled = EnableFlag.Yes;
-            currentHeader.UpdatedAt = now;
-            var rollbackHeaderUpdated = await _headerRepository.UpdateAsync(
-                currentHeader,
-                RuleStatusCodes.Published);
-            if (!rollbackHeaderUpdated)
-            {
-                throw new BizException(
-                    BizErrorCode.RuleHeaderConcurrencyConflict,
-                    409,
-                    $"RuleId={ruleId} 主档状态已变化，请刷新后重试");
-            }
-
-            // 记录回滚流水和变更摘要
-            await _publishRepository.InsertAsync(new RulePublish
-            {
-                PublishNo = $"RB-{ruleId}-{rollbackVersionNo}-{now:yyyyMMddHHmmss}",
-                RuleId = ruleId,
-                FromVersion = oldVersionNo,
-                ToVersion = rollbackVersionNo,
-                ActionType = ApprovalActionCodes.Rollback,
-                PublishedBy = request.PublishedBy,
-                PublishedAt = now,
-                Remark = request.Remark
-            });
-
-            await _changeLogRepository.InsertAsync(new RuleChangeLog
-            {
-                RuleId = ruleId,
-                VersionNo = rollbackVersionNo,
-                ChangeType = ApprovalActionCodes.Rollback,
-                ChangeSummary = $"从 V{oldVersionNo} 回滚到 V{rollbackVersionNo}",
-                ChangedBy = request.PublishedBy,
-                ChangedAt = now
-            });
-            await _cacheCoordinator.EnqueueAsync(ruleId, rollbackVersionNo, ApprovalActionCodes.Rollback, now);
-        });
+        await _rollbackWorkflow.ExecuteAsync(ruleId, request);
 
         // ========== 第四阶段：清除生效规则缓存 ==========
         await _cacheCoordinator.InvalidateAfterCommitAsync();
