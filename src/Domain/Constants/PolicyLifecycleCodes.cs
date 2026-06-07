@@ -24,3 +24,9 @@ public static class PolicyReviewStatusCodes
     public const string Rejected = "REJECTED";
     public const string Outdated = "OUTDATED";
 }
+
+public static class PolicyPublishProfileCodes
+{
+    public const string Direct = "DIRECT";
+    public const string ReviewRequired = "REVIEW_REQUIRED";
+}

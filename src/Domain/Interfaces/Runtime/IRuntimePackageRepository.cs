@@ -8,6 +8,8 @@ public interface IRuntimePackageRepository
 
     Task<IReadOnlyList<RuntimePackage>> GetHistoryAsync(int take);
 
+    Task<IReadOnlyList<RuntimePackagePolicy>> GetPackagePoliciesAsync(long packageId);
+
     Task<long> InsertAsync(RuntimePackage entity);
 
     Task UpdateAsync(RuntimePackage entity);

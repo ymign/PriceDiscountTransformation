@@ -144,6 +144,21 @@ public static class BizErrorCode
     /// <summary>运行时包构建冲突。</summary>
     public const int RuntimePackageBuildConflict = 1037;
 
+    /// <summary>策略审批未通过或缺失。</summary>
+    public const int PolicyReviewRequired = 1038;
+
+    /// <summary>策略审批已过期。</summary>
+    public const int PolicyReviewOutdated = 1039;
+
+    /// <summary>策略审批已驳回。</summary>
+    public const int PolicyReviewRejected = 1040;
+
+    /// <summary>运行时包不存在。</summary>
+    public const int RuntimePackageNotFound = 1041;
+
+    /// <summary>运行时包状态不允许激活。</summary>
+    public const int RuntimePackageStatusNotAllowed = 1042;
+
     // ========== 计价计算类错误（2001-2099） ==========
 
     /// <summary>单价校验失败（渠道传入单价与权威单价不一致）。</summary>

@@ -21,4 +21,6 @@ public interface IPolicyRepository
     Task<long> InsertAsync(PolicyAggregate entity);
 
     Task UpdateAsync(PolicyAggregate entity);
+
+    Task UpdateVersionAsync(PolicyVersion entity);
 }

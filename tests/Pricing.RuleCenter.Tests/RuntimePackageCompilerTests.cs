@@ -232,6 +232,18 @@ public sealed class RuntimePackageCompilerTests
         public Task<long> InsertAsync(PolicyAggregate entity) => Task.FromResult(0L);
 
         public Task UpdateAsync(PolicyAggregate entity) => Task.CompletedTask;
+
+        public Task UpdateVersionAsync(PolicyVersion entity)
+        {
+            var existing = PublishReadyVersions.FirstOrDefault(item => item.PolicyVersionId == entity.PolicyVersionId);
+            if (existing is not null)
+            {
+                PublishReadyVersions.Remove(existing);
+            }
+
+            PublishReadyVersions.Add(entity);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class InMemoryTemplateRepository : ITemplateRepository
@@ -279,6 +291,9 @@ public sealed class RuntimePackageCompilerTests
                 .OrderByDescending(item => item.PackageVersion)
                 .Take(take)
                 .ToList());
+
+        public Task<IReadOnlyList<RuntimePackagePolicy>> GetPackagePoliciesAsync(long packageId) =>
+            Task.FromResult((IReadOnlyList<RuntimePackagePolicy>)Array.Empty<RuntimePackagePolicy>());
 
         public Task<long> InsertAsync(RuntimePackage entity)
         {

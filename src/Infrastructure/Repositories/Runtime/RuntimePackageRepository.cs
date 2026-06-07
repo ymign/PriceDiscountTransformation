@@ -30,6 +30,14 @@ public sealed class RuntimePackageRepository : IRuntimePackageRepository
             .ToListAsync();
     }
 
+    public async Task<IReadOnlyList<RuntimePackagePolicy>> GetPackagePoliciesAsync(long packageId)
+    {
+        return await _db.Queryable<RuntimePackagePolicy>()
+            .Where(item => item.PackageId == packageId)
+            .OrderBy(item => item.PackagePolicyId)
+            .ToListAsync();
+    }
+
     public async Task<long> InsertAsync(RuntimePackage entity)
     {
         var packageId = await _db.Ado.GetLongAsync("SELECT SEQ_PR_RUNTIME_PACKAGE.NEXTVAL FROM DUAL");
