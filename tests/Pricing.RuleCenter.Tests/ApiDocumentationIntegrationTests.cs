@@ -74,6 +74,29 @@ public sealed class ApiDocumentationIntegrationTests
         Assert.True(root.GetProperty("data").GetProperty("checks").TryGetProperty("self", out _));
     }
 
+    [Fact]
+    public async Task HealthVersionEndpoint_ReturnsBuildMetadataWhenConfigured()
+    {
+        await using var factory = new PricingRuleCenterWebApplicationFactory(new Dictionary<string, string?>
+        {
+            ["Build:Commit"] = "abc1234",
+            ["Build:Branch"] = "main",
+            ["Build:TimeUtc"] = "2026-06-07T10:00:00Z"
+        });
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/health/version");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var data = document.RootElement.GetProperty("data");
+        Assert.Equal("abc1234", data.GetProperty("buildCommit").GetString());
+        Assert.Equal("main", data.GetProperty("buildBranch").GetString());
+        Assert.Equal("2026-06-07T10:00:00Z", data.GetProperty("buildTimeUtc").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(data.GetProperty("serviceVersion").GetString()));
+        Assert.Equal("1.0", data.GetProperty("protocolVersion").GetString());
+    }
+
     /// <summary>
     /// 试算接口文档必须与真实规则执行顺序一致：数量限制先于公式计算。
     /// </summary>

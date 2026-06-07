@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Core.Interfaces;
 using SqlSugar;
@@ -54,16 +55,19 @@ public sealed class HealthController : ControllerBase
     /// </summary>
     private readonly ISqlSugarClient _db;
     private readonly IClock _clock;
+    private readonly IConfiguration _configuration;
 
     /// <summary>
     /// 构造函数，通过依赖注入获取 SqlSugar 数据库客户端。
     /// </summary>
     /// <param name="db">SqlSugar 数据库客户端（<see cref="ISqlSugarClient"/>）。</param>
     /// <param name="clock">技术时间提供者，用于统一输出服务时间。</param>
-    public HealthController(ISqlSugarClient db, IClock clock)
+    /// <param name="configuration">配置对象，用于读取构建元信息。</param>
+    public HealthController(ISqlSugarClient db, IClock clock, IConfiguration configuration)
     {
         _db = db;
         _clock = clock;
+        _configuration = configuration;
     }
 
     /// <summary>
@@ -131,6 +135,23 @@ public sealed class HealthController : ControllerBase
 
         return ApiResult<HealthResult>.Ok(result);
     }
+
+    /// <summary>
+    /// 【版本信息接口】— 返回服务版本、协议版本和当前部署的构建元信息。
+    /// </summary>
+    /// <returns>版本和构建信息。</returns>
+    [HttpGet("/health/version")]
+    public ApiResult<HealthVersionResult> GetVersion()
+    {
+        return ApiResult<HealthVersionResult>.Ok(new HealthVersionResult
+        {
+            ServiceVersion = typeof(HealthResult).Assembly.GetName().Version?.ToString() ?? "unknown",
+            ProtocolVersion = "1.0",
+            BuildCommit = _configuration["Build:Commit"] ?? Environment.GetEnvironmentVariable("BUILD_COMMIT"),
+            BuildBranch = _configuration["Build:Branch"] ?? Environment.GetEnvironmentVariable("BUILD_BRANCH"),
+            BuildTimeUtc = _configuration["Build:TimeUtc"] ?? Environment.GetEnvironmentVariable("BUILD_TIME_UTC")
+        });
+    }
 }
 
 /// <summary>
@@ -190,4 +211,35 @@ public sealed class HealthResult
     /// 计价接口协议版本。PricingAgent SDK 会用该字段判断 DLL 与服务端是否兼容。
     /// </summary>
     public string ProtocolVersion { get; init; } = PricingProtocolVersion;
+}
+
+/// <summary>
+/// 服务版本和构建元信息响应 DTO。
+/// </summary>
+public sealed class HealthVersionResult
+{
+    /// <summary>
+    /// 服务端程序版本。
+    /// </summary>
+    public string ServiceVersion { get; init; } = "unknown";
+
+    /// <summary>
+    /// 协议版本。
+    /// </summary>
+    public string ProtocolVersion { get; init; } = "1.0";
+
+    /// <summary>
+    /// 当前部署构建的提交号。
+    /// </summary>
+    public string? BuildCommit { get; init; }
+
+    /// <summary>
+    /// 当前部署构建的分支名。
+    /// </summary>
+    public string? BuildBranch { get; init; }
+
+    /// <summary>
+    /// 当前部署构建时间（UTC）。
+    /// </summary>
+    public string? BuildTimeUtc { get; init; }
 }

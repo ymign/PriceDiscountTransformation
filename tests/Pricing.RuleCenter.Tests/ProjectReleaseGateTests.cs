@@ -42,6 +42,23 @@ public sealed class ProjectReleaseGateTests
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
     }
 
+    [Fact]
+    public void Repository_ShouldContainWindowsFriendlyReleaseWorkflowAndSqlValidationScript()
+    {
+        var root = FindRepositoryRoot();
+        var workflowPath = Path.Combine(root, ".github", "workflows", "rule-center-ci.yml");
+        var scriptPath = Path.Combine(root, "scripts", "validate-release-assets.ps1");
+
+        Assert.True(File.Exists(workflowPath), $"Missing workflow: {workflowPath}");
+        Assert.True(File.Exists(scriptPath), $"Missing release validation script: {scriptPath}");
+
+        var workflowContent = File.ReadAllText(workflowPath);
+        Assert.Contains("runs-on: windows-latest", workflowContent, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Validate release assets", workflowContent, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(@".\scripts\validate-release-assets.ps1", workflowContent, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("docker", workflowContent, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string FindRepositoryRoot()
     {
         var directory = AppContext.BaseDirectory;

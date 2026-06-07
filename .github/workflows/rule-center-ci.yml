@@ -18,6 +18,10 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Validate release assets
+        shell: pwsh
+        run: .\scripts\validate-release-assets.ps1
+
       - name: Restore
         run: dotnet restore .\src\Pricing.RuleCenter.slnx
 
