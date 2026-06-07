@@ -1,4 +1,5 @@
 using Pricing.RuleCenter.Application.Background;
+using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Core.Aggregates.Catalog;
 using Pricing.RuleCenter.Core.Interfaces.Catalog;
 using Pricing.RuleCenter.Application.Rules.Guards;
@@ -50,7 +51,14 @@ public sealed class RulePublishCacheCoordinator
     {
         _publishGuard.ClearCache();
         _cacheInvalidator.ClearEffectiveCache();
-        await _outboxProcessor.ProcessPendingAsync();
+        var result = await _outboxProcessor.ProcessPendingAsync();
+        if (result.FailedCount > 0)
+        {
+            throw new BizException(
+                BizErrorCode.ServiceDegraded,
+                503,
+                $"规则已发布，但缓存广播未完成：失败 {result.FailedCount} 条，请稍后重试或联系管理员处理");
+        }
     }
 
     private async Task EnqueueAsync(

@@ -566,7 +566,7 @@ public sealed class RulePublishConflictTests
     }
 
     [Fact]
-    public async Task PublishAsync_WhenCacheVersionBroadcastFails_KeepsRetryableOutboxRows()
+    public async Task PublishAsync_WhenCacheVersionBroadcastFails_ThrowsAndKeepsRetryableOutboxRows()
     {
         var headerRepository = new InMemoryRuleHeaderRepository();
         var versionRepository = new InMemoryRuleVersionRepository();
@@ -599,8 +599,10 @@ public sealed class RulePublishConflictTests
         });
         AddPassingTestCase(testCaseRepository, testRunRepository, 14, 1, 2014, 3014);
 
-        await service.PublishAsync(14, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" });
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
+            service.PublishAsync(14, new RulePublishRequest { VersionNo = 1, PublishedBy = "tester" }));
 
+        Assert.Equal(BizErrorCode.ServiceDegraded, ex.Code);
         Assert.Equal("PUBLISHED", headerRepository.Headers.Single().Status);
         Assert.Equal(1, runtimeCache.ClearCount);
         Assert.Equal(2, outboxRepository.Items.Count);

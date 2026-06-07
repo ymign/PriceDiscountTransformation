@@ -34,21 +34,33 @@ public sealed class RuleCacheInvalidationOutboxProcessor
     /// <summary>
     /// 处理当前到期的缓存失效任务。
     /// </summary>
-    public async Task ProcessPendingAsync(
+    public async Task<RuleCacheInvalidationProcessResult> ProcessPendingAsync(
         int maxCount = DefaultBatchSize,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
         var items = await _outboxRepository.GetPendingAsync(_clock.Now, maxCount);
+        var processedCount = 0;
+        var failedCount = 0;
         foreach (var item in items)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await ProcessAsync(item, cancellationToken);
+            var processed = await ProcessAsync(item, cancellationToken);
+            if (processed)
+            {
+                processedCount++;
+            }
+            else
+            {
+                failedCount++;
+            }
         }
+
+        return new RuleCacheInvalidationProcessResult(processedCount, failedCount);
     }
 
-    private async Task ProcessAsync(
+    private async Task<bool> ProcessAsync(
         RuleCacheInvalidationOutbox item,
         CancellationToken cancellationToken)
     {
@@ -56,6 +68,7 @@ public sealed class RuleCacheInvalidationOutboxProcessor
         {
             await _cacheVersionSynchronizer.IncreaseVersionAsync(item.CacheScope, cancellationToken);
             await _outboxRepository.MarkProcessedAsync(item.OutboxId, _clock.Now);
+            return true;
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
@@ -74,6 +87,8 @@ public sealed class RuleCacheInvalidationOutboxProcessor
                 item.CacheScope,
                 retryCount,
                 nextRetryAt);
+
+            return false;
         }
     }
 
