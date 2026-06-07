@@ -2,6 +2,9 @@ using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Aggregates.Charging;
 using Pricing.RuleCenter.Core.Aggregates.Quota;
 using Pricing.RuleCenter.Core.Aggregates.Catalog;
+using Pricing.RuleCenter.Core.Aggregates.Templates;
+using Pricing.RuleCenter.Core.Aggregates.Policies;
+using Pricing.RuleCenter.Core.Aggregates.Runtime;
 using Pricing.RuleCenter.Core.Models;
 using SqlSugar;
 
@@ -39,7 +42,24 @@ public static class EntityTypeConfigs
             [typeof(ChargeReverseLog)] = nameof(ChargeReverseLog.ReverseId),
             [typeof(RuleApproval)] = nameof(RuleApproval.ApprovalId),
             [typeof(RuleTestCase)] = nameof(RuleTestCase.TestCaseId),
-            [typeof(RuleTestRun)] = nameof(RuleTestRun.TestRunId)
+            [typeof(RuleTestRun)] = nameof(RuleTestRun.TestRunId),
+            [typeof(TemplateAggregate)] = nameof(TemplateAggregate.TemplateId),
+            [typeof(TemplateVersion)] = nameof(TemplateVersion.TemplateVersionId),
+            [typeof(TemplateParamDef)] = nameof(TemplateParamDef.ParamDefId),
+            [typeof(TemplateStepDef)] = nameof(TemplateStepDef.StepDefId),
+            [typeof(TemplateScopeDef)] = nameof(TemplateScopeDef.ScopeDefId),
+            [typeof(PolicyAggregate)] = nameof(PolicyAggregate.PolicyId),
+            [typeof(PolicyVersion)] = nameof(PolicyVersion.PolicyVersionId),
+            [typeof(PolicyBinding)] = nameof(PolicyBinding.PolicyBindingId),
+            [typeof(PolicyScope)] = nameof(PolicyScope.PolicyScopeId),
+            [typeof(PolicyParam)] = nameof(PolicyParam.PolicyParamId),
+            [typeof(PolicyReview)] = nameof(PolicyReview.ReviewId),
+            [typeof(RuntimePackage)] = nameof(RuntimePackage.PackageId),
+            [typeof(RuntimePackagePolicy)] = nameof(RuntimePackagePolicy.PackagePolicyId),
+            [typeof(RuntimeRule)] = nameof(RuntimeRule.RuntimeRuleId),
+            [typeof(RuntimeCondition)] = nameof(RuntimeCondition.RuntimeConditionId),
+            [typeof(RuntimeAction)] = nameof(RuntimeAction.RuntimeActionId),
+            [typeof(RuntimePackageState)] = nameof(RuntimePackageState.StateCode)
         };
 
     /// <summary>
@@ -337,6 +357,257 @@ public static class EntityTypeConfigs
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PriceMasterItem), PropertyName = nameof(PriceMasterItem.UnitPrice), DbColumnName = "UNIT_PRICE" });
     }
 
+    public static void ConfigureTemplateAggregate(SqlSugarClient db)
+    {
+        db.MappingTables.Add(typeof(TemplateAggregate).Name, "PR_TEMPLATE");
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateAggregate), PropertyName = nameof(TemplateAggregate.TemplateId), DbColumnName = "TEMPLATE_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateAggregate), PropertyName = nameof(TemplateAggregate.TemplateCode), DbColumnName = "TEMPLATE_CODE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateAggregate), PropertyName = nameof(TemplateAggregate.TemplateName), DbColumnName = "TEMPLATE_NAME" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateAggregate), PropertyName = nameof(TemplateAggregate.Category), DbColumnName = "CATEGORY" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateAggregate), PropertyName = nameof(TemplateAggregate.RiskLevel), DbColumnName = "RISK_LEVEL" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateAggregate), PropertyName = nameof(TemplateAggregate.ExpressionMode), DbColumnName = "EXPRESSION_MODE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateAggregate), PropertyName = nameof(TemplateAggregate.Status), DbColumnName = "STATUS" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateAggregate), PropertyName = nameof(TemplateAggregate.CurrentVersionNo), DbColumnName = "CURRENT_VERSION_NO" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateAggregate), PropertyName = nameof(TemplateAggregate.CreatedBy), DbColumnName = "CREATED_BY" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateAggregate), PropertyName = nameof(TemplateAggregate.CreatedAt), DbColumnName = "CREATED_AT" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateAggregate), PropertyName = nameof(TemplateAggregate.UpdatedBy), DbColumnName = "UPDATED_BY" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateAggregate), PropertyName = nameof(TemplateAggregate.UpdatedAt), DbColumnName = "UPDATED_AT" });
+    }
+
+    public static void ConfigureTemplateVersion(SqlSugarClient db)
+    {
+        db.MappingTables.Add(typeof(TemplateVersion).Name, "PR_TEMPLATE_VERSION");
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateVersion), PropertyName = nameof(TemplateVersion.TemplateVersionId), DbColumnName = "TEMPLATE_VERSION_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateVersion), PropertyName = nameof(TemplateVersion.TemplateId), DbColumnName = "TEMPLATE_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateVersion), PropertyName = nameof(TemplateVersion.VersionNo), DbColumnName = "VERSION_NO" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateVersion), PropertyName = nameof(TemplateVersion.VersionStatus), DbColumnName = "VERSION_STATUS" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateVersion), PropertyName = nameof(TemplateVersion.CapabilityFamily), DbColumnName = "CAPABILITY_FAMILY" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateVersion), PropertyName = nameof(TemplateVersion.MergeMode), DbColumnName = "MERGE_MODE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateVersion), PropertyName = nameof(TemplateVersion.Checksum), DbColumnName = "CHECKSUM" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateVersion), PropertyName = nameof(TemplateVersion.Description), DbColumnName = "DESCRIPTION" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateVersion), PropertyName = nameof(TemplateVersion.PublishedBy), DbColumnName = "PUBLISHED_BY" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateVersion), PropertyName = nameof(TemplateVersion.PublishedAt), DbColumnName = "PUBLISHED_AT" });
+    }
+
+    public static void ConfigureTemplateParamDef(SqlSugarClient db)
+    {
+        db.MappingTables.Add(typeof(TemplateParamDef).Name, "PR_TEMPLATE_PARAM_DEF");
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateParamDef), PropertyName = nameof(TemplateParamDef.ParamDefId), DbColumnName = "PARAM_DEF_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateParamDef), PropertyName = nameof(TemplateParamDef.TemplateVersionId), DbColumnName = "TEMPLATE_VERSION_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateParamDef), PropertyName = nameof(TemplateParamDef.ParamCode), DbColumnName = "PARAM_CODE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateParamDef), PropertyName = nameof(TemplateParamDef.ParamName), DbColumnName = "PARAM_NAME" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateParamDef), PropertyName = nameof(TemplateParamDef.ValueType), DbColumnName = "VALUE_TYPE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateParamDef), PropertyName = nameof(TemplateParamDef.IsRequired), DbColumnName = "IS_REQUIRED" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateParamDef), PropertyName = nameof(TemplateParamDef.DefaultText), DbColumnName = "DEFAULT_TEXT" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateParamDef), PropertyName = nameof(TemplateParamDef.DefaultNumber), DbColumnName = "DEFAULT_NUMBER" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateParamDef), PropertyName = nameof(TemplateParamDef.DefaultBool), DbColumnName = "DEFAULT_BOOL" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateParamDef), PropertyName = nameof(TemplateParamDef.DictType), DbColumnName = "DICT_TYPE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateParamDef), PropertyName = nameof(TemplateParamDef.MinValue), DbColumnName = "MIN_VALUE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateParamDef), PropertyName = nameof(TemplateParamDef.MaxValue), DbColumnName = "MAX_VALUE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateParamDef), PropertyName = nameof(TemplateParamDef.RegexRule), DbColumnName = "REGEX_RULE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateParamDef), PropertyName = nameof(TemplateParamDef.UiControl), DbColumnName = "UI_CONTROL" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateParamDef), PropertyName = nameof(TemplateParamDef.HelpText), DbColumnName = "HELP_TEXT" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateParamDef), PropertyName = nameof(TemplateParamDef.RiskFlag), DbColumnName = "RISK_FLAG" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateParamDef), PropertyName = nameof(TemplateParamDef.SortNo), DbColumnName = "SORT_NO" });
+    }
+
+    public static void ConfigureTemplateStepDef(SqlSugarClient db)
+    {
+        db.MappingTables.Add(typeof(TemplateStepDef).Name, "PR_TEMPLATE_STEP_DEF");
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateStepDef), PropertyName = nameof(TemplateStepDef.StepDefId), DbColumnName = "STEP_DEF_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateStepDef), PropertyName = nameof(TemplateStepDef.TemplateVersionId), DbColumnName = "TEMPLATE_VERSION_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateStepDef), PropertyName = nameof(TemplateStepDef.StepNo), DbColumnName = "STEP_NO" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateStepDef), PropertyName = nameof(TemplateStepDef.StepKind), DbColumnName = "STEP_KIND" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateStepDef), PropertyName = nameof(TemplateStepDef.CapabilityCode), DbColumnName = "CAPABILITY_CODE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateStepDef), PropertyName = nameof(TemplateStepDef.ActionType), DbColumnName = "ACTION_TYPE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateStepDef), PropertyName = nameof(TemplateStepDef.ExecutorCode), DbColumnName = "EXECUTOR_CODE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateStepDef), PropertyName = nameof(TemplateStepDef.OnError), DbColumnName = "ON_ERROR" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateStepDef), PropertyName = nameof(TemplateStepDef.StepConfigClob), DbColumnName = "STEP_CONFIG_CLOB" });
+    }
+
+    public static void ConfigureTemplateScopeDef(SqlSugarClient db)
+    {
+        db.MappingTables.Add(typeof(TemplateScopeDef).Name, "PR_TEMPLATE_SCOPE_DEF");
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateScopeDef), PropertyName = nameof(TemplateScopeDef.ScopeDefId), DbColumnName = "SCOPE_DEF_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateScopeDef), PropertyName = nameof(TemplateScopeDef.TemplateVersionId), DbColumnName = "TEMPLATE_VERSION_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateScopeDef), PropertyName = nameof(TemplateScopeDef.ScopeDimension), DbColumnName = "SCOPE_DIMENSION" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateScopeDef), PropertyName = nameof(TemplateScopeDef.IsRequired), DbColumnName = "IS_REQUIRED" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateScopeDef), PropertyName = nameof(TemplateScopeDef.AllowMultiple), DbColumnName = "ALLOW_MULTIPLE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(TemplateScopeDef), PropertyName = nameof(TemplateScopeDef.SortNo), DbColumnName = "SORT_NO" });
+    }
+
+    public static void ConfigurePolicyAggregate(SqlSugarClient db)
+    {
+        db.MappingTables.Add(typeof(PolicyAggregate).Name, "PR_POLICY");
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyAggregate), PropertyName = nameof(PolicyAggregate.PolicyId), DbColumnName = "POLICY_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyAggregate), PropertyName = nameof(PolicyAggregate.PolicyCode), DbColumnName = "POLICY_CODE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyAggregate), PropertyName = nameof(PolicyAggregate.PolicyName), DbColumnName = "POLICY_NAME" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyAggregate), PropertyName = nameof(PolicyAggregate.TemplateId), DbColumnName = "TEMPLATE_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyAggregate), PropertyName = nameof(PolicyAggregate.OwnerType), DbColumnName = "OWNER_TYPE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyAggregate), PropertyName = nameof(PolicyAggregate.PublishProfile), DbColumnName = "PUBLISH_PROFILE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyAggregate), PropertyName = nameof(PolicyAggregate.Status), DbColumnName = "STATUS" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyAggregate), PropertyName = nameof(PolicyAggregate.CurrentVersionNo), DbColumnName = "CURRENT_VERSION_NO" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyAggregate), PropertyName = nameof(PolicyAggregate.CreatedBy), DbColumnName = "CREATED_BY" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyAggregate), PropertyName = nameof(PolicyAggregate.CreatedAt), DbColumnName = "CREATED_AT" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyAggregate), PropertyName = nameof(PolicyAggregate.UpdatedBy), DbColumnName = "UPDATED_BY" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyAggregate), PropertyName = nameof(PolicyAggregate.UpdatedAt), DbColumnName = "UPDATED_AT" });
+    }
+
+    public static void ConfigurePolicyVersion(SqlSugarClient db)
+    {
+        db.MappingTables.Add(typeof(PolicyVersion).Name, "PR_POLICY_VERSION");
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyVersion), PropertyName = nameof(PolicyVersion.PolicyVersionId), DbColumnName = "POLICY_VERSION_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyVersion), PropertyName = nameof(PolicyVersion.PolicyId), DbColumnName = "POLICY_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyVersion), PropertyName = nameof(PolicyVersion.TemplateVersionId), DbColumnName = "TEMPLATE_VERSION_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyVersion), PropertyName = nameof(PolicyVersion.VersionNo), DbColumnName = "VERSION_NO" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyVersion), PropertyName = nameof(PolicyVersion.PolicyStatus), DbColumnName = "POLICY_STATUS" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyVersion), PropertyName = nameof(PolicyVersion.EffectiveFrom), DbColumnName = "EFFECTIVE_FROM" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyVersion), PropertyName = nameof(PolicyVersion.EffectiveTo), DbColumnName = "EFFECTIVE_TO" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyVersion), PropertyName = nameof(PolicyVersion.BindingType), DbColumnName = "BINDING_TYPE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyVersion), PropertyName = nameof(PolicyVersion.ScopeLevel), DbColumnName = "SCOPE_LEVEL" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyVersion), PropertyName = nameof(PolicyVersion.PriorityWeight), DbColumnName = "PRIORITY_WEIGHT" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyVersion), PropertyName = nameof(PolicyVersion.Checksum), DbColumnName = "CHECKSUM" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyVersion), PropertyName = nameof(PolicyVersion.LastBuiltPackageId), DbColumnName = "LAST_BUILT_PACKAGE_ID" });
+    }
+
+    public static void ConfigurePolicyBinding(SqlSugarClient db)
+    {
+        db.MappingTables.Add(typeof(PolicyBinding).Name, "PR_POLICY_BINDING");
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyBinding), PropertyName = nameof(PolicyBinding.PolicyBindingId), DbColumnName = "POLICY_BINDING_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyBinding), PropertyName = nameof(PolicyBinding.PolicyVersionId), DbColumnName = "POLICY_VERSION_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyBinding), PropertyName = nameof(PolicyBinding.BindingType), DbColumnName = "BINDING_TYPE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyBinding), PropertyName = nameof(PolicyBinding.ItemCode), DbColumnName = "ITEM_CODE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyBinding), PropertyName = nameof(PolicyBinding.ItemName), DbColumnName = "ITEM_NAME" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyBinding), PropertyName = nameof(PolicyBinding.GroupCode), DbColumnName = "GROUP_CODE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyBinding), PropertyName = nameof(PolicyBinding.GroupName), DbColumnName = "GROUP_NAME" });
+    }
+
+    public static void ConfigurePolicyScope(SqlSugarClient db)
+    {
+        db.MappingTables.Add(typeof(PolicyScope).Name, "PR_POLICY_SCOPE");
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyScope), PropertyName = nameof(PolicyScope.PolicyScopeId), DbColumnName = "POLICY_SCOPE_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyScope), PropertyName = nameof(PolicyScope.PolicyVersionId), DbColumnName = "POLICY_VERSION_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyScope), PropertyName = nameof(PolicyScope.ScopeDimension), DbColumnName = "SCOPE_DIMENSION" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyScope), PropertyName = nameof(PolicyScope.ScopeOperator), DbColumnName = "SCOPE_OPERATOR" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyScope), PropertyName = nameof(PolicyScope.ScopeValueText), DbColumnName = "SCOPE_VALUE_TEXT" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyScope), PropertyName = nameof(PolicyScope.ScopeValueNumber), DbColumnName = "SCOPE_VALUE_NUMBER" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyScope), PropertyName = nameof(PolicyScope.ScopeValueDate), DbColumnName = "SCOPE_VALUE_DATE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyScope), PropertyName = nameof(PolicyScope.ScopeJson), DbColumnName = "SCOPE_JSON" });
+    }
+
+    public static void ConfigurePolicyParam(SqlSugarClient db)
+    {
+        db.MappingTables.Add(typeof(PolicyParam).Name, "PR_POLICY_PARAM");
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyParam), PropertyName = nameof(PolicyParam.PolicyParamId), DbColumnName = "POLICY_PARAM_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyParam), PropertyName = nameof(PolicyParam.PolicyVersionId), DbColumnName = "POLICY_VERSION_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyParam), PropertyName = nameof(PolicyParam.ParamCode), DbColumnName = "PARAM_CODE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyParam), PropertyName = nameof(PolicyParam.ValueType), DbColumnName = "VALUE_TYPE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyParam), PropertyName = nameof(PolicyParam.ValueText), DbColumnName = "VALUE_TEXT" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyParam), PropertyName = nameof(PolicyParam.ValueNumber), DbColumnName = "VALUE_NUMBER" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyParam), PropertyName = nameof(PolicyParam.ValueDate), DbColumnName = "VALUE_DATE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyParam), PropertyName = nameof(PolicyParam.ValueBool), DbColumnName = "VALUE_BOOL" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyParam), PropertyName = nameof(PolicyParam.ExprText), DbColumnName = "EXPR_TEXT" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyParam), PropertyName = nameof(PolicyParam.ExprLevel), DbColumnName = "EXPR_LEVEL" });
+    }
+
+    public static void ConfigurePolicyReview(SqlSugarClient db)
+    {
+        db.MappingTables.Add(typeof(PolicyReview).Name, "PR_POLICY_REVIEW");
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyReview), PropertyName = nameof(PolicyReview.ReviewId), DbColumnName = "REVIEW_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyReview), PropertyName = nameof(PolicyReview.PolicyVersionId), DbColumnName = "POLICY_VERSION_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyReview), PropertyName = nameof(PolicyReview.ReviewStatus), DbColumnName = "REVIEW_STATUS" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyReview), PropertyName = nameof(PolicyReview.ReviewStage), DbColumnName = "REVIEW_STAGE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyReview), PropertyName = nameof(PolicyReview.SubmittedBy), DbColumnName = "SUBMITTED_BY" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyReview), PropertyName = nameof(PolicyReview.SubmittedAt), DbColumnName = "SUBMITTED_AT" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyReview), PropertyName = nameof(PolicyReview.ReviewedBy), DbColumnName = "REVIEWED_BY" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyReview), PropertyName = nameof(PolicyReview.ReviewedAt), DbColumnName = "REVIEWED_AT" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyReview), PropertyName = nameof(PolicyReview.ReviewComment), DbColumnName = "REVIEW_COMMENT" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyReview), PropertyName = nameof(PolicyReview.SourceChecksum), DbColumnName = "SOURCE_CHECKSUM" });
+    }
+
+    public static void ConfigureRuntimePackage(SqlSugarClient db)
+    {
+        db.MappingTables.Add(typeof(RuntimePackage).Name, "PR_RUNTIME_PACKAGE");
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackage), PropertyName = nameof(RuntimePackage.PackageId), DbColumnName = "PACKAGE_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackage), PropertyName = nameof(RuntimePackage.PackageVersion), DbColumnName = "PACKAGE_VERSION" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackage), PropertyName = nameof(RuntimePackage.PackageStatus), DbColumnName = "PACKAGE_STATUS" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackage), PropertyName = nameof(RuntimePackage.BuildScope), DbColumnName = "BUILD_SCOPE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackage), PropertyName = nameof(RuntimePackage.SourceChecksum), DbColumnName = "SOURCE_CHECKSUM" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackage), PropertyName = nameof(RuntimePackage.BuiltBy), DbColumnName = "BUILT_BY" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackage), PropertyName = nameof(RuntimePackage.BuiltAt), DbColumnName = "BUILT_AT" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackage), PropertyName = nameof(RuntimePackage.ActivatedBy), DbColumnName = "ACTIVATED_BY" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackage), PropertyName = nameof(RuntimePackage.ActivatedAt), DbColumnName = "ACTIVATED_AT" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackage), PropertyName = nameof(RuntimePackage.RolledBackFromPackageId), DbColumnName = "ROLLED_BACK_FROM_PACKAGE_ID" });
+    }
+
+    public static void ConfigureRuntimePackagePolicy(SqlSugarClient db)
+    {
+        db.MappingTables.Add(typeof(RuntimePackagePolicy).Name, "PR_RUNTIME_PACKAGE_POLICY");
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackagePolicy), PropertyName = nameof(RuntimePackagePolicy.PackagePolicyId), DbColumnName = "PACKAGE_POLICY_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackagePolicy), PropertyName = nameof(RuntimePackagePolicy.PackageId), DbColumnName = "PACKAGE_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackagePolicy), PropertyName = nameof(RuntimePackagePolicy.PolicyVersionId), DbColumnName = "POLICY_VERSION_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackagePolicy), PropertyName = nameof(RuntimePackagePolicy.PolicyCode), DbColumnName = "POLICY_CODE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackagePolicy), PropertyName = nameof(RuntimePackagePolicy.TemplateVersionId), DbColumnName = "TEMPLATE_VERSION_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackagePolicy), PropertyName = nameof(RuntimePackagePolicy.CapabilityFamily), DbColumnName = "CAPABILITY_FAMILY" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackagePolicy), PropertyName = nameof(RuntimePackagePolicy.PriorityKey), DbColumnName = "PRIORITY_KEY" });
+    }
+
+    public static void ConfigureRuntimeRule(SqlSugarClient db)
+    {
+        db.MappingTables.Add(typeof(RuntimeRule).Name, "PR_RUNTIME_RULE");
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeRule), PropertyName = nameof(RuntimeRule.RuntimeRuleId), DbColumnName = "RUNTIME_RULE_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeRule), PropertyName = nameof(RuntimeRule.PackageId), DbColumnName = "PACKAGE_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeRule), PropertyName = nameof(RuntimeRule.SourceTemplateVersionId), DbColumnName = "SOURCE_TEMPLATE_VERSION_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeRule), PropertyName = nameof(RuntimeRule.SourcePolicyVersionId), DbColumnName = "SOURCE_POLICY_VERSION_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeRule), PropertyName = nameof(RuntimeRule.CapabilityFamily), DbColumnName = "CAPABILITY_FAMILY" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeRule), PropertyName = nameof(RuntimeRule.MergeMode), DbColumnName = "MERGE_MODE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeRule), PropertyName = nameof(RuntimeRule.TargetItemCode), DbColumnName = "TARGET_ITEM_CODE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeRule), PropertyName = nameof(RuntimeRule.TargetGroupCode), DbColumnName = "TARGET_GROUP_CODE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeRule), PropertyName = nameof(RuntimeRule.ScopeLevel), DbColumnName = "SCOPE_LEVEL" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeRule), PropertyName = nameof(RuntimeRule.PriorityKey), DbColumnName = "PRIORITY_KEY" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeRule), PropertyName = nameof(RuntimeRule.EffectiveFrom), DbColumnName = "EFFECTIVE_FROM" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeRule), PropertyName = nameof(RuntimeRule.EffectiveTo), DbColumnName = "EFFECTIVE_TO" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeRule), PropertyName = nameof(RuntimeRule.MatchKey), DbColumnName = "MATCH_KEY" });
+    }
+
+    public static void ConfigureRuntimeCondition(SqlSugarClient db)
+    {
+        db.MappingTables.Add(typeof(RuntimeCondition).Name, "PR_RUNTIME_CONDITION");
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeCondition), PropertyName = nameof(RuntimeCondition.RuntimeConditionId), DbColumnName = "RUNTIME_CONDITION_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeCondition), PropertyName = nameof(RuntimeCondition.RuntimeRuleId), DbColumnName = "RUNTIME_RULE_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeCondition), PropertyName = nameof(RuntimeCondition.ConditionGroup), DbColumnName = "CONDITION_GROUP" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeCondition), PropertyName = nameof(RuntimeCondition.ConditionType), DbColumnName = "CONDITION_TYPE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeCondition), PropertyName = nameof(RuntimeCondition.OperatorType), DbColumnName = "OPERATOR_TYPE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeCondition), PropertyName = nameof(RuntimeCondition.LeftKey), DbColumnName = "LEFT_KEY" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeCondition), PropertyName = nameof(RuntimeCondition.RightValue), DbColumnName = "RIGHT_VALUE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeCondition), PropertyName = nameof(RuntimeCondition.ParamsJson), DbColumnName = "PARAMS_JSON" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeCondition), PropertyName = nameof(RuntimeCondition.SortNo), DbColumnName = "SORT_NO" });
+    }
+
+    public static void ConfigureRuntimeAction(SqlSugarClient db)
+    {
+        db.MappingTables.Add(typeof(RuntimeAction).Name, "PR_RUNTIME_ACTION");
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeAction), PropertyName = nameof(RuntimeAction.RuntimeActionId), DbColumnName = "RUNTIME_ACTION_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeAction), PropertyName = nameof(RuntimeAction.RuntimeRuleId), DbColumnName = "RUNTIME_RULE_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeAction), PropertyName = nameof(RuntimeAction.StepNo), DbColumnName = "STEP_NO" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeAction), PropertyName = nameof(RuntimeAction.ActionType), DbColumnName = "ACTION_TYPE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeAction), PropertyName = nameof(RuntimeAction.ExecutorCode), DbColumnName = "EXECUTOR_CODE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeAction), PropertyName = nameof(RuntimeAction.ParamsJson), DbColumnName = "PARAMS_JSON" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeAction), PropertyName = nameof(RuntimeAction.ExclusiveGroup), DbColumnName = "EXCLUSIVE_GROUP" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeAction), PropertyName = nameof(RuntimeAction.SortNo), DbColumnName = "SORT_NO" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeAction), PropertyName = nameof(RuntimeAction.OnError), DbColumnName = "ON_ERROR" });
+    }
+
+    public static void ConfigureRuntimePackageState(SqlSugarClient db)
+    {
+        db.MappingTables.Add(typeof(RuntimePackageState).Name, "PR_RUNTIME_PACKAGE_STATE");
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackageState), PropertyName = nameof(RuntimePackageState.StateCode), DbColumnName = "STATE_CODE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackageState), PropertyName = nameof(RuntimePackageState.ActivePackageId), DbColumnName = "ACTIVE_PACKAGE_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackageState), PropertyName = nameof(RuntimePackageState.ActivePackageVersion), DbColumnName = "ACTIVE_PACKAGE_VERSION" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackageState), PropertyName = nameof(RuntimePackageState.UpdatedAt), DbColumnName = "UPDATED_AT" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackageState), PropertyName = nameof(RuntimePackageState.UpdatedBy), DbColumnName = "UPDATED_BY" });
+    }
+
     /// <summary>
     /// 配置 PR_CHARGE_REQUEST_LOG 表映射。
     /// </summary>
@@ -365,6 +636,8 @@ public static class EntityTypeConfigs
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.BodyPartCode), DbColumnName = "BODY_PART_CODE" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.BusinessChargeTime), DbColumnName = "BUSINESS_CHARGE_TIME" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.PriceVersion), DbColumnName = "PRICE_VERSION" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.RuntimePackageId), DbColumnName = "RUNTIME_PACKAGE_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.RuntimePackageVersion), DbColumnName = "RUNTIME_PACKAGE_VERSION" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.RequestJson), DbColumnName = "REQUEST_JSON" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.ResponseJson), DbColumnName = "RESPONSE_JSON" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.RequestAt), DbColumnName = "REQUEST_AT" });
@@ -390,6 +663,10 @@ public static class EntityTypeConfigs
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeDiscountDetail), PropertyName = nameof(ChargeDiscountDetail.ItemName), DbColumnName = "ITEM_NAME" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeDiscountDetail), PropertyName = nameof(ChargeDiscountDetail.RuleId), DbColumnName = "RULE_ID" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeDiscountDetail), PropertyName = nameof(ChargeDiscountDetail.RuleVersionNo), DbColumnName = "RULE_VERSION_NO" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeDiscountDetail), PropertyName = nameof(ChargeDiscountDetail.RuntimePackageId), DbColumnName = "RUNTIME_PACKAGE_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeDiscountDetail), PropertyName = nameof(ChargeDiscountDetail.RuntimeRuleId), DbColumnName = "RUNTIME_RULE_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeDiscountDetail), PropertyName = nameof(ChargeDiscountDetail.SourcePolicyVersionId), DbColumnName = "SOURCE_POLICY_VERSION_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeDiscountDetail), PropertyName = nameof(ChargeDiscountDetail.SourceTemplateVersionId), DbColumnName = "SOURCE_TEMPLATE_VERSION_ID" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeDiscountDetail), PropertyName = nameof(ChargeDiscountDetail.DiscountType), DbColumnName = "DISCOUNT_TYPE" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeDiscountDetail), PropertyName = nameof(ChargeDiscountDetail.Status), DbColumnName = "STATUS" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeDiscountDetail), PropertyName = nameof(ChargeDiscountDetail.ResultGroupNo), DbColumnName = "RESULT_GROUP_NO" });
@@ -428,6 +705,10 @@ public static class EntityTypeConfigs
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeTraceStep), PropertyName = nameof(ChargeTraceStep.StepType), DbColumnName = "STEP_TYPE" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeTraceStep), PropertyName = nameof(ChargeTraceStep.RuleId), DbColumnName = "RULE_ID" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeTraceStep), PropertyName = nameof(ChargeTraceStep.RuleVersionNo), DbColumnName = "RULE_VERSION_NO" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeTraceStep), PropertyName = nameof(ChargeTraceStep.RuntimePackageId), DbColumnName = "RUNTIME_PACKAGE_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeTraceStep), PropertyName = nameof(ChargeTraceStep.RuntimeRuleId), DbColumnName = "RUNTIME_RULE_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeTraceStep), PropertyName = nameof(ChargeTraceStep.SourcePolicyVersionId), DbColumnName = "SOURCE_POLICY_VERSION_ID" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeTraceStep), PropertyName = nameof(ChargeTraceStep.SourceTemplateVersionId), DbColumnName = "SOURCE_TEMPLATE_VERSION_ID" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeTraceStep), PropertyName = nameof(ChargeTraceStep.InputSnapshot), DbColumnName = "INPUT_SNAPSHOT" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeTraceStep), PropertyName = nameof(ChargeTraceStep.OutputSnapshot), DbColumnName = "OUTPUT_SNAPSHOT" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeTraceStep), PropertyName = nameof(ChargeTraceStep.StepDesc), DbColumnName = "STEP_DESC" });
@@ -526,6 +807,23 @@ public static class EntityTypeConfigs
         ConfigureLimitLock(db);
         ConfigureLimitOccupy(db);
         ConfigurePriceMasterItem(db);
+        ConfigureTemplateAggregate(db);
+        ConfigureTemplateVersion(db);
+        ConfigureTemplateParamDef(db);
+        ConfigureTemplateStepDef(db);
+        ConfigureTemplateScopeDef(db);
+        ConfigurePolicyAggregate(db);
+        ConfigurePolicyVersion(db);
+        ConfigurePolicyBinding(db);
+        ConfigurePolicyScope(db);
+        ConfigurePolicyParam(db);
+        ConfigurePolicyReview(db);
+        ConfigureRuntimePackage(db);
+        ConfigureRuntimePackagePolicy(db);
+        ConfigureRuntimeRule(db);
+        ConfigureRuntimeCondition(db);
+        ConfigureRuntimeAction(db);
+        ConfigureRuntimePackageState(db);
         ConfigureChargeRequest(db);
         ConfigureChargeDiscountDetail(db);
         ConfigureChargeTraceStep(db);

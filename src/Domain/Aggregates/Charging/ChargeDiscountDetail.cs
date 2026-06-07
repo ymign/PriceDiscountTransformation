@@ -122,6 +122,26 @@ public sealed class ChargeDiscountDetail
         public int? RuleVersionNo { get; set; }
 
     /// <summary>
+    /// 产生本次折价结果的运行时包主键。
+    /// </summary>
+    public long? RuntimePackageId { get; set; }
+
+    /// <summary>
+    /// 产生本次折价结果的运行时规则主键。
+    /// </summary>
+    public long? RuntimeRuleId { get; set; }
+
+    /// <summary>
+    /// 产生本次折价结果的来源策略版本主键。
+    /// </summary>
+    public long? SourcePolicyVersionId { get; set; }
+
+    /// <summary>
+    /// 产生本次折价结果的来源模板版本主键。
+    /// </summary>
+    public long? SourceTemplateVersionId { get; set; }
+
+    /// <summary>
     /// 折价类型编码。
     /// </summary>
     /// <remarks>

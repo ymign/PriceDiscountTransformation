@@ -108,6 +108,26 @@ public sealed class ChargeTraceStep
         public int? RuleVersionNo { get; set; }
 
     /// <summary>
+    /// 产生本步骤的运行时包主键。
+    /// </summary>
+    public long? RuntimePackageId { get; set; }
+
+    /// <summary>
+    /// 产生本步骤的运行时规则主键。
+    /// </summary>
+    public long? RuntimeRuleId { get; set; }
+
+    /// <summary>
+    /// 产生本步骤的来源策略版本主键。
+    /// </summary>
+    public long? SourcePolicyVersionId { get; set; }
+
+    /// <summary>
+    /// 产生本步骤的来源模板版本主键。
+    /// </summary>
+    public long? SourceTemplateVersionId { get; set; }
+
+    /// <summary>
     /// 步骤执行前的输入快照 JSON。
     /// </summary>
     /// <remarks>

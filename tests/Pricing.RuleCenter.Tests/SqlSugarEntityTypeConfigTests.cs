@@ -33,6 +33,40 @@ public sealed class SqlSugarEntityTypeConfigTests
         AssertPrimaryKey<RuleApproval>(db, nameof(RuleApproval.ApprovalId));
         AssertPrimaryKey<RuleTestCase>(db, nameof(RuleTestCase.TestCaseId));
         AssertPrimaryKey<RuleTestRun>(db, nameof(RuleTestRun.TestRunId));
+        AssertPrimaryKey<TemplateAggregate>(db, nameof(TemplateAggregate.TemplateId));
+        AssertPrimaryKey<TemplateVersion>(db, nameof(TemplateVersion.TemplateVersionId));
+        AssertPrimaryKey<TemplateParamDef>(db, nameof(TemplateParamDef.ParamDefId));
+        AssertPrimaryKey<TemplateStepDef>(db, nameof(TemplateStepDef.StepDefId));
+        AssertPrimaryKey<TemplateScopeDef>(db, nameof(TemplateScopeDef.ScopeDefId));
+        AssertPrimaryKey<PolicyAggregate>(db, nameof(PolicyAggregate.PolicyId));
+        AssertPrimaryKey<PolicyVersion>(db, nameof(PolicyVersion.PolicyVersionId));
+        AssertPrimaryKey<PolicyBinding>(db, nameof(PolicyBinding.PolicyBindingId));
+        AssertPrimaryKey<PolicyScope>(db, nameof(PolicyScope.PolicyScopeId));
+        AssertPrimaryKey<PolicyParam>(db, nameof(PolicyParam.PolicyParamId));
+        AssertPrimaryKey<PolicyReview>(db, nameof(PolicyReview.ReviewId));
+        AssertPrimaryKey<RuntimePackage>(db, nameof(RuntimePackage.PackageId));
+        AssertPrimaryKey<RuntimePackagePolicy>(db, nameof(RuntimePackagePolicy.PackagePolicyId));
+        AssertPrimaryKey<RuntimeRule>(db, nameof(RuntimeRule.RuntimeRuleId));
+        AssertPrimaryKey<RuntimeCondition>(db, nameof(RuntimeCondition.RuntimeConditionId));
+        AssertPrimaryKey<RuntimeAction>(db, nameof(RuntimeAction.RuntimeActionId));
+        AssertPrimaryKey<RuntimePackageState>(db, nameof(RuntimePackageState.StateCode));
+    }
+
+    [Fact]
+    public void EntityTypeConfigs_MapsNewRuntimeTraceColumns()
+    {
+        using var db = CreateClient();
+
+        AssertMappedColumn<ChargeRequestLog>(db, nameof(ChargeRequestLog.RuntimePackageId), "RUNTIME_PACKAGE_ID");
+        AssertMappedColumn<ChargeRequestLog>(db, nameof(ChargeRequestLog.RuntimePackageVersion), "RUNTIME_PACKAGE_VERSION");
+        AssertMappedColumn<ChargeTraceStep>(db, nameof(ChargeTraceStep.RuntimePackageId), "RUNTIME_PACKAGE_ID");
+        AssertMappedColumn<ChargeTraceStep>(db, nameof(ChargeTraceStep.RuntimeRuleId), "RUNTIME_RULE_ID");
+        AssertMappedColumn<ChargeTraceStep>(db, nameof(ChargeTraceStep.SourcePolicyVersionId), "SOURCE_POLICY_VERSION_ID");
+        AssertMappedColumn<ChargeTraceStep>(db, nameof(ChargeTraceStep.SourceTemplateVersionId), "SOURCE_TEMPLATE_VERSION_ID");
+        AssertMappedColumn<ChargeDiscountDetail>(db, nameof(ChargeDiscountDetail.RuntimePackageId), "RUNTIME_PACKAGE_ID");
+        AssertMappedColumn<ChargeDiscountDetail>(db, nameof(ChargeDiscountDetail.RuntimeRuleId), "RUNTIME_RULE_ID");
+        AssertMappedColumn<ChargeDiscountDetail>(db, nameof(ChargeDiscountDetail.SourcePolicyVersionId), "SOURCE_POLICY_VERSION_ID");
+        AssertMappedColumn<ChargeDiscountDetail>(db, nameof(ChargeDiscountDetail.SourceTemplateVersionId), "SOURCE_TEMPLATE_VERSION_ID");
     }
 
     private static SqlSugarClient CreateClient()
@@ -55,5 +89,13 @@ public sealed class SqlSugarEntityTypeConfigTests
         var entityInfo = db.EntityMaintenance.GetEntityInfo<T>();
         Assert.Contains(entityInfo.Columns, column =>
             column.PropertyName == propertyName && column.IsPrimarykey);
+    }
+
+    private static void AssertMappedColumn<T>(SqlSugarClient db, string propertyName, string dbColumnName)
+    {
+        var entityInfo = db.EntityMaintenance.GetEntityInfo<T>();
+        Assert.Contains(entityInfo.Columns, column =>
+            column.PropertyName == propertyName &&
+            string.Equals(column.DbColumnName, dbColumnName, StringComparison.Ordinal));
     }
 }
