@@ -42,14 +42,17 @@ public sealed class RuleApprovalRepository : IRuleApprovalRepository
     /// 由 DI 容器按 Scoped 生命周期注入，用于访问 Oracle 序列和审核表。
     /// </remarks>
     private readonly ISqlSugarClient _db;
+    private readonly IClock _clock;
 
     /// <summary>
     /// 初始化规则审核仓储。
     /// </summary>
     /// <param name="db">SqlSugar 数据库客户端，由 DI 容器按 Scoped 生命周期注入。</param>
-    public RuleApprovalRepository(ISqlSugarClient db)
+    /// <param name="clock">技术时间提供者，用于统一写入审核时间。</param>
+    public RuleApprovalRepository(ISqlSugarClient db, IClock clock)
     {
         _db = db;
+        _clock = clock;
     }
 
     /// <summary>
@@ -150,7 +153,7 @@ public sealed class RuleApprovalRepository : IRuleApprovalRepository
         var update = _db.Updateable<RuleApproval>()
             .SetColumns(a => a.ApprovalStatus == status)
             .SetColumns(a => a.ReviewedBy == reviewedBy)
-            .SetColumns(a => a.ReviewedAt == DateTime.Now)
+            .SetColumns(a => a.ReviewedAt == _clock.Now)
             .SetColumns(a => a.ReviewComment == reviewComment)
             .Where(a => a.ApprovalId == approvalId);
 

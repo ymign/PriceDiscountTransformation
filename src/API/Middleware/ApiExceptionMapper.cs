@@ -24,9 +24,9 @@ public static class ApiExceptionMapper
                 ex.IsConcurrencyConflict ? 409 : 500,
                 ex.IsConcurrencyConflict ? BizErrorCode.ConcurrencyConflict : BizErrorCode.LimitLockFailed,
                 GetLimitLockClientMessage(ex)),
-            ArgumentException ex => new ApiExceptionMapping(400, 400, ex.Message),
-            KeyNotFoundException ex => new ApiExceptionMapping(404, 404, ex.Message),
-            InvalidOperationException ex => new ApiExceptionMapping(409, 409, ex.Message),
+            ArgumentException => new ApiExceptionMapping(400, 400, "请求参数不合法"),
+            KeyNotFoundException => new ApiExceptionMapping(404, 404, "资源不存在"),
+            InvalidOperationException => new ApiExceptionMapping(409, 409, "当前状态不允许执行该操作"),
             _ => new ApiExceptionMapping(500, 500, "服务器内部错误")
         };
     }

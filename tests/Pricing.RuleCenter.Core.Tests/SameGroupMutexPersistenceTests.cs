@@ -4,6 +4,7 @@ using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Engine;
 using Pricing.RuleCenter.Core.Engine.Executors;
 using Pricing.RuleCenter.Core.Models;
+using Pricing.RuleCenter.Infrastructure;
 using Xunit;
 
 namespace Pricing.RuleCenter.Core.Tests;
@@ -47,6 +48,7 @@ public sealed class SameGroupMutexPersistenceTests
                     new ExceedToZeroExecutor()
                 }),
                 NullLogger<ActionExecutionPipeline>.Instance),
+            new SystemClock(),
             NullLogger<PricingEngine>.Instance);
 
         var first = await engine.CalculateAsync(CreateContext("ITEM_A"));
@@ -96,6 +98,7 @@ public sealed class SameGroupMutexPersistenceTests
                     new ExceedToZeroExecutor()
                 }),
                 NullLogger<ActionExecutionPipeline>.Instance),
+            new SystemClock(),
             NullLogger<PricingEngine>.Instance);
 
         var first = await engine.CalculateAsync(CreateContext("ITEM_A"));
@@ -141,6 +144,7 @@ public sealed class SameGroupMutexPersistenceTests
                     new ExceedToZeroExecutor()
                 }),
                 NullLogger<ActionExecutionPipeline>.Instance),
+            new SystemClock(),
             NullLogger<PricingEngine>.Instance);
 
         var first = await engine.CalculateAsync(CreateContext("ITEM_A", new DateTime(2026, 5, 14, 6, 59, 0)));

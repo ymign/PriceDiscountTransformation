@@ -74,6 +74,42 @@ public sealed class ApiDocumentationIntegrationTests
         Assert.True(root.GetProperty("data").GetProperty("checks").TryGetProperty("self", out _));
     }
 
+    /// <summary>
+    /// 试算接口文档必须与真实规则执行顺序一致：数量限制先于公式计算。
+    /// </summary>
+    [Fact]
+    public async Task PricingSimulateSwaggerDescription_UsesLimitBeforeFormulaOrdering()
+    {
+        await using var factory = new PricingRuleCenterWebApplicationFactory(new Dictionary<string, string?>
+        {
+            ["Swagger:Enabled"] = "true"
+        });
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/swagger/v1/swagger.json");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var simulatePath = document.RootElement
+            .GetProperty("paths")
+            .EnumerateObject()
+            .FirstOrDefault(item => item.Name.EndsWith("/pricing/calculate/simulate", StringComparison.OrdinalIgnoreCase));
+
+        Assert.NotEqual(default, simulatePath);
+
+        var postOperation = simulatePath.Value.GetProperty("post");
+        var description = postOperation.TryGetProperty("description", out var descriptionElement)
+            ? descriptionElement.GetString()
+            : postOperation.GetProperty("summary").GetString();
+
+        Assert.NotNull(description);
+        var limitIndex = description!.IndexOf("日数量限制", StringComparison.Ordinal);
+        var formulaIndex = description.IndexOf("公式计算", StringComparison.Ordinal);
+        Assert.True(limitIndex >= 0, "Swagger 描述缺少“日数量限制”文本。");
+        Assert.True(formulaIndex >= 0, "Swagger 描述缺少“公式计算”文本。");
+        Assert.True(limitIndex < formulaIndex, "Swagger 描述顺序错误：应先写数量限制，再写公式计算。");
+    }
+
     private sealed class PricingRuleCenterWebApplicationFactory : WebApplicationFactory<Program>
     {
         private readonly IReadOnlyDictionary<string, string?> _settings;

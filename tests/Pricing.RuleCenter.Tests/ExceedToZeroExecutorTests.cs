@@ -4,6 +4,7 @@ using Pricing.RuleCenter.Core.Engine;
 using Pricing.RuleCenter.Core.Engine.Executors;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
+using Pricing.RuleCenter.Infrastructure;
 using Xunit;
 
 namespace Pricing.RuleCenter.Tests;
@@ -147,6 +148,7 @@ public sealed class ExceedToZeroExecutorTests
         var engine = new PricingEngine(
             ruleMatchService,
             pipeline,
+            new SystemClock(),
             NullLogger<PricingEngine>.Instance);
 
         var result = await engine.CalculateAsync(new PricingContext
@@ -215,6 +217,7 @@ public sealed class ExceedToZeroExecutorTests
         var engine = new PricingEngine(
             ruleMatchService,
             pipeline,
+            new SystemClock(),
             NullLogger<PricingEngine>.Instance);
 
         var result = await engine.CalculateAsync(new PricingContext

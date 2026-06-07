@@ -320,8 +320,9 @@ public sealed class LimitOccupy
     /// 再次确认会被拒绝，防止状态机出现非法跳跃。
     /// </para>
     /// </remarks>
+    /// <param name="now">当前技术时间，由应用层统一传入。</param>
     /// <exception cref="InvalidOperationException">当前状态不是 PENDING 时抛出。</exception>
-    public void Confirm()
+    public void Confirm(DateTime now)
     {
         // ========== 第一阶段：校验前置状态 ==========
         // 只有 PENDING 允许确认。已取消、已过期或已冲正的记录
@@ -331,7 +332,7 @@ public sealed class LimitOccupy
 
         // ========== 第二阶段：推进状态 ==========
         Status = OccupyStatusCodes.Confirmed;
-        ConfirmedAt = DateTime.Now;
+        ConfirmedAt = now;
     }
 
     /// <summary>

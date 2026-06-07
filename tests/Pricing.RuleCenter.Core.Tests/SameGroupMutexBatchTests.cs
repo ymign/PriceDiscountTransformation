@@ -8,6 +8,7 @@ using Pricing.RuleCenter.Core.Interfaces.Catalog;
 using Pricing.RuleCenter.Core.Interfaces.Quota;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
 using Pricing.RuleCenter.Core.Models;
+using Pricing.RuleCenter.Infrastructure;
 using Xunit;
 
 namespace Pricing.RuleCenter.Core.Tests;
@@ -43,6 +44,7 @@ public sealed class SameGroupMutexBatchTests
                     new ExceedToZeroExecutor()
                 }),
                 NullLogger<ActionExecutionPipeline>.Instance),
+            new SystemClock(),
             NullLogger<PricingEngine>.Instance);
 
         var batchContext = new BatchPricingContext();

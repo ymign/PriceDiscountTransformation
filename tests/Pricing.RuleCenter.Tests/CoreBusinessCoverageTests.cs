@@ -108,6 +108,10 @@ public sealed class CoreBusinessCoverageTests
     [Fact]
     public void RuleAggregate_LifecycleMethodsMaintainInvariantsAndEvents()
     {
+        var publishedAt = new DateTime(2026, 5, 10, 8, 30, 0);
+        var republishedAt = publishedAt.AddHours(1);
+        var disabledAt = publishedAt.AddHours(2);
+        var rollbackAt = publishedAt.AddHours(3);
         var rule = new RuleAggregate
         {
             RuleId = 1,
@@ -116,43 +120,52 @@ public sealed class CoreBusinessCoverageTests
             IsEnabled = EnableFlag.Yes
         };
 
-        rule.Publish(1);
+        rule.Publish(1, publishedAt);
         Assert.Equal(RuleStatusCodes.Published, rule.Status);
         Assert.Equal(1, rule.CurrentVersion);
-        Assert.IsType<RulePublishedEvent>(Assert.Single(rule.DomainEvents));
+        var published = Assert.IsType<RulePublishedEvent>(Assert.Single(rule.DomainEvents));
+        Assert.Equal(publishedAt, rule.UpdatedAt);
+        Assert.Equal(publishedAt, published.OccurredAt);
 
         rule.ClearDomainEvents();
         Assert.Empty(rule.DomainEvents);
 
-        rule.Publish(2);
+        rule.Publish(2, republishedAt);
         Assert.Equal(2, rule.CurrentVersion);
         Assert.Equal(RuleStatusCodes.Published, rule.Status);
+        Assert.Equal(republishedAt, rule.UpdatedAt);
 
-        rule.Disable("配置冲突");
+        rule.Disable("配置冲突", disabledAt);
         Assert.Equal(RuleStatusCodes.Disabled, rule.Status);
         Assert.Equal(EnableFlag.No, rule.IsEnabled);
-        Assert.IsType<RuleDisabledEvent>(rule.DomainEvents.Last());
-        Assert.Throws<InvalidOperationException>(() => rule.Disable());
-        Assert.Throws<InvalidOperationException>(() => rule.Publish(3));
+        var disabled = Assert.IsType<RuleDisabledEvent>(rule.DomainEvents.Last());
+        Assert.Equal(disabledAt, rule.UpdatedAt);
+        Assert.Equal(disabledAt, disabled.OccurredAt);
+        Assert.Throws<InvalidOperationException>(() => rule.Disable(null, disabledAt.AddMinutes(1)));
+        Assert.Throws<InvalidOperationException>(() => rule.Publish(3, republishedAt.AddMinutes(1)));
 
-        rule.Rollback(1);
+        rule.Rollback(1, rollbackAt);
         Assert.Equal(RuleStatusCodes.Published, rule.Status);
         Assert.Equal(1, rule.CurrentVersion);
+        Assert.Equal(rollbackAt, rule.UpdatedAt);
+        var rolledBack = Assert.IsType<RulePublishedEvent>(rule.DomainEvents.Last());
+        Assert.Equal(rollbackAt, rolledBack.OccurredAt);
     }
 
     [Fact]
     public void LimitOccupy_StateMachineAllowsOnlyLegalTransitions()
     {
+        var confirmedAt = new DateTime(2026, 5, 10, 9, 0, 0);
         var confirmed = new LimitOccupy { OccupyId = 1, Status = OccupyStatusCodes.Pending };
-        confirmed.Confirm();
+        confirmed.Confirm(confirmedAt);
         Assert.Equal(OccupyStatusCodes.Confirmed, confirmed.Status);
-        Assert.NotNull(confirmed.ConfirmedAt);
+        Assert.Equal(confirmedAt, confirmed.ConfirmedAt);
         Assert.Throws<InvalidOperationException>(() => confirmed.Cancel());
 
         var cancelled = new LimitOccupy { OccupyId = 2, Status = OccupyStatusCodes.Pending };
         cancelled.Cancel();
         Assert.Equal(OccupyStatusCodes.Cancelled, cancelled.Status);
-        Assert.Throws<InvalidOperationException>(() => cancelled.Confirm());
+        Assert.Throws<InvalidOperationException>(() => cancelled.Confirm(confirmedAt.AddMinutes(1)));
 
         var reversed = new LimitOccupy { OccupyId = 3, Status = OccupyStatusCodes.Confirmed };
         reversed.Reverse();
@@ -172,31 +185,36 @@ public sealed class CoreBusinessCoverageTests
     [Fact]
     public void ChargeRequest_StateMachineCoversCommitCancelExpireReverseAndInvalidBranches()
     {
+        var baseTime = new DateTime(2026, 5, 10, 10, 0, 0);
         var pending = new ChargeRequest { RequestNo = "REQ-001" };
-        pending.MarkConfirmPending();
+        pending.MarkConfirmPending(baseTime);
         Assert.Equal(BusinessStatusCodes.ConfirmPending, pending.BusinessStatus);
         Assert.Equal(EnableFlag.Yes, pending.IsSuccess);
-        Assert.NotNull(pending.ResponseAt);
+        Assert.Equal(baseTime, pending.ResponseAt);
 
         var committed = new ChargeRequest { RequestNo = "REQ-002", BusinessStatus = BusinessStatusCodes.ConfirmPending };
-        committed.MarkCommitted();
+        committed.MarkCommitted(baseTime.AddMinutes(1));
         Assert.Equal(BusinessStatusCodes.Confirmed, committed.BusinessStatus);
-        Assert.Throws<InvalidOperationException>(() => committed.MarkCancelled());
+        Assert.Equal(baseTime.AddMinutes(1), committed.ResponseAt);
+        Assert.Throws<InvalidOperationException>(() => committed.MarkCancelled(baseTime.AddMinutes(1)));
 
         var cancelled = new ChargeRequest { RequestNo = "REQ-003", BusinessStatus = BusinessStatusCodes.ConfirmPending };
-        cancelled.MarkCancelled();
+        cancelled.MarkCancelled(baseTime.AddMinutes(2));
         Assert.Equal(BusinessStatusCodes.Cancelled, cancelled.BusinessStatus);
+        Assert.Equal(baseTime.AddMinutes(2), cancelled.ResponseAt);
 
         var expired = new ChargeRequest { RequestNo = "REQ-004", BusinessStatus = BusinessStatusCodes.ConfirmPending };
-        expired.MarkExpired();
+        expired.MarkExpired(baseTime.AddMinutes(3));
         Assert.Equal(BusinessStatusCodes.Expired, expired.BusinessStatus);
+        Assert.Equal(baseTime.AddMinutes(3), expired.ResponseAt);
 
         var reversed = new ChargeRequest { RequestNo = "REQ-005", BusinessStatus = BusinessStatusCodes.Committed };
-        reversed.MarkReversed();
+        reversed.MarkReversed(baseTime.AddMinutes(4));
         Assert.Equal(BusinessStatusCodes.Reversed, reversed.BusinessStatus);
-        Assert.Throws<InvalidOperationException>(() => new ChargeRequest { RequestNo = "REQ-006", BusinessStatus = BusinessStatusCodes.Cancelled }.MarkReversed());
-        Assert.Throws<InvalidOperationException>(() => new ChargeRequest { RequestNo = "REQ-007", BusinessStatus = BusinessStatusCodes.Cancelled }.MarkCommitted());
-        Assert.Throws<InvalidOperationException>(() => new ChargeRequest { RequestNo = "REQ-008", BusinessStatus = BusinessStatusCodes.Confirmed }.MarkExpired());
+        Assert.Equal(baseTime.AddMinutes(4), reversed.ResponseAt);
+        Assert.Throws<InvalidOperationException>(() => new ChargeRequest { RequestNo = "REQ-006", BusinessStatus = BusinessStatusCodes.Cancelled }.MarkReversed(baseTime.AddMinutes(5)));
+        Assert.Throws<InvalidOperationException>(() => new ChargeRequest { RequestNo = "REQ-007", BusinessStatus = BusinessStatusCodes.Cancelled }.MarkCommitted(baseTime.AddMinutes(6)));
+        Assert.Throws<InvalidOperationException>(() => new ChargeRequest { RequestNo = "REQ-008", BusinessStatus = BusinessStatusCodes.Confirmed }.MarkExpired(baseTime.AddMinutes(7)));
 
         pending.DomainEvents.Add(new PricingConfirmedEvent(1, null, null, null, DateTime.Now));
         pending.ClearDomainEvents();

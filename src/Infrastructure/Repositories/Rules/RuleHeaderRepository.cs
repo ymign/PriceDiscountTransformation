@@ -45,14 +45,17 @@ public sealed class RuleHeaderRepository : IRuleHeaderRepository
     /// 由 DI 容器按 Scoped 生命周期注入，用于访问 Oracle 序列和规则主档表。
     /// </remarks>
     private readonly ISqlSugarClient _db;
+    private readonly IClock _clock;
 
     /// <summary>
     /// 初始化规则主档仓储。
     /// </summary>
     /// <param name="db">SqlSugar 数据库客户端，由 DI 容器按 Scoped 生命周期注入。</param>
-    public RuleHeaderRepository(ISqlSugarClient db)
+    /// <param name="clock">技术时间提供者，用于统一写入审计时间。</param>
+    public RuleHeaderRepository(ISqlSugarClient db, IClock clock)
     {
         _db = db;
+        _clock = clock;
     }
 
     /// <summary>
@@ -273,8 +276,8 @@ public sealed class RuleHeaderRepository : IRuleHeaderRepository
         // 主档创建时间由仓储兜底写入，保证绕过服务层的内部调用也能保留基础审计字段。
         var seq = await _db.Ado.GetLongAsync("SELECT SEQ_PR_RULE_HEADER.NEXTVAL FROM DUAL");
         entity.RuleId = seq;
-        entity.CreatedAt = DateTime.Now;
-        entity.UpdatedAt = DateTime.Now;
+        entity.CreatedAt = _clock.Now;
+        entity.UpdatedAt = _clock.Now;
         await _db.Insertable(entity).ExecuteCommandAsync();
         return seq;
     }
@@ -304,7 +307,7 @@ public sealed class RuleHeaderRepository : IRuleHeaderRepository
     public async Task<bool> UpdateAsync(RuleAggregate entity, string? expectedCurrentStatus = null)
     {
         // RuleId、RuleCode 和创建信息保持不可变，避免更新入口破坏历史审计和外部引用。
-        entity.UpdatedAt = DateTime.Now;
+        entity.UpdatedAt = _clock.Now;
         var update = _db.Updateable(entity)
             .IgnoreColumns(r => new { r.RuleId, r.RuleCode, r.CreatedBy, r.CreatedAt });
         if (!string.IsNullOrWhiteSpace(expectedCurrentStatus))

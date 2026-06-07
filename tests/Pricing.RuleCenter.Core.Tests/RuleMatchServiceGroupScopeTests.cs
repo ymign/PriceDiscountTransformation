@@ -5,6 +5,7 @@ using Pricing.RuleCenter.Core.Engine;
 using Pricing.RuleCenter.Core.Interfaces.Catalog;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
 using Pricing.RuleCenter.Core.Models;
+using Pricing.RuleCenter.Infrastructure;
 using Pricing.RuleCenter.Infrastructure.Repositories.Rules;
 using SqlSugar;
 using Xunit;
@@ -21,7 +22,7 @@ public sealed class RuleMatchServiceGroupScopeTests
 
         var service = new RuleMatchService(
             new RuleMatchRepositories(
-                new RuleHeaderRepository(fixture.Db),
+                new RuleHeaderRepository(fixture.Db, new SystemClock()),
                 new StubRuleConditionRepository(),
                 new StubRuleActionRepository(),
                 new StubDictRepository()),

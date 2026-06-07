@@ -90,10 +90,10 @@ public sealed class PricingController : ControllerBase
     /// <list type="number">
     ///   <item>按项目、场景、部位、时间匹配规则</item>
     ///   <item>双单位换算（如已配置）</item>
-    ///   <item>公式计算（如已配置）</item>
-    ///   <item>金额下限 → 金额上限</item>
     ///   <item>日数量限制 → 时间窗数量限制（如 2 小时窗）</item>
     ///   <item>同组互斥 / 同手术封顶</item>
+    ///   <item>公式计算（如已配置，使用限制后的 FinalQty）</item>
+    ///   <item>金额下限 → 金额上限</item>
     ///   <item>子项加收 / 附加项目</item>
     ///   <item>超出部分 → 0 元（不是整单，不是拒单）</item>
     /// </list>

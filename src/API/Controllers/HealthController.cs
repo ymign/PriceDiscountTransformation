@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Pricing.RuleCenter.Application.Dto;
+using Pricing.RuleCenter.Core.Interfaces;
 using SqlSugar;
 
 namespace Pricing.RuleCenter.Api.Controllers;
@@ -42,6 +44,8 @@ namespace Pricing.RuleCenter.Api.Controllers;
 [Route("[controller]")]
 public sealed class HealthController : ControllerBase
 {
+    private static readonly DateTime StartedAt = Process.GetCurrentProcess().StartTime;
+
     /// <summary>
     /// SqlSugar 数据库客户端实例，用于执行最小化数据库连通性检查。
     /// <para>
@@ -49,14 +53,17 @@ public sealed class HealthController : ControllerBase
     /// </para>
     /// </summary>
     private readonly ISqlSugarClient _db;
+    private readonly IClock _clock;
 
     /// <summary>
     /// 构造函数，通过依赖注入获取 SqlSugar 数据库客户端。
     /// </summary>
     /// <param name="db">SqlSugar 数据库客户端（<see cref="ISqlSugarClient"/>）。</param>
-    public HealthController(ISqlSugarClient db)
+    /// <param name="clock">技术时间提供者，用于统一输出服务时间。</param>
+    public HealthController(ISqlSugarClient db, IClock clock)
     {
         _db = db;
+        _clock = clock;
     }
 
     /// <summary>
@@ -89,7 +96,12 @@ public sealed class HealthController : ControllerBase
     [HttpGet("/health/detail")]
     public async Task<ApiResult<HealthResult>> CheckAsync()
     {
-        var result = new HealthResult();
+        var now = _clock.Now;
+        var result = new HealthResult
+        {
+            ServerTime = now,
+            UptimeSeconds = (now - StartedAt).TotalSeconds
+        };
 
         try
         {
@@ -129,7 +141,6 @@ public sealed class HealthController : ControllerBase
 /// </summary>
 public sealed class HealthResult
 {
-    private static readonly DateTime _startedAt = DateTime.Now;
     private const string PricingProtocolVersion = "1.0";
 
     /// <summary>
@@ -161,13 +172,13 @@ public sealed class HealthResult
     /// 服务已运行的秒数。由当前时间减去进程启动时间计算。
     /// 用于排查服务是否意外重启（如运行时长远小于预期）。
     /// </summary>
-    public double UptimeSeconds => (DateTime.Now - _startedAt).TotalSeconds;
+    public double UptimeSeconds { get; init; }
 
     /// <summary>
     /// 生成健康检查结果时的服务端时间（只读）。
     /// 用于排查跨时区问题或服务端时钟偏移。
     /// </summary>
-    public DateTime ServerTime { get; init; } = DateTime.Now;
+    public DateTime ServerTime { get; init; }
 
     /// <summary>
     /// 服务端程序版本。默认读取当前 API 程序集版本，供客户端诊断窗口展示。

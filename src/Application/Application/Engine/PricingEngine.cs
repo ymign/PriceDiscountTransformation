@@ -27,20 +27,24 @@ public sealed class PricingEngine : IPricingEngine
     /// 引擎日志，用于记录计价完成的关键金额。
     /// </summary>
     private readonly ILogger<PricingEngine> _logger;
+    private readonly IClock _clock;
 
     /// <summary>
     /// 初始化计价引擎。
     /// </summary>
     /// <param name="ruleMatchService">规则匹配服务。</param>
     /// <param name="pipeline">动作执行管线。</param>
+    /// <param name="clock">技术时间提供者。</param>
     /// <param name="logger">日志对象。</param>
     public PricingEngine(
         RuleMatchService ruleMatchService,
         ActionExecutionPipeline pipeline,
+        IClock clock,
         ILogger<PricingEngine> logger)
     {
         _ruleMatchService = ruleMatchService;
         _pipeline = pipeline;
+        _clock = clock;
         _logger = logger;
     }
 
@@ -114,7 +118,7 @@ public sealed class PricingEngine : IPricingEngine
         {
             ApplyFinalOccupyValues(occupy, context);
             occupy.Status = "PENDING";
-            occupy.OccupiedAt = DateTime.Now;
+            occupy.OccupiedAt = _clock.Now;
         }
 
         // ========== 第六阶段：将本项目结果回写到批量上下文 ==========

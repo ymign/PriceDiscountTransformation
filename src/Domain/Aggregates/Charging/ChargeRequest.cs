@@ -358,11 +358,12 @@ public sealed class ChargeRequest
     /// BusinessStatus 为默认值。如果需要从其他状态转换，应使用其他 MarkXxx 方法。
     /// </para>
     /// </remarks>
-    public void MarkConfirmPending()
+    /// <param name="now">当前技术时间，由应用层统一传入。</param>
+    public void MarkConfirmPending(DateTime now)
     {
         BusinessStatus = BusinessStatusCodes.ConfirmPending;
         IsSuccess = EnableFlag.Yes;
-        ResponseAt = DateTime.Now;
+        ResponseAt = now;
     }
 
     /// <summary>
@@ -379,8 +380,9 @@ public sealed class ChargeRequest
     /// 再次 commit 会被拒绝，防止状态机出现非法跳跃。
     /// </para>
     /// </remarks>
+    /// <param name="now">当前技术时间，由应用层统一传入。</param>
     /// <exception cref="InvalidOperationException">当前状态不是 CONFIRM_PENDING 时抛出。</exception>
-    public void MarkCommitted()
+    public void MarkCommitted(DateTime now)
     {
         // ========== 第一阶段：校验前置状态 ==========
         // 只有 CONFIRM_PENDING 允许 commit。已取消、已过期或已冲正的记录
@@ -390,7 +392,7 @@ public sealed class ChargeRequest
 
         // ========== 第二阶段：推进状态 ==========
         BusinessStatus = BusinessStatusCodes.Confirmed;
-        ResponseAt = DateTime.Now;
+        ResponseAt = now;
     }
 
     /// <summary>
@@ -407,8 +409,9 @@ public sealed class ChargeRequest
     /// 不能直接 cancel，否则会出现"已落账但被取消"的资金口径断裂。
     /// </para>
     /// </remarks>
+    /// <param name="now">当前技术时间，由应用层统一传入。</param>
     /// <exception cref="InvalidOperationException">当前状态不是 CONFIRM_PENDING 时抛出。</exception>
-    public void MarkCancelled()
+    public void MarkCancelled(DateTime now)
     {
         // ========== 第一阶段：校验前置状态 ==========
         // 只有 CONFIRM_PENDING 允许 cancel。已 commit 的记录应走 reverse 流程，
@@ -418,7 +421,7 @@ public sealed class ChargeRequest
 
         // ========== 第二阶段：推进状态 ==========
         BusinessStatus = BusinessStatusCodes.Cancelled;
-        ResponseAt = DateTime.Now;
+        ResponseAt = now;
     }
 
     /// <summary>
@@ -435,8 +438,9 @@ public sealed class ChargeRequest
     /// 否则会出现"已落账但被清理"的资金口径断裂。
     /// </para>
     /// </remarks>
+    /// <param name="now">当前技术时间，由应用层统一传入。</param>
     /// <exception cref="InvalidOperationException">当前状态不是 CONFIRM_PENDING 时抛出。</exception>
-    public void MarkExpired()
+    public void MarkExpired(DateTime now)
     {
         // ========== 第一阶段：校验前置状态 ==========
         // 只有 CONFIRM_PENDING 允许过期。已 commit 的记录不能被过期清理，
@@ -446,7 +450,7 @@ public sealed class ChargeRequest
 
         // ========== 第二阶段：推进状态 ==========
         BusinessStatus = BusinessStatusCodes.Expired;
-        ResponseAt = DateTime.Now;
+        ResponseAt = now;
     }
 
     /// <summary>
@@ -463,8 +467,9 @@ public sealed class ChargeRequest
     /// 不能直接 reverse，否则会出现"未落账但被冲正"的资金口径断裂。
     /// </para>
     /// </remarks>
+    /// <param name="now">当前技术时间，由应用层统一传入。</param>
     /// <exception cref="InvalidOperationException">当前状态不是 CONFIRMED 时抛出。</exception>
-    public void MarkReversed()
+    public void MarkReversed(DateTime now)
     {
         // ========== 第一阶段：校验前置状态 ==========
         // 只有 CONFIRMED 允许冲正。CONFIRM_PENDING 应走 cancel 流程，
@@ -474,7 +479,7 @@ public sealed class ChargeRequest
 
         // ========== 第二阶段：推进状态 ==========
         BusinessStatus = BusinessStatusCodes.Reversed;
-        ResponseAt = DateTime.Now;
+        ResponseAt = now;
     }
 
     /// <summary>

@@ -44,14 +44,17 @@ public sealed class ChargeDiscountDetailRepository : IChargeDiscountDetailReposi
     /// 由 DI 容器按 Scoped 生命周期注入，用于访问 Oracle 序列和折扣明细表。
     /// </remarks>
     private readonly ISqlSugarClient _db;
+    private readonly IClock _clock;
 
     /// <summary>
     /// 初始化折扣明细仓储。
     /// </summary>
     /// <param name="db">SqlSugar 数据库客户端，由 DI 容器按 Scoped 生命周期注入。</param>
-    public ChargeDiscountDetailRepository(ISqlSugarClient db)
+    /// <param name="clock">技术时间提供者，用于统一补记状态时间。</param>
+    public ChargeDiscountDetailRepository(ISqlSugarClient db, IClock clock)
     {
         _db = db;
+        _clock = clock;
     }
 
     /// <summary>
@@ -149,7 +152,7 @@ public sealed class ChargeDiscountDetailRepository : IChargeDiscountDetailReposi
     {
         // ========== 第一阶段：构造基础状态更新 ==========
         // 应用服务已经保证状态流转合法，仓储只把指定状态同步到该请求下所有折扣明细。
-        var now = DateTime.Now;
+        var now = _clock.Now;
         var update = _db.Updateable<ChargeDiscountDetail>()
             .SetColumns(d => d.Status == status);
 

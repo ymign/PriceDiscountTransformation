@@ -291,8 +291,9 @@ public sealed class RuleAggregate
     /// 处理器负责清除缓存和写入审计日志。
     /// </para>
     /// </remarks>
+    /// <param name="now">当前技术时间，由应用层统一传入。</param>
     /// <exception cref="InvalidOperationException">规则当前状态不允许发布时抛出。</exception>
-    public void Publish(int versionNo)
+    public void Publish(int versionNo, DateTime now)
     {
         // ========== 第一阶段：校验前置状态 ==========
         // 只有 DRAFT 和 PUBLISHED 允许发布。DISABLED 规则必须先创建新草稿版本，
@@ -305,12 +306,12 @@ public sealed class RuleAggregate
         // 否则引擎会继续使用旧版本的条件和动作，导致计价结果与配置不一致。
         Status = RuleStatusCodes.Published;
         CurrentVersion = versionNo;
-        UpdatedAt = DateTime.Now;
+        UpdatedAt = now;
 
         // ========== 第三阶段：收集领域事件 ==========
         // 事件在事务提交后由应用服务分发。这里只收集，不直接执行副作用。
         // 如果直接调用缓存清除，聚合根就依赖了基础设施，违反 DDD 分层原则。
-        DomainEvents.Add(new RulePublishedEvent(RuleId, versionNo, DateTime.Now));
+        DomainEvents.Add(new RulePublishedEvent(RuleId, versionNo, now));
     }
 
     /// <summary>
@@ -329,8 +330,9 @@ public sealed class RuleAggregate
     /// 同时追加 RuleDisabledEvent，应用服务在事务提交后分发。
     /// </para>
     /// </remarks>
+    /// <param name="now">当前技术时间，由应用层统一传入。</param>
     /// <exception cref="InvalidOperationException">规则已是停用状态时抛出。</exception>
-    public void Disable(string? reason = null)
+    public void Disable(string? reason, DateTime now)
     {
         // ========== 第一阶段：幂等校验 ==========
         // 已停用规则再次调用 Disable 不应抛异常（幂等），但当前实现选择抛异常
@@ -344,11 +346,11 @@ public sealed class RuleAggregate
         // 仍然会匹配到这条规则，导致已停用规则继续参与计价。
         Status = RuleStatusCodes.Disabled;
         IsEnabled = EnableFlag.No;
-        UpdatedAt = DateTime.Now;
+        UpdatedAt = now;
 
         // ========== 第三阶段：收集领域事件 ==========
         // 停用事件携带停用原因，供审计日志处理器写入 PR_RULE_CHANGE_LOG。
-        DomainEvents.Add(new RuleDisabledEvent(RuleId, reason ?? "管理员手动停用", DateTime.Now));
+        DomainEvents.Add(new RuleDisabledEvent(RuleId, reason ?? "管理员手动停用", now));
     }
 
     /// <summary>
@@ -375,20 +377,21 @@ public sealed class RuleAggregate
     /// 与发布相同——都是"让计价引擎读到新版本"。
     /// </para>
     /// </remarks>
-    public void Rollback(int targetVersionNo)
+    /// <param name="now">当前技术时间，由应用层统一传入。</param>
+    public void Rollback(int targetVersionNo, DateTime now)
     {
         // ========== 第一阶段：推进状态和版本号 ==========
         // 回滚后状态恢复为 PUBLISHED，CurrentVersion 切回目标版本号。
         // 计价引擎下次请求会读到回滚后的版本条件和动作。
         Status = RuleStatusCodes.Published;
         CurrentVersion = targetVersionNo;
-        UpdatedAt = DateTime.Now;
+        UpdatedAt = now;
 
         // ========== 第二阶段：收集领域事件 ==========
         // 回滚等同于重新发布历史版本，使用 RulePublishedEvent。
         // 审计日志的 ChangeType 字段由应用服务设为 "ROLLBACK"，
         // 不需要单独的事件类型来区分"首次发布"和"回滚发布"。
-        DomainEvents.Add(new RulePublishedEvent(RuleId, targetVersionNo, DateTime.Now));
+        DomainEvents.Add(new RulePublishedEvent(RuleId, targetVersionNo, now));
     }
 
     /// <summary>

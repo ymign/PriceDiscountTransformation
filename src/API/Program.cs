@@ -9,6 +9,7 @@ using Pricing.RuleCenter.Api.HealthChecks;
 using Pricing.RuleCenter.Api.Middleware;
 using Pricing.RuleCenter.Application.Common;
 using Pricing.RuleCenter.Application.Common.Behaviors;
+using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Pricing;
 using Pricing.RuleCenter.Application.Pricing.AuthorityPrice;
 using Pricing.RuleCenter.Application.Pricing.Idempotency;
@@ -251,6 +252,9 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 var app = builder.Build();
+
+var apiResultClock = app.Services.GetRequiredService<IClock>();
+ApiResultClock.Configure(() => apiResultClock.Now);
 
 app.UseMiddleware<ExceptionHandlerMiddleware>();
 app.UseSerilogRequestLogging();

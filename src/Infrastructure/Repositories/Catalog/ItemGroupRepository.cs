@@ -42,14 +42,17 @@ public sealed class ItemGroupRepository : IItemGroupRepository
     /// 由 DI 容器按 Scoped 生命周期注入，用于访问 Oracle 序列和项目组表。
     /// </remarks>
     private readonly ISqlSugarClient _db;
+    private readonly IClock _clock;
 
     /// <summary>
     /// 初始化项目组仓储。
     /// </summary>
     /// <param name="db">SqlSugar 数据库客户端，由 DI 容器按 Scoped 生命周期注入。</param>
-    public ItemGroupRepository(ISqlSugarClient db)
+    /// <param name="clock">技术时间提供者，用于统一写入审计时间。</param>
+    public ItemGroupRepository(ISqlSugarClient db, IClock clock)
     {
         _db = db;
+        _clock = clock;
     }
 
     /// <summary>
@@ -154,7 +157,7 @@ public sealed class ItemGroupRepository : IItemGroupRepository
     /// </remarks>
     public async Task UpdateAsync(ItemGroup entity)
     {
-        entity.UpdatedAt = DateTime.Now;
+        entity.UpdatedAt = _clock.Now;
         await _db.Updateable(entity)
             .Where(g => g.GroupId == entity.GroupId)
             .ExecuteCommandAsync();

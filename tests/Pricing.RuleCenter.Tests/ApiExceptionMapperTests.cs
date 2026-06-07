@@ -140,21 +140,21 @@ public sealed class ApiExceptionMapperTests
             new ArgumentException("参数错误"),
             400,
             400,
-            "参数错误"
+            "请求参数不合法"
         };
         yield return new object[]
         {
             new KeyNotFoundException("资源缺失"),
             404,
             404,
-            "资源缺失"
+            "资源不存在"
         };
         yield return new object[]
         {
             new InvalidOperationException("状态不允许"),
             409,
             409,
-            "状态不允许"
+            "当前状态不允许执行该操作"
         };
         yield return new object[]
         {
@@ -163,5 +163,20 @@ public sealed class ApiExceptionMapperTests
             500,
             "服务器内部错误"
         };
+    }
+
+    [Theory]
+    [InlineData("RequestId=100, ActionId=200")]
+    [InlineData("AuthorityPrice=10.0000, RequestPrice=1.0000")]
+    public void Map_ShouldHideInternalDetailsForInvalidOperationException(string internalMessage)
+    {
+        var mapped = ApiExceptionMapper.Map(new InvalidOperationException(internalMessage));
+
+        Assert.Equal(409, mapped.StatusCode);
+        Assert.Equal(409, mapped.Code);
+        Assert.Equal("当前状态不允许执行该操作", mapped.Message);
+        Assert.DoesNotContain("RequestId", mapped.Message);
+        Assert.DoesNotContain("ActionId", mapped.Message);
+        Assert.DoesNotContain("AuthorityPrice", mapped.Message);
     }
 }

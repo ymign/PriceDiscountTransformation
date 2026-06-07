@@ -51,16 +51,19 @@ public sealed class LimitOccupyRepository : ILimitOccupyRepository
 {
     private readonly ISqlSugarClient _db;
     private readonly ILimitLockRepository _limitLockRepository;
+    private readonly IClock _clock;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="LimitOccupyRepository"/> class.
     /// </summary>
     /// <param name="db">SqlSugar 数据库访问客户端。</param>
     /// <param name="limitLockRepository">限额锁仓储，用于在写入占用前获取悲观锁。</param>
-    public LimitOccupyRepository(ISqlSugarClient db, ILimitLockRepository limitLockRepository)
+    /// <param name="clock">技术时间提供者，用于统一计算锁过期和确认时间。</param>
+    public LimitOccupyRepository(ISqlSugarClient db, ILimitLockRepository limitLockRepository, IClock clock)
     {
         _db = db;
         _limitLockRepository = limitLockRepository;
+        _clock = clock;
     }
 
     /// <summary>
@@ -133,7 +136,7 @@ public sealed class LimitOccupyRepository : ILimitOccupyRepository
     /// </remarks>
     public async Task EnsureAndLockAsync(IReadOnlyCollection<string> lockKeys)
     {
-        var expireAt = DateTime.Now.AddMinutes(10);
+        var expireAt = _clock.Now.AddMinutes(10);
         foreach (var lockKey in lockKeys.OrderBy(k => k, StringComparer.Ordinal))
         {
             await _limitLockRepository.AcquireLockAsync(lockKey, expireAt);
@@ -172,7 +175,7 @@ public sealed class LimitOccupyRepository : ILimitOccupyRepository
 
         if (status == "CONFIRMED")
         {
-            var now = DateTime.Now;
+            var now = _clock.Now;
             update = update.SetColumns(o => o.ConfirmedAt == now);
         }
 

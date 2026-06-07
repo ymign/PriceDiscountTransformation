@@ -1,6 +1,27 @@
 namespace Pricing.RuleCenter.Application.Dto;
 
 /// <summary>
+/// 统一 API 响应的时间源访问器，由组合根在启动时配置。
+/// </summary>
+public static class ApiResultClock
+{
+    private static Func<DateTime> s_now = static () => default;
+
+    /// <summary>
+    /// 读取当前响应时间。
+    /// </summary>
+    public static DateTime Current => s_now();
+
+    /// <summary>
+    /// 配置统一 API 响应使用的时间源。
+    /// </summary>
+    public static void Configure(Func<DateTime> nowFactory)
+    {
+        s_now = nowFactory ?? throw new ArgumentNullException(nameof(nowFactory));
+    }
+}
+
+/// <summary>
 /// 统一 API 响应包装。
 /// </summary>
 /// <typeparam name="T">响应数据类型。</typeparam>
@@ -16,7 +37,7 @@ public sealed class ApiResult<T>
     public string TraceId { get; init; } = string.Empty;
 
     /// <summary>响应生成时间。</summary>
-    public DateTime Timestamp { get; init; } = DateTime.Now;
+    public DateTime Timestamp { get; init; } = ApiResultClock.Current;
 
     /// <summary>响应数据。</summary>
     public T? Data { get; init; }
@@ -64,7 +85,7 @@ public sealed class ApiResult
     public string TraceId { get; init; } = string.Empty;
 
     /// <summary>响应生成时间。</summary>
-    public DateTime Timestamp { get; init; } = DateTime.Now;
+    public DateTime Timestamp { get; init; } = ApiResultClock.Current;
 
     /// <summary>字段级错误详情。</summary>
     public IReadOnlyDictionary<string, string[]>? Errors { get; init; }
