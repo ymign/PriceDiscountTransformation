@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Options;
-using Newtonsoft.Json;
+using Microsoft.Extensions.Logging.Abstractions;
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Pricing.AuthorityPrice;
 using Pricing.RuleCenter.Application.Pricing.Builders;
@@ -41,10 +41,6 @@ public abstract class PricingUseCaseBase
     /// </summary>
     private readonly IPricingEngine _engine;
     /// <summary>
-    /// 规则头仓储，用于 special-flag 查询，判断某个项目当前是否存在已发布特殊规则。
-    /// </summary>
-    private readonly IRuleHeaderRepository _headerRepository;
-    /// <summary>
     /// 计价请求日志仓储，负责保存幂等键、请求指纹、请求快照、响应快照和业务状态。
     /// </summary>
     private readonly IChargeRequestLogRepository _requestLogRepository;
@@ -57,7 +53,7 @@ public abstract class PricingUseCaseBase
     /// </summary>
     private readonly ILimitOccupyRepository _limitRepository;
     /// <summary>
-    /// 冲正日志仓储，负责记录退费、作废、撤销时为什么释放或作废原占用。
+    /// 冲正日志仓储，负责读取已有冲正流水并参与 reverse 幂等判断。
     /// </summary>
     private readonly IChargeReverseLogRepository _reverseLogRepository;
     private readonly AuthorityPriceChecker _authorityPriceChecker;
@@ -68,10 +64,6 @@ public abstract class PricingUseCaseBase
     private readonly PricingLimitOccupyWriter _limitOccupyWriter;
     private readonly PricingReverseLogWriter _reverseLogWriter;
     /// <summary>
-    /// 工作单元，用于把请求日志、折价明细、限额占用和冲正日志放入同一事务。
-    /// </summary>
-    private readonly IUnitOfWork _unitOfWork;
-    /// <summary>
     /// _options 配置对象，集中承载超时、清理间隔、单价校验等运行参数。
     /// </summary>
     private readonly PricingOptions _options;
@@ -80,6 +72,10 @@ public abstract class PricingUseCaseBase
     /// </summary>
     private readonly ILogger _logger;
     private readonly IClock _clock;
+    private readonly PricingIdempotentResponseReader _idempotentResponseReader;
+    private readonly PricingTransactionExecutor _transactionExecutor;
+    private readonly PricingSpecialFlagResolver _specialFlagResolver;
+    private readonly PricingReverseHistoryReader _reverseHistoryReader;
 
     /// <summary>
     /// 初始化计价接口应用服务。
@@ -113,7 +109,6 @@ public abstract class PricingUseCaseBase
         ILogger logger)
     {
         _engine = calculationDependencies.Engine;
-        _headerRepository = calculationDependencies.HeaderRepository;
         _requestLogRepository = repositories.RequestLogRepository;
         _discountRepository = repositories.DiscountRepository;
         _limitRepository = repositories.LimitRepository;
@@ -125,10 +120,13 @@ public abstract class PricingUseCaseBase
         _discountDetailWriter = discountDetailWriter;
         _limitOccupyWriter = limitOccupyWriter;
         _reverseLogWriter = reverseLogWriter;
-        _unitOfWork = unitOfWork;
         _options = options.Value;
         _clock = clock;
         _logger = logger;
+        _idempotentResponseReader = new PricingIdempotentResponseReader(NullLogger<PricingIdempotentResponseReader>.Instance);
+        _transactionExecutor = new PricingTransactionExecutor(unitOfWork, NullLogger<PricingTransactionExecutor>.Instance);
+        _specialFlagResolver = new PricingSpecialFlagResolver(calculationDependencies.HeaderRepository, clock);
+        _reverseHistoryReader = new PricingReverseHistoryReader(repositories.ReverseLogRepository);
     }
 
     /// <summary>
@@ -245,7 +243,7 @@ public abstract class PricingUseCaseBase
             _logger.LogInformation(
                 "幂等命中 SourceSystem={SourceSystem}, BusinessRequestNo={BusinessRequestNo}, RequestId={RequestId}, ItemCode={ItemCode}, OriginalStatus={Status}",
                 request.SourceSystem, request.BusinessRequestNo, existing.RequestId, existing.ItemCode, existing.BusinessStatus);
-            return await BuildIdempotentResponse(existing);
+            return await _idempotentResponseReader.ReadAsync(existing);
         }
 
         // confirm 产生的三类记录必须一起成功或一起回滚：
@@ -253,7 +251,7 @@ public abstract class PricingUseCaseBase
         // 2. PR_CHARGE_DISCOUNT_DETAIL：待确认折价结果；
         // 3. PR_LIMIT_OCCUPY：待确认额度占用。
         // 如果其中任一张表失败，不能留下半条资金链路。
-        return await ExecuteInTransactionAsync(async () =>
+        return await _transactionExecutor.ExecuteAsync(async () =>
         {
             await _limitRepository.EnsureAndLockAsync(new[]
             {
@@ -272,7 +270,7 @@ public abstract class PricingUseCaseBase
                 _logger.LogInformation(
                     "CONFIRM 事务内幂等命中 SourceSystem={SourceSystem}, BusinessRequestNo={BusinessRequestNo}, RequestId={RequestId}",
                     request.SourceSystem, request.BusinessRequestNo, existingInTransaction.RequestId);
-                return await BuildIdempotentResponse(existingInTransaction);
+                return await _idempotentResponseReader.ReadAsync(existingInTransaction);
             }
 
             // shouldLockLimits=true 表示限额执行器会在计算窗口累计前锁定 PR_LIMIT_LOCK，
@@ -380,7 +378,7 @@ public abstract class PricingUseCaseBase
 
         // 请求日志、折价明细、限额占用三张表必须在同一事务内推进到 CONFIRMED。
         // 如果任何一步失败，整体回滚，避免报表看到"请求已确认但占额仍待确认"的断裂状态。
-        await ExecuteInTransactionAsync(async () =>
+        await _transactionExecutor.ExecuteAsync(async () =>
         {
             await _limitRepository.EnsureAndLockAsync(new[] { BuildRequestLockKey(request.RequestId) });
 
@@ -477,7 +475,7 @@ public abstract class PricingUseCaseBase
 
         // 与 commit 一样，cancel 也必须同步更新请求日志、折价明细和限额占用。
         // 否则会出现额度释放了但明细还在 PENDING，或明细取消了但额度仍占着的资金口径断裂。
-        await ExecuteInTransactionAsync(async () =>
+        await _transactionExecutor.ExecuteAsync(async () =>
         {
             await _limitRepository.EnsureAndLockAsync(new[] { BuildRequestLockKey(request.RequestId) });
 
@@ -550,7 +548,7 @@ public abstract class PricingUseCaseBase
             request.OriginalRequestId, request.ItemCode, request.ReverseQty);
 
         // 冲正会同时影响请求状态、折价明细、限额占用和冲正日志。任何一环失败都不能部分提交。
-        await ExecuteInTransactionAsync(async () =>
+        await _transactionExecutor.ExecuteAsync(async () =>
         {
             await _limitRepository.EnsureAndLockAsync(new[]
             {
@@ -620,8 +618,8 @@ public abstract class PricingUseCaseBase
                     "退费数量必须大于0");
             }
 
-            var historicalReversedQty = await GetHistoricalReversedQtyAsync(request);
-            var allHistoricalReversedQty = await GetHistoricalReversedQtyAsync(request.OriginalRequestId);
+            var historicalReversedQty = await _reverseHistoryReader.GetHistoricalReversedQtyAsync(request);
+            var allHistoricalReversedQty = await _reverseHistoryReader.GetHistoricalReversedQtyAsync(request.OriginalRequestId);
             if (historicalReversedQty + reverseQty > originalQty)
             {
                 throw new BizException(
@@ -633,7 +631,7 @@ public abstract class PricingUseCaseBase
             var reverseAmt = request.ReverseAmt ??
                 (originalQty == 0 ? 0 : originalAmt * reverseQty / originalQty);
             reverseAmt = PricingAmountRounder.RoundFinal(reverseAmt);
-            var historicalReversedAmt = await GetHistoricalReversedAmtAsync(request);
+            var historicalReversedAmt = await _reverseHistoryReader.GetHistoricalReversedAmtAsync(request);
             if (historicalReversedAmt + reverseAmt > originalAmt)
             {
                 throw new BizException(
@@ -770,91 +768,7 @@ public abstract class PricingUseCaseBase
     /// </remarks>
     protected async Task<SpecialFlagResponse> ExecuteGetSpecialFlagAsync(string itemCode)
     {
-        var normalizedItemCode = NormalizeString(itemCode)
-            ?? throw new ArgumentException("项目编码不能为空", nameof(itemCode));
-
-        // special-flag 是渠道是否进入特殊计价流程的入口，必须只统计当前有效规则。
-        // 未来生效或已经过期的规则不能提前改变渠道行为。
-        var rules = await _headerRepository.GetByItemCodeAsync(normalizedItemCode);
-        var now = _clock.Now;
-        var published = rules
-            .Where(r => r.Status == RuleStatusCodes.Published && r.IsEnabled == EnableFlag.Yes)
-            .Where(r => r.IsEffectiveAt(now))
-            .ToList();
-
-        return new SpecialFlagResponse
-        {
-            ItemCode = normalizedItemCode,
-            IsSpecial = published.Count > 0,
-            RuleCount = published.Count,
-            RollbackMode = ResolveRollbackMode(published)
-        };
-    }
-
-    private static string ResolveRollbackMode(IReadOnlyList<RuleAggregate> rules)
-    {
-        if (rules.Count == 0)
-        {
-            return "STOP_CHARGE";
-        }
-
-        // 多条有效规则同时命中同一项目时，渠道降级必须按最保守策略执行。
-        // STOP_CHARGE 优先级最高，其次人工复核，只有所有规则均允许时才返回 LEGACY_EQUIVALENT。
-        var modes = rules
-            .Select(r => NormalizeString(r.RollbackMode) ?? "STOP_CHARGE")
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (modes.Contains("STOP_CHARGE"))
-        {
-            return "STOP_CHARGE";
-        }
-
-        if (modes.Contains("MANUAL_REVIEW") || modes.Contains("NEW_SERVICE_ONLY"))
-        {
-            return modes.Contains("NEW_SERVICE_ONLY") ? "NEW_SERVICE_ONLY" : "MANUAL_REVIEW";
-        }
-
-        if (modes.Contains("LEGACY_EQUIVALENT"))
-        {
-            return "LEGACY_EQUIVALENT";
-        }
-
-        return "STOP_CHARGE";
-    }
-
-    private async Task<decimal> GetHistoricalReversedQtyAsync(PricingReverseRequest request)
-    {
-        var reverseLogs = await _reverseLogRepository.GetByOriginalRequestIdAsync(request.OriginalRequestId);
-        var chargeDetailNo = NormalizeString(request.ChargeDetailNo);
-        var itemCode = NormalizeString(request.ItemCode);
-
-        return reverseLogs
-            .Where(r => string.IsNullOrWhiteSpace(chargeDetailNo) ||
-                        string.Equals(r.ChargeDetailNo, chargeDetailNo, StringComparison.OrdinalIgnoreCase))
-            .Where(r => string.IsNullOrWhiteSpace(itemCode) ||
-                        string.Equals(r.ItemCode, itemCode, StringComparison.OrdinalIgnoreCase))
-            .Where(r => !request.PartSeq.HasValue || r.PartSeq == request.PartSeq)
-            .Sum(r => r.ReverseQty ?? 0);
-    }
-
-    private async Task<decimal> GetHistoricalReversedQtyAsync(long originalRequestId)
-    {
-        var reverseLogs = await _reverseLogRepository.GetByOriginalRequestIdAsync(originalRequestId);
-        return reverseLogs.Sum(r => r.ReverseQty ?? 0);
-    }
-
-    private async Task<decimal> GetHistoricalReversedAmtAsync(PricingReverseRequest request)
-    {
-        var reverseLogs = await _reverseLogRepository.GetByOriginalRequestIdAsync(request.OriginalRequestId);
-        var chargeDetailNo = NormalizeString(request.ChargeDetailNo);
-        var itemCode = NormalizeString(request.ItemCode);
-
-        return reverseLogs
-            .Where(r => string.IsNullOrWhiteSpace(chargeDetailNo) ||
-                        string.Equals(r.ChargeDetailNo, chargeDetailNo, StringComparison.OrdinalIgnoreCase))
-            .Where(r => string.IsNullOrWhiteSpace(itemCode) ||
-                        string.Equals(r.ItemCode, itemCode, StringComparison.OrdinalIgnoreCase))
-            .Where(r => !request.PartSeq.HasValue || r.PartSeq == request.PartSeq)
-            .Sum(r => r.ReverseAmt ?? 0);
+        return await _specialFlagResolver.ResolveAsync(itemCode);
     }
 
     private static bool IsCommittedBusinessStatus(string? businessStatus)
@@ -900,66 +814,6 @@ public abstract class PricingUseCaseBase
     private static string BuildReverseLockKey(long originalRequestId, string reverseNo)
     {
         return PricingLockKeyBuilder.BuildReverseLockKey(originalRequestId, reverseNo);
-    }
-
-    private async Task<PricingCalculateResponse> BuildIdempotentResponse(ChargeRequest log)
-    {
-        // 这是最严格的幂等语义。即使后来规则配置发生变化，重试同一业务号也必须得到首次 confirm 的结果。
-        if (string.IsNullOrWhiteSpace(log.ResponseJson))
-        {
-            throw new BizException(
-                BizErrorCode.IdempotencyResponseSnapshotInvalid,
-                409,
-                $"RequestId={log.RequestId} 的幂等响应快照缺失");
-        }
-
-        try
-        {
-            var response = JsonConvert.DeserializeObject<PricingCalculateResponse>(log.ResponseJson);
-            if (response is not null)
-            {
-                return response;
-            }
-        }
-        catch (JsonException ex)
-        {
-            _logger.LogError(ex, "幂等响应快照解析失败 RequestId={RequestId}", log.RequestId);
-        }
-
-        throw new BizException(
-            BizErrorCode.IdempotencyResponseSnapshotInvalid,
-            409,
-            $"RequestId={log.RequestId} 的幂等响应快照不可解析");
-    }
-
-    private async Task<T> ExecuteInTransactionAsync<T>(Func<Task<T>> action)
-    {
-        // 本服务的大部分资金操作会同时更新多张表。使用工作单元统一事务可以保证
-        // 请求日志、折价明细、限额占用、冲正日志之间不会出现半提交。
-        try
-        {
-            await _unitOfWork.BeginAsync();
-            var result = await action();
-            // 只有所有仓储操作都成功，才允许对外暴露本次状态推进。
-            await _unitOfWork.CommitAsync();
-            return result;
-        }
-        catch (Exception ex)
-        {
-            // 资金链路宁可失败返回给渠道重试，也不能留下部分写入的请求或占额。
-            _logger.LogError(ex, "事务执行异常，已回滚");
-            await _unitOfWork.RollbackAsync();
-            throw;
-        }
-    }
-
-    private async Task ExecuteInTransactionAsync(Func<Task> action)
-    {
-        await ExecuteInTransactionAsync(async () =>
-        {
-            await action();
-            return true;
-        });
     }
 
     private static string? NormalizeString(string? value)
