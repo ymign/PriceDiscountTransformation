@@ -50,15 +50,11 @@ public abstract class RulePublishUseCaseBase
     /// 规则发布生命周期事务执行器。
     /// </summary>
     private readonly RulePublishTransactionWriter _transactionWriter;
-    /// <summary>
-    /// 规则运行期缓存失效器，用于清除计价引擎侧跨请求共享缓存。
-    /// </summary>
-    private readonly RulePublishCacheInvalidator _cacheInvalidator;
-    private readonly IRuleCacheInvalidationOutboxRepository _cacheInvalidationOutboxRepository;
-    private readonly RuleCacheInvalidationOutboxProcessor _cacheInvalidationOutboxProcessor;
     private readonly IClock _clock;
     private readonly RuleApprovalGate _approvalGate;
     private readonly RulePublishGuard _publishGuard;
+    private readonly RulePublishCacheCoordinator _cacheCoordinator;
+    private readonly RuleRollbackTargetResolver _rollbackTargetResolver;
 
     /// <summary>
     /// 初始化规则发布服务。
@@ -90,13 +86,18 @@ public abstract class RulePublishUseCaseBase
         _publishRepository = lifecycleRepositories.PublishRepository;
         _changeLogRepository = lifecycleRepositories.ChangeLogRepository;
         _transactionWriter = transactionWriter;
-        _cacheInvalidator = cacheInvalidator;
-        _cacheInvalidationOutboxRepository = cacheInvalidationOutboxRepository;
-        _cacheInvalidationOutboxProcessor = cacheInvalidationOutboxProcessor;
         _clock = clock;
         _approvalGate = approvalGate;
         _publishGuard = publishGuard;
         _logger = logger;
+        _cacheCoordinator = new RulePublishCacheCoordinator(
+            publishGuard,
+            cacheInvalidator,
+            cacheInvalidationOutboxRepository,
+            cacheInvalidationOutboxProcessor);
+        _rollbackTargetResolver = new RuleRollbackTargetResolver(
+            lifecycleRepositories.PublishRepository,
+            lifecycleRepositories.VersionRepository);
     }
 
     /// <summary>
@@ -107,7 +108,7 @@ public abstract class RulePublishUseCaseBase
     public async Task<IReadOnlyList<RulePublishResponse>> GetPublishHistoryAsync(long ruleId)
     {
         var items = await _publishRepository.GetByRuleIdAsync(ruleId);
-        return items.Select(MapPublishToResponse).ToList();
+        return items.Select(RulePublishResponseMapper.ToResponse).ToList();
     }
 
     /// <summary>
@@ -118,7 +119,7 @@ public abstract class RulePublishUseCaseBase
     public async Task<IReadOnlyList<RuleChangeLogResponse>> GetChangeLogsAsync(long ruleId)
     {
         var items = await _changeLogRepository.GetByRuleIdAsync(ruleId);
-        return items.Select(MapChangeLogToResponse).ToList();
+        return items.Select(RulePublishResponseMapper.ToResponse).ToList();
     }
 
     /// <summary>
@@ -266,12 +267,12 @@ public abstract class RulePublishUseCaseBase
                 ChangedBy = request.PublishedBy,
                 ChangedAt = now
             });
-            await AddCacheInvalidationOutboxAsync(ruleId, request.VersionNo, ApprovalActionCodes.Publish, now);
+            await _cacheCoordinator.EnqueueAsync(ruleId, request.VersionNo, ApprovalActionCodes.Publish, now);
         });
 
         // ========== 第四阶段：清除生效规则缓存（事务外） ==========
         // 发布改变了当前生效版本，必须立即清除缓存，确保计价引擎读到最新规则集。
-        await InvalidateCachesAfterCommitAsync();
+        await _cacheCoordinator.InvalidateAfterCommitAsync();
 
         _logger.LogInformation("发布规则 RuleId={RuleId}, VersionNo={VersionNo}", ruleId, request.VersionNo);
     }
@@ -371,7 +372,7 @@ public abstract class RulePublishUseCaseBase
                 ChangedBy = request.PublishedBy,
                 ChangedAt = now
             });
-            await AddCacheInvalidationOutboxAsync(
+            await _cacheCoordinator.EnqueueAsync(
                 ruleId,
                 currentHeader.CurrentVersion,
                 ApprovalActionCodes.Disable,
@@ -379,7 +380,7 @@ public abstract class RulePublishUseCaseBase
         });
 
         // ========== 第三阶段：清除生效规则缓存 ==========
-        await InvalidateCachesAfterCommitAsync();
+        await _cacheCoordinator.InvalidateAfterCommitAsync();
 
         _logger.LogInformation("停用规则 RuleId={RuleId}", ruleId);
     }
@@ -422,7 +423,7 @@ public abstract class RulePublishUseCaseBase
             }
 
             var oldVersionNo = currentHeader.CurrentVersion;
-            var rollbackVersionNo = await ResolveRollbackVersionNoAsync(ruleId, oldVersionNo);
+            var rollbackVersionNo = await _rollbackTargetResolver.ResolveAsync(ruleId, oldVersionNo);
 
             // 把当前版本标记为已回滚
             var currentVersion = await _versionRepository.GetByRuleAndVersionForUpdateAsync(ruleId, oldVersionNo);
@@ -497,60 +498,16 @@ public abstract class RulePublishUseCaseBase
                 ChangedBy = request.PublishedBy,
                 ChangedAt = now
             });
-            await AddCacheInvalidationOutboxAsync(ruleId, rollbackVersionNo, ApprovalActionCodes.Rollback, now);
+            await _cacheCoordinator.EnqueueAsync(ruleId, rollbackVersionNo, ApprovalActionCodes.Rollback, now);
         });
 
         // ========== 第四阶段：清除生效规则缓存 ==========
-        await InvalidateCachesAfterCommitAsync();
+        await _cacheCoordinator.InvalidateAfterCommitAsync();
 
         var currentHeaderAfterRollback = await _headerRepository.GetByIdAsync(ruleId)
             ?? throw new KeyNotFoundException($"规则不存在: {ruleId}");
         _logger.LogInformation("回滚规则 RuleId={RuleId}, 从 V{FromVersion} 到 V{ToVersion}",
             ruleId, header.CurrentVersion, currentHeaderAfterRollback.CurrentVersion);
-    }
-
-    /// <summary>
-    /// 解析回滚目标版本号。
-    /// </summary>
-    /// <remarks>
-    /// 优先按发布流水追溯“当前版本之前最近一次激活的版本”，避免把一个从未发布过、但碰巧处于 DISABLED 的草稿版本误当成回滚目标。
-    /// 当历史流水缺失时，再退回旧的版本状态兜底策略，兼容历史数据。
-    /// </remarks>
-    private async Task<int> ResolveRollbackVersionNoAsync(long ruleId, int currentVersionNo)
-    {
-        var publishHistory = await _publishRepository.GetByRuleIdAsync(ruleId);
-        var activationHistory = publishHistory
-            .Where(p => string.Equals(p.ActionType, ApprovalActionCodes.Publish, StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(p.ActionType, ApprovalActionCodes.Rollback, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(p => p.PublishedAt)
-            .ThenByDescending(p => p.PublishId)
-            .ToList();
-
-        if (activationHistory.Count > 0)
-        {
-            var currentActivationIndex = activationHistory.FindIndex(p => p.ToVersion == currentVersionNo);
-            if (currentActivationIndex >= 0)
-            {
-                var previousActivation = activationHistory
-                    .Skip(currentActivationIndex + 1)
-                    .FirstOrDefault(p => p.ToVersion != currentVersionNo);
-                if (previousActivation is not null)
-                {
-                    return previousActivation.ToVersion;
-                }
-            }
-        }
-
-        var versions = await _versionRepository.GetByRuleIdAsync(ruleId);
-        var previousPublished = versions
-            .Where(v => v.VersionNo < currentVersionNo && v.VersionStatus == VersionStatusCodes.Disabled)
-            .OrderByDescending(v => v.VersionNo)
-            .FirstOrDefault()
-            ?? throw new BizException(
-                BizErrorCode.RollbackTargetNotAvailable,
-                409,
-                "没有可回滚的历史版本");
-        return previousPublished.VersionNo;
     }
 
     private async Task ValidatePublishConflictsAsync(RuleAggregate targetHeader, int targetVersionNo)
@@ -562,106 +519,4 @@ public abstract class RulePublishUseCaseBase
 
         await _publishGuard.EnsureCanPublishAsync(targetHeader, targetVersionNo);
     }
-
-    /// <summary>
-    /// 清除生效规则缓存和互斥动作类型缓存。
-    /// </summary>
-    /// <remarks>
-    /// 发布、停用、回滚操作后必须调用，确保计价引擎在下一次请求时读到最新规则集。
-    /// IMemoryCache 不提供按前缀批量删除，因此移除已知 key。
-    ///
-    /// 同时清除互斥动作类型缓存，因为字典数据可能在发布周期内被修改。
-    /// </remarks>
-    private void ClearEffectiveCache()
-    {
-        _publishGuard.ClearCache();
-        _cacheInvalidator.ClearEffectiveCache();
-    }
-
-    private async Task AddCacheInvalidationOutboxAsync(
-        long ruleId,
-        int versionNo,
-        string operationType,
-        DateTime now)
-    {
-        await AddCacheInvalidationOutboxAsync(
-            CacheVersionSynchronizer.EffectiveRulesScope,
-            ruleId,
-            versionNo,
-            operationType,
-            now);
-        await AddCacheInvalidationOutboxAsync(
-            CacheVersionSynchronizer.ActionTypeOrderScope,
-            ruleId,
-            versionNo,
-            operationType,
-            now);
-    }
-
-    private async Task AddCacheInvalidationOutboxAsync(
-        string cacheScope,
-        long ruleId,
-        int versionNo,
-        string operationType,
-        DateTime now)
-    {
-        await _cacheInvalidationOutboxRepository.InsertAsync(new RuleCacheInvalidationOutbox
-        {
-            CacheScope = cacheScope,
-            OperationType = operationType,
-            RuleId = ruleId,
-            VersionNo = versionNo,
-            Status = CacheInvalidationOutboxStatusCodes.Pending,
-            RetryCount = 0,
-            CreatedAt = now
-        });
-    }
-
-    private async Task InvalidateCachesAfterCommitAsync()
-    {
-        ClearEffectiveCache();
-        await _cacheInvalidationOutboxProcessor.ProcessPendingAsync();
-    }
-
-    /// <summary>
-    /// 将发布流水实体映射为接口响应。
-    /// </summary>
-    /// <param name="entity">发布流水实体。</param>
-    /// <returns>发布流水响应 DTO。</returns>
-    private static RulePublishResponse MapPublishToResponse(RulePublish entity)
-    {
-        return new RulePublishResponse
-        {
-            PublishId = entity.PublishId,
-            PublishNo = entity.PublishNo,
-            RuleId = entity.RuleId,
-            FromVersion = entity.FromVersion,
-            ToVersion = entity.ToVersion,
-            ActionType = entity.ActionType,
-            PublishedBy = entity.PublishedBy,
-            PublishedAt = entity.PublishedAt,
-            Remark = entity.Remark
-        };
-    }
-
-    /// <summary>
-    /// 将规则变更日志实体映射为接口响应。
-    /// </summary>
-    /// <param name="entity">规则变更日志实体。</param>
-    /// <returns>规则变更日志响应 DTO。</returns>
-    private static RuleChangeLogResponse MapChangeLogToResponse(RuleChangeLog entity)
-    {
-        return new RuleChangeLogResponse
-        {
-            ChangeId = entity.ChangeId,
-            RuleId = entity.RuleId,
-            VersionNo = entity.VersionNo,
-            ChangeType = entity.ChangeType,
-            ChangeSummary = entity.ChangeSummary,
-            ChangedBy = entity.ChangedBy,
-            ChangedAt = entity.ChangedAt,
-            SourceSystem = entity.SourceSystem
-        };
-    }
-
 }
