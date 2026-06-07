@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pricing.RuleCenter src 审计报告</title>
+<style>
+  :root {
+    --sidebar-bg: #1a1f2e;
+    --sidebar-hover: #242a3d;
+    --sidebar-active: #2d3555;
+    --bg: #f0f3f7;
+    --card-bg: #ffffff;
+    --border: #e6eaef;
+    --text: #1e2233;
+    --text-secondary: #6b7394;
+    --accent: #3370ff;
+    --accent-light: #e8f0ff;
+    --success: #34c759;
+    --warning: #ff9500;
+    --danger: #ff3b30;
+    --info: #5ac8fa;
+    --badge-critical: #ff3b30;
+    --badge-high: #ff9500;
+    --badge-medium: #3370ff;
+    --badge-low: #8e8e93;
+    --badge-info: #5ac8fa;
+    --bar-bg: #e8eaed;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.8;
+    display: flex;
+    min-height: 100vh;
+    font-size: 15px;
+  }
+  .sidebar { width: 240px; background: var(--sidebar-bg); color: #fff; flex-shrink: 0; display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+  .sidebar-header { padding: 20px 20px 16px; border-bottom: 1px solid rgba(255,255,255,.06); }
+  .sidebar-header h1 { font-size: 18px; font-weight: 700; letter-spacing: .5px; }
+  .sidebar-header .sub { font-size: 12px; color: rgba(255,255,255,.4); margin-top: 4px; }
+  .sidebar-nav { padding: 8px 0; flex: 1; }
+  .sidebar-nav a { display: flex; align-items: center; gap: 12px; padding: 14px 20px; color: rgba(255,255,255,.6); text-decoration: none; font-size: 14px; transition: all .15s; border-left: 3px solid transparent; }
+  .sidebar-nav a:hover { background: var(--sidebar-hover); color: #fff; }
+  .sidebar-nav a.active { background: var(--sidebar-active); color: #fff; border-left-color: var(--accent); }
+  .sidebar-nav a .icon { width: 18px; text-align: center; font-size: 14px; }
+  .sidebar-footer { padding: 12px 20px; border-top: 1px solid rgba(255,255,255,.06); font-size: 11px; color: rgba(255,255,255,.3); }
+  .main { flex: 1; min-width: 0; padding: 32px 40px 80px; }
+  .page-header { margin-bottom: 32px; }
+  .page-header h2 { font-size: 26px; font-weight: 700; }
+  .page-header .meta { font-size: 14px; color: var(--text-secondary); margin-top: 6px; display: flex; gap: 20px; flex-wrap: wrap; }
+  .page-header .meta span { display: flex; align-items: center; gap: 4px; }
+  .card { background: var(--card-bg); border-radius: 10px; border: 1px solid var(--border); margin-bottom: 20px; overflow: hidden; }
+  .card-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid var(--border); font-weight: 600; font-size: 15px; }
+  .card-body { padding: 24px; }
+  .score-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .score-item { display: flex; flex-direction: column; gap: 8px; padding: 18px 20px; background: #f8fafc; border-radius: 8px; border: 1px solid var(--border); }
+  .score-item .label { font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .4px; }
+  .score-item .bar-row { display: flex; align-items: center; gap: 12px; }
+  .score-item .bar-track { flex: 1; height: 10px; background: var(--bar-bg); border-radius: 5px; overflow: hidden; }
+  .score-item .bar-fill { height: 100%; border-radius: 5px; transition: width .6s ease; }
+  .score-item .value { font-size: 22px; font-weight: 700; min-width: 52px; text-align: right; }
+  .score-item .grade { font-size: 15px; font-weight: 700; min-width: 22px; text-align: center; }
+  .bar-fill.s { background: linear-gradient(90deg, #34c759, #30d158); }
+  .bar-fill.a { background: linear-gradient(90deg, #3370ff, #5e8cff); }
+  .bar-fill.b { background: linear-gradient(90deg, #ff9500, #ffb340); }
+  .bar-fill.c { background: linear-gradient(90deg, #ff3b30, #ff6b61); }
+  .bar-fill.d { background: linear-gradient(90deg, #ff6b61, #ff9f91); }
+  .bar-fill.f { background: linear-gradient(90deg, #9b1d1a, #d63031); }
+  .grade-s { color: #34c759; } .grade-a { color: #3370ff; }
+  .grade-b { color: #ff9500; } .grade-c { color: #ff3b30; }
+  .grade-d { color: #ff6b61; } .grade-f { color: #9b1d1a; }
+  .overall-row { grid-column: 1 / -1; background: linear-gradient(135deg, #1a1f2e, #2d3555); border-color: transparent; }
+  .overall-row .label { color: rgba(255,255,255,.6); }
+  .overall-row .value { color: #fff; }
+  .overall-row .grade { color: #34c759; }
+  .overall-row .bar-fill { background: linear-gradient(90deg, #34c759, #30d158); }
+  .stats-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  .stat-card { flex: 1; min-width: 140px; padding: 20px 24px; background: var(--card-bg); border-radius: 10px; border: 1px solid var(--border); text-align: center; }
+  .stat-card .num { font-size: 32px; font-weight: 700; line-height: 1.3; }
+  .stat-card .desc { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+  .finding { border-left: 4px solid var(--border); margin-bottom: 20px; padding: 20px 24px; border-radius: 0 10px 10px 0; background: #fafbfc; border: 1px solid var(--border); border-left-width: 4px; }
+  .finding.severity-critical { border-left-color: var(--badge-critical); }
+  .finding.severity-high { border-left-color: var(--badge-high); }
+  .finding.severity-medium { border-left-color: var(--badge-medium); }
+  .finding.severity-low { border-left-color: var(--badge-low); }
+  .finding.severity-info { border-left-color: var(--badge-info); }
+  .finding-header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+  .finding-header h4 { font-size: 16px; font-weight: 600; flex: 1; }
+  .badge { display: inline-block; padding: 3px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; line-height: 1.6; }
+  .badge-critical { background: #ffeae9; color: var(--badge-critical); }
+  .badge-high { background: #fff3e0; color: var(--badge-high); }
+  .badge-medium { background: var(--accent-light); color: var(--badge-medium); }
+  .badge-low { background: #f2f2f5; color: var(--badge-low); }
+  .badge-info { background: #e4f5ff; color: #007aff; }
+  .badge-confirmed { background: #e8ffe8; color: #248a3d; }
+  .badge-suspected { background: #fff8e1; color: #b8860b; }
+  .badge-s { background: #e8ffe8; color: #248a3d; }
+  .badge-a { background: var(--accent-light); color: var(--accent); }
+  .badge-b { background: #fff3e0; color: var(--warning); }
+  .badge-c { background: #ffeae9; color: var(--danger); }
+  .finding-meta { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--text-secondary); margin-bottom: 12px; }
+  .finding-meta span { display: flex; align-items: center; gap: 4px; }
+  .finding .evidence { margin: 12px 0; padding: 14px 18px; background: #f0f2f5; border-radius: 8px; font-family: "SF Mono","Fira Code","Consolas",monospace; font-size: 13px; line-height: 1.8; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
+  .finding .problem { font-size: 14px; margin: 12px 0; color: var(--text); line-height: 1.8; }
+  .finding .fix-box { margin-top: 12px; padding: 14px 18px; background: #f0f7ff; border-radius: 8px; border: 1px solid #d6e4ff; font-size: 13px; }
+  .finding .fix-box code { display: block; margin-top: 6px; padding: 12px 16px; background: #1e2233; color: #cdd6f4; border-radius: 6px; font-family: "SF Mono","Fira Code","Consolas",monospace; font-size: 13px; line-height: 1.7; white-space: pre-wrap; word-break: break-all; }
+  .fix-label { font-weight: 600; font-size: 11px; color: var(--accent); text-transform: uppercase; letter-spacing: .3px; }
+  .section-title { font-size: 20px; font-weight: 700; margin: 36px 0 20px; padding-bottom: 10px; border-bottom: 2px solid var(--border); display: flex; align-items: center; gap: 8px; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; padding: 12px 16px; font-weight: 600; color: var(--text-secondary); font-size: 12px; text-transform: uppercase; letter-spacing: .4px; border-bottom: 2px solid var(--border); background: #f8fafc; }
+  td { padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  .check-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 6px; }
+  .check-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; font-size: 14px; line-height: 1.6; }
+  .check-item .check { color: var(--success); font-weight: 700; }
+  .check-item .cross { color: var(--danger); font-weight: 700; }
+  .win-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+  .win-card { padding: 16px; background: linear-gradient(135deg, #f0f7ff, #e8f0ff); border-radius: 8px; border: 1px solid #d6e4ff; }
+  .win-card .win-title { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+  .win-card .win-meta { font-size: 11px; color: var(--text-secondary); }
+  .small { font-size: 13px; color: var(--text-secondary); }
+  .code-block { margin: 8px 0; padding: 14px 18px; background: #1e2233; color: #cdd6f4; border-radius: 6px; font-family: "SF Mono","Fira Code","Consolas",monospace; font-size: 13px; overflow-x: auto; white-space: pre; line-height: 1.7; }
+  .hl { color: #f7768e; font-weight: 600; } .cm { color: #565f89; }
+  .kw { color: #bb9af7; } .fn { color: #7aa2f7; }
+  .ty { color: #ff9e64; } .op { color: #89ddff; }
+  .str { color: #9ece6a; } .nu { color: #ff9e64; }
+  @media (max-width: 768px) { .sidebar { display: none; } .main { padding: 16px; } .score-grid { grid-template-columns: 1fr; } .stats-row { flex-direction: column; } .check-list { grid-template-columns: 1fr; } .win-grid { grid-template-columns: 1fr; } }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #c1c7d0; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #a8adb8; }
+</style>
+</head>
+<body>
+
+<nav class="sidebar">
+  <div class="sidebar-header">
+    <h1>Pricing.RuleCenter src</h1>
+    <div class="sub">full · 2026-06-06</div>
+  </div>
+  <div class="sidebar-nav">
+    <a href="#summary"><span class="icon">📊</span> 评分面板</a>
+    <a href="#executive-summary"><span class="icon">📝</span> 总体评估</a>
+    <a href="#findings"><span class="icon">🔍</span> 详细发现</a>
+    <a href="#architecture"><span class="icon">🏛️</span> 架构边界</a>
+    <a href="#security"><span class="icon">🔒</span> 安全</a>
+    <a href="#stability"><span class="icon">⚡</span> 稳定性</a>
+    <a href="#performance"><span class="icon">🚀</span> 性能</a>
+    <a href="#testing"><span class="icon">🧪</span> 测试</a>
+    <a href="#maintainability"><span class="icon">📐</span> 可维护性</a>
+    <a href="#design"><span class="icon">📋</span> 设计原则</a>
+    <a href="#release"><span class="icon">🎯</span> 发布</a>
+    <a href="#documentation"><span class="icon">📚</span> 文档准确性</a>
+    <a href="#configuration"><span class="icon">⚙️</span> 配置安全</a>
+    <a href="#observability"><span class="icon">🔎</span> 可观测性</a>
+    <a href="#fallback"><span class="icon">🧯</span> 兜底逻辑</a>
+    <a href="#testing-authenticity"><span class="icon">🧾</span> 测试真实性</a>
+    <a href="#type-safety"><span class="icon">🧱</span> 类型安全</a>
+    <a href="#frontend-state"><span class="icon">🖥️</span> 前端状态</a>
+    <a href="#backend-api"><span class="icon">🔌</span> 后端 API</a>
+    <a href="#dependency-weight"><span class="icon">📦</span> 依赖重量</a>
+    <a href="#code-consistency"><span class="icon">🧭</span> 代码一致性</a>
+    <a href="#comment-coverage"><span class="icon">💬</span> 注释覆盖</a>
+    <a href="#principles"><span class="icon">📋</span> 原则违背</a>
+    <a href="#fix-order"><span class="icon">🎯</span> 修复顺序</a>
+  </div>
+  <div class="sidebar-footer">Fuck My Shit Mountain v1.0</div>
+</nav>
+
+<div class="main">
+  <div class="page-header" id="summary">
+    <h2>Pricing.RuleCenter src 代码审计报告</h2>
+    <div class="meta">
+      <span>📅 2026-06-06</span>
+      <span>🔍 full</span>
+      <span>🛠 Codex + fuck-my-shit-mountain</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">📊 评分面板</div>
+    <div class="card-body">
+      <div class="score-grid">
+        <div class="score-item">
+          <div class="label">Security</div>
+          <div class="bar-row">
+            <div class="bar-track"><div class="bar-fill b" style="width:65%"></div></div>
+            <span class="value grade-b">6.5</span>
+            <span class="grade grade-b">B</span>
+          </div>
+          <div class="small">API Key 和角色策略已落地，但 net6.0 过期、System.Text.Json 存高危传递依赖，API Key 配置缺启动期硬校验。</div>
+        </div>
+        <div class="score-item">
+          <div class="label">Stability</div>
+          <div class="bar-row">
+            <div class="bar-track"><div class="bar-fill b" style="width:62%"></div></div>
+            <span class="value grade-b">6.2</span>
+            <span class="grade grade-b">B</span>
+          </div>
+          <div class="small">资金状态链设计较完整，但幂等快照缺失仍会重建响应，取消令牌未传递，时间源未完全收口。</div>
+        </div>
+        <div class="score-item">
+          <div class="label">Performance</div>
+          <div class="bar-row">
+            <div class="bar-track"><div class="bar-fill a" style="width:70%"></div></div>
+            <span class="value grade-a">7.0</span>
+            <span class="grade grade-a">A</span>
+          </div>
+          <div class="small">运行期快照缓存降低热路径压力，但冷加载仍按规则逐条读取条件和动作，未真正消除 N+1。</div>
+        </div>
+        <div class="score-item">
+          <div class="label">Testing</div>
+          <div class="bar-row">
+            <div class="bar-track"><div class="bar-fill a" style="width:71%"></div></div>
+            <span class="value grade-a">7.1</span>
+            <span class="grade grade-a">A</span>
+          </div>
+          <div class="small">305 个测试通过，覆盖核心业务较好；缺真实 Oracle 并发、唯一索引、事务回滚和端到端联调验证。</div>
+        </div>
+        <div class="score-item">
+          <div class="label">Maintainability</div>
+          <div class="bar-row">
+            <div class="bar-track"><div class="bar-fill b" style="width:64%"></div></div>
+            <span class="value grade-b">6.4</span>
+            <span class="grade grade-b">B</span>
+          </div>
+          <div class="small">原大服务已拆出门面和 use case，但复杂度集中迁移到 918 行的 PricingUseCaseBase。</div>
+        </div>
+        <div class="score-item">
+          <div class="label">Design</div>
+          <div class="bar-row">
+            <div class="bar-track"><div class="bar-fill b" style="width:63%"></div></div>
+            <span class="value grade-b">6.3</span>
+            <span class="grade grade-b">B</span>
+          </div>
+          <div class="small">分层和执行器模型方向正确；SRP、Fail-Fast、取消传播和兜底语义仍有明确违背。</div>
+        </div>
+        <div class="score-item">
+          <div class="label">Release</div>
+          <div class="bar-row">
+            <div class="bar-track"><div class="bar-fill b" style="width:55%"></div></div>
+            <span class="value grade-b">5.5</span>
+            <span class="grade grade-b">B</span>
+          </div>
+          <div class="small">构建测试通过，但运行时已过支持期、漏洞依赖、无 global.json、无 CI 证据和 Oracle 预发验证结果。</div>
+        </div>
+        <div class="score-item overall-row">
+          <div class="label">Overall</div>
+          <div class="bar-row">
+            <div class="bar-track" style="background:rgba(255,255,255,.12)"><div class="bar-fill" style="width:64%;background:linear-gradient(90deg,#34c759,#30d158)"></div></div>
+            <span class="value" style="color:#fff">6.4</span>
+            <span class="grade" style="color:#ff9500">B</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h3 class="section-title" id="executive-summary">📝 总体评估</h3>
+  <div class="card">
+    <div class="card-header">📋 总体评估</div>
+    <div class="card-body">
+      <p><strong>项目概况：</strong>本次审计范围是 <code>D:\ai\vscode\functionmodule\2026\05\20260507物价折价改造\src</code>，包含 .NET 6 Web API、Application、Domain、Infrastructure 四层。当前文件系统中的源码已经完成一轮明显整改：<code>PricingAppService</code> 变成薄门面，规则发布拆出 use case/guard，API Key 鉴权和发布能力门禁已落地，表达式公式和规则运行快照也已引入。</p>
+      <p style="margin-top:12px"><strong>主要风险：</strong>最需要先处理的是发布风险和资金链路 fail-fast 问题：项目仍以 <code>net6.0</code> 为目标并压制 <code>NETSDK1138</code>，漏洞扫描显示 API 存在高危传递依赖；confirm 幂等响应在 <code>ResponseJson</code> 缺失时仍会用折价明细重建，和“首次响应必须原样重放”的资金语义不一致。</p>
+      <p style="margin-top:12px"><strong>亮点：</strong>构建通过且 305 个测试通过；API 控制器基本都有授权策略；金额使用 decimal；规则引擎采用条件 evaluator + 动作 executor；限额锁使用 Oracle <code>SELECT FOR UPDATE</code> 模式；发布流程已有审批、冲突检测、动作参数校验、测试用例门禁和能力可表达性门禁。</p>
+      <p style="margin-top:12px"><strong>优先修复：</strong>先升级到受支持运行时并修补漏洞依赖，然后修复幂等快照重建和表达式公式静默跳过，再补启动期认证配置校验、取消令牌贯通、Oracle 并发集成测试，最后继续拆分 <code>PricingUseCaseBase</code> 和规则快照批量加载。</p>
+      <p style="margin-top:12px"><strong>总评：</strong>B 级，方向正确且已经不是简单 CRUD，但距离稳定上线还差“发布安全、真实数据库并发证明、资金链路 fail-fast、结构复杂度收口”这几块硬验证。</p>
+    </div>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat-card"><div class="num">12</div><div class="desc">总发现</div></div>
+    <div class="stat-card"><div class="num" style="color:var(--badge-high)">3</div><div class="desc">High</div></div>
+    <div class="stat-card"><div class="num" style="color:var(--badge-medium)">7</div><div class="desc">Medium</div></div>
+    <div class="stat-card"><div class="num" style="color:var(--badge-low)">2</div><div class="desc">Low</div></div>
+    <div class="stat-card"><div class="num" style="color:var(--badge-info)">0</div><div class="desc">Info</div></div>
+  </div>
+
+  <h3 class="section-title" id="top-risks">⚠️ 最高风险清单</h3>
+  <div class="card">
+    <div class="card-body" style="padding:0">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th style="width:60px">#</th><th>发现</th><th style="width:100px">严重程度</th><th style="width:120px">类别</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>运行时和传递依赖存在明确发布安全风险</td><td><span class="badge badge-high">High</span></td><td>Release</td></tr>
+            <tr><td>2</td><td>confirm 幂等响应快照缺失时仍用明细重建响应</td><td><span class="badge badge-high">High</span></td><td>Stability</td></tr>
+            <tr><td>3</td><td>API Key 列表缺失不会启动失败</td><td><span class="badge badge-high">High</span></td><td>Configuration</td></tr>
+            <tr><td>4</td><td>表达式公式缺参在运行期静默跳过</td><td><span class="badge badge-medium">Medium</span></td><td>Fallback</td></tr>
+            <tr><td>5</td><td>取消令牌没有贯通到应用服务和仓储</td><td><span class="badge badge-medium">Medium</span></td><td>Stability</td></tr>
+            <tr><td>6</td><td>规则快照冷加载仍是 N+1 查询</td><td><span class="badge badge-medium">Medium</span></td><td>Performance</td></tr>
+            <tr><td>7</td><td>缺少真实 Oracle 并发和事务集成测试</td><td><span class="badge badge-medium">Medium</span></td><td>Testing</td></tr>
+            <tr><td>8</td><td>技术时间没有完全通过 IClock 收口</td><td><span class="badge badge-medium">Medium</span></td><td>Stability</td></tr>
+            <tr><td>9</td><td>PricingUseCaseBase 成为新的复杂度集中点</td><td><span class="badge badge-medium">Medium</span></td><td>Maintainability</td></tr>
+            <tr><td>10</td><td>动作顺序字典加载失败会保留默认顺序继续运行</td><td><span class="badge badge-medium">Medium</span></td><td>Fallback</td></tr>
+            <tr><td>11</td><td>控制器 XML 注释中的计算顺序与设计约束不一致</td><td><span class="badge badge-low">Low</span></td><td>Documentation</td></tr>
+            <tr><td>12</td><td>文件日志缺少保留期、大小限制和统一 correlation id 说明</td><td><span class="badge badge-low">Low</span></td><td>Observability</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <h3 class="section-title" id="findings">🔍 详细发现</h3>
+
+  <div class="finding severity-high">
+    <div class="finding-header"><h4>1. 运行时和传递依赖存在明确发布安全风险</h4><span class="badge badge-high">High</span><span class="badge badge-confirmed">Confirmed</span></div>
+    <div class="finding-meta"><span>📁 Release / Security</span><span>📍 src/*.csproj, tests/*.csproj</span><span>🎯 目标框架与 NuGet 包</span></div>
+    <div class="problem"><strong>问题：</strong>所有项目仍以 <code>net6.0</code> 为目标，并通过 <code>NoWarn NETSDK1138</code> 压制过期目标框架警告。<code>dotnet list package --vulnerable --include-transitive</code> 报告 <code>Pricing.RuleCenter.Api</code> 和 <code>Pricing.RuleCenter.Tests</code> 存在传递依赖 <code>System.Text.Json 8.0.0</code> 高危顾问项。</div>
+    <div class="evidence">src/API/Pricing.RuleCenter.Api.csproj:8 TargetFramework net6.0
+src/API/Pricing.RuleCenter.Api.csproj:12 NoWarn 包含 NETSDK1138
+src/Application/Pricing.RuleCenter.Application.csproj:16 TargetFramework net6.0
+dotnet list package --vulnerable:
+Pricing.RuleCenter.Api -> System.Text.Json 8.0.0 High GHSA-hh2w-p6rv-4g7w, GHSA-8g4q-xg66-9fp4
+官方 .NET 支持策略显示 .NET 6 已于 2024-11-12 结束支持：
+https://dotnet.microsoft.com/en-us/platform/support/policy/dotnet-core</div>
+    <div class="fix-box"><div class="fix-label">MINIMAL FIX</div><code>升级目标框架到 net8.0 或 net10.0 LTS 路线；移除 NETSDK1138 压制；显式覆盖受影响的 System.Text.Json 版本或升级带入该依赖的 ASP.NET/Test 包；把 dotnet list package --vulnerable 加入 CI 阻断。</code></div>
+    <div class="fix-box" style="margin-top:6px;background:#fff8e1;border-color:#ffe082"><strong>⏱ 估算：</strong>1-3 天，取决于 Oracle 驱动和部署环境验证。 <strong>回归测试：</strong>完整运行 <code>dotnet build</code>、<code>dotnet test</code>、API 集成测试、Oracle 连接冒烟测试和漏洞扫描。</div>
+  </div>
+
+  <div class="finding severity-high">
+    <div class="finding-header"><h4>2. confirm 幂等响应快照缺失时仍用明细重建响应</h4><span class="badge badge-high">High</span><span class="badge badge-confirmed">Confirmed</span></div>
+    <div class="finding-meta"><span>📁 Stability / Fallback</span><span>📍 PricingUseCaseBase.cs:905</span><span>🎯 BuildIdempotentResponse</span></div>
+    <div class="problem"><strong>问题：</strong>confirm 重试命中已有请求时，代码优先读取 <code>ResponseJson</code>，但缺失或反序列化失败后，会退回折价明细重建响应。这会破坏“同业务号必须返回首次 confirm 完整响应快照”的幂等契约，尤其是多明细、子项、追溯步骤、规则版本变化或历史数据修复后，重建响应可能与首次返回不一致。</div>
+    <div class="evidence">src/Application/Application/Pricing/UseCases/PricingUseCaseBase.cs:905 BuildIdempotentResponse
+src/Application/Application/Pricing/UseCases/PricingUseCaseBase.cs:908-915 反序列化 ResponseJson
+src/Application/Application/Pricing/UseCases/PricingUseCaseBase.cs:917 注释说明“保留兜底”
+src/Application/Application/Pricing/UseCases/PricingUseCaseBase.cs:918 开始从 _discountRepository.GetByRequestIdAsync(log.RequestId) 重建响应</div>
+    <div class="fix-box"><div class="fix-label">MINIMAL FIX</div><code>ResponseJson 为空或反序列化失败时直接抛 BizErrorCode.IdempotencyResponseSnapshotInvalid，不读取折价明细重建；补一条测试：已有 confirm 且 ResponseJson 缺失时重复 confirm 返回业务错误且不重新占额。</code></div>
+    <div class="fix-box" style="margin-top:6px;background:#fff8e1;border-color:#ffe082"><strong>⏱ 估算：</strong>2-4 小时。 <strong>回归测试：</strong><code>PricingApiServiceTests</code> 新增 ResponseJson 缺失、损坏两种场景。</div>
+  </div>
+
+  <div class="finding severity-high">
+    <div class="finding-header"><h4>3. API Key 列表缺失不会启动失败</h4><span class="badge badge-high">High</span><span class="badge badge-confirmed">Confirmed</span></div>
+    <div class="finding-meta"><span>📁 Configuration / Security</span><span>📍 Program.cs:104, PricingOptionsValidator.cs:9</span><span>🎯 认证配置</span></div>
+    <div class="problem"><strong>问题：</strong>API Key 认证和角色策略已经配置，但启动期配置校验只覆盖 <code>PricingOptions</code>。当 <code>Authentication:ApiKey:Keys</code> 漏配或角色漏配时，服务仍可启动，所有受保护端点在运行期变成 401/403。对服务间 API 来说，这属于发布配置错误延迟暴露，容易在 HIS 联调或上线窗口才发现。</div>
+    <div class="evidence">src/API/Program.cs:104 AddAuthentication(ApiKey)
+src/API/Program.cs:112 遍历 Authentication:ApiKey:Keys，空 Key 直接 continue
+src/Infrastructure/PricingOptionsValidator.cs:9 只校验 PricingOptions
+src/API/appsettings.json 未提供 Authentication:ApiKey:Keys 示例</div>
+    <div class="fix-box"><div class="fix-label">MINIMAL FIX</div><code>新增 ApiKeyOptionsValidator：生产/预发环境至少要求一个 key，且必须包含 pricing.service 或 pricing.admin 角色；启动期无有效 key 直接失败。测试覆盖“无 key 启动失败”“admin key 可发布”“service key 不可发布”。</code></div>
+    <div class="fix-box" style="margin-top:6px;background:#fff8e1;border-color:#ffe082"><strong>⏱ 估算：</strong>0.5-1 天。 <strong>回归测试：</strong>扩展 <code>ApiSecurityIntegrationTests</code> 和配置校验测试。</div>
+  </div>
+
+  <div class="finding severity-medium">
+    <div class="finding-header"><h4>4. 表达式公式缺参在运行期静默跳过</h4><span class="badge badge-medium">Medium</span><span class="badge badge-confirmed">Confirmed</span></div>
+    <div class="finding-meta"><span>📁 Fallback / Stability</span><span>📍 ExpressionFormulaExecutor.cs:41</span><span>🎯 EXPRESSION_FORMULA</span></div>
+    <div class="problem"><strong>问题：</strong><code>ExpressionFormulaExecutor</code> 在 <code>ParamsJson</code> 为空或 <code>expression</code> 缺失时直接 <code>Task.CompletedTask</code>。发布门禁能阻断新规则，但历史脏数据、手工脚本或回滚旧版本仍可能进入运行期；此时公式动作会被管线记录为成功执行，但金额没有变化。</div>
+    <div class="evidence">src/Application/Application/Engine/Executors/ExpressionFormulaExecutor.cs:41 ExecuteAsync
+src/Application/Application/Engine/Executors/ExpressionFormulaExecutor.cs:48-51 param is null 或 Expression 空时 return Task.CompletedTask
+src/Application/Application/Engine/ActionExecutionPipeline.cs:140 管线调用执行器后记录成功追溯步骤</div>
+    <div class="fix-box"><div class="fix-label">MINIMAL FIX</div><code>对 FORMULA_CALC / EXPRESSION_FORMULA 缺少 expression 的情况抛 InvalidOperationException，让 OnError=STOP 的默认策略中断并回滚；如果确实需要跳过，必须配置显式非资金动作。</code></div>
+    <div class="fix-box" style="margin-top:6px;background:#fff8e1;border-color:#ffe082"><strong>⏱ 估算：</strong>1-2 小时。 <strong>回归测试：</strong>新增运行期非法表达式动作进入管线时必须失败的测试。</div>
+  </div>
+
+  <div class="finding severity-medium">
+    <div class="finding-header"><h4>5. 取消令牌没有贯通到应用服务和仓储</h4><span class="badge badge-medium">Medium</span><span class="badge badge-confirmed">Confirmed</span></div>
+    <div class="finding-meta"><span>📁 Stability</span><span>📍 Pricing command handlers</span><span>🎯 HTTP 请求取消和服务关闭</span></div>
+    <div class="problem"><strong>问题：</strong>MediatR handler 收到了 <code>CancellationToken</code>，但调用 <code>PricingAppService</code> 时没有传递；应用服务、use case 和多数仓储方法也没有 token 参数。客户端断开、网关超时或应用关闭时，数据库操作和长计价流程仍会继续占用资源。</div>
+    <div class="evidence">src/Application/Application/Pricing/Commands/ConfirmPricingCommand.cs:22 Handle(..., CancellationToken cancellationToken)
+src/Application/Application/Pricing/Commands/ConfirmPricingCommand.cs:24 return _service.ConfirmAsync(request.Request)
+src/Application/Application/Pricing/PricingAppService.cs:49-96 public 方法无 CancellationToken
+src/Application/Application/Pricing/UseCases/PricingUseCaseBase.cs:144/209/373/470/543 执行方法无 CancellationToken</div>
+    <div class="fix-box"><div class="fix-label">MINIMAL FIX</div><code>从 Controller/MediatR handler 到 PricingAppService、use case、engine、repository 增加 CancellationToken 参数；在事务边界和循环中调用 ThrowIfCancellationRequested；仓储调用优先使用支持 token 的重载或在进入数据库前检查。</code></div>
+    <div class="fix-box" style="margin-top:6px;background:#fff8e1;border-color:#ffe082"><strong>⏱ 估算：</strong>1-2 天。 <strong>回归测试：</strong>新增取消中的 confirm 不继续执行后续仓储写入的测试，后台服务保留现有 stoppingToken 测试。</div>
+  </div>
+
+  <div class="finding severity-medium">
+    <div class="finding-header"><h4>6. 规则快照冷加载仍是 N+1 查询</h4><span class="badge badge-medium">Medium</span><span class="badge badge-confirmed">Confirmed</span></div>
+    <div class="finding-meta"><span>📁 Performance</span><span>📍 EffectiveRuleSnapshotLoader.cs:21</span><span>🎯 规则匹配热路径</span></div>
+    <div class="problem"><strong>问题：</strong>运行期快照缓存是正确方向，但 loader 对每个候选规则分别读取条件和动作。项目规则数增加、缓存失效、首次访问或多实例冷启动时，会出现 1 + 2N 次数据库查询，正好落在计价确认热路径上。</div>
+    <div class="evidence">src/Application/Application/Engine/RuleRuntimeSnapshot/EffectiveRuleSnapshotLoader.cs:23 GetByItemCodeAsync(itemCode)
+src/Application/Application/Engine/RuleRuntimeSnapshot/EffectiveRuleSnapshotLoader.cs:26 foreach (var header in headers)
+src/Application/Application/Engine/RuleRuntimeSnapshot/EffectiveRuleSnapshotLoader.cs:28 ConditionRepository.GetByRuleAndVersionAsync
+src/Application/Application/Engine/RuleRuntimeSnapshot/EffectiveRuleSnapshotLoader.cs:31 ActionRepository.GetByRuleAndVersionAsync</div>
+    <div class="fix-box"><div class="fix-label">MINIMAL FIX</div><code>新增批量仓储接口：按 ruleId/version 集合一次性读取条件、一次性读取动作，再在内存中 group；缓存 key 保持 itemCode，失效逻辑不变。</code></div>
+    <div class="fix-box" style="margin-top:6px;background:#fff8e1;border-color:#ffe082"><strong>⏱ 估算：</strong>1 天。 <strong>回归测试：</strong>用仓储测试桩统计查询次数，10 条候选规则时 loader 查询次数应从 21 次降到 3 次以内。</div>
+  </div>
+
+  <div class="finding severity-medium">
+    <div class="finding-header"><h4>7. 缺少真实 Oracle 并发和事务集成测试</h4><span class="badge badge-medium">Medium</span><span class="badge badge-confirmed">Confirmed</span></div>
+    <div class="finding-meta"><span>📁 Testing</span><span>📍 tests/, docs/29, sql/90</span><span>🎯 SELECT FOR UPDATE 和唯一索引</span></div>
+    <div class="problem"><strong>问题：</strong>单元和应用测试数量充足，但当前测试项目没有真实 Oracle 集成测试工程。已有 <code>29-Oracle并发与事务验证方案.md</code> 和 <code>sql/90-concurrency-verify.sql</code> 更像上线前手工验证方案，尚不能在 CI 或预发流水线中证明锁等待、唯一索引冲突、事务回滚和死锁映射。</div>
+    <div class="evidence">tests 下只有 Pricing.RuleCenter.Core.Tests 和 Pricing.RuleCenter.Tests
+docs/物价折价改造方案文档/29-Oracle并发与事务验证方案.md 是验证方案
+sql/90-concurrency-verify.sql 是脚本，但未接入自动化测试
+LimitLockRepository.cs:74 依赖 SELECT ... FOR UPDATE 语义</div>
+    <div class="fix-box"><div class="fix-label">MINIMAL FIX</div><code>增加 Pricing.RuleCenter.OracleIntegration.Tests，使用预发 Oracle 或容器化可用实例，至少覆盖同业务号 confirm 并发、时间窗并发、commit/expire 竞态、reverse 同号并发、唯一索引冲突转换。</code></div>
+    <div class="fix-box" style="margin-top:6px;background:#fff8e1;border-color:#ffe082"><strong>⏱ 估算：</strong>3-5 天。 <strong>回归测试：</strong>CI 可按环境变量开关运行 Oracle integration 分组。</div>
+  </div>
+
+  <div class="finding severity-medium">
+    <div class="finding-header"><h4>8. 技术时间没有完全通过 IClock 收口</h4><span class="badge badge-medium">Medium</span><span class="badge badge-confirmed">Confirmed</span></div>
+    <div class="finding-meta"><span>📁 Stability / Testing</span><span>📍 多处 DateTime.Now</span><span>🎯 过期、发布、占额、审计时间</span></div>
+    <div class="problem"><strong>问题：</strong>项目已经引入 <code>IClock</code>，但仍有多处领域对象、仓储、引擎和响应 DTO 直接使用 <code>DateTime.Now</code>。多机部署、测试固定时间、跨日退费、过期清理和审批审计会因此出现时间不可控或难以复现的问题。</div>
+    <div class="evidence">rg DateTime.Now src:
+src/Application/Dto/ApiResult.cs:19,67
+src/Application/Application/Engine/PricingEngine.cs:117
+src/Domain/Aggregates/Rules/RuleAggregate.cs:308,313,347,351,385,391
+src/Infrastructure/Repositories/Quota/LimitOccupyRepository.cs:136,175
+src/Infrastructure/Repositories/Rules/RuleHeaderRepository.cs:276,277,307</div>
+    <div class="fix-box"><div class="fix-label">MINIMAL FIX</div><code>保留 SystemClock 内部的 DateTime.Now，其余技术时间全部通过 IClock 注入；领域聚合方法改为接收 now 参数；仓储层不要自行盖时间，除非是数据库 SYSDATE 且有明确审计理由。</code></div>
+    <div class="fix-box" style="margin-top:6px;background:#fff8e1;border-color:#ffe082"><strong>⏱ 估算：</strong>1-2 天。 <strong>回归测试：</strong>固定时钟覆盖发布、占额确认、过期清理、reverse 跨日场景。</div>
+  </div>
+
+  <div class="finding severity-medium">
+    <div class="finding-header"><h4>9. PricingUseCaseBase 成为新的复杂度集中点</h4><span class="badge badge-medium">Medium</span><span class="badge badge-confirmed">Confirmed</span></div>
+    <div class="finding-meta"><span>📁 Maintainability</span><span>📍 PricingUseCaseBase.cs</span><span>🎯 计价资金用例</span></div>
+    <div class="problem"><strong>问题：</strong><code>PricingAppService</code> 已经变薄，但原复杂度集中迁移到抽象基类。该文件 918 行，包含 simulate、confirm、commit、cancel、reverse、special-flag、幂等响应、事务、历史退费统计、锁 key 等职责。后续修改任一资金链路都需要理解整个基类，违反 SRP 1.1 和文件大小纪律 1.2。</div>
+    <div class="evidence">文件行数统计:
+PricingUseCaseBase.cs 918 行
+RulePublishUseCaseBase.cs 615 行
+PricingDto.cs 561 行
+RuleMatchService.cs 549 行
+PricingUseCaseBase.cs:144 ExecuteSimulateAsync
+PricingUseCaseBase.cs:209 ExecuteConfirmAsync
+PricingUseCaseBase.cs:373 ExecuteCommitAsync
+PricingUseCaseBase.cs:470 ExecuteCancelAsync
+PricingUseCaseBase.cs:543 ExecuteReverseAsync</div>
+    <div class="fix-box"><div class="fix-label">MINIMAL FIX</div><code>把共享基类改成组合服务：TransactionRunner、IdempotentResponseReader、ReverseAccountingService、LimitKeyService、SpecialFlagReader；use case 通过组合调用，不通过继承共享大段流程。</code></div>
+    <div class="fix-box" style="margin-top:6px;background:#fff8e1;border-color:#ffe082"><strong>⏱ 估算：</strong>2-4 天。 <strong>回归测试：</strong>资金链路现有测试全跑，新增每个组合服务的小单元测试。</div>
+  </div>
+
+  <div class="finding severity-medium">
+    <div class="finding-header"><h4>10. 动作顺序字典加载失败会保留默认顺序继续运行</h4><span class="badge badge-medium">Medium</span><span class="badge badge-confirmed">Confirmed</span></div>
+    <div class="finding-meta"><span>📁 Fallback / Configuration</span><span>📍 RuleMatchService.cs</span><span>🎯 ACTION_TYPE_ORDER</span></div>
+    <div class="problem"><strong>问题：</strong>动作顺序是资金安全关键配置，但 <code>LoadActionTypeOrderAsync</code> 读取字典失败时只记录日志并保留默认顺序。对已知动作默认顺序能保底；但如果上线了新动作、新排序或字典迁移遗漏，运行期可能继续用旧顺序计价。</div>
+    <div class="evidence">src/Application/Application/Engine/RuleMatchService.cs:441 catch(Exception ex) 后 LogError 但不抛出
+src/Application/Application/Engine/RuleMatchService.cs:381 未识别动作返回 999
+src/Application/Application/Engine/RuleMatchService.cs:311 动作顺序影响换算、限额、公式、封顶执行先后</div>
+    <div class="fix-box"><div class="fix-label">MINIMAL FIX</div><code>区分“字典为空首次部署”和“读取失败”：数据库异常或已加载过但刷新失败应进入降级告警并阻断发布；运行期对不在默认列表的新动作必须 fail-fast，不能只排到 999。</code></div>
+    <div class="fix-box" style="margin-top:6px;background:#fff8e1;border-color:#ffe082"><strong>⏱ 估算：</strong>0.5-1 天。 <strong>回归测试：</strong>模拟字典仓储抛异常、新动作缺排序两种情况。</div>
+  </div>
+
+  <div class="finding severity-low">
+    <div class="finding-header"><h4>11. 控制器 XML 注释中的计算顺序与设计约束不一致</h4><span class="badge badge-low">Low</span><span class="badge badge-confirmed">Confirmed</span></div>
+    <div class="finding-meta"><span>📁 Documentation</span><span>📍 PricingController.cs:120</span><span>🎯 Swagger/XML 文档</span></div>
+    <div class="problem"><strong>问题：</strong><code>PricingController</code> 的试算接口注释把“公式计算、金额上下限”写在“日数量限制、时间窗数量限制”之前，而项目核心设计要求先限量再用限制后的 FinalQty 计算公式。虽然代码排序在 <code>RuleMatchService</code> 中较正确，但对接方看 Swagger 时会得到错误认知。</div>
+    <div class="evidence">src/API/Controllers/PricingController.cs 试算接口 XML 注释:
+第 3 步：公式计算
+第 4 步：金额下限 -> 金额上限
+第 5 步：日数量限制 -> 时间窗数量限制
+CLAUDE.md 和 RuleMatchService 默认顺序要求数量限制在 FORMULA_CALC 前。</div>
+    <div class="fix-box"><div class="fix-label">MINIMAL FIX</div><code>把控制器注释统一为：匹配 -> 换算 -> 数量/时间窗/互斥 -> 公式 -> 金额上下限 -> 同手术封顶 -> 子项 -> 超出归零。</code></div>
+    <div class="fix-box" style="margin-top:6px;background:#fff8e1;border-color:#ffe082"><strong>⏱ 估算：</strong>30 分钟。 <strong>回归测试：</strong>保留 ApiDocumentationIntegrationTests，校验 Swagger 中关键说明不再反向。</div>
+  </div>
+
+  <div class="finding severity-low">
+    <div class="finding-header"><h4>12. 文件日志缺少保留期、大小限制和统一 correlation id 说明</h4><span class="badge badge-low">Low</span><span class="badge badge-confirmed">Confirmed</span></div>
+    <div class="finding-meta"><span>📁 Observability</span><span>📍 Program.cs:35</span><span>🎯 Serilog 配置</span></div>
+    <div class="problem"><strong>问题：</strong>当前 Serilog 在代码中直接写入 <code>logs/yyyy-MM-dd.log</code>，未看到保留期、单文件大小、滚动策略细节、敏感字段过滤和业务 TraceId/HTTP TraceIdentifier 的贯通说明。生产环境出现大量计价请求或异常时，日志增长和追踪关联会成为排查成本。</div>
+    <div class="evidence">src/API/Program.cs:35 UseSerilog
+src/API/Program.cs:40 WriteTo.File("logs/yyyy-MM-dd.log", rollingInterval: RollingInterval.Day)
+ExceptionHandlerMiddleware 使用 HttpContext.TraceIdentifier
+Pricing 业务响应另有 TraceId，两者未形成统一契约。</div>
+    <div class="fix-box"><div class="fix-label">MINIMAL FIX</div><code>将 Serilog sink 配置迁移到 appsettings，设置 retainedFileCountLimit、fileSizeLimitBytes、rollOnFileSizeLimit；在 middleware 中统一 CorrelationId，并把业务 TraceId、RequestId、BusinessRequestNo 作为结构化字段输出。</code></div>
+    <div class="fix-box" style="margin-top:6px;background:#fff8e1;border-color:#ffe082"><strong>⏱ 估算：</strong>0.5 天。 <strong>回归测试：</strong>集成测试验证错误响应 traceId 与日志 scope/correlation id 一致。</div>
+  </div>
+
+  <h3 class="section-title" id="architecture">🏛️ Architecture and Module Boundaries</h3>
+  <div class="card"><div class="card-header">已确认 <span style="font-weight:400;font-size:13px;color:var(--text-secondary)">· 1 个发现</span></div><div class="card-body" style="padding:0"><div class="table-wrap"><table><thead><tr><th>发现</th><th style="width:100px">严重程度</th><th style="width:100px">状态</th></tr></thead><tbody><tr><td>PricingUseCaseBase 成为新的复杂度集中点</td><td><span class="badge badge-medium">Medium</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr></tbody></table></div></div></div>
+  <div class="card"><div class="card-header">✅ 已验证架构优点</div><div class="card-body"><div class="check-list"><div class="check-item"><span class="check">✓</span> Domain 未直接依赖 ASP.NET Core 或 SqlSugar Attribute。</div><div class="check-item"><span class="check">✓</span> API 控制器主要通过 MediatR 分发，没有直接写资金逻辑。</div><div class="check-item"><span class="check">✓</span> 规则引擎采用 evaluator/executor 扩展点，新增条件或动作不需要改渠道代码。</div></div></div></div>
+
+  <h3 class="section-title" id="security">🔒 Security</h3>
+  <div class="card"><div class="card-header">已确认 <span style="font-weight:400;font-size:13px;color:var(--text-secondary)">· 2 个发现</span></div><div class="card-body" style="padding:0"><div class="table-wrap"><table><thead><tr><th>发现</th><th style="width:100px">严重程度</th><th style="width:100px">状态</th></tr></thead><tbody><tr><td>运行时和传递依赖存在明确发布安全风险</td><td><span class="badge badge-high">High</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr><tr><td>API Key 列表缺失不会启动失败</td><td><span class="badge badge-high">High</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr></tbody></table></div></div></div>
+  <div class="card"><div class="card-header">✅ 已验证安全</div><div class="card-body"><div class="check-list"><div class="check-item"><span class="check">✓</span> 控制器除 Health 外均有 <code>Authorize</code> 策略。</div><div class="check-item"><span class="check">✓</span> API Key 比较使用 <code>CryptographicOperations.FixedTimeEquals</code>。</div><div class="check-item"><span class="check">✓</span> RuleAdmin 与 PricingService 角色分离。</div></div></div></div>
+
+  <h3 class="section-title" id="stability">⚡ Stability and Error Handling</h3>
+  <div class="card"><div class="card-header">已确认 <span style="font-weight:400;font-size:13px;color:var(--text-secondary)">· 5 个发现</span></div><div class="card-body" style="padding:0"><div class="table-wrap"><table><thead><tr><th>发现</th><th style="width:100px">严重程度</th><th style="width:100px">状态</th></tr></thead><tbody><tr><td>confirm 幂等响应快照缺失时仍用明细重建响应</td><td><span class="badge badge-high">High</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr><tr><td>表达式公式缺参在运行期静默跳过</td><td><span class="badge badge-medium">Medium</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr><tr><td>取消令牌没有贯通到应用服务和仓储</td><td><span class="badge badge-medium">Medium</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr><tr><td>技术时间没有完全通过 IClock 收口</td><td><span class="badge badge-medium">Medium</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr><tr><td>动作顺序字典加载失败会保留默认顺序继续运行</td><td><span class="badge badge-medium">Medium</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr></tbody></table></div></div></div>
+  <div class="card"><div class="card-header">✅ 已验证稳健</div><div class="card-body"><div class="check-list"><div class="check-item"><span class="check">✓</span> confirm/commit/cancel/reverse 使用事务边界。</div><div class="check-item"><span class="check">✓</span> 限额锁异常包装为 <code>LimitLockException</code>，不会静默放行。</div><div class="check-item"><span class="check">✓</span> 全局异常中间件隐藏未知 500 的内部细节。</div></div></div></div>
+
+  <h3 class="section-title" id="performance">🚀 Performance and Scalability</h3>
+  <div class="card"><div class="card-header">已确认 <span style="font-weight:400;font-size:13px;color:var(--text-secondary)">· 1 个发现</span></div><div class="card-body" style="padding:0"><div class="table-wrap"><table><thead><tr><th>发现</th><th style="width:100px">严重程度</th><th style="width:100px">状态</th></tr></thead><tbody><tr><td>规则快照冷加载仍是 N+1 查询</td><td><span class="badge badge-medium">Medium</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr></tbody></table></div></div></div>
+  <div class="card"><div class="card-header">✅ 已验证性能基础</div><div class="card-body"><div class="check-list"><div class="check-item"><span class="check">✓</span> 已引入 <code>EffectiveRuleSnapshotCache</code>，热路径可命中内存缓存。</div><div class="check-item"><span class="check">✓</span> 多锁键按固定顺序加锁，降低死锁概率。</div><div class="check-item"><span class="check">✓</span> 批量计价有 <code>BatchPricingContext</code>，不是逐项完全孤立计算。</div></div></div></div>
+
+  <h3 class="section-title" id="testing">🧪 Testing Quality</h3>
+  <div class="card"><div class="card-header">已确认 <span style="font-weight:400;font-size:13px;color:var(--text-secondary)">· 1 个发现</span></div><div class="card-body" style="padding:0"><div class="table-wrap"><table><thead><tr><th>发现</th><th style="width:100px">严重程度</th><th style="width:100px">状态</th></tr></thead><tbody><tr><td>缺少真实 Oracle 并发和事务集成测试</td><td><span class="badge badge-medium">Medium</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr></tbody></table></div></div></div>
+  <div class="card"><div class="card-header">✅ 已验证测试基础</div><div class="card-body"><div class="check-list"><div class="check-item"><span class="check">✓</span> <code>dotnet test</code> 通过：Core 38 个、主测试 267 个。</div><div class="check-item"><span class="check">✓</span> 覆盖规则发布、审批、公式表达式、API 鉴权、资金状态链多个关键点。</div><div class="check-item"><span class="check">✓</span> 构建通过，0 warning，0 error。</div></div></div></div>
+
+  <h3 class="section-title" id="maintainability">📐 Maintainability</h3>
+  <div class="card"><div class="card-header">已确认 <span style="font-weight:400;font-size:13px;color:var(--text-secondary)">· 1 个发现</span></div><div class="card-body" style="padding:0"><div class="table-wrap"><table><thead><tr><th>发现</th><th style="width:100px">严重程度</th><th style="width:100px">状态</th></tr></thead><tbody><tr><td>PricingUseCaseBase 成为新的复杂度集中点</td><td><span class="badge badge-medium">Medium</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr></tbody></table></div></div></div>
+  <div class="card"><div class="card-header">✅ 已验证可维护性改进</div><div class="card-body"><div class="check-list"><div class="check-item"><span class="check">✓</span> 计价门面已经拆出 simulate/confirm/commit/cancel/reverse use case。</div><div class="check-item"><span class="check">✓</span> 发布流程已拆出 Guard、UseCase、TransactionWriter、CacheInvalidator。</div><div class="check-item"><span class="check">✓</span> 条件、动作、公式编码集中到 <code>RuleCapabilityCodes</code>。</div></div></div></div>
+
+  <h3 class="section-title" id="design">📋 Design Principles Compliance</h3>
+  <div class="card"><div class="card-header">已确认 <span style="font-weight:400;font-size:13px;color:var(--text-secondary)">· 4 个发现</span></div><div class="card-body" style="padding:0"><div class="table-wrap"><table><thead><tr><th>发现</th><th style="width:100px">严重程度</th><th style="width:100px">状态</th></tr></thead><tbody><tr><td>SRP 和文件大小纪律在 PricingUseCaseBase 上仍然违背</td><td><span class="badge badge-medium">Medium</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr><tr><td>Fail-Fast 在幂等快照和表达式公式运行期不完整</td><td><span class="badge badge-high">High</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr><tr><td>取消令牌没有显式依赖传递</td><td><span class="badge badge-medium">Medium</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr><tr><td>动作顺序字典错误采用宽松兜底</td><td><span class="badge badge-medium">Medium</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr></tbody></table></div></div></div>
+  <div class="card"><div class="card-header">✅ 已验证设计原则</div><div class="card-body"><div class="check-list"><div class="check-item"><span class="check">✓</span> Dependency Rule 基本成立：Domain 向内稳定。</div><div class="check-item"><span class="check">✓</span> OCP 在规则引擎扩展点上体现较好。</div><div class="check-item"><span class="check">✓</span> 金额统一 decimal，类型选择符合业务约束。</div></div></div></div>
+
+  <h3 class="section-title" id="release">🎯 Release and Deployment Process</h3>
+  <div class="card"><div class="card-header">已确认 <span style="font-weight:400;font-size:13px;color:var(--text-secondary)">· 3 个发现</span></div><div class="card-body" style="padding:0"><div class="table-wrap"><table><thead><tr><th>发现</th><th style="width:100px">严重程度</th><th style="width:100px">状态</th></tr></thead><tbody><tr><td>运行时和传递依赖存在明确发布安全风险</td><td><span class="badge badge-high">High</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr><tr><td>缺少真实 Oracle 并发和事务集成测试</td><td><span class="badge badge-medium">Medium</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr><tr><td>API Key 列表缺失不会启动失败</td><td><span class="badge badge-high">High</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr></tbody></table></div></div></div>
+  <div class="card"><div class="card-header">✅ 已验证发布基础</div><div class="card-body"><div class="check-list"><div class="check-item"><span class="check">✓</span> 有 Staging/Production appsettings。</div><div class="check-item"><span class="check">✓</span> Swagger 默认生产关闭。</div><div class="check-item"><span class="check">✓</span> 健康检查包含 Oracle 和第三方服务探测。</div></div></div></div>
+
+  <h3 class="section-title" id="documentation">📚 Documentation Accuracy</h3>
+  <div class="card"><div class="card-header">已确认 <span style="font-weight:400;font-size:13px;color:var(--text-secondary)">· 1 个发现</span></div><div class="card-body" style="padding:0"><div class="table-wrap"><table><thead><tr><th>发现</th><th style="width:100px">严重程度</th><th style="width:100px">状态</th></tr></thead><tbody><tr><td>控制器 XML 注释中的计算顺序与设计约束不一致</td><td><span class="badge badge-low">Low</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr></tbody></table></div></div></div>
+  <div class="card"><div class="card-header">✅ 已验证文档</div><div class="card-body"><div class="check-list"><div class="check-item"><span class="check">✓</span> <code>CLAUDE.md</code> 明确业务约束和资金安全原则。</div><div class="check-item"><span class="check">✓</span> 已有能力矩阵和 Oracle 并发验证方案。</div><div class="check-item"><span class="check">✓</span> 公共类型普遍存在 XML 注释。</div></div></div></div>
+
+  <h3 class="section-title" id="configuration">⚙️ Configuration Safety</h3>
+  <div class="card"><div class="card-header">已确认 <span style="font-weight:400;font-size:13px;color:var(--text-secondary)">· 2 个发现</span></div><div class="card-body" style="padding:0"><div class="table-wrap"><table><thead><tr><th>发现</th><th style="width:100px">严重程度</th><th style="width:100px">状态</th></tr></thead><tbody><tr><td>API Key 列表缺失不会启动失败</td><td><span class="badge badge-high">High</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr><tr><td>动作顺序字典加载失败会保留默认顺序继续运行</td><td><span class="badge badge-medium">Medium</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr></tbody></table></div></div></div>
+  <div class="card"><div class="card-header">✅ 已验证配置安全</div><div class="card-body"><div class="check-list"><div class="check-item"><span class="check">✓</span> <code>PricingOptionsValidator</code> 会校验 Oracle 连接串、过期分钟、清理间隔、超时和重试次数。</div><div class="check-item"><span class="check">✓</span> <code>OptionsValidationStartupService</code> 启动期触发 Pricing 配置校验。</div><div class="check-item"><span class="check">✓</span> 权威单价校验生产默认开启。</div></div></div></div>
+
+  <h3 class="section-title" id="observability">🔎 Observability</h3>
+  <div class="card"><div class="card-header">已确认 <span style="font-weight:400;font-size:13px;color:var(--text-secondary)">· 1 个发现</span></div><div class="card-body" style="padding:0"><div class="table-wrap"><table><thead><tr><th>发现</th><th style="width:100px">严重程度</th><th style="width:100px">状态</th></tr></thead><tbody><tr><td>文件日志缺少保留期、大小限制和统一 correlation id 说明</td><td><span class="badge badge-low">Low</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr></tbody></table></div></div></div>
+  <div class="card"><div class="card-header">✅ 已验证可观测性</div><div class="card-body"><div class="check-list"><div class="check-item"><span class="check">✓</span> 计价链路保存请求日志、折价明细和计算步骤。</div><div class="check-item"><span class="check">✓</span> API 异常统一映射并记录日志。</div><div class="check-item"><span class="check">✓</span> 健康检查输出数据库和第三方服务状态。</div></div></div></div>
+
+  <h3 class="section-title" id="fallback">🧯 Fallback / Defensive Code</h3>
+  <div class="card"><div class="card-header">已确认 <span style="font-weight:400;font-size:13px;color:var(--text-secondary)">· 3 个发现</span></div><div class="card-body" style="padding:0"><div class="table-wrap"><table><thead><tr><th>发现</th><th style="width:100px">严重程度</th><th style="width:100px">状态</th></tr></thead><tbody><tr><td>confirm 幂等响应快照缺失时仍用明细重建响应</td><td><span class="badge badge-high">High</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr><tr><td>表达式公式缺参在运行期静默跳过</td><td><span class="badge badge-medium">Medium</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr><tr><td>动作顺序字典加载失败会保留默认顺序继续运行</td><td><span class="badge badge-medium">Medium</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr></tbody></table></div></div></div>
+  <div class="card"><div class="card-header">✅ 已验证兜底策略</div><div class="card-body"><div class="check-list"><div class="check-item"><span class="check">✓</span> 缺失条件 evaluator 时规则保守不命中。</div><div class="check-item"><span class="check">✓</span> 动作执行器缺失且 OnError 默认 STOP 时会中断。</div><div class="check-item"><span class="check">✓</span> 特殊项目 fallback mode 采用最保守策略合并。</div></div></div></div>
+
+  <h3 class="section-title" id="testing-authenticity">🧾 Testing Authenticity</h3>
+  <div class="card"><div class="card-header">已确认 <span style="font-weight:400;font-size:13px;color:var(--text-secondary)">· 1 个发现</span></div><div class="card-body" style="padding:0"><div class="table-wrap"><table><thead><tr><th>发现</th><th style="width:100px">严重程度</th><th style="width:100px">状态</th></tr></thead><tbody><tr><td>资金并发和 Oracle 语义仍主要依赖内存替身与手工方案</td><td><span class="badge badge-medium">Medium</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr></tbody></table></div></div></div>
+  <div class="card"><div class="card-header">✅ 已验证测试真实性</div><div class="card-body"><div class="check-list"><div class="check-item"><span class="check">✓</span> 有 WebApplicationFactory 级别 API 鉴权测试。</div><div class="check-item"><span class="check">✓</span> 规则发布门禁测试覆盖能力守卫和表达式非法变量。</div><div class="check-item"><span class="check">✓</span> commit 明细对账、reverse 超退、幂等冲突均有行为测试。</div></div></div></div>
+
+  <h3 class="section-title" id="type-safety">🧱 Type Safety</h3>
+  <div class="card"><div class="card-header">已确认 <span style="font-weight:400;font-size:13px;color:var(--text-secondary)">· 0 个发现</span></div><div class="card-body" style="padding:0"><div class="table-wrap"><table><thead><tr><th>发现</th><th style="width:100px">严重程度</th><th style="width:100px">状态</th></tr></thead><tbody><tr><td>未发现 unsafe、double/float 金额或明显类型断言风险</td><td><span class="badge badge-info">Info</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr></tbody></table></div></div></div>
+  <div class="card"><div class="card-header">✅ 已验证类型安全</div><div class="card-body"><div class="check-list"><div class="check-item"><span class="check">✓</span> 项目启用 Nullable。</div><div class="check-item"><span class="check">✓</span> 金额、数量计算使用 decimal。</div><div class="check-item"><span class="check">✓</span> 表达式公式使用 decimal parser，不执行 C# 脚本。</div></div></div></div>
+
+  <h3 class="section-title" id="frontend-state">🖥️ Frontend State</h3>
+  <div class="card"><div class="card-header">✅ 不适用但已核对</div><div class="card-body"><div class="check-list"><div class="check-item"><span class="check">✓</span> <code>src</code> 是后端 API/Application/Domain/Infrastructure 项目，没有 React/Vue 前端状态管理。</div><div class="check-item"><span class="check">✓</span> HIS 客户端示例不在本次 <code>src</code> 审计范围内。</div></div></div></div>
+
+  <h3 class="section-title" id="backend-api">🔌 Backend API</h3>
+  <div class="card"><div class="card-header">已确认 <span style="font-weight:400;font-size:13px;color:var(--text-secondary)">· 2 个发现</span></div><div class="card-body" style="padding:0"><div class="table-wrap"><table><thead><tr><th>发现</th><th style="width:100px">严重程度</th><th style="width:100px">状态</th></tr></thead><tbody><tr><td>取消令牌没有贯通到应用服务和仓储</td><td><span class="badge badge-medium">Medium</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr><tr><td>控制器 XML 注释中的计算顺序与设计约束不一致</td><td><span class="badge badge-low">Low</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr></tbody></table></div></div></div>
+  <div class="card"><div class="card-header">✅ 已验证 API 设计</div><div class="card-body"><div class="check-list"><div class="check-item"><span class="check">✓</span> 计价 API 覆盖 simulate、batch-simulate、confirm、commit、cancel、reverse、special-flag。</div><div class="check-item"><span class="check">✓</span> 响应统一为 <code>ApiResult</code>。</div><div class="check-item"><span class="check">✓</span> FluentValidation 与 <code>PricingRequestGuard</code> 已统一大部分入口校验。</div></div></div></div>
+
+  <h3 class="section-title" id="dependency-weight">📦 Dependency Weight</h3>
+  <div class="card"><div class="card-header">已确认 <span style="font-weight:400;font-size:13px;color:var(--text-secondary)">· 1 个发现</span></div><div class="card-body" style="padding:0"><div class="table-wrap"><table><thead><tr><th>发现</th><th style="width:100px">严重程度</th><th style="width:100px">状态</th></tr></thead><tbody><tr><td>运行时和传递依赖存在明确发布安全风险</td><td><span class="badge badge-high">High</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr></tbody></table></div></div></div>
+  <div class="card"><div class="card-header">✅ 已验证依赖控制</div><div class="card-body"><div class="check-list"><div class="check-item"><span class="check">✓</span> 依赖数量整体克制，未引入大型规则引擎或脚本运行时。</div><div class="check-item"><span class="check">✓</span> 表达式公式自实现受控 parser，避免动态脚本执行面。</div><div class="check-item"><span class="check">✓</span> Oracle、SqlSugar、MediatR、FluentValidation 都是项目当前技术栈内依赖。</div></div></div></div>
+
+  <h3 class="section-title" id="code-consistency">🧭 Code Consistency</h3>
+  <div class="card"><div class="card-header">已确认 <span style="font-weight:400;font-size:13px;color:var(--text-secondary)">· 2 个发现</span></div><div class="card-body" style="padding:0"><div class="table-wrap"><table><thead><tr><th>发现</th><th style="width:100px">严重程度</th><th style="width:100px">状态</th></tr></thead><tbody><tr><td>技术时间没有完全通过 IClock 收口</td><td><span class="badge badge-medium">Medium</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr><tr><td>控制器文档顺序与核心设计不一致</td><td><span class="badge badge-low">Low</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr></tbody></table></div></div></div>
+  <div class="card"><div class="card-header">✅ 已验证一致性</div><div class="card-body"><div class="check-list"><div class="check-item"><span class="check">✓</span> 业务编码常量逐步集中，不再散落大量字符串。</div><div class="check-item"><span class="check">✓</span> 异常映射已收敛到 <code>ApiExceptionMapper</code>。</div><div class="check-item"><span class="check">✓</span> DTO 和控制器命名基本遵循 PascalCase/camelCase 约定。</div></div></div></div>
+
+  <h3 class="section-title" id="comment-coverage">💬 Comment Coverage</h3>
+  <div class="card"><div class="card-header">已确认 <span style="font-weight:400;font-size:13px;color:var(--text-secondary)">· 1 个发现</span></div><div class="card-body" style="padding:0"><div class="table-wrap"><table><thead><tr><th>发现</th><th style="width:100px">严重程度</th><th style="width:100px">状态</th></tr></thead><tbody><tr><td>部分注释过重且存在过时顺序描述</td><td><span class="badge badge-low">Low</span></td><td><span class="badge badge-confirmed">Confirmed</span></td></tr></tbody></table></div></div></div>
+  <div class="card"><div class="card-header">✅ 已验证注释覆盖</div><div class="card-body"><div class="check-list"><div class="check-item"><span class="check">✓</span> 控制器、服务、仓储和领域对象普遍有 XML 注释。</div><div class="check-item"><span class="check">✓</span> 复杂资金链路注释解释了业务口径和风险边界。</div><div class="check-item"><span class="check">✓</span> 规则执行顺序、业务时间、NULL 语义在核心类中有明确说明。</div></div></div></div>
+
+  <h3 class="section-title" id="principles">📋 设计原则违背</h3>
+  <div class="card">
+    <div class="card-header">原则违背汇总</div>
+    <div class="card-body" style="padding:0">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>原则</th><th>次数</th><th style="width:100px">严重程度</th><th>区域</th></tr></thead>
+          <tbody>
+            <tr><td>SRP 1.1</td><td>1</td><td><span class="badge badge-medium">Medium</span></td><td>PricingUseCaseBase 聚合多条资金链路</td></tr>
+            <tr><td>File Size 1.2</td><td>4</td><td><span class="badge badge-medium">Medium</span></td><td>PricingUseCaseBase, RulePublishUseCaseBase, PricingDto, RuleMatchService</td></tr>
+            <tr><td>Fail-Fast 4.4</td><td>4</td><td><span class="badge badge-high">High</span></td><td>幂等快照、表达式公式、认证配置、动作顺序字典</td></tr>
+            <tr><td>Timeout/Cancel Safety 10.3/10.4</td><td>1</td><td><span class="badge badge-medium">Medium</span></td><td>请求取消令牌未传递</td></tr>
+            <tr><td>Configuration Safety 9.2</td><td>1</td><td><span class="badge badge-high">High</span></td><td>API Key 必需配置未启动期校验</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">✅ 已遵循原则</div>
+    <div class="card-body">
+      <div class="check-list">
+        <div class="check-item"><span class="check">✓</span> Dependency Rule — Domain 边界干净，基础设施实现接口。</div>
+        <div class="check-item"><span class="check">✓</span> OCP — 规则条件、动作、公式均有扩展点。</div>
+        <div class="check-item"><span class="check">✓</span> CQS — 多数查询和命令边界清晰。</div>
+        <div class="check-item"><span class="check">✓</span> Least Privilege — RuleAdmin 与 PricingService 角色区分。</div>
+      </div>
+    </div>
+  </div>
+
+  <h3 class="section-title" id="fix-order">🎯 修复顺序</h3>
+  <div class="card">
+    <div class="card-header"><span>⚡ 立即处理</span><span class="badge badge-high">High</span></div>
+    <div class="card-body" style="padding:0">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>#</th><th>修复项</th><th>工作量</th><th>风险说明</th></tr></thead>
+          <tbody>
+            <tr><td>1</td><td>升级运行时并修补 System.Text.Json 高危传递依赖</td><td>1-3 天</td><td>当前是明确发布安全风险</td></tr>
+            <tr><td>2</td><td>幂等响应缺快照时 fail-fast，不再重建</td><td>2-4 小时</td><td>关系到 confirm 重试资金契约</td></tr>
+            <tr><td>3</td><td>API Key 配置启动期强校验</td><td>0.5-1 天</td><td>避免生产配置漏填导致服务不可用</td></tr>
+            <tr><td>4</td><td>表达式公式缺参运行期抛错</td><td>1-2 小时</td><td>避免公式漏算后记录成功步骤</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span>📅 计划处理</span><span class="badge badge-medium">Medium</span></div>
+    <div class="card-body" style="padding:0">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>#</th><th>修复项</th><th>工作量</th></tr></thead>
+          <tbody>
+            <tr><td>5</td><td>CancellationToken 从 API 贯通到应用服务和仓储</td><td>1-2 天</td></tr>
+            <tr><td>6</td><td>规则快照 loader 改为批量读取条件和动作</td><td>1 天</td></tr>
+            <tr><td>7</td><td>补 Oracle 并发与事务集成测试工程</td><td>3-5 天</td></tr>
+            <tr><td>8</td><td>DateTime.Now 全面收口到 IClock</td><td>1-2 天</td></tr>
+            <tr><td>9</td><td>继续拆分 PricingUseCaseBase 为组合服务</td><td>2-4 天</td></tr>
+            <tr><td>10</td><td>动作顺序字典读取失败策略改为可观测、可阻断</td><td>0.5-1 天</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <h3 class="section-title">⚡ Quick Wins</h3>
+  <div class="win-grid">
+    <div class="win-card"><div class="win-title">修复控制器计算顺序注释</div><div class="win-meta">30 分钟 · 低风险 · 直接减少联调误解</div></div>
+    <div class="win-card"><div class="win-title">表达式公式缺参抛异常</div><div class="win-meta">1-2 小时 · 中收益 · 补一个管线测试</div></div>
+    <div class="win-card"><div class="win-title">幂等快照缺失返回业务错误</div><div class="win-meta">2-4 小时 · 高收益 · 防止重复 confirm 响应漂移</div></div>
+    <div class="win-card"><div class="win-title">API Key 配置校验</div><div class="win-meta">0.5 天 · 高收益 · 提前暴露发布配置错误</div></div>
+    <div class="win-card"><div class="win-title">增加 global.json</div><div class="win-meta">15 分钟 · 低风险 · 固定 SDK 行为</div></div>
+    <div class="win-card"><div class="win-title">把漏洞扫描写入 CI</div><div class="win-meta">0.5 天 · 高收益 · 阻断过期依赖继续进入主线</div></div>
+  </div>
+
+  <div style="text-align:center;padding:40px 0 20px;color:var(--text-secondary);font-size:12px">
+    审计基于 2026-06-06 当前工作区文件系统内容；构建和测试命令已执行，报告不包含源码修复提交。
+  </div>
+</div>
+
+<script>
+  const sections = document.querySelectorAll('[id]');
+  const navLinks = document.querySelectorAll('.sidebar-nav a');
+
+  const observer = new IntersectionObserver((entries) => {
+    let activeId = null;
+    entries.forEach(entry => {
+      if (entry.isIntersecting) activeId = entry.target.id;
+    });
+    if (activeId) {
+      navLinks.forEach(a => {
+        a.classList.toggle('active', a.getAttribute('href') === '#' + activeId);
+      });
+    }
+  }, { rootMargin: '-10% 0px -60% 0px' });
+
+  sections.forEach(s => observer.observe(s));
+
+  navLinks.forEach(a => {
+    a.addEventListener('click', function(e) {
+      e.preventDefault();
+      const target = document.querySelector(this.getAttribute('href'));
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+</script>
+
+</body>
+</html>
