@@ -18,7 +18,7 @@ namespace Pricing.RuleCenter.Core.Engine;
 /// </list>
 /// </para>
 /// <para>
-/// 【执行顺序保证】动作链在进入管线前已由 <see cref="RuleMatchService.OrderActions"/> 排序：
+/// 【执行顺序保证】动作链在进入管线前已由 <see cref="RuleActionPlanBuilder"/> 排序：
 /// 先按全局动作类别（换算 → 数量限制/互斥 → 比例折价 → TOPPRICE 封顶 → 超限归零兜底），
 /// 再按同类动作的 SortNo。
 /// 管线严格按此顺序执行，不做任何重排。
@@ -57,7 +57,7 @@ public sealed class ActionExecutionPipeline
     /// 按顺序执行规则动作链。每个动作执行后都会写追溯步骤，记录金额变化。
     /// </summary>
     /// <param name="actions">
-    /// 已按全局顺序排序的规则动作集合。排序由 <see cref="RuleMatchService.OrderActions"/> 完成，
+    /// 已按全局顺序排序的规则动作集合。排序由 <see cref="RuleActionPlanBuilder"/> 完成，
     /// 保证先换算、再数量限制/互斥、再比例折价、再 TOPPRICE 封顶、最后做超限归零兜底。
     /// </param>
     /// <param name="context">
