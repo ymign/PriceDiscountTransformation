@@ -81,7 +81,9 @@ public static class DependencyInjection
         services.AddScoped<IRulePublishRepository, RulePublishRepository>();
         services.AddScoped<IRuleChangeLogRepository, RuleChangeLogRepository>();
         services.AddScoped<IRuleApprovalRepository, RuleApprovalRepository>();
+        services.AddScoped<IRuntimePackageRepository, RuntimePackageRepository>();
         services.AddScoped<IRuntimePackageStateRepository, RuntimePackageStateRepository>();
+        services.AddScoped<IRuntimeRuleBuildRepository, RuntimeRuleBuildRepository>();
         services.AddScoped<IRuntimeRuleReadRepository, RuntimeRuleReadRepository>();
 
         // --- 项目分组仓储 ---

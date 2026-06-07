@@ -117,6 +117,33 @@ public static class BizErrorCode
     /// <summary>规则公式表达当前引擎不支持。</summary>
     public const int RuleFormulaUnsupported = 1028;
 
+    /// <summary>模板不存在。</summary>
+    public const int TemplateNotFound = 1029;
+
+    /// <summary>模板版本不存在。</summary>
+    public const int TemplateVersionNotFound = 1030;
+
+    /// <summary>策略不存在。</summary>
+    public const int PolicyNotFound = 1031;
+
+    /// <summary>策略参数缺失。</summary>
+    public const int PolicyParamMissing = 1032;
+
+    /// <summary>策略参数非法。</summary>
+    public const int PolicyParamInvalid = 1033;
+
+    /// <summary>策略缺少绑定对象。</summary>
+    public const int PolicyBindingMissing = 1034;
+
+    /// <summary>策略作用域当前阶段不支持。</summary>
+    public const int PolicyScopeUnsupported = 1035;
+
+    /// <summary>策略状态不允许当前生命周期操作。</summary>
+    public const int PolicyStatusNotAllowed = 1036;
+
+    /// <summary>运行时包构建冲突。</summary>
+    public const int RuntimePackageBuildConflict = 1037;
+
     // ========== 计价计算类错误（2001-2099） ==========
 
     /// <summary>单价校验失败（渠道传入单价与权威单价不一致）。</summary>
