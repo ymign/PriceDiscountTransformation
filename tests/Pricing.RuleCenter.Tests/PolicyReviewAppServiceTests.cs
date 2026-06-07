@@ -143,10 +143,18 @@ public sealed class PolicyReviewAppServiceTests
     {
         public Dictionary<long, PolicyVersion> Versions { get; } = new();
 
+        public Task<IReadOnlyList<PolicyAggregate>> GetAllAsync() =>
+            Task.FromResult((IReadOnlyList<PolicyAggregate>)Array.Empty<PolicyAggregate>());
+
         public Task<PolicyAggregate?> GetByIdAsync(long policyId) =>
             Task.FromResult<PolicyAggregate?>(new PolicyAggregate { PolicyId = policyId, PolicyCode = $"POL{policyId:000}" });
 
         public Task<PolicyAggregate?> GetByCodeAsync(string policyCode) => Task.FromResult<PolicyAggregate?>(null);
+
+        public Task<IReadOnlyList<PolicyVersion>> GetVersionsByPolicyIdAsync(long policyId) =>
+            Task.FromResult((IReadOnlyList<PolicyVersion>)Versions.Values
+                .Where(version => version.PolicyId == policyId)
+                .ToList());
 
         public Task<PolicyVersion?> GetVersionAsync(long policyVersionId) =>
             Task.FromResult(Versions.TryGetValue(policyVersionId, out var version) ? version : null);
@@ -169,11 +177,23 @@ public sealed class PolicyReviewAppServiceTests
 
         public Task UpdateAsync(PolicyAggregate entity) => Task.CompletedTask;
 
+        public Task<long> InsertVersionAsync(PolicyVersion entity)
+        {
+            Versions[entity.PolicyVersionId] = entity;
+            return Task.FromResult(entity.PolicyVersionId);
+        }
+
         public Task UpdateVersionAsync(PolicyVersion entity)
         {
             Versions[entity.PolicyVersionId] = entity;
             return Task.CompletedTask;
         }
+
+        public Task ReplaceBindingsAsync(long policyVersionId, IReadOnlyList<PolicyBinding> entities) => Task.CompletedTask;
+
+        public Task ReplaceScopesAsync(long policyVersionId, IReadOnlyList<PolicyScope> entities) => Task.CompletedTask;
+
+        public Task ReplaceParamsAsync(long policyVersionId, IReadOnlyList<PolicyParam> entities) => Task.CompletedTask;
     }
 
     private sealed class InMemoryPolicyReviewRepository : IPolicyReviewRepository

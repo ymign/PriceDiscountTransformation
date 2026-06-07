@@ -10,6 +10,7 @@ using Pricing.RuleCenter.Api.Middleware;
 using Pricing.RuleCenter.Application.Common;
 using Pricing.RuleCenter.Application.Common.Behaviors;
 using Pricing.RuleCenter.Application.Dto;
+using Pricing.RuleCenter.Application.Policies;
 using Pricing.RuleCenter.Application.Pricing;
 using Pricing.RuleCenter.Application.Pricing.AuthorityPrice;
 using Pricing.RuleCenter.Application.Pricing.Idempotency;
@@ -18,7 +19,9 @@ using Pricing.RuleCenter.Application.Pricing.UseCases;
 using Pricing.RuleCenter.Application.Rules;
 using Pricing.RuleCenter.Application.Rules.Guards;
 using Pricing.RuleCenter.Application.Rules.Publishing;
+using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Application.Catalog;
+using Pricing.RuleCenter.Application.Templates;
 using Pricing.RuleCenter.Application.Trace;
 using Pricing.RuleCenter.Application.Background;
 using Pricing.RuleCenter.Api.Security;
@@ -81,6 +84,25 @@ builder.Services.AddScoped<DisableRuleUseCase>();
 builder.Services.AddScoped<RollbackRuleUseCase>();
 builder.Services.AddScoped<RulePublishAppService>();
 builder.Services.AddScoped<RuleCacheOutboxAppService>();
+builder.Services.AddScoped<TemplateAppService>();
+builder.Services.AddScoped<TemplateVersionAppService>();
+builder.Services.AddScoped<PolicyExpressionGuard>();
+builder.Services.AddScoped<PolicyAppService>();
+builder.Services.AddScoped<PolicyVersionAppService>();
+builder.Services.AddScoped<PolicyPreviewAppService>();
+builder.Services.AddScoped<PolicyPriorityKeyFactory>();
+builder.Services.AddScoped<PolicyValidationService>();
+builder.Services.AddScoped<PolicyConflictService>();
+builder.Services.AddScoped<PolicyPublishProfileResolver>();
+builder.Services.AddScoped<PolicyPublishEligibilityService>();
+builder.Services.AddScoped<PolicyReviewAppService>();
+builder.Services.AddScoped<PolicyPackageDiffService>();
+builder.Services.AddScoped<RuntimeRuleProjectionFactory>();
+builder.Services.AddScoped<RuntimePackageCompiler>();
+builder.Services.AddScoped<RuntimePackageQueryAppService>();
+builder.Services.AddScoped<RuntimePackageActivationService>();
+builder.Services.AddScoped<RuntimePackageRollbackService>();
+builder.Services.AddScoped<RuntimePackagePublishService>();
 builder.Services.AddScoped<PricingAppCalculationDependencies>();
 builder.Services.AddScoped<PricingAppPersistenceRepositories>();
 builder.Services.AddScoped<AuthorityPriceChecker>();
@@ -240,6 +262,7 @@ builder.Services.AddSwaggerGen(options =>
             {
                 "Pricing" => "Application - 计价用例",
                 "RuleHeader" or "RuleVersion" or "RuleCondition" or "RuleAction" or "RuleApproval" or "RulePublish" => "Application - 规则生命周期",
+                "Template" or "Policy" or "RuntimePackage" => "Application - 新规则平台",
                 "Dict" or "FormulaDef" => "Application - 基础配置",
                 "Trace" => "Application - 计价追溯",
                 "Health" => "API - 运维健康检查",

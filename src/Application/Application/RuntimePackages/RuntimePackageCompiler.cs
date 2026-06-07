@@ -6,6 +6,7 @@ using Pricing.RuleCenter.Core.Aggregates.Policies;
 using Pricing.RuleCenter.Core.Aggregates.Runtime;
 using Pricing.RuleCenter.Core.Aggregates.Templates;
 using Pricing.RuleCenter.Core.Constants;
+using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Policies;
 using Pricing.RuleCenter.Core.Interfaces.Runtime;
 using Pricing.RuleCenter.Core.Interfaces.Templates;
@@ -21,6 +22,7 @@ public sealed class RuntimePackageCompiler
     private readonly PolicyValidationService _validationService;
     private readonly PolicyConflictService _conflictService;
     private readonly RuntimeRuleProjectionFactory _projectionFactory;
+    private readonly IClock _clock;
 
     public RuntimePackageCompiler(
         IPolicyRepository policyRepository,
@@ -29,7 +31,8 @@ public sealed class RuntimePackageCompiler
         IRuntimeRuleBuildRepository runtimeRuleBuildRepository,
         PolicyValidationService validationService,
         PolicyConflictService conflictService,
-        RuntimeRuleProjectionFactory projectionFactory)
+        RuntimeRuleProjectionFactory projectionFactory,
+        IClock clock)
     {
         _policyRepository = policyRepository;
         _templateRepository = templateRepository;
@@ -38,11 +41,12 @@ public sealed class RuntimePackageCompiler
         _validationService = validationService;
         _conflictService = conflictService;
         _projectionFactory = projectionFactory;
+        _clock = clock;
     }
 
     public async Task<RuntimePackageBuildResult> CompileAsync(RuntimePackageBuildContext context)
     {
-        var buildAt = context.BuildAt ?? DateTime.UtcNow;
+        var buildAt = context.BuildAt ?? _clock.Now;
         var candidateVersions = await LoadCandidateVersionsAsync(context.PolicyVersionIds);
         var packagePolicies = new List<RuntimePackagePolicy>();
         var projections = new List<RuntimeRuleSnapshot>();

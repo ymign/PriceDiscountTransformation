@@ -17,7 +17,9 @@ using Pricing.RuleCenter.Infrastructure.Repositories.Rules;
 using Pricing.RuleCenter.Infrastructure.Repositories.Charging;
 using Pricing.RuleCenter.Infrastructure.Repositories.Quota;
 using Pricing.RuleCenter.Infrastructure.Repositories.Catalog;
+using Pricing.RuleCenter.Infrastructure.Repositories.Policies;
 using Pricing.RuleCenter.Infrastructure.Repositories.Runtime;
+using Pricing.RuleCenter.Infrastructure.Repositories.Templates;
 
 namespace Pricing.RuleCenter.Infrastructure;
 
@@ -85,6 +87,9 @@ public static class DependencyInjection
         services.AddScoped<IRuntimePackageStateRepository, RuntimePackageStateRepository>();
         services.AddScoped<IRuntimeRuleBuildRepository, RuntimeRuleBuildRepository>();
         services.AddScoped<IRuntimeRuleReadRepository, RuntimeRuleReadRepository>();
+        services.AddScoped<ITemplateRepository, TemplateRepository>();
+        services.AddScoped<IPolicyRepository, PolicyRepository>();
+        services.AddScoped<IPolicyReviewRepository, PolicyReviewRepository>();
 
         // --- 项目分组仓储 ---
         services.AddScoped<IItemGroupRepository, ItemGroupRepository>();

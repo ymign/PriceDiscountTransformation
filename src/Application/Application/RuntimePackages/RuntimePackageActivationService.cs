@@ -37,7 +37,7 @@ public sealed class RuntimePackageActivationService
     public Task<RuntimePackage> ActivateAsync(long packageId, string activatedBy) =>
         SwitchActivePackageAsync(packageId, activatedBy, "ACTIVATE", allowBuiltOnly: true);
 
-    protected internal async Task<RuntimePackage> SwitchActivePackageAsync(
+    internal async Task<RuntimePackage> SwitchActivePackageAsync(
         long packageId,
         string operatedBy,
         string operationType,

@@ -198,7 +198,8 @@ public sealed class RuntimePackagePublishServiceTests
                 buildRepository,
                 validationService,
                 new PolicyConflictService(),
-                new RuntimeRuleProjectionFactory(new PolicyPriorityKeyFactory()));
+                new RuntimeRuleProjectionFactory(new PolicyPriorityKeyFactory()),
+                new FixedClock(new DateTime(2026, 6, 7, 12, 0, 0)));
             var activationService = new RuntimePackageActivationService(
                 packageRepository,
                 stateRepository,
@@ -318,11 +319,20 @@ public sealed class RuntimePackagePublishServiceTests
         public Dictionary<long, IReadOnlyList<PolicyScope>> Scopes { get; } = new();
         public Dictionary<long, IReadOnlyList<PolicyParam>> Parameters { get; } = new();
 
+        public Task<IReadOnlyList<PolicyAggregate>> GetAllAsync() =>
+            Task.FromResult((IReadOnlyList<PolicyAggregate>)Policies.Values.OrderBy(item => item.PolicyCode).ToList());
+
         public Task<PolicyAggregate?> GetByIdAsync(long policyId) =>
             Task.FromResult(Policies.TryGetValue(policyId, out var policy) ? policy : null);
 
         public Task<PolicyAggregate?> GetByCodeAsync(string policyCode) =>
             Task.FromResult(Policies.Values.FirstOrDefault(policy => policy.PolicyCode == policyCode));
+
+        public Task<IReadOnlyList<PolicyVersion>> GetVersionsByPolicyIdAsync(long policyId) =>
+            Task.FromResult((IReadOnlyList<PolicyVersion>)Versions.Values
+                .Where(version => version.PolicyId == policyId)
+                .OrderByDescending(version => version.VersionNo)
+                .ToList());
 
         public Task<PolicyVersion?> GetVersionAsync(long policyVersionId) =>
             Task.FromResult(Versions.TryGetValue(policyVersionId, out var version) ? version : null);
@@ -356,6 +366,30 @@ public sealed class RuntimePackagePublishServiceTests
         public Task UpdateVersionAsync(PolicyVersion entity)
         {
             Versions[entity.PolicyVersionId] = entity;
+            return Task.CompletedTask;
+        }
+
+        public Task<long> InsertVersionAsync(PolicyVersion entity)
+        {
+            Versions[entity.PolicyVersionId] = entity;
+            return Task.FromResult(entity.PolicyVersionId);
+        }
+
+        public Task ReplaceBindingsAsync(long policyVersionId, IReadOnlyList<PolicyBinding> entities)
+        {
+            Bindings[policyVersionId] = entities;
+            return Task.CompletedTask;
+        }
+
+        public Task ReplaceScopesAsync(long policyVersionId, IReadOnlyList<PolicyScope> entities)
+        {
+            Scopes[policyVersionId] = entities;
+            return Task.CompletedTask;
+        }
+
+        public Task ReplaceParamsAsync(long policyVersionId, IReadOnlyList<PolicyParam> entities)
+        {
+            Parameters[policyVersionId] = entities;
             return Task.CompletedTask;
         }
     }
@@ -402,8 +436,16 @@ public sealed class RuntimePackagePublishServiceTests
         public Dictionary<long, IReadOnlyList<TemplateStepDef>> StepDefs { get; } = new();
         public Dictionary<long, IReadOnlyList<TemplateScopeDef>> ScopeDefs { get; } = new();
 
+        public Task<IReadOnlyList<TemplateAggregate>> GetAllAsync() =>
+            Task.FromResult((IReadOnlyList<TemplateAggregate>)Array.Empty<TemplateAggregate>());
+
         public Task<TemplateAggregate?> GetByIdAsync(long templateId) => Task.FromResult<TemplateAggregate?>(null);
         public Task<TemplateAggregate?> GetByCodeAsync(string templateCode) => Task.FromResult<TemplateAggregate?>(null);
+        public Task<IReadOnlyList<TemplateVersion>> GetVersionsByTemplateIdAsync(long templateId) =>
+            Task.FromResult((IReadOnlyList<TemplateVersion>)TemplateVersions.Values
+                .Where(version => version.TemplateId == templateId)
+                .OrderByDescending(version => version.VersionNo)
+                .ToList());
         public Task<TemplateVersion?> GetVersionAsync(long templateVersionId) =>
             Task.FromResult(TemplateVersions.TryGetValue(templateVersionId, out var item) ? item : null);
         public Task<IReadOnlyList<TemplateParamDef>> GetParamDefsAsync(long templateVersionId) =>
@@ -414,6 +456,31 @@ public sealed class RuntimePackagePublishServiceTests
             Task.FromResult(ScopeDefs.TryGetValue(templateVersionId, out var items) ? items : (IReadOnlyList<TemplateScopeDef>)Array.Empty<TemplateScopeDef>());
         public Task<long> InsertAsync(TemplateAggregate entity) => Task.FromResult(0L);
         public Task UpdateAsync(TemplateAggregate entity) => Task.CompletedTask;
+        public Task<long> InsertVersionAsync(TemplateVersion entity)
+        {
+            TemplateVersions[entity.TemplateVersionId] = entity;
+            return Task.FromResult(entity.TemplateVersionId);
+        }
+        public Task UpdateVersionAsync(TemplateVersion entity)
+        {
+            TemplateVersions[entity.TemplateVersionId] = entity;
+            return Task.CompletedTask;
+        }
+        public Task ReplaceParamDefsAsync(long templateVersionId, IReadOnlyList<TemplateParamDef> entities)
+        {
+            ParamDefs[templateVersionId] = entities;
+            return Task.CompletedTask;
+        }
+        public Task ReplaceStepDefsAsync(long templateVersionId, IReadOnlyList<TemplateStepDef> entities)
+        {
+            StepDefs[templateVersionId] = entities;
+            return Task.CompletedTask;
+        }
+        public Task ReplaceScopeDefsAsync(long templateVersionId, IReadOnlyList<TemplateScopeDef> entities)
+        {
+            ScopeDefs[templateVersionId] = entities;
+            return Task.CompletedTask;
+        }
     }
 
     public sealed class InMemoryRuntimePackageRepository : IRuntimePackageRepository

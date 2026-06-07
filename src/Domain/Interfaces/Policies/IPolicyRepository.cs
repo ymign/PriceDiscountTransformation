@@ -4,9 +4,13 @@ namespace Pricing.RuleCenter.Core.Interfaces.Policies;
 
 public interface IPolicyRepository
 {
+    Task<IReadOnlyList<PolicyAggregate>> GetAllAsync();
+
     Task<PolicyAggregate?> GetByIdAsync(long policyId);
 
     Task<PolicyAggregate?> GetByCodeAsync(string policyCode);
+
+    Task<IReadOnlyList<PolicyVersion>> GetVersionsByPolicyIdAsync(long policyId);
 
     Task<PolicyVersion?> GetVersionAsync(long policyVersionId);
 
@@ -22,5 +26,13 @@ public interface IPolicyRepository
 
     Task UpdateAsync(PolicyAggregate entity);
 
+    Task<long> InsertVersionAsync(PolicyVersion entity);
+
     Task UpdateVersionAsync(PolicyVersion entity);
+
+    Task ReplaceBindingsAsync(long policyVersionId, IReadOnlyList<PolicyBinding> entities);
+
+    Task ReplaceScopesAsync(long policyVersionId, IReadOnlyList<PolicyScope> entities);
+
+    Task ReplaceParamsAsync(long policyVersionId, IReadOnlyList<PolicyParam> entities);
 }
