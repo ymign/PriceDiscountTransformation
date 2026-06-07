@@ -28,6 +28,9 @@ using Pricing.RuleCenter.Core.Engine.Executors;
 using Pricing.RuleCenter.Core.Engine.Formula;
 using Pricing.RuleCenter.Core.Engine.RuleRuntimeSnapshot;
 using Pricing.RuleCenter.Core.Interfaces;
+using Pricing.RuleCenter.Core.Interfaces.Catalog;
+using Pricing.RuleCenter.Core.Interfaces.Rules;
+using Pricing.RuleCenter.Core.Interfaces.Runtime;
 using Pricing.RuleCenter.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -191,7 +194,13 @@ builder.Services.AddScoped<IRuleActionExecutor, ExpressionFormulaExecutor>();
 // 引擎核心组件：工厂负责按名称分发执行器，管道负责按优先级串联所有动作执行器。
 builder.Services.AddScoped<ConditionEvaluatorFactory>();
 builder.Services.AddScoped<ActionExecutorFactory>();
-builder.Services.AddScoped<RuleMatchRepositories>();
+builder.Services.AddScoped(provider => new RuleMatchRepositories(
+    provider.GetRequiredService<IRuleHeaderRepository>(),
+    provider.GetRequiredService<IRuleConditionRepository>(),
+    provider.GetRequiredService<IRuleActionRepository>(),
+    provider.GetRequiredService<IDictRepository>(),
+    provider.GetService<IRuntimePackageStateRepository>(),
+    provider.GetService<IRuntimeRuleReadRepository>()));
 builder.Services.AddScoped<EffectiveRuleSnapshotLoader>();
 builder.Services.AddScoped<EffectiveRuleSnapshotCache>();
 builder.Services.AddScoped<RuleMatchService>();

@@ -1,4 +1,5 @@
 using Pricing.RuleCenter.Core.Aggregates.Rules;
+using Pricing.RuleCenter.Application.RuntimePackages;
 
 namespace Pricing.RuleCenter.Core.Engine.RuleRuntimeSnapshot;
 
@@ -8,6 +9,8 @@ namespace Pricing.RuleCenter.Core.Engine.RuleRuntimeSnapshot;
 public sealed class EffectiveRuleSnapshotLoader
 {
     private readonly RuleMatchRepositories _repositories;
+    private readonly ActiveRuntimePackageReader? _runtimePackageReader;
+    private readonly RuntimeRuleProjectionAdapter _runtimeProjectionAdapter = new();
 
     /// <summary>
     /// 初始化运行期生效规则快照加载器。
@@ -15,6 +18,13 @@ public sealed class EffectiveRuleSnapshotLoader
     public EffectiveRuleSnapshotLoader(RuleMatchRepositories repositories)
     {
         _repositories = repositories;
+        if (repositories.RuntimePackageStateRepository is not null &&
+            repositories.RuntimeRuleReadRepository is not null)
+        {
+            _runtimePackageReader = new ActiveRuntimePackageReader(
+                repositories.RuntimePackageStateRepository,
+                repositories.RuntimeRuleReadRepository);
+        }
     }
 
     /// <summary>
@@ -22,6 +32,12 @@ public sealed class EffectiveRuleSnapshotLoader
     /// </summary>
     public async Task<IReadOnlyList<EffectiveRuleSnapshot>> LoadByItemCodeAsync(string itemCode)
     {
+        if (_runtimePackageReader is not null)
+        {
+            var runtimeSnapshots = await _runtimePackageReader.LoadByItemCodeAsync(itemCode);
+            return runtimeSnapshots.Select(_runtimeProjectionAdapter.Adapt).ToList();
+        }
+
         var headers = await _repositories.HeaderRepository.GetByItemCodeAsync(itemCode);
         if (headers.Count == 0)
         {

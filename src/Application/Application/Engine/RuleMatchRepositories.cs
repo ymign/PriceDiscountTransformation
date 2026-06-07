@@ -1,6 +1,7 @@
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
 using Pricing.RuleCenter.Core.Interfaces.Catalog;
+using Pricing.RuleCenter.Core.Interfaces.Runtime;
 
 namespace Pricing.RuleCenter.Core.Engine;
 
@@ -26,11 +27,33 @@ public sealed class RuleMatchRepositories
         IRuleConditionRepository conditionRepository,
         IRuleActionRepository actionRepository,
         IDictRepository dictRepository)
+        : this(
+            headerRepository,
+            conditionRepository,
+            actionRepository,
+            dictRepository,
+            null,
+            null)
+    {
+    }
+
+    /// <summary>
+    /// 初始化规则匹配仓储集合，并可选附带新的运行时包读取依赖。
+    /// </summary>
+    public RuleMatchRepositories(
+        IRuleHeaderRepository headerRepository,
+        IRuleConditionRepository conditionRepository,
+        IRuleActionRepository actionRepository,
+        IDictRepository dictRepository,
+        IRuntimePackageStateRepository? runtimePackageStateRepository,
+        IRuntimeRuleReadRepository? runtimeRuleReadRepository)
     {
         HeaderRepository = headerRepository;
         ConditionRepository = conditionRepository;
         ActionRepository = actionRepository;
         DictRepository = dictRepository;
+        RuntimePackageStateRepository = runtimePackageStateRepository;
+        RuntimeRuleReadRepository = runtimeRuleReadRepository;
     }
 
     /// <summary>
@@ -52,4 +75,14 @@ public sealed class RuleMatchRepositories
     /// 字典仓储，用于读取动作执行顺序配置。
     /// </summary>
     public IDictRepository DictRepository { get; }
+
+    /// <summary>
+    /// 运行时包活动指针仓储。存在时优先走新运行时读模型。
+    /// </summary>
+    public IRuntimePackageStateRepository? RuntimePackageStateRepository { get; }
+
+    /// <summary>
+    /// 运行时规则读仓储。存在时优先走新运行时读模型。
+    /// </summary>
+    public IRuntimeRuleReadRepository? RuntimeRuleReadRepository { get; }
 }
