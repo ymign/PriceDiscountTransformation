@@ -59,7 +59,6 @@ public sealed class RuleConflictDetector
             return;
         }
 
-        var targetProfile = await BuildRuleProfileAsync(targetHeader, targetVersionNo);
         var sameItemRules = await _headerRepository.GetByItemCodeAsync(targetHeader.ItemCode);
         var publishedRules = sameItemRules
             .Where(r => r.RuleId != targetHeader.RuleId)
@@ -67,9 +66,15 @@ public sealed class RuleConflictDetector
             .Where(r => IsEffectiveRangeOverlap(targetHeader, r))
             .ToList();
 
+        var profiles = await BuildRuleProfilesAsync(
+            new[] { (Header: targetHeader, VersionNo: targetVersionNo) }
+                .Concat(publishedRules.Select(rule => (Header: rule, VersionNo: rule.CurrentVersion)))
+                .ToArray());
+        var targetProfile = profiles[(targetHeader.RuleId, targetVersionNo)];
+
         foreach (var existingRule in publishedRules)
         {
-            var existingProfile = await BuildRuleProfileAsync(existingRule, existingRule.CurrentVersion);
+            var existingProfile = profiles[(existingRule.RuleId, existingRule.CurrentVersion)];
             if (!HasSceneOverlap(targetProfile.ConditionScopes, existingProfile.ConditionScopes))
             {
                 continue;
@@ -116,6 +121,39 @@ public sealed class RuleConflictDetector
                 .Select(a => a.ActionType)
                 .Where(a => !string.IsNullOrWhiteSpace(a))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase));
+    }
+
+    private async Task<IReadOnlyDictionary<(long RuleId, int VersionNo), RuleConflictProfile>> BuildRuleProfilesAsync(
+        IReadOnlyCollection<(RuleAggregate Header, int VersionNo)> ruleVersions)
+    {
+        var keys = ruleVersions
+            .Select(item => (item.Header.RuleId, item.VersionNo))
+            .Distinct()
+            .ToArray();
+        var conditionsByRuleVersion = await _conditionRepository.GetByRuleVersionsAsync(keys);
+        var actionsByRuleVersion = await _actionRepository.GetByRuleVersionsAsync(keys);
+
+        var result = new Dictionary<(long RuleId, int VersionNo), RuleConflictProfile>();
+        foreach (var ruleVersion in ruleVersions)
+        {
+            var key = (ruleVersion.Header.RuleId, ruleVersion.VersionNo);
+            var conditions = conditionsByRuleVersion.TryGetValue(key, out var conditionItems)
+                ? conditionItems
+                : Array.Empty<RuleCondition>();
+            var actions = actionsByRuleVersion.TryGetValue(key, out var actionItems)
+                ? actionItems
+                : Array.Empty<RuleAction>();
+
+            result[key] = new RuleConflictProfile(
+                BuildConditionScopes(conditions),
+                actions
+                    .Where(action => action.IsEnabled == EnableFlag.Yes)
+                    .Select(action => action.ActionType)
+                    .Where(actionType => !string.IsNullOrWhiteSpace(actionType))
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase));
+        }
+
+        return result;
     }
 
     private static IReadOnlyList<RuleConditionScope> BuildConditionScopes(

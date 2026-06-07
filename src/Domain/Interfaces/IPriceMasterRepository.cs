@@ -32,4 +32,29 @@ public interface IPriceMasterRepository
     /// <param name="itemCode">项目编码（与 HIS 物价项目编码一致）。</param>
     /// <returns>项目权威单价（decimal），项目不存在时返回 null。</returns>
     Task<decimal?> GetUnitPriceAsync(string itemCode);
+
+    /// <summary>
+    /// 批量查询多个项目的权威单价。
+    ///
+    /// 使用场景：批量试算、批量确认或权威单价校验时，避免对每条明细逐个访问数据库。
+    /// 默认实现为了兼容旧测试桩，会退回逐条调用 <see cref="GetUnitPriceAsync(string)"/>；
+    /// 生产仓储应覆盖为单次批量查询实现。
+    /// </summary>
+    /// <param name="itemCodes">项目编码集合。</param>
+    /// <returns>以项目编码为键的单价字典；项目不存在时值为 null。</returns>
+    async Task<IReadOnlyDictionary<string, decimal?>> GetUnitPricesAsync(IReadOnlyCollection<string> itemCodes)
+    {
+        var result = new Dictionary<string, decimal?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var itemCode in itemCodes)
+        {
+            if (string.IsNullOrWhiteSpace(itemCode) || result.ContainsKey(itemCode))
+            {
+                continue;
+            }
+
+            result[itemCode] = await GetUnitPriceAsync(itemCode);
+        }
+
+        return result;
+    }
 }

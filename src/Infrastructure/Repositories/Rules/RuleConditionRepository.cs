@@ -85,6 +85,45 @@ public sealed class RuleConditionRepository : IRuleConditionRepository
             .ToListAsync();
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<(long RuleId, int VersionNo), IReadOnlyList<RuleCondition>>> GetByRuleVersionsAsync(
+        IReadOnlyCollection<(long RuleId, int VersionNo)> ruleVersions)
+    {
+        if (ruleVersions.Count == 0)
+        {
+            return new Dictionary<(long RuleId, int VersionNo), IReadOnlyList<RuleCondition>>();
+        }
+
+        var keys = ruleVersions.Distinct().ToArray();
+        var keySet = keys.ToHashSet();
+        var ruleIds = keys.Select(item => item.RuleId).Distinct().ToArray();
+        var versionNos = keys.Select(item => item.VersionNo).Distinct().ToArray();
+
+        var items = await _db.Queryable<RuleCondition>()
+            .Where(c => ruleIds.Contains(c.RuleId) && versionNos.Contains(c.VersionNo) && c.IsEnabled == "Y")
+            .ToListAsync();
+
+        var grouped = items
+            .Where(item => keySet.Contains((item.RuleId, item.VersionNo)))
+            .GroupBy(item => (item.RuleId, item.VersionNo))
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<RuleCondition>)group
+                    .OrderBy(item => item.ConditionGroup)
+                    .ThenBy(item => item.SortNo)
+                    .ToList());
+
+        var result = new Dictionary<(long RuleId, int VersionNo), IReadOnlyList<RuleCondition>>();
+        foreach (var key in keys)
+        {
+            result[key] = grouped.TryGetValue(key, out var conditions)
+                ? conditions
+                : Array.Empty<RuleCondition>();
+        }
+
+        return result;
+    }
+
     /// <summary>
     /// 批量插入规则条件。
     /// </summary>

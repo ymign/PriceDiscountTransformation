@@ -41,10 +41,12 @@ public sealed class AuthorityPriceChecker
             return;
         }
 
+        var authorityPrices = await _priceMasterRepository.GetUnitPricesAsync(
+            items.Select(item => item.ItemCode).ToArray());
+
         foreach (var item in items)
         {
-            var authorityPrice = await _priceMasterRepository.GetUnitPriceAsync(item.ItemCode);
-            if (!authorityPrice.HasValue)
+            if (!authorityPrices.TryGetValue(item.ItemCode, out var authorityPrice) || !authorityPrice.HasValue)
             {
                 _logger.LogWarning(
                     "权威单价校验失败: 未找到项目权威单价 ItemCode={ItemCode}",

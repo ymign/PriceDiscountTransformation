@@ -78,6 +78,44 @@ public sealed class RuleActionRepository : IRuleActionRepository
             .ToListAsync();
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<(long RuleId, int VersionNo), IReadOnlyList<RuleAction>>> GetByRuleVersionsAsync(
+        IReadOnlyCollection<(long RuleId, int VersionNo)> ruleVersions)
+    {
+        if (ruleVersions.Count == 0)
+        {
+            return new Dictionary<(long RuleId, int VersionNo), IReadOnlyList<RuleAction>>();
+        }
+
+        var keys = ruleVersions.Distinct().ToArray();
+        var keySet = keys.ToHashSet();
+        var ruleIds = keys.Select(item => item.RuleId).Distinct().ToArray();
+        var versionNos = keys.Select(item => item.VersionNo).Distinct().ToArray();
+
+        var items = await _db.Queryable<RuleAction>()
+            .Where(a => ruleIds.Contains(a.RuleId) && versionNos.Contains(a.VersionNo) && a.IsEnabled == "Y")
+            .ToListAsync();
+
+        var grouped = items
+            .Where(item => keySet.Contains((item.RuleId, item.VersionNo)))
+            .GroupBy(item => (item.RuleId, item.VersionNo))
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<RuleAction>)group
+                    .OrderBy(item => item.SortNo)
+                    .ToList());
+
+        var result = new Dictionary<(long RuleId, int VersionNo), IReadOnlyList<RuleAction>>();
+        foreach (var key in keys)
+        {
+            result[key] = grouped.TryGetValue(key, out var actions)
+                ? actions
+                : Array.Empty<RuleAction>();
+        }
+
+        return result;
+    }
+
     /// <summary>
     /// 批量插入规则动作。
     /// </summary>

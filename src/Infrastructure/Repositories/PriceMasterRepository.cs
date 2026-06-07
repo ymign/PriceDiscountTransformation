@@ -77,4 +77,35 @@ public sealed class PriceMasterRepository : IPriceMasterRepository
             .FirstAsync(p => p.ItemCode == itemCode);
         return item?.UnitPrice;
     }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<string, decimal?>> GetUnitPricesAsync(IReadOnlyCollection<string> itemCodes)
+    {
+        var normalizedCodes = itemCodes
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .Select(code => code.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (normalizedCodes.Length == 0)
+        {
+            return new Dictionary<string, decimal?>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var items = await _db.Queryable<PriceMasterItem>()
+            .Where(item => normalizedCodes.Contains(item.ItemCode))
+            .ToListAsync();
+
+        var result = normalizedCodes.ToDictionary(
+            code => code,
+            _ => (decimal?)null,
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var group in items.GroupBy(item => item.ItemCode, StringComparer.OrdinalIgnoreCase))
+        {
+            result[group.Key] = group.First().UnitPrice;
+        }
+
+        return result;
+    }
 }

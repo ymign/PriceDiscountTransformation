@@ -38,6 +38,35 @@ public interface IRuleConditionRepository
     Task<IReadOnlyList<RuleCondition>> GetByRuleAndVersionAsync(long ruleId, int versionNo);
 
     /// <summary>
+    /// 批量查询多个规则版本的条件配置。
+    ///
+    /// 使用场景：
+    /// - 生效规则快照批量加载
+    /// - 发布冲突检测批量构建规则 profile
+    ///
+    /// 默认实现退回逐条调用 <see cref="GetByRuleAndVersionAsync(long, int)"/>，
+    /// 以兼容旧测试桩；生产仓储应覆盖为真正的批量数据库查询。
+    /// </summary>
+    /// <param name="ruleVersions">规则ID与版本号键集合。</param>
+    /// <returns>以 (RuleId, VersionNo) 为键的条件集合字典。</returns>
+    async Task<IReadOnlyDictionary<(long RuleId, int VersionNo), IReadOnlyList<RuleCondition>>> GetByRuleVersionsAsync(
+        IReadOnlyCollection<(long RuleId, int VersionNo)> ruleVersions)
+    {
+        var result = new Dictionary<(long RuleId, int VersionNo), IReadOnlyList<RuleCondition>>();
+        foreach (var ruleVersion in ruleVersions)
+        {
+            if (result.ContainsKey(ruleVersion))
+            {
+                continue;
+            }
+
+            result[ruleVersion] = await GetByRuleAndVersionAsync(ruleVersion.RuleId, ruleVersion.VersionNo);
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// 批量插入条件配置记录。
     ///
     /// 使用场景：规则版本保存/发布时，先删除旧条件，再批量插入新条件。

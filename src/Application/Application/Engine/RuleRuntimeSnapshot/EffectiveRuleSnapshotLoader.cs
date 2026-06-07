@@ -1,3 +1,5 @@
+using Pricing.RuleCenter.Core.Aggregates.Rules;
+
 namespace Pricing.RuleCenter.Core.Engine.RuleRuntimeSnapshot;
 
 /// <summary>
@@ -21,16 +23,28 @@ public sealed class EffectiveRuleSnapshotLoader
     public async Task<IReadOnlyList<EffectiveRuleSnapshot>> LoadByItemCodeAsync(string itemCode)
     {
         var headers = await _repositories.HeaderRepository.GetByItemCodeAsync(itemCode);
+        if (headers.Count == 0)
+        {
+            return Array.Empty<EffectiveRuleSnapshot>();
+        }
+
+        var ruleVersions = headers
+            .Select(header => (header.RuleId, header.CurrentVersion))
+            .Distinct()
+            .ToArray();
+        var conditionsByRuleVersion = await _repositories.ConditionRepository.GetByRuleVersionsAsync(ruleVersions);
+        var actionsByRuleVersion = await _repositories.ActionRepository.GetByRuleVersionsAsync(ruleVersions);
         var snapshots = new List<EffectiveRuleSnapshot>(headers.Count);
 
         foreach (var header in headers)
         {
-            var conditions = await _repositories.ConditionRepository.GetByRuleAndVersionAsync(
-                header.RuleId,
-                header.CurrentVersion);
-            var actions = await _repositories.ActionRepository.GetByRuleAndVersionAsync(
-                header.RuleId,
-                header.CurrentVersion);
+            var key = (header.RuleId, header.CurrentVersion);
+            IReadOnlyList<RuleCondition> conditions = conditionsByRuleVersion.TryGetValue(key, out var conditionItems)
+                ? conditionItems
+                : Array.Empty<RuleCondition>();
+            IReadOnlyList<RuleAction> actions = actionsByRuleVersion.TryGetValue(key, out var actionItems)
+                ? actionItems
+                : Array.Empty<RuleAction>();
 
             snapshots.Add(new EffectiveRuleSnapshot
             {
