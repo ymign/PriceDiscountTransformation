@@ -18,6 +18,11 @@ public interface IRuleCacheInvalidationOutboxRepository
     Task<IReadOnlyList<RuleCacheInvalidationOutbox>> GetPendingAsync(DateTime now, int maxCount);
 
     /// <summary>
+    /// 读取用于运维视图展示的缓存失效任务汇总。
+    /// </summary>
+    Task<IReadOnlyList<RuleCacheInvalidationOutbox>> GetForDashboardAsync(int maxFailedCount);
+
+    /// <summary>
     /// 标记任务已处理。
     /// </summary>
     Task<bool> MarkProcessedAsync(long outboxId, DateTime processedAt);

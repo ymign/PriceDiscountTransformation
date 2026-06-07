@@ -41,6 +41,17 @@ public sealed class RuleCacheInvalidationOutboxRepository : IRuleCacheInvalidati
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<RuleCacheInvalidationOutbox>> GetForDashboardAsync(int maxFailedCount)
+    {
+        return await _db.Queryable<RuleCacheInvalidationOutbox>()
+            .Where(item => item.Status != CacheInvalidationOutboxStatusCodes.Processed)
+            .OrderBy(item => item.Status)
+            .OrderBy(item => item.CreatedAt)
+            .Take(maxFailedCount)
+            .ToListAsync();
+    }
+
+    /// <inheritdoc />
     public async Task<bool> MarkProcessedAsync(long outboxId, DateTime processedAt)
     {
         return await _db.Updateable<RuleCacheInvalidationOutbox>()

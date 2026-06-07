@@ -54,14 +54,19 @@ public sealed class RulePublishController : ControllerBase
     /// 规则发布应用服务实例，封装发布/停用/回滚的状态机逻辑和缓存失效处理。
     /// </summary>
     private readonly RulePublishAppService _service;
+    private readonly RuleCacheOutboxAppService _outboxService;
 
     /// <summary>
     /// 构造函数，通过依赖注入获取规则发布应用服务。
     /// </summary>
     /// <param name="service">规则发布应用服务（<see cref="RulePublishAppService"/>）。</param>
-    public RulePublishController(RulePublishAppService service)
+    /// <param name="outboxService">缓存失效 outbox 运维查询服务。</param>
+    public RulePublishController(
+        RulePublishAppService service,
+        RuleCacheOutboxAppService outboxService)
     {
         _service = service;
+        _outboxService = outboxService;
     }
 
     /// <summary>
@@ -108,6 +113,17 @@ public sealed class RulePublishController : ControllerBase
     {
         var items = await _service.GetChangeLogsAsync(ruleId);
         return ApiResult<IReadOnlyList<RuleChangeLogResponse>>.Ok(items);
+    }
+
+    /// <summary>
+    /// 【查询缓存失效 outbox 运维汇总】— 返回待处理/失败重试任务摘要。
+    /// </summary>
+    [HttpGet("/api/pricing/ops/cache-outbox")]
+    public async Task<ApiResult<RuleCacheOutboxSummaryResponse>> GetCacheOutboxSummaryAsync(
+        [FromQuery] int maxFailedCount = 20)
+    {
+        var result = await _outboxService.GetSummaryAsync(maxFailedCount);
+        return ApiResult<RuleCacheOutboxSummaryResponse>.Ok(result);
     }
 
     /// <summary>

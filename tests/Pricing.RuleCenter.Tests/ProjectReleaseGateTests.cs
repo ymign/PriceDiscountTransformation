@@ -43,6 +43,43 @@ public sealed class ProjectReleaseGateTests
     }
 
     [Fact]
+    public void Projects_ShouldNotReferenceMicrosoftExtensions6xWhenTargetingNet8()
+    {
+        var root = FindRepositoryRoot();
+        var projectFiles = new[]
+        {
+            Path.Combine(root, "src", "Application", "Pricing.RuleCenter.Application.csproj"),
+            Path.Combine(root, "src", "Infrastructure", "Pricing.RuleCenter.Infrastructure.csproj")
+        };
+
+        var failures = new List<string>();
+        foreach (var projectFile in projectFiles)
+        {
+            var document = XDocument.Load(projectFile);
+            var packageReferences = document
+                .Descendants("PackageReference")
+                .Select(element => new
+                {
+                    Include = element.Attribute("Include")?.Value,
+                    Version = element.Attribute("Version")?.Value
+                })
+                .Where(item => !string.IsNullOrWhiteSpace(item.Include) && !string.IsNullOrWhiteSpace(item.Version))
+                .ToArray();
+
+            foreach (var package in packageReferences)
+            {
+                if (package.Include!.StartsWith("Microsoft.Extensions.", StringComparison.OrdinalIgnoreCase) &&
+                    package.Version!.StartsWith("6.", StringComparison.OrdinalIgnoreCase))
+                {
+                    failures.Add($"{projectFile} still references {package.Include} {package.Version}");
+                }
+            }
+        }
+
+        Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
+    }
+
+    [Fact]
     public void Repository_ShouldContainWindowsFriendlyReleaseWorkflowAndSqlValidationScript()
     {
         var root = FindRepositoryRoot();

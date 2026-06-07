@@ -1722,6 +1722,11 @@ public sealed class RulePublishConflictTests
             return Task.FromResult((IReadOnlyList<RuleCacheInvalidationOutbox>)items);
         }
 
+        public Task<IReadOnlyList<RuleCacheInvalidationOutbox>> GetForDashboardAsync(int maxFailedCount)
+        {
+            return Task.FromResult((IReadOnlyList<RuleCacheInvalidationOutbox>)Items.ToList());
+        }
+
         public Task<bool> MarkProcessedAsync(long outboxId, DateTime processedAt)
         {
             var item = Items.Single(i => i.OutboxId == outboxId);

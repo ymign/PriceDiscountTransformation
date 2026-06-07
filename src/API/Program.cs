@@ -77,6 +77,7 @@ builder.Services.AddScoped<PublishRuleUseCase>();
 builder.Services.AddScoped<DisableRuleUseCase>();
 builder.Services.AddScoped<RollbackRuleUseCase>();
 builder.Services.AddScoped<RulePublishAppService>();
+builder.Services.AddScoped<RuleCacheOutboxAppService>();
 builder.Services.AddScoped<PricingAppCalculationDependencies>();
 builder.Services.AddScoped<PricingAppPersistenceRepositories>();
 builder.Services.AddScoped<AuthorityPriceChecker>();
