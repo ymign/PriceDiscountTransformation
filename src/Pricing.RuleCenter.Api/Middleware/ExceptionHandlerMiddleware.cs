@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Pricing.RuleCenter.Application.Dto;
+using Pricing.RuleCenter.Api.Serialization;
 
 namespace Pricing.RuleCenter.Api.Middleware;
 
@@ -49,9 +50,6 @@ public sealed class ExceptionHandlerMiddleware
         context.Response.ContentType = "application/json; charset=utf-8";
 
         var result = ApiResult.Fail(mapping.Code, mapping.Message, traceId, mapping.Errors);
-        await context.Response.WriteAsync(JsonSerializer.Serialize(result, new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-        }));
+        await context.Response.WriteAsync(JsonSerializer.Serialize(result, ApiJsonSerializerOptions.Create()));
     }
 }

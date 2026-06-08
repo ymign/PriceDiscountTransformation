@@ -1,11 +1,17 @@
 using System.Net;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using Pricing.RuleCenter.Api.Controllers;
+using Pricing.RuleCenter.Api.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
+using Pricing.RuleCenter.Application.Dto;
 using Xunit;
 
 namespace Pricing.RuleCenter.Tests;
@@ -76,6 +82,8 @@ public sealed class ApiDocumentationIntegrationTests
         Assert.Equal(0, root.GetProperty("code").GetInt32());
         Assert.Equal("healthy", root.GetProperty("message").GetString());
         Assert.Equal("Healthy", root.GetProperty("data").GetProperty("status").GetString());
+        Assert.True(root.GetProperty("data").TryGetProperty("total_duration_ms", out _));
+        Assert.False(root.GetProperty("data").TryGetProperty("totalDurationMs", out _));
         Assert.True(root.GetProperty("data").GetProperty("checks").TryGetProperty("self", out _));
     }
 
@@ -95,11 +103,112 @@ public sealed class ApiDocumentationIntegrationTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var data = document.RootElement.GetProperty("data");
-        Assert.Equal("abc1234", data.GetProperty("buildCommit").GetString());
-        Assert.Equal("main", data.GetProperty("buildBranch").GetString());
-        Assert.Equal("2026-06-07T10:00:00Z", data.GetProperty("buildTimeUtc").GetString());
-        Assert.False(string.IsNullOrWhiteSpace(data.GetProperty("serviceVersion").GetString()));
-        Assert.Equal("1.0", data.GetProperty("protocolVersion").GetString());
+        Assert.Equal("abc1234", data.GetProperty("build_commit").GetString());
+        Assert.Equal("main", data.GetProperty("build_branch").GetString());
+        Assert.Equal("2026-06-07T10:00:00Z", data.GetProperty("build_time_utc").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(data.GetProperty("service_version").GetString()));
+        Assert.Equal("1.0", data.GetProperty("protocol_version").GetString());
+        Assert.False(data.TryGetProperty("buildCommit", out _));
+    }
+
+    [Fact]
+    public void ApiJsonOptions_CanDeserializeSnakeCasePricingRequest()
+    {
+        using var factory = new PricingRuleCenterWebApplicationFactory(new Dictionary<string, string?>());
+        var jsonOptions = factory.Services
+            .GetRequiredService<IOptions<JsonOptions>>()
+            .Value
+            .JsonSerializerOptions;
+
+        var request = JsonSerializer.Deserialize<PricingCalculateRequest>(
+            """
+            {
+              "source_system": "HIS",
+              "patient_id": "P001",
+              "business_request_no": "BR202606080001",
+              "business_charge_time": "2026-06-08T10:00:00",
+              "items": [
+                {
+                  "item_code": "FW001",
+                  "input_qty": 2,
+                  "unit_price": 12.34,
+                  "pricing_parts": [
+                    {
+                      "part_seq": 1,
+                      "body_part_code": "HEAD",
+                      "measure_value": 1.5
+                    }
+                  ]
+                }
+              ]
+            }
+            """,
+            jsonOptions);
+
+        Assert.NotNull(request);
+        Assert.Equal("HIS", request!.SourceSystem);
+        Assert.Equal("BR202606080001", request.BusinessRequestNo);
+        Assert.Equal("FW001", request.Items[0].ItemCode);
+        Assert.Equal(12.34m, request.Items[0].UnitPrice);
+        Assert.Equal("HEAD", request.Items[0].PricingParts![0].BodyPartCode);
+    }
+
+    [Fact]
+    public void PublicApiDtos_DeclareExplicitSnakeCaseJsonNames()
+    {
+        AssertJsonName<PricingCalculateRequest>(nameof(PricingCalculateRequest.BusinessRequestNo), "business_request_no");
+        AssertJsonName<PricingCalculateItemRequest>(nameof(PricingCalculateItemRequest.ItemCode), "item_code");
+        AssertJsonName<PricingPartItemRequest>(nameof(PricingPartItemRequest.BodyPartCode), "body_part_code");
+        AssertJsonName<RuleCacheOutboxSummaryResponse>(nameof(RuleCacheOutboxSummaryResponse.PendingCount), "pending_count");
+        AssertJsonName<HealthVersionResult>(nameof(HealthVersionResult.BuildCommit), "build_commit");
+        AssertJsonName<HealthCheckSummary>(nameof(HealthCheckSummary.TotalDurationMs), "total_duration_ms");
+    }
+
+    [Fact]
+    public async Task SwaggerJson_UsesSnakeCaseSchemaPropertyNames()
+    {
+        await using var factory = new PricingRuleCenterWebApplicationFactory(new Dictionary<string, string?>
+        {
+            ["Swagger:Enabled"] = "true"
+        });
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/swagger/v1/swagger.json");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var schemas = document.RootElement.GetProperty("components").GetProperty("schemas");
+
+        var requestProperties = schemas
+            .GetProperty(nameof(PricingCalculateRequest))
+            .GetProperty("properties");
+        Assert.True(requestProperties.TryGetProperty("source_system", out _));
+        Assert.True(requestProperties.TryGetProperty("business_request_no", out _));
+        Assert.False(requestProperties.TryGetProperty("sourceSystem", out _));
+
+        var itemProperties = schemas
+            .GetProperty(nameof(PricingCalculateItemRequest))
+            .GetProperty("properties");
+        Assert.True(itemProperties.TryGetProperty("item_code", out _));
+        Assert.True(itemProperties.TryGetProperty("input_qty", out _));
+        Assert.False(itemProperties.TryGetProperty("itemCode", out _));
+
+        var specialFlagPath = document.RootElement
+            .GetProperty("paths")
+            .EnumerateObject()
+            .FirstOrDefault(item => item.Name.EndsWith("/special-flag", StringComparison.OrdinalIgnoreCase));
+        Assert.NotEqual(default, specialFlagPath);
+
+        var parameterNames = specialFlagPath.Value
+            .GetProperty("get")
+            .GetProperty("parameters")
+            .EnumerateArray()
+            .Where(parameter => parameter.GetProperty("in").GetString() == "query")
+            .Select(parameter => parameter.GetProperty("name").GetString())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("charge_scene", parameterNames);
+        Assert.Contains("business_charge_time", parameterNames);
+        Assert.DoesNotContain("chargeScene", parameterNames);
     }
 
     /// <summary>
@@ -185,6 +294,18 @@ public sealed class ApiDocumentationIntegrationTests
                 }
             });
         }
+    }
+
+    private static void AssertJsonName<T>(string propertyName, string expectedJsonName)
+    {
+        var property = typeof(T).GetProperty(propertyName);
+        Assert.NotNull(property);
+
+        var attribute = property!.GetCustomAttributes(typeof(JsonPropertyNameAttribute), inherit: false)
+            .Cast<JsonPropertyNameAttribute>()
+            .SingleOrDefault();
+        Assert.NotNull(attribute);
+        Assert.Equal(expectedJsonName, attribute!.Name);
     }
 
     private sealed class HealthyTestHealthCheck : IHealthCheck

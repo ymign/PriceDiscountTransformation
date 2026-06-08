@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Core.Interfaces;
 using SqlSugar;
+using System.Text.Json.Serialization;
 
 namespace Pricing.RuleCenter.Api.Controllers;
 
@@ -176,40 +177,47 @@ public sealed class HealthResult
     /// <summary>
     /// 数据库连接状态说明。成功时为 "connected"，失败时为 "error: {异常消息}"。
     /// </summary>
+    [JsonPropertyName("database")]
     public string Database { get; set; } = "unknown";
 
     /// <summary>
     /// PR_DICT 表是否可访问。true 表示表存在且可查询，false 表示查询失败。
     /// PR_DICT 是核心基础字典表，不可访问意味着大部分计价功能将异常。
     /// </summary>
+    [JsonPropertyName("dict_table_ready")]
     public bool DictTableReady { get; set; }
 
     /// <summary>
     /// PR_RULE_HEADER 表是否可访问。true 表示规则配置表正常，false 表示规则相关功能可能降级。
     /// </summary>
+    [JsonPropertyName("rule_header_ready")]
     public bool RuleHeaderReady { get; set; }
 
     /// <summary>
     /// 服务已运行的秒数。由当前时间减去进程启动时间计算。
     /// 用于排查服务是否意外重启（如运行时长远小于预期）。
     /// </summary>
+    [JsonPropertyName("uptime_seconds")]
     public double UptimeSeconds { get; init; }
 
     /// <summary>
     /// 生成健康检查结果时的服务端时间（只读）。
     /// 用于排查跨时区问题或服务端时钟偏移。
     /// </summary>
+    [JsonPropertyName("server_time")]
     public DateTime ServerTime { get; init; }
 
     /// <summary>
     /// 服务端程序版本。默认读取当前 API 程序集版本，供客户端诊断窗口展示。
     /// </summary>
+    [JsonPropertyName("service_version")]
     public string ServiceVersion { get; init; } =
         typeof(HealthResult).Assembly.GetName().Version?.ToString() ?? "unknown";
 
     /// <summary>
     /// 计价接口协议版本。PricingAgent SDK 会用该字段判断 DLL 与服务端是否兼容。
     /// </summary>
+    [JsonPropertyName("protocol_version")]
     public string ProtocolVersion { get; init; } = PricingProtocolVersion;
 }
 
@@ -221,25 +229,30 @@ public sealed class HealthVersionResult
     /// <summary>
     /// 服务端程序版本。
     /// </summary>
+    [JsonPropertyName("service_version")]
     public string ServiceVersion { get; init; } = "unknown";
 
     /// <summary>
     /// 协议版本。
     /// </summary>
+    [JsonPropertyName("protocol_version")]
     public string ProtocolVersion { get; init; } = "1.0";
 
     /// <summary>
     /// 当前部署构建的提交号。
     /// </summary>
+    [JsonPropertyName("build_commit")]
     public string? BuildCommit { get; init; }
 
     /// <summary>
     /// 当前部署构建的分支名。
     /// </summary>
+    [JsonPropertyName("build_branch")]
     public string? BuildBranch { get; init; }
 
     /// <summary>
     /// 当前部署构建时间（UTC）。
     /// </summary>
+    [JsonPropertyName("build_time_utc")]
     public string? BuildTimeUtc { get; init; }
 }

@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Pricing.RuleCenter.Application.Dto;
 
 /// <summary>
@@ -27,11 +29,13 @@ public sealed class RuleVersionResponse
     /// <summary>
     /// 规则版本主键，对应 PR_RULE_VERSION.VERSION_ID，由序列 PR_RULE_VERSION_SEQ 生成。
     /// </summary>
+    [JsonPropertyName("version_id")]
     public long VersionId { get; init; }
 
     /// <summary>
     /// 规则主键，关联 PR_RULE_HEADER.RULE_ID。
     /// </summary>
+    [JsonPropertyName("rule_id")]
     public long RuleId { get; init; }
 
     /// <summary>
@@ -39,6 +43,7 @@ public sealed class RuleVersionResponse
     /// 版本号与 PR_RULE_CONDITION.VERSION_NO 和 PR_RULE_ACTION.VERSION_NO 对齐，
     /// 确保同一版本的条件和动作能正确关联。
     /// </summary>
+    [JsonPropertyName("version_no")]
     public int VersionNo { get; init; }
 
     /// <summary>
@@ -47,18 +52,21 @@ public sealed class RuleVersionResponse
     /// DISABLED（已停用，规则整体停用时关联版本置为此状态）、
     /// ROLLED_BACK（已回滚，被回滚操作替换的版本）。
     /// </summary>
+    [JsonPropertyName("version_status")]
     public string VersionStatus { get; init; } = string.Empty;
 
     /// <summary>
     /// 版本生效开始时间。为 null 表示不限制生效起始时间。
     /// 与规则头的 EffectiveFrom 配合，计价引擎取两者中较晚的时间作为实际生效起始。
     /// </summary>
+    [JsonPropertyName("effective_from")]
     public DateTime? EffectiveFrom { get; init; }
 
     /// <summary>
     /// 版本生效结束时间。为 null 表示未设失效时间（永久生效）。
     /// 与规则头的 EffectiveTo 配合，计价引擎取两者中较早的时间作为实际生效截止。
     /// </summary>
+    [JsonPropertyName("effective_to")]
     public DateTime? EffectiveTo { get; init; }
 
     /// <summary>
@@ -67,24 +75,28 @@ public sealed class RuleVersionResponse
     /// 用于历史计价追溯：即使规则后续被修改或停用，仍可通过快照还原当时生效的配置。
     /// DRAFT 状态的版本此字段为 null。
     /// </summary>
+    [JsonPropertyName("rule_snapshot")]
     public string? RuleSnapshot { get; init; }
 
     /// <summary>
     /// 最后一次生命周期操作的操作人（发布人、停用人或回滚人）。
     /// DRAFT 状态的版本此字段为 null。
     /// </summary>
+    [JsonPropertyName("published_by")]
     public string? PublishedBy { get; init; }
 
     /// <summary>
     /// 最后一次生命周期操作的发生时间。
     /// DRAFT 状态的版本此字段为 null。
     /// </summary>
+    [JsonPropertyName("published_at")]
     public DateTime? PublishedAt { get; init; }
 
     /// <summary>
     /// 发布说明或审批备注，记录发布原因、审批意见或变更说明。
     /// 用于审计追溯和问题排查。
     /// </summary>
+    [JsonPropertyName("publish_remark")]
     public string? PublishRemark { get; init; }
 }
 

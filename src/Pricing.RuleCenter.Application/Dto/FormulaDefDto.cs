@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace Pricing.RuleCenter.Application.Dto;
 
@@ -28,6 +29,7 @@ public sealed class FormulaDefResponse
     /// <summary>
     /// 公式定义主键，对应 PR_FORMULA_DEF.FORMULA_ID，由序列 PR_FORMULA_DEF_SEQ 生成。
     /// </summary>
+    [JsonPropertyName("formula_id")]
     public long FormulaId { get; init; }
 
     /// <summary>
@@ -35,18 +37,21 @@ public sealed class FormulaDefResponse
     /// 例如 "AREA_PRICE"（面积计价）、"WEIGHT_DISCOUNT"（重量折价）。
     /// 一旦被规则引用，不可修改编码值。
     /// </summary>
+    [JsonPropertyName("formula_code")]
     public string FormulaCode { get; init; } = string.Empty;
 
     /// <summary>
     /// 公式显示名称，面向配置人员的可读文本。
     /// 例如 "按面积计价公式""按重量阶梯折价"。
     /// </summary>
+    [JsonPropertyName("formula_name")]
     public string FormulaName { get; init; } = string.Empty;
 
     /// <summary>
     /// 公式说明，描述该公式的适用业务场景、计算口径和使用注意事项。
     /// 例如 "适用于皮肤科多肿物项目，按每个肿物面积独立计价后汇总"。
     /// </summary>
+    [JsonPropertyName("formula_desc")]
     public string? FormulaDesc { get; init; }
 
     /// <summary>
@@ -54,6 +59,7 @@ public sealed class FormulaDefResponse
     /// 同一动作类型（如 FORMULA）下可有多个执行器，通过此编码区分具体计算策略。
     /// 执行器编码与公式编码是"多对一"关系：多个公式可共享同一执行器实现。
     /// </summary>
+    [JsonPropertyName("executor_code")]
     public string ExecutorCode { get; init; } = string.Empty;
 
     /// <summary>
@@ -61,17 +67,20 @@ public sealed class FormulaDefResponse
     /// 前端工作台据此动态渲染参数配置表单；计价引擎执行前据此校验动作参数合法性。
     /// 为 null 表示该公式不需要额外参数。
     /// </summary>
+    [JsonPropertyName("param_schema_json")]
     public string? ParamSchemaJson { get; init; }
 
     /// <summary>
     /// 启用标识。"Y" 表示该公式可被规则动作引用和执行；"N" 表示已停用，
     /// 前端不再展示，但已引用该公式的历史规则仍可正常追溯。
     /// </summary>
+    [JsonPropertyName("is_enabled")]
     public string IsEnabled { get; init; } = "Y";
 
     /// <summary>
     /// 公式备注，用于记录维护说明、变更原因或待确认事项。
     /// </summary>
+    [JsonPropertyName("remark")]
     public string? Remark { get; init; }
 }
 
@@ -95,6 +104,7 @@ public sealed class FormulaDefCreateRequest
     /// </summary>
     [Required(ErrorMessage = "公式编码不能为空")]
     [MaxLength(50)]
+    [JsonPropertyName("formula_code")]
     public string FormulaCode { get; init; } = string.Empty;
 
     /// <summary>
@@ -102,11 +112,13 @@ public sealed class FormulaDefCreateRequest
     /// </summary>
     [Required(ErrorMessage = "公式名称不能为空")]
     [MaxLength(200)]
+    [JsonPropertyName("formula_name")]
     public string FormulaName { get; init; } = string.Empty;
 
     /// <summary>
     /// 公式说明（选填），描述适用业务场景和计算口径。
     /// </summary>
+    [JsonPropertyName("formula_desc")]
     public string? FormulaDesc { get; init; }
 
     /// <summary>
@@ -115,17 +127,20 @@ public sealed class FormulaDefCreateRequest
     /// </summary>
     [Required(ErrorMessage = "执行器编码不能为空")]
     [MaxLength(50)]
+    [JsonPropertyName("executor_code")]
     public string ExecutorCode { get; init; } = string.Empty;
 
     /// <summary>
     /// 参数结构 JSON（选填），JSON Schema 格式。
     /// 提供后前端工作台会据此渲染参数配置表单；为 null 表示不需要额外参数。
     /// </summary>
+    [JsonPropertyName("param_schema_json")]
     public string? ParamSchemaJson { get; init; }
 
     /// <summary>
     /// 公式备注（选填）。
     /// </summary>
+    [JsonPropertyName("remark")]
     public string? Remark { get; init; }
 }
 
@@ -153,11 +168,13 @@ public sealed class FormulaDefUpdateRequest
     /// </summary>
     [Required(ErrorMessage = "公式名称不能为空")]
     [MaxLength(200)]
+    [JsonPropertyName("formula_name")]
     public string FormulaName { get; init; } = string.Empty;
 
     /// <summary>
     /// 公式说明（选填）。
     /// </summary>
+    [JsonPropertyName("formula_desc")]
     public string? FormulaDesc { get; init; }
 
     /// <summary>
@@ -165,16 +182,19 @@ public sealed class FormulaDefUpdateRequest
     /// </summary>
     [Required(ErrorMessage = "执行器编码不能为空")]
     [MaxLength(50)]
+    [JsonPropertyName("executor_code")]
     public string ExecutorCode { get; init; } = string.Empty;
 
     /// <summary>
     /// 参数结构 JSON（选填），JSON Schema 格式。更新后会影响前端表单渲染。
     /// </summary>
+    [JsonPropertyName("param_schema_json")]
     public string? ParamSchemaJson { get; init; }
 
     /// <summary>
     /// 公式备注（选填）。
     /// </summary>
+    [JsonPropertyName("remark")]
     public string? Remark { get; init; }
 }
 

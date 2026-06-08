@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace Pricing.RuleCenter.Application.Dto;
 
@@ -15,37 +16,44 @@ public sealed class PricingCommitRequest
     /// 计价请求日志主键，用于串联请求、步骤、折价明细和限额占用
     /// </summary>
     [Required(ErrorMessage = "请求ID不能为空")]
+    [JsonPropertyName("request_id")]
     public long RequestId { get; init; }
 
     /// <summary>
     /// 收费单号，用于与 HIS 落账结果关联
     /// </summary>
+    [JsonPropertyName("charge_no")]
     public string? ChargeNo { get; init; }
 
     /// <summary>
     /// HIS 提交流水号。建议由 HIS 生成稳定值，用于审计一次 commit 回调。
     /// </summary>
+    [JsonPropertyName("commit_no")]
     public string? CommitNo { get; init; }
 
     /// <summary>
     /// 执行落账提交的操作人、工作站账号或系统账号。
     /// </summary>
+    [JsonPropertyName("committed_by")]
     public string? CommittedBy { get; init; }
 
     /// <summary>
     /// HIS 实际落账成功的业务时间。为空时计价中心仅记录收到 commit 的技术时间。
     /// </summary>
+    [JsonPropertyName("committed_at")]
     public DateTime? CommittedAt { get; init; }
 
     /// <summary>
     /// HIS 实际落账明细。commit 时必须按收费明细号、项目编码、片段序号回传实际落账数量和金额。
     /// 规则中心会与 confirm 阶段保存的折价明细逐项比对，防止 HIS 侧落账金额与计价结果不一致。
     /// </summary>
+    [JsonPropertyName("actual_items")]
     public IReadOnlyList<PricingCommitActualItemRequest>? ActualItems { get; init; }
 
     /// <summary>
     /// HIS 实际落账总金额。为空时只校验 ActualItems 明细合计；传入时会同时校验总金额。
     /// </summary>
+    [JsonPropertyName("actual_total_amount")]
     public decimal? ActualTotalAmount { get; init; }
 }
 
@@ -58,27 +66,32 @@ public sealed class PricingCommitActualItemRequest
     /// HIS 实际落账后的收费明细号。普通项目和主项目必须与 confirm 保存的折价明细一致；
     /// 替换子项、加收子项允许 HIS 落账时生成新的收费明细号。
     /// </summary>
+    [JsonPropertyName("charge_detail_no")]
     public string? ChargeDetailNo { get; init; }
 
     /// <summary>
     /// HIS 实际落账项目编码。
     /// </summary>
     [Required(ErrorMessage = "实际落账项目编码不能为空")]
+    [JsonPropertyName("item_code")]
     public string ItemCode { get; init; } = string.Empty;
 
     /// <summary>
     /// 多部位或多片段明细序号。
     /// </summary>
+    [JsonPropertyName("part_seq")]
     public int? PartSeq { get; init; }
 
     /// <summary>
     /// HIS 实际落账数量。
     /// </summary>
+    [JsonPropertyName("final_qty")]
     public decimal FinalQty { get; init; }
 
     /// <summary>
     /// HIS 实际落账金额，最终金额保留 2 位小数。
     /// </summary>
+    [JsonPropertyName("final_amount")]
     public decimal FinalAmount { get; init; }
 }
 
@@ -94,25 +107,30 @@ public sealed class PricingCancelRequest
     /// 计价请求日志主键，用于串联请求、步骤、折价明细和限额占用
     /// </summary>
     [Required(ErrorMessage = "请求ID不能为空")]
+    [JsonPropertyName("request_id")]
     public long RequestId { get; init; }
 
     /// <summary>
     /// HIS 取消流水号。建议由 HIS 生成稳定值，用于审计一次 cancel 回调。
     /// </summary>
+    [JsonPropertyName("cancel_no")]
     public string? CancelNo { get; init; }
 
     /// <summary>
     /// 执行取消的操作人、工作站账号或系统账号。
     /// </summary>
+    [JsonPropertyName("cancelled_by")]
     public string? CancelledBy { get; init; }
 
     /// <summary>
     /// 取消原因，例如用户放弃收费、支付失败、HIS 落账失败。
     /// </summary>
+    [JsonPropertyName("cancel_reason")]
     public string? CancelReason { get; init; }
 
     /// <summary>
     /// HIS 侧确认取消的业务时间。为空时计价中心仅记录收到 cancel 的技术时间。
     /// </summary>
+    [JsonPropertyName("cancelled_at")]
     public DateTime? CancelledAt { get; init; }
 }

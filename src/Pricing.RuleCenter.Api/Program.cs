@@ -23,7 +23,10 @@ using Pricing.RuleCenter.Application.Catalog;
 using Pricing.RuleCenter.Application.Templates;
 using Pricing.RuleCenter.Application.Trace;
 using Pricing.RuleCenter.Application.Background;
+using Pricing.RuleCenter.Api.ModelBinding;
 using Pricing.RuleCenter.Api.Security;
+using Pricing.RuleCenter.Api.Serialization;
+using Pricing.RuleCenter.Api.Swagger;
 using Pricing.RuleCenter.Core.Engine;
 using Pricing.RuleCenter.Core.Engine.Evaluators;
 using Pricing.RuleCenter.Core.Engine.Executors;
@@ -244,7 +247,11 @@ builder.Services.AddHealthChecks()
     .AddCheck<ThirdPartyServicesHealthCheck>("third-party-services");
 
 // ========== 第五阶段：注册控制器、Swagger 和全局异常处理中间件 ==========
-builder.Services.AddControllers();
+builder.Services.AddControllers(options =>
+    {
+        options.ValueProviderFactories.Insert(0, new SnakeCaseQueryValueProviderFactory());
+    })
+    .AddJsonOptions(options => ApiJsonSerializerOptions.Configure(options.JsonSerializerOptions));
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -256,6 +263,7 @@ builder.Services.AddSwaggerGen(options =>
         Version = version,
         Description = "医院物价折价规则中心 API，按 DDD 边界展示计价、规则、字典、追溯和运维接口。"
     });
+    options.OperationFilter<SnakeCaseQueryParameterOperationFilter>();
 
     options.TagActionsBy(api =>
     {

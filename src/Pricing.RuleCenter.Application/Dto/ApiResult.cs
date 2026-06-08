@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Pricing.RuleCenter.Application.Dto;
 
 /// <summary>
@@ -28,21 +30,27 @@ public static class ApiResultClock
 public sealed class ApiResult<T>
 {
     /// <summary>响应码，0 表示成功。</summary>
+    [JsonPropertyName("code")]
     public int Code { get; init; }
 
     /// <summary>响应消息。</summary>
+    [JsonPropertyName("message")]
     public string Message { get; init; } = string.Empty;
 
     /// <summary>链路追踪号。</summary>
+    [JsonPropertyName("trace_id")]
     public string TraceId { get; init; } = string.Empty;
 
     /// <summary>响应生成时间。</summary>
+    [JsonPropertyName("timestamp")]
     public DateTime Timestamp { get; init; } = ApiResultClock.Current;
 
     /// <summary>响应数据。</summary>
+    [JsonPropertyName("data")]
     public T? Data { get; init; }
 
     /// <summary>字段级错误详情。</summary>
+    [JsonPropertyName("errors")]
     public IReadOnlyDictionary<string, string[]>? Errors { get; init; }
 
     /// <summary>创建成功响应。</summary>
@@ -76,18 +84,23 @@ public sealed class ApiResult<T>
 public sealed class ApiResult
 {
     /// <summary>响应码，0 表示成功。</summary>
+    [JsonPropertyName("code")]
     public int Code { get; init; }
 
     /// <summary>响应消息。</summary>
+    [JsonPropertyName("message")]
     public string Message { get; init; } = string.Empty;
 
     /// <summary>链路追踪号。</summary>
+    [JsonPropertyName("trace_id")]
     public string TraceId { get; init; } = string.Empty;
 
     /// <summary>响应生成时间。</summary>
+    [JsonPropertyName("timestamp")]
     public DateTime Timestamp { get; init; } = ApiResultClock.Current;
 
     /// <summary>字段级错误详情。</summary>
+    [JsonPropertyName("errors")]
     public IReadOnlyDictionary<string, string[]>? Errors { get; init; }
 
     /// <summary>创建成功响应。</summary>

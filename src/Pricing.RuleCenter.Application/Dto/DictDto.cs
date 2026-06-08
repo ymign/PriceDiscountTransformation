@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace Pricing.RuleCenter.Application.Dto;
 
@@ -25,6 +26,7 @@ public sealed class DictResponse
     /// <summary>
     /// 字典项主键，对应 PR_DICT.DICT_ID，由序列 PR_DICT_SEQ 生成。
     /// </summary>
+    [JsonPropertyName("dict_id")]
     public long DictId { get; init; }
 
     /// <summary>
@@ -33,6 +35,7 @@ public sealed class DictResponse
     /// FORMULA_TYPE（公式类型）、UNIT（计量单位）等。
     /// 同一 DictType 下的 DictCode 构成一个下拉选项组。
     /// </summary>
+    [JsonPropertyName("dict_type")]
     public string DictType { get; init; } = string.Empty;
 
     /// <summary>
@@ -40,12 +43,14 @@ public sealed class DictResponse
     /// 例如 ACTION_TYPE 域下的 "DISCOUNT_AMOUNT"（金额折价）、"LIMIT_QTY"（数量限制）。
     /// 编码一旦被规则引用，不应随意修改，否则会导致规则配置失效。
     /// </summary>
+    [JsonPropertyName("dict_code")]
     public string DictCode { get; init; } = string.Empty;
 
     /// <summary>
     /// 字典项显示名称，面向配置人员的可读文本。
     /// 例如 "金额折价""数量限制""双单位换算" 等。仅用于前端展示，不参与规则匹配。
     /// </summary>
+    [JsonPropertyName("dict_name")]
     public string DictName { get; init; } = string.Empty;
 
     /// <summary>
@@ -53,24 +58,28 @@ public sealed class DictResponse
     /// 为 null 时表示该字典项是顶级项；非空时指向同 DictType 或关联 DictType 下的父项 DictCode。
     /// 例如"公式类动作"的 ParentCode 指向"动作类型"顶级分类。
     /// </summary>
+    [JsonPropertyName("parent_code")]
     public string? ParentCode { get; init; }
 
     /// <summary>
     /// 排序号，控制同一字典类型下的展示顺序和同类动作的执行优先级。
     /// 值越小越靠前。默认值为 0。
     /// </summary>
+    [JsonPropertyName("sort_no")]
     public int SortNo { get; init; }
 
     /// <summary>
     /// 启用标识。"Y" 表示该字典项参与前端下拉展示和规则匹配；"N" 表示已停用，
     /// 前端不再展示，但已引用该编码的历史规则仍可正常追溯。
     /// </summary>
+    [JsonPropertyName("is_enabled")]
     public string IsEnabled { get; init; } = "Y";
 
     /// <summary>
     /// 字典项备注，用于记录该字典项的业务说明、使用场景或维护注意事项。
     /// 仅面向配置和运维人员，不参与业务逻辑。
     /// </summary>
+    [JsonPropertyName("remark")]
     public string? Remark { get; init; }
 }
 
@@ -94,6 +103,7 @@ public sealed class DictCreateRequest
     /// </summary>
     [Required(ErrorMessage = "字典类型不能为空")]
     [MaxLength(50)]
+    [JsonPropertyName("dict_type")]
     public string DictType { get; init; } = string.Empty;
 
     /// <summary>
@@ -102,6 +112,7 @@ public sealed class DictCreateRequest
     /// </summary>
     [Required(ErrorMessage = "字典编码不能为空")]
     [MaxLength(50)]
+    [JsonPropertyName("dict_code")]
     public string DictCode { get; init; } = string.Empty;
 
     /// <summary>
@@ -110,22 +121,26 @@ public sealed class DictCreateRequest
     /// </summary>
     [Required(ErrorMessage = "字典名称不能为空")]
     [MaxLength(200)]
+    [JsonPropertyName("dict_name")]
     public string DictName { get; init; } = string.Empty;
 
     /// <summary>
     /// 父级字典编码（选填）。为空时表示顶级项；非空时必须指向同域或关联域中已存在的 DictCode。
     /// 用于构建前端级联选择器的数据关系。
     /// </summary>
+    [JsonPropertyName("parent_code")]
     public string? ParentCode { get; init; }
 
     /// <summary>
     /// 排序号（选填），控制展示顺序。默认值 0。值越小越靠前。
     /// </summary>
+    [JsonPropertyName("sort_no")]
     public int SortNo { get; init; }
 
     /// <summary>
     /// 字典项备注（选填），用于记录业务说明或维护注意事项。
     /// </summary>
+    [JsonPropertyName("remark")]
     public string? Remark { get; init; }
 }
 
@@ -149,21 +164,25 @@ public sealed class DictUpdateRequest
     /// </summary>
     [Required(ErrorMessage = "字典名称不能为空")]
     [MaxLength(200)]
+    [JsonPropertyName("dict_name")]
     public string DictName { get; init; } = string.Empty;
 
     /// <summary>
     /// 父级字典编码（选填）。更新时可重新指定父级关系，但必须确保不形成循环引用。
     /// </summary>
+    [JsonPropertyName("parent_code")]
     public string? ParentCode { get; init; }
 
     /// <summary>
     /// 排序号（选填），控制展示顺序。值越小越靠前。
     /// </summary>
+    [JsonPropertyName("sort_no")]
     public int SortNo { get; init; }
 
     /// <summary>
     /// 字典项备注（选填）。
     /// </summary>
+    [JsonPropertyName("remark")]
     public string? Remark { get; init; }
 }
 

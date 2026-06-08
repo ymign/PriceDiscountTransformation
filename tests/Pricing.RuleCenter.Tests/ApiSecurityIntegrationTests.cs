@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
@@ -37,8 +38,8 @@ public sealed class ApiSecurityIntegrationTests
 
         var response = await client.PostAsJsonAsync("/api/pricing/rules/1/publish", new
         {
-            versionNo = 1,
-            publishedBy = "tester"
+            version_no = 1,
+            published_by = "tester"
         });
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
@@ -56,11 +57,14 @@ public sealed class ApiSecurityIntegrationTests
 
         var response = await client.PostAsJsonAsync("/api/pricing/rules/1/publish", new
         {
-            versionNo = 1,
-            publishedBy = "tester"
+            version_no = 1,
+            published_by = "tester"
         });
 
         Assert.Equal(HttpStatusCode.Gone, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.True(document.RootElement.TryGetProperty("trace_id", out _));
+        Assert.False(document.RootElement.TryGetProperty("traceId", out _));
     }
 
     private sealed class SecureApiFactory : WebApplicationFactory<Program>

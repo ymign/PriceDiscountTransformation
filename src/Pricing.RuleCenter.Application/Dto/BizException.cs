@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Pricing.RuleCenter.Application.Dto;
 
 /// <summary>
@@ -24,11 +26,13 @@ public sealed class BizException : Exception
     /// <summary>
     /// 获取业务错误码。
     /// </summary>
+    [JsonPropertyName("code")]
     public int Code { get; }
 
     /// <summary>
     /// 获取建议映射的 HTTP 状态码。
     /// </summary>
+    [JsonPropertyName("http_status_code")]
     public int HttpStatusCode { get; }
 }
 

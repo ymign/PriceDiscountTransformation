@@ -1,11 +1,10 @@
 using System.Net;
-using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Core.Aggregates.Catalog;
 using Pricing.RuleCenter.Core.Interfaces.Catalog;
 using Xunit;
@@ -21,14 +20,15 @@ public sealed class RulePublishOpsIntegrationTests
         using var client = factory.CreateClient();
         client.DefaultRequestHeaders.Add("X-Api-Key", "admin-key");
 
-        var response = await client.GetAsync("/api/pricing/ops/cache-outbox?maxFailedCount=5");
+        var response = await client.GetAsync("/api/pricing/ops/cache-outbox?max_failed_count=5");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var payload = await response.Content.ReadFromJsonAsync<ApiResult<RuleCacheOutboxSummaryResponse>>();
-        Assert.NotNull(payload);
-        Assert.Equal(0, payload!.Code);
-        Assert.Equal(1, payload.Data!.PendingCount);
-        Assert.Equal(1, payload.Data.FailedCount);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+        Assert.Equal(0, root.GetProperty("code").GetInt32());
+        Assert.Equal(1, root.GetProperty("data").GetProperty("pending_count").GetInt32());
+        Assert.Equal(1, root.GetProperty("data").GetProperty("failed_count").GetInt32());
+        Assert.False(root.GetProperty("data").TryGetProperty("pendingCount", out _));
     }
 
     private sealed class CacheOutboxApiFactory : WebApplicationFactory<Program>
@@ -94,7 +94,13 @@ public sealed class RulePublishOpsIntegrationTests
 
         public Task<long> InsertAsync(RuleCacheInvalidationOutbox entity) => Task.FromResult(0L);
         public Task<IReadOnlyList<RuleCacheInvalidationOutbox>> GetPendingAsync(DateTime now, int maxCount) => Task.FromResult((IReadOnlyList<RuleCacheInvalidationOutbox>)Array.Empty<RuleCacheInvalidationOutbox>());
-        public Task<IReadOnlyList<RuleCacheInvalidationOutbox>> GetForDashboardAsync(int maxFailedCount) => Task.FromResult(_items);
+        public Task<IReadOnlyList<RuleCacheInvalidationOutbox>> GetForDashboardAsync(int maxFailedCount)
+        {
+            var items = maxFailedCount == 5
+                ? _items
+                : Array.Empty<RuleCacheInvalidationOutbox>();
+            return Task.FromResult((IReadOnlyList<RuleCacheInvalidationOutbox>)items);
+        }
         public Task<bool> MarkProcessedAsync(long outboxId, DateTime processedAt) => Task.FromResult(true);
         public Task<bool> MarkFailedAsync(long outboxId, string lastError, int retryCount, DateTime nextRetryAt) => Task.FromResult(true);
     }

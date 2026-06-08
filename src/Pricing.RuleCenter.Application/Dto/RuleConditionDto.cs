@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace Pricing.RuleCenter.Application.Dto;
 
@@ -25,17 +26,20 @@ public sealed class RuleConditionResponse
     /// <summary>
     /// 规则条件主键，对应 PR_RULE_CONDITION.CONDITION_ID，由序列 PR_RULE_CONDITION_SEQ 生成。
     /// </summary>
+    [JsonPropertyName("condition_id")]
     public long ConditionId { get; init; }
 
     /// <summary>
     /// 规则主键，关联 PR_RULE_HEADER.RULE_ID，用于将条件与规则头、版本、动作、追溯结果串联。
     /// </summary>
+    [JsonPropertyName("rule_id")]
     public long RuleId { get; init; }
 
     /// <summary>
     /// 规则版本号，与 PR_RULE_VERSION.VERSION_NO 对齐。
     /// 同一规则下不同版本的条件相互独立，发布时以版本为单位快照。
     /// </summary>
+    [JsonPropertyName("version_no")]
     public int VersionNo { get; init; }
 
     /// <summary>
@@ -43,6 +47,7 @@ public sealed class RuleConditionResponse
     /// 不同 ConditionGroup 之间按 OR 逻辑处理（任一组满足即通过）。
     /// 例如 "GROUP_1" 表示第一组条件，"GROUP_2" 表示第二组条件。
     /// </summary>
+    [JsonPropertyName("condition_group")]
     public string ConditionGroup { get; init; } = string.Empty;
 
     /// <summary>
@@ -50,6 +55,7 @@ public sealed class RuleConditionResponse
     /// 值来自内置字典 CONDITION_TYPE 域，常见值：ITEM_CODE（项目编码）、
     /// SCENE（收费场景）、BODY_PART（部位）、DEPARTMENT（科室）等。
     /// </summary>
+    [JsonPropertyName("condition_type")]
     public string ConditionType { get; init; } = string.Empty;
 
     /// <summary>
@@ -58,6 +64,7 @@ public sealed class RuleConditionResponse
     /// GT（大于）、LT（小于）、LIKE（模糊匹配）。
     /// 为 null 时默认按 EQ 处理。
     /// </summary>
+    [JsonPropertyName("operator_type")]
     public string? OperatorType { get; init; }
 
     /// <summary>
@@ -65,6 +72,7 @@ public sealed class RuleConditionResponse
     /// 例如 "itemCode"（项目编码）、"scene"（收费场景）、"bodyPart"（部位编码）。
     /// 评估器运行时通过此字段名从上下文中提取实际值。
     /// </summary>
+    [JsonPropertyName("left_key")]
     public string? LeftKey { get; init; }
 
     /// <summary>
@@ -73,6 +81,7 @@ public sealed class RuleConditionResponse
     /// 为 BETWEEN 时，RightValue 为 "~" 分隔的区间，如 "1~10"。
     /// 为 null 表示该条件类型不需要右值（如某些自定义评估器）。
     /// </summary>
+    [JsonPropertyName("right_value")]
     public string? RightValue { get; init; }
 
     /// <summary>
@@ -80,17 +89,20 @@ public sealed class RuleConditionResponse
     /// 例如自定义评估器可能需要传入特殊阈值或业务规则参数。
     /// 为 null 表示该条件不需要额外参数。
     /// </summary>
+    [JsonPropertyName("params_json")]
     public string? ParamsJson { get; init; }
 
     /// <summary>
     /// 排序号，控制同一条件组内条件的评估顺序和展示顺序。值越小越先评估。
     /// </summary>
+    [JsonPropertyName("sort_no")]
     public int SortNo { get; init; }
 
     /// <summary>
     /// 启用标识。"Y" 表示该条件参与规则匹配；"N" 表示已停用，评估时跳过。
     /// 停用条件不会从版本中删除，便于后续重新启用。
     /// </summary>
+    [JsonPropertyName("is_enabled")]
     public string IsEnabled { get; init; } = "Y";
 }
 
@@ -111,6 +123,7 @@ public sealed class RuleConditionItemRequest
     /// </summary>
     [Required(ErrorMessage = "条件组不能为空")]
     [MaxLength(50)]
+    [JsonPropertyName("condition_group")]
     public string ConditionGroup { get; init; } = "DEFAULT";
 
     /// <summary>
@@ -119,6 +132,7 @@ public sealed class RuleConditionItemRequest
     /// </summary>
     [Required(ErrorMessage = "条件类型不能为空")]
     [MaxLength(50)]
+    [JsonPropertyName("condition_type")]
     public string ConditionType { get; init; } = string.Empty;
 
     /// <summary>
@@ -126,6 +140,7 @@ public sealed class RuleConditionItemRequest
     /// 支持的值取决于条件评估器实现，常见值：EQ、IN、BETWEEN、GT、LT、LIKE。
     /// </summary>
     [MaxLength(20)]
+    [JsonPropertyName("operator_type")]
     public string? OperatorType { get; init; } = "EQ";
 
     /// <summary>
@@ -133,6 +148,7 @@ public sealed class RuleConditionItemRequest
     /// 例如 "itemCode""scene""bodyPart"。部分条件类型（如自定义评估器）可能不需要此字段。
     /// </summary>
     [MaxLength(200)]
+    [JsonPropertyName("left_key")]
     public string? LeftKey { get; init; }
 
     /// <summary>
@@ -140,21 +156,25 @@ public sealed class RuleConditionItemRequest
     /// IN 运算符为逗号分隔多值，BETWEEN 为 "~" 分隔区间。
     /// </summary>
     [MaxLength(500)]
+    [JsonPropertyName("right_value")]
     public string? RightValue { get; init; }
 
     /// <summary>
     /// 扩展参数 JSON（选填），由条件评估器定义参数结构。
     /// </summary>
+    [JsonPropertyName("params_json")]
     public string? ParamsJson { get; init; }
 
     /// <summary>
     /// 排序号（选填），控制评估顺序。默认值 0，值越小越先评估。
     /// </summary>
+    [JsonPropertyName("sort_no")]
     public int SortNo { get; init; }
 
     /// <summary>
     /// 启用标识（选填），默认 "Y"。设为 "N" 可临时停用该条件而不删除。
     /// </summary>
+    [JsonPropertyName("is_enabled")]
     public string IsEnabled { get; init; } = "Y";
 }
 
@@ -182,6 +202,7 @@ public sealed class RuleConditionSaveRequest
     /// 空列表会导致该版本下所有条件被清除（等于无条件匹配所有请求）。
     /// </summary>
     [Required(ErrorMessage = "条件列表不能为空")]
+    [JsonPropertyName("conditions")]
     public IReadOnlyList<RuleConditionItemRequest> Conditions { get; init; } = Array.Empty<RuleConditionItemRequest>();
 }
 

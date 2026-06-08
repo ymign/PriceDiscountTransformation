@@ -1,6 +1,8 @@
 using System.Text.Json;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Pricing.RuleCenter.Application.Dto;
+using Pricing.RuleCenter.Api.Serialization;
+using System.Text.Json.Serialization;
 
 namespace Pricing.RuleCenter.Api.HealthChecks;
 
@@ -9,10 +11,7 @@ namespace Pricing.RuleCenter.Api.HealthChecks;
 /// </summary>
 public static class HealthCheckResponseWriter
 {
-    private static readonly JsonSerializerOptions s_jsonOptions = new(JsonSerializerDefaults.Web)
-    {
-        WriteIndented = false
-    };
+    private static readonly JsonSerializerOptions s_jsonOptions = ApiJsonSerializerOptions.Create();
 
     /// <summary>
     /// 将 <see cref="HealthReport"/> 写成统一 <see cref="ApiResult{T}"/> JSON 响应。
@@ -66,16 +65,19 @@ public sealed class HealthCheckSummary
     /// <summary>
     /// 综合健康状态。
     /// </summary>
+    [JsonPropertyName("status")]
     public string Status { get; init; } = string.Empty;
 
     /// <summary>
     /// 全部检查耗时，单位毫秒。
     /// </summary>
+    [JsonPropertyName("total_duration_ms")]
     public double TotalDurationMs { get; init; }
 
     /// <summary>
     /// 各检查项结果。
     /// </summary>
+    [JsonPropertyName("checks")]
     public IReadOnlyDictionary<string, HealthCheckEntrySummary> Checks { get; init; } =
         new Dictionary<string, HealthCheckEntrySummary>();
 }
@@ -88,20 +90,24 @@ public sealed class HealthCheckEntrySummary
     /// <summary>
     /// 检查项状态。
     /// </summary>
+    [JsonPropertyName("status")]
     public string Status { get; init; } = string.Empty;
 
     /// <summary>
     /// 检查项描述。
     /// </summary>
+    [JsonPropertyName("description")]
     public string? Description { get; init; }
 
     /// <summary>
     /// 检查项耗时，单位毫秒。
     /// </summary>
+    [JsonPropertyName("duration_ms")]
     public double DurationMs { get; init; }
 
     /// <summary>
     /// 检查项附加数据。
     /// </summary>
+    [JsonPropertyName("data")]
     public IReadOnlyDictionary<string, object> Data { get; init; } = new Dictionary<string, object>();
 }

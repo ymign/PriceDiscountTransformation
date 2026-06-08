@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace Pricing.RuleCenter.Application.Dto;
 
@@ -24,28 +25,33 @@ public sealed class RulePublishResponse
     /// <summary>
     /// 发布流水主键，对应 PR_RULE_PUBLISH.PUBLISH_ID，由序列 PR_RULE_PUBLISH_SEQ 生成。
     /// </summary>
+    [JsonPropertyName("publish_id")]
     public long PublishId { get; init; }
 
     /// <summary>
     /// 发布流水号，每次发布/停用/回滚操作生成的唯一业务编号。
     /// 格式建议：PUB + 日期 + 序号，如 PUB20260510001。用于审计日志和变更追溯的交叉定位。
     /// </summary>
+    [JsonPropertyName("publish_no")]
     public string PublishNo { get; init; } = string.Empty;
 
     /// <summary>
     /// 规则主键，关联 PR_RULE_HEADER.RULE_ID。
     /// </summary>
+    [JsonPropertyName("rule_id")]
     public long RuleId { get; init; }
 
     /// <summary>
     /// 操作前版本号。首次发布时为 null（无历史版本）；回滚时为被回滚的版本号。
     /// </summary>
+    [JsonPropertyName("from_version")]
     public int? FromVersion { get; init; }
 
     /// <summary>
     /// 操作后版本号。发布时为新发布的版本号；回滚时为回滚目标版本号。
     /// 停用操作时此字段可能为 0 或当前生效版本号，具体取决于实现。
     /// </summary>
+    [JsonPropertyName("to_version")]
     public int ToVersion { get; init; }
 
     /// <summary>
@@ -53,21 +59,25 @@ public sealed class RulePublishResponse
     /// 常见值：PUBLISH（发布新版本）、DISABLE（停用规则）、ROLLBACK（回滚到历史版本）。
     /// 值来自内置字典 PUBLISH_ACTION 域。
     /// </summary>
+    [JsonPropertyName("action_type")]
     public string ActionType { get; init; } = string.Empty;
 
     /// <summary>
     /// 操作人，记录执行发布/停用/回滚的操作人员标识（如工号或用户名）。
     /// </summary>
+    [JsonPropertyName("published_by")]
     public string? PublishedBy { get; init; }
 
     /// <summary>
     /// 操作发生时间，由数据库在 INSERT 时自动填充。
     /// </summary>
+    [JsonPropertyName("published_at")]
     public DateTime PublishedAt { get; init; }
 
     /// <summary>
     /// 操作备注，记录发布原因、停用原因或回滚原因等维护信息。
     /// </summary>
+    [JsonPropertyName("remark")]
     public string? Remark { get; init; }
 }
 
@@ -95,16 +105,19 @@ public sealed class RulePublishRequest
     /// 发布后该版本状态变为 PUBLISHED，规则头的 CurrentVersion 更新为此值。
     /// </summary>
     [Required(ErrorMessage = "版本号不能为空")]
+    [JsonPropertyName("version_no")]
     public int VersionNo { get; init; }
 
     /// <summary>
     /// 操作人（选填），通常由系统从登录上下文自动填充。
     /// </summary>
+    [JsonPropertyName("published_by")]
     public string? PublishedBy { get; init; }
 
     /// <summary>
     /// 发布备注（选填），记录发布原因或说明。
     /// </summary>
+    [JsonPropertyName("remark")]
     public string? Remark { get; init; }
 }
 
@@ -129,11 +142,13 @@ public sealed class RuleDisableRequest
     /// <summary>
     /// 操作人（选填），通常由系统从登录上下文自动填充。
     /// </summary>
+    [JsonPropertyName("published_by")]
     public string? PublishedBy { get; init; }
 
     /// <summary>
     /// 停用备注（选填），记录停用原因。建议必填，便于后续审计。
     /// </summary>
+    [JsonPropertyName("remark")]
     public string? Remark { get; init; }
 }
 
@@ -158,11 +173,13 @@ public sealed class RuleRollbackRequest
     /// <summary>
     /// 操作人（选填），通常由系统从登录上下文自动填充。
     /// </summary>
+    [JsonPropertyName("published_by")]
     public string? PublishedBy { get; init; }
 
     /// <summary>
     /// 回滚备注（选填），记录回滚原因。建议必填，便于后续审计。
     /// </summary>
+    [JsonPropertyName("remark")]
     public string? Remark { get; init; }
 }
 
@@ -188,16 +205,19 @@ public sealed class RuleChangeLogResponse
     /// <summary>
     /// 变更日志主键，对应 PR_RULE_CHANGE_LOG.CHANGE_ID，由序列 PR_RULE_CHANGE_LOG_SEQ 生成。
     /// </summary>
+    [JsonPropertyName("change_id")]
     public long ChangeId { get; init; }
 
     /// <summary>
     /// 规则主键，关联 PR_RULE_HEADER.RULE_ID。
     /// </summary>
+    [JsonPropertyName("rule_id")]
     public long RuleId { get; init; }
 
     /// <summary>
     /// 变更涉及的规则版本号。为 null 表示变更发生在规则头级别（如修改规则名称）。
     /// </summary>
+    [JsonPropertyName("version_no")]
     public int? VersionNo { get; init; }
 
     /// <summary>
@@ -205,22 +225,26 @@ public sealed class RuleChangeLogResponse
     /// 常见值：PUBLISH（发布）、DISABLE（停用）、ROLLBACK（回滚）、
     /// CONDITION_UPDATE（条件变更）、ACTION_UPDATE（动作变更）、HEADER_UPDATE（头信息变更）。
     /// </summary>
+    [JsonPropertyName("change_type")]
     public string ChangeType { get; init; } = string.Empty;
 
     /// <summary>
     /// 变更摘要，面向配置人员的自然语言描述。
     /// 记录变更的具体内容，如"新增条件：部位=面部""修改动作：折价比例从 0.8 改为 0.7"。
     /// </summary>
+    [JsonPropertyName("change_summary")]
     public string? ChangeSummary { get; init; }
 
     /// <summary>
     /// 变更操作人，记录执行变更的操作人员标识。
     /// </summary>
+    [JsonPropertyName("changed_by")]
     public string? ChangedBy { get; init; }
 
     /// <summary>
     /// 变更发生时间。
     /// </summary>
+    [JsonPropertyName("changed_at")]
     public DateTime ChangedAt { get; init; }
 
     /// <summary>
@@ -228,6 +252,7 @@ public sealed class RuleChangeLogResponse
     /// 常见值：HIS（医院信息系统）、SELF_SERVICE（自助机）、WECHAT（微信公众号）、
     /// ADMIN（规则管理工作台）。用于多渠道变更溯源。
     /// </summary>
+    [JsonPropertyName("source_system")]
     public string? SourceSystem { get; init; }
 }
 
