@@ -14,17 +14,20 @@ public sealed class PolicyController : ControllerBase
     private readonly PolicyVersionAppService _policyVersionAppService;
     private readonly PolicyPreviewAppService _policyPreviewAppService;
     private readonly PolicyReviewAppService _policyReviewAppService;
+    private readonly PolicyImportService _policyImportService;
 
     public PolicyController(
         PolicyAppService policyAppService,
         PolicyVersionAppService policyVersionAppService,
         PolicyPreviewAppService policyPreviewAppService,
-        PolicyReviewAppService policyReviewAppService)
+        PolicyReviewAppService policyReviewAppService,
+        PolicyImportService policyImportService)
     {
         _policyAppService = policyAppService;
         _policyVersionAppService = policyVersionAppService;
         _policyPreviewAppService = policyPreviewAppService;
         _policyReviewAppService = policyReviewAppService;
+        _policyImportService = policyImportService;
     }
 
     [HttpGet]
@@ -106,5 +109,11 @@ public sealed class PolicyController : ControllerBase
     {
         await _policyReviewAppService.RejectAsync(policyVersionId, request.ReviewedBy, request.ReviewComment);
         return ApiResult.Ok();
+    }
+
+    [HttpPost("import")]
+    public async Task<ApiResult<IReadOnlyList<long>>> ImportLegacyRulesAsync([FromBody] PolicyImportRequest request)
+    {
+        return ApiResult<IReadOnlyList<long>>.Ok(await _policyImportService.ImportAsync(request.RuleIds, request.ImportedBy));
     }
 }

@@ -1,4 +1,5 @@
 using Pricing.RuleCenter.Application.Pricing.Builders;
+using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Core.Aggregates.Charging;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Charging;
@@ -29,7 +30,8 @@ public sealed class PricingTraceStepWriter
     internal async Task SaveAsync(
         long requestId,
         string? traceId,
-        IReadOnlyList<ItemPricingCalculation> calculations)
+        IReadOnlyList<ItemPricingCalculation> calculations,
+        RuntimePackageTraceResolution? runtimeTrace = null)
     {
         var steps = calculations
             .SelectMany(c => c.Result.TraceSteps.Select(s => (c.Item, Step: s)))
@@ -48,6 +50,10 @@ public sealed class PricingTraceStepWriter
             StepNo = stepNo++,
             StepName = s.Step.StepType,
             StepType = s.Step.StepType,
+            RuntimePackageId = runtimeTrace?.RuntimePackageId,
+            RuntimeRuleId = s.Step.RuntimeRuleId,
+            SourcePolicyVersionId = runtimeTrace?.FindRule(s.Step.RuntimeRuleId)?.SourcePolicyVersionId,
+            SourceTemplateVersionId = runtimeTrace?.FindRule(s.Step.RuntimeRuleId)?.SourceTemplateVersionId,
             InputSnapshot = s.Step.InputValue?.ToString(),
             OutputSnapshot = s.Step.OutputValue?.ToString(),
             StepDesc = $"{s.Item.ItemCode}: {s.Step.StepDesc}",

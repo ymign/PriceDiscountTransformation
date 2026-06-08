@@ -3,6 +3,7 @@ using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Pricing.AuthorityPrice;
 using Pricing.RuleCenter.Application.Pricing.Idempotency;
 using Pricing.RuleCenter.Application.Pricing.Persistence;
+using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Options;
 
@@ -26,6 +27,7 @@ public sealed class ConfirmPricingUseCase : PricingUseCaseBase
         PricingDiscountDetailWriter discountDetailWriter,
         PricingLimitOccupyWriter limitOccupyWriter,
         PricingReverseLogWriter reverseLogWriter,
+        RuntimePackageTraceResolver runtimePackageTraceResolver,
         IUnitOfWork unitOfWork,
         IOptions<PricingOptions> options,
         IClock clock,
@@ -40,6 +42,7 @@ public sealed class ConfirmPricingUseCase : PricingUseCaseBase
             discountDetailWriter,
             limitOccupyWriter,
             reverseLogWriter,
+            runtimePackageTraceResolver,
             unitOfWork,
             options,
             clock,

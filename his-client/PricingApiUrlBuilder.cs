@@ -143,6 +143,102 @@ namespace HIS.Pricing.Client
         }
 
         // ================================================================
+        // 模板/策略/运行时包端点
+        // ================================================================
+
+        public static string BuildTemplates()
+        {
+            return "/api/pricing/templates";
+        }
+
+        public static string BuildTemplateById(long templateId)
+        {
+            return "/api/pricing/templates/" + templateId;
+        }
+
+        public static string BuildTemplateVersion(long templateId, long templateVersionId)
+        {
+            return "/api/pricing/templates/" + templateId + "/versions/" + templateVersionId;
+        }
+
+        public static string BuildTemplateVersions(long templateId)
+        {
+            return "/api/pricing/templates/" + templateId + "/versions";
+        }
+
+        public static string BuildPolicies()
+        {
+            return "/api/pricing/policies";
+        }
+
+        public static string BuildPolicyById(long policyId)
+        {
+            return "/api/pricing/policies/" + policyId;
+        }
+
+        public static string BuildPolicyVersions(long policyId)
+        {
+            return "/api/pricing/policies/" + policyId + "/versions";
+        }
+
+        public static string BuildPolicyVersionById(long policyVersionId)
+        {
+            return "/api/pricing/policies/versions/" + policyVersionId;
+        }
+
+        public static string BuildPolicyPreview(long policyVersionId)
+        {
+            return "/api/pricing/policies/versions/" + policyVersionId + "/preview";
+        }
+
+        public static string BuildPolicyValidate(long policyVersionId)
+        {
+            return "/api/pricing/policies/versions/" + policyVersionId + "/validate";
+        }
+
+        public static string BuildPolicyReviewSubmit(long policyVersionId)
+        {
+            return "/api/pricing/policies/versions/" + policyVersionId + "/review/submit";
+        }
+
+        public static string BuildPolicyReviewApprove(long policyVersionId)
+        {
+            return "/api/pricing/policies/versions/" + policyVersionId + "/review/approve";
+        }
+
+        public static string BuildPolicyReviewReject(long policyVersionId)
+        {
+            return "/api/pricing/policies/versions/" + policyVersionId + "/review/reject";
+        }
+
+        public static string BuildRuntimePackagesPublish()
+        {
+            return "/api/pricing/runtime-packages/publish";
+        }
+
+        public static string BuildRuntimePackageDiff(long packageId)
+        {
+            return "/api/pricing/runtime-packages/" + packageId + "/diff";
+        }
+
+        public static string BuildRuntimePackageActivate(long packageId)
+        {
+            return "/api/pricing/runtime-packages/" + packageId + "/activate";
+        }
+
+        public static string BuildRuntimePackageRollback(long packageId)
+        {
+            return "/api/pricing/runtime-packages/" + packageId + "/rollback";
+        }
+
+        public static string BuildRuntimePackageHistory(int take)
+        {
+            StringBuilder builder = new StringBuilder("/api/pricing/runtime-packages/history");
+            AppendQuery(builder, "take", take.ToString());
+            return builder.ToString();
+        }
+
+        // ================================================================
         // 字典管理端点
         // ================================================================
 

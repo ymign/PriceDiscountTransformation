@@ -238,6 +238,11 @@ public sealed class ActiveRuntimePackageReaderTests
                 .Where(rule => rule.PackageId == packageId && string.Equals(rule.TargetItemCode, itemCode, StringComparison.Ordinal))
                 .ToList());
 
+        public Task<IReadOnlyList<RuntimeRule>> GetRulesByIdsAsync(IReadOnlyCollection<long> runtimeRuleIds) =>
+            Task.FromResult((IReadOnlyList<RuntimeRule>)_rules
+                .Where(rule => runtimeRuleIds.Contains(rule.RuntimeRuleId))
+                .ToList());
+
         public Task<IReadOnlyDictionary<long, IReadOnlyList<RuntimeCondition>>> GetConditionsByRuleIdsAsync(IReadOnlyCollection<long> runtimeRuleIds) =>
             Task.FromResult((IReadOnlyDictionary<long, IReadOnlyList<RuntimeCondition>>)_conditions
                 .Where(pair => runtimeRuleIds.Contains(pair.Key))

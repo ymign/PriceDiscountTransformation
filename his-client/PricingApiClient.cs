@@ -339,6 +339,125 @@ namespace HIS.Pricing.Client
         }
 
         // ================================================================
+        // 模板/策略/运行时包接口
+        // ================================================================
+
+        public ApiResponse<List<TemplateResponse>> GetTemplates()
+        {
+            return Get<List<TemplateResponse>>(PricingApiUrlBuilder.BuildTemplates());
+        }
+
+        public ApiResponse<TemplateDetailResponse> GetTemplate(long templateId)
+        {
+            return Get<TemplateDetailResponse>(PricingApiUrlBuilder.BuildTemplateById(templateId));
+        }
+
+        public ApiResponse<TemplateVersionResponse> GetTemplateVersion(long templateId, long templateVersionId)
+        {
+            return Get<TemplateVersionResponse>(PricingApiUrlBuilder.BuildTemplateVersion(templateId, templateVersionId));
+        }
+
+        public ApiResponse<long> CreateTemplate(TemplateCreateRequest request)
+        {
+            return Post<long>(PricingApiUrlBuilder.BuildTemplates(), request);
+        }
+
+        public ApiResponse UpdateTemplate(long templateId, TemplateUpdateRequest request)
+        {
+            return PutNoData(PricingApiUrlBuilder.BuildTemplateById(templateId), request);
+        }
+
+        public ApiResponse<long> SaveTemplateVersion(long templateId, TemplateVersionSaveRequest request)
+        {
+            return Post<long>(PricingApiUrlBuilder.BuildTemplateVersions(templateId), request);
+        }
+
+        public ApiResponse<List<PolicyResponse>> GetPolicies()
+        {
+            return Get<List<PolicyResponse>>(PricingApiUrlBuilder.BuildPolicies());
+        }
+
+        public ApiResponse<PolicyDetailResponse> GetPolicy(long policyId)
+        {
+            return Get<PolicyDetailResponse>(PricingApiUrlBuilder.BuildPolicyById(policyId));
+        }
+
+        public ApiResponse<PolicyVersionResponse> GetPolicyVersion(long policyVersionId)
+        {
+            return Get<PolicyVersionResponse>(PricingApiUrlBuilder.BuildPolicyVersionById(policyVersionId));
+        }
+
+        public ApiResponse<long> CreatePolicy(PolicyCreateRequest request)
+        {
+            return Post<long>(PricingApiUrlBuilder.BuildPolicies(), request);
+        }
+
+        public ApiResponse UpdatePolicy(long policyId, PolicyUpdateRequest request)
+        {
+            return PutNoData(PricingApiUrlBuilder.BuildPolicyById(policyId), request);
+        }
+
+        public ApiResponse<long> SavePolicyVersion(long policyId, PolicyVersionSaveRequest request)
+        {
+            return Post<long>(PricingApiUrlBuilder.BuildPolicyVersions(policyId), request);
+        }
+
+        public ApiResponse<PolicyPreviewResponse> PreviewPolicy(long policyVersionId)
+        {
+            return Post<PolicyPreviewResponse>(PricingApiUrlBuilder.BuildPolicyPreview(policyVersionId), null);
+        }
+
+        public ApiResponse<PolicyValidateResponse> ValidatePolicy(long policyVersionId)
+        {
+            return Post<PolicyValidateResponse>(PricingApiUrlBuilder.BuildPolicyValidate(policyVersionId), null);
+        }
+
+        public ApiResponse<long> SubmitPolicyReview(long policyVersionId, PolicyReviewSubmitRequest request)
+        {
+            return Post<long>(PricingApiUrlBuilder.BuildPolicyReviewSubmit(policyVersionId), request);
+        }
+
+        public ApiResponse ApprovePolicyReview(long policyVersionId, PolicyReviewDecisionRequest request)
+        {
+            return PostNoData(PricingApiUrlBuilder.BuildPolicyReviewApprove(policyVersionId), request);
+        }
+
+        public ApiResponse RejectPolicyReview(long policyVersionId, PolicyReviewDecisionRequest request)
+        {
+            return PostNoData(PricingApiUrlBuilder.BuildPolicyReviewReject(policyVersionId), request);
+        }
+
+        public ApiResponse<List<long>> ImportLegacyRules(PolicyImportRequest request)
+        {
+            return Post<List<long>>("/api/pricing/policies/import", request);
+        }
+
+        public ApiResponse<long> PublishRuntimePackage(RuntimePackagePublishRequest request)
+        {
+            return Post<long>(PricingApiUrlBuilder.BuildRuntimePackagesPublish(), request);
+        }
+
+        public ApiResponse<PolicyPackageDiffResult> GetRuntimePackageDiff(long packageId)
+        {
+            return Get<PolicyPackageDiffResult>(PricingApiUrlBuilder.BuildRuntimePackageDiff(packageId));
+        }
+
+        public ApiResponse<long> ActivateRuntimePackage(long packageId, RuntimePackageOperationRequest request)
+        {
+            return Post<long>(PricingApiUrlBuilder.BuildRuntimePackageActivate(packageId), request);
+        }
+
+        public ApiResponse<long> RollbackRuntimePackage(long packageId, RuntimePackageOperationRequest request)
+        {
+            return Post<long>(PricingApiUrlBuilder.BuildRuntimePackageRollback(packageId), request);
+        }
+
+        public ApiResponse<List<RuntimePackageHistoryResponse>> GetRuntimePackageHistory(int take)
+        {
+            return Get<List<RuntimePackageHistoryResponse>>(PricingApiUrlBuilder.BuildRuntimePackageHistory(take));
+        }
+
+        // ================================================================
         // 字典管理接口
         // ================================================================
 

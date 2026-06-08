@@ -9,6 +9,8 @@ namespace Pricing.RuleCenter.Application.RuntimePackages;
 
 public sealed class RuntimeRuleProjectionFactory
 {
+    public const string LegacyActionParamsJsonParamCode = "LEGACY_ACTION_PARAMS_JSON";
+
     private readonly PolicyPriorityKeyFactory _priorityKeyFactory;
 
     public RuntimeRuleProjectionFactory(PolicyPriorityKeyFactory priorityKeyFactory)
@@ -100,6 +102,13 @@ public sealed class RuntimeRuleProjectionFactory
 
     private static string BuildActionParamsJson(TemplateStepDef stepDef, IReadOnlyList<PolicyParam> parameters)
     {
+        var legacyRawJson = parameters.FirstOrDefault(parameter =>
+            string.Equals(parameter.ParamCode, LegacyActionParamsJsonParamCode, StringComparison.OrdinalIgnoreCase));
+        if (legacyRawJson is not null && !string.IsNullOrWhiteSpace(legacyRawJson.ValueText))
+        {
+            return legacyRawJson.ValueText!;
+        }
+
         var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
         if (!string.IsNullOrWhiteSpace(stepDef.StepConfigClob))
         {

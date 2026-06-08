@@ -1,3 +1,4 @@
+using Pricing.RuleCenter.Application.RuntimePackages;
 using Newtonsoft.Json;
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Pricing.Builders;
@@ -23,6 +24,8 @@ internal sealed record RequestLogSaveInput
     public string BusinessStatus { get; init; } = string.Empty;
 
     public string? Fingerprint { get; init; }
+
+    public RuntimePackageTraceResolution? RuntimeTrace { get; init; }
 }
 
 /// <summary>
@@ -75,6 +78,8 @@ public sealed class PricingRequestLogWriter
             BusinessChargeTime = items.Count == 1
                 ? items[0].BusinessChargeTime ?? request.BusinessChargeTime
                 : request.BusinessChargeTime,
+            RuntimePackageId = input.RuntimeTrace?.RuntimePackageId,
+            RuntimePackageVersion = input.RuntimeTrace?.RuntimePackageVersion,
             RequestJson = JsonConvert.SerializeObject(request),
             ResponseJson = JsonConvert.SerializeObject(calculations.Select(c => c.Result).ToList()),
             RequestAt = now,

@@ -99,7 +99,8 @@ public sealed class PricingEngine : IPricingEngine
             StepType = "MATCH",
             StepDesc = $"命中 {matchedRules.Count} 条规则",
             InputValue = context.InputQty,
-            OutputValue = orderedActions.Count
+            OutputValue = orderedActions.Count,
+            RuntimeRuleId = matchedRules.Count == 1 ? matchedRules[0].RuleId : null
         });
 
         // ========== 第四阶段：执行规则动作链 ==========

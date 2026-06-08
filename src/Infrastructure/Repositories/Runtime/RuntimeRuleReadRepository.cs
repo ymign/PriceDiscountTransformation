@@ -50,6 +50,19 @@ public sealed class RuntimeRuleReadRepository : IRuntimeRuleReadRepository
             .ToListAsync();
     }
 
+    public async Task<IReadOnlyList<RuntimeRule>> GetRulesByIdsAsync(IReadOnlyCollection<long> runtimeRuleIds)
+    {
+        if (runtimeRuleIds.Count == 0)
+        {
+            return Array.Empty<RuntimeRule>();
+        }
+
+        var keys = runtimeRuleIds.Distinct().ToArray();
+        return await _db.Queryable<RuntimeRule>()
+            .Where(rule => keys.Contains(rule.RuntimeRuleId))
+            .ToListAsync();
+    }
+
     public async Task<IReadOnlyDictionary<long, IReadOnlyList<RuntimeCondition>>> GetConditionsByRuleIdsAsync(IReadOnlyCollection<long> runtimeRuleIds)
     {
         if (runtimeRuleIds.Count == 0)

@@ -167,6 +167,14 @@ public sealed class RuntimePackageOperationRequest
     public string OperatedBy { get; init; } = string.Empty;
 }
 
+public sealed class PolicyImportRequest
+{
+    [Required]
+    public IReadOnlyList<long> RuleIds { get; init; } = Array.Empty<long>();
+    [Required]
+    public string ImportedBy { get; init; } = string.Empty;
+}
+
 public sealed class RuntimePackageHistoryResponse
 {
     public long PackageId { get; init; }

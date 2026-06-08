@@ -25,4 +25,14 @@ public sealed class PolicyControllerRouteTests
         var route = Assert.Single(method!.GetCustomAttributes(typeof(HttpPostAttribute), false).Cast<HttpPostAttribute>());
         Assert.Equal("versions/{policyVersionId:long}/review/submit", route.Template);
     }
+
+    [Fact]
+    public void ImportLegacyRulesAsync_ExposesImportRoute()
+    {
+        var method = typeof(PolicyController).GetMethod(nameof(PolicyController.ImportLegacyRulesAsync));
+
+        Assert.NotNull(method);
+        var route = Assert.Single(method!.GetCustomAttributes(typeof(HttpPostAttribute), false).Cast<HttpPostAttribute>());
+        Assert.Equal("import", route.Template);
+    }
 }

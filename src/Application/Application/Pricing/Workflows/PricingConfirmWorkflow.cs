@@ -3,6 +3,7 @@ using Pricing.RuleCenter.Application.Pricing.AuthorityPrice;
 using Pricing.RuleCenter.Application.Pricing.Builders;
 using Pricing.RuleCenter.Application.Pricing.Idempotency;
 using Pricing.RuleCenter.Application.Pricing.Persistence;
+using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Application.Pricing.Validation;
 using Pricing.RuleCenter.Core.Aggregates.Quota;
 using Pricing.RuleCenter.Core.Constants;
@@ -27,6 +28,7 @@ public sealed class PricingConfirmWorkflow
     private readonly PricingTraceStepWriter _traceStepWriter;
     private readonly PricingDiscountDetailWriter _discountDetailWriter;
     private readonly PricingLimitOccupyWriter _limitOccupyWriter;
+    private readonly RuntimePackageTraceResolver _runtimePackageTraceResolver;
     private readonly PricingTransactionExecutor _transactionExecutor;
     private readonly PricingIdempotentResponseReader _idempotentResponseReader;
     private readonly ILimitOccupyRepository _limitRepository;
@@ -46,6 +48,7 @@ public sealed class PricingConfirmWorkflow
         PricingTraceStepWriter traceStepWriter,
         PricingDiscountDetailWriter discountDetailWriter,
         PricingLimitOccupyWriter limitOccupyWriter,
+        RuntimePackageTraceResolver runtimePackageTraceResolver,
         PricingTransactionExecutor transactionExecutor,
         PricingIdempotentResponseReader idempotentResponseReader,
         ILimitOccupyRepository limitRepository,
@@ -61,6 +64,7 @@ public sealed class PricingConfirmWorkflow
         _traceStepWriter = traceStepWriter;
         _discountDetailWriter = discountDetailWriter;
         _limitOccupyWriter = limitOccupyWriter;
+        _runtimePackageTraceResolver = runtimePackageTraceResolver;
         _transactionExecutor = transactionExecutor;
         _idempotentResponseReader = idempotentResponseReader;
         _limitRepository = limitRepository;
@@ -145,6 +149,7 @@ public sealed class PricingConfirmWorkflow
                 calculations.Add(new ItemPricingCalculation(item, result));
             }
 
+            var runtimeTrace = await _runtimePackageTraceResolver.ResolveAsync(calculations);
             var requestLog = await _requestLogWriter.SaveAsync(new RequestLogSaveInput
             {
                 Request = request,
@@ -152,9 +157,10 @@ public sealed class PricingConfirmWorkflow
                 Calculations = calculations,
                 CallType = "CONFIRM",
                 BusinessStatus = BusinessStatusCodes.ConfirmPending,
-                Fingerprint = fingerprint
+                Fingerprint = fingerprint,
+                RuntimeTrace = runtimeTrace
             });
-            await _traceStepWriter.SaveAsync(requestLog.RequestId, requestLog.TraceId, calculations);
+            await _traceStepWriter.SaveAsync(requestLog.RequestId, requestLog.TraceId, calculations, runtimeTrace);
 
             foreach (var calculation in calculations)
             {
@@ -165,7 +171,8 @@ public sealed class PricingConfirmWorkflow
                     Request = request,
                     Item = calculation.Item,
                     Result = calculation.Result,
-                    Status = OccupyStatusCodes.Pending
+                    Status = OccupyStatusCodes.Pending,
+                    RuntimeTrace = runtimeTrace
                 });
                 if (calculation.Result.IsSpecialItem)
                 {

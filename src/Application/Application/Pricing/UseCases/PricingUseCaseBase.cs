@@ -5,6 +5,7 @@ using Pricing.RuleCenter.Application.Pricing.AuthorityPrice;
 using Pricing.RuleCenter.Application.Pricing.Builders;
 using Pricing.RuleCenter.Application.Pricing.Idempotency;
 using Pricing.RuleCenter.Application.Pricing.Persistence;
+using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
 using Pricing.RuleCenter.Core.Interfaces.Charging;
@@ -108,6 +109,7 @@ public abstract class PricingUseCaseBase
         PricingDiscountDetailWriter discountDetailWriter,
         PricingLimitOccupyWriter limitOccupyWriter,
         PricingReverseLogWriter reverseLogWriter,
+        RuntimePackageTraceResolver runtimePackageTraceResolver,
         IUnitOfWork unitOfWork,
         IOptions<PricingOptions> options,
         IClock clock,
@@ -137,6 +139,7 @@ public abstract class PricingUseCaseBase
             _authorityPriceChecker,
             _requestLogWriter,
             _traceStepWriter,
+            runtimePackageTraceResolver,
             _clock,
             _logger);
         _confirmWorkflow = new PricingConfirmWorkflow(
@@ -148,6 +151,7 @@ public abstract class PricingUseCaseBase
             _traceStepWriter,
             _discountDetailWriter,
             _limitOccupyWriter,
+            runtimePackageTraceResolver,
             _transactionExecutor,
             _idempotentResponseReader,
             _limitRepository,

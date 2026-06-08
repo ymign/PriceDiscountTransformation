@@ -299,6 +299,12 @@ public sealed class TraceStep
     /// 当前步骤处理后的关键数值，通常是数量或金额。
     /// </summary>
     public decimal? OutputValue { get; set; }
+
+    /// <summary>
+    /// 产生本步骤的运行时规则主键。
+    /// </summary>
+    public long? RuntimeRuleId { get; set; }
+
     /// <summary>
     /// 扩展参数 JSON，用于承载动作或条件的可变配置
     /// </summary>

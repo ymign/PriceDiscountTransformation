@@ -236,6 +236,7 @@ namespace HIS.Pricing.Client
             toolbar.Items.Add(CreateToolButton("发布", ToolbarPublishClick));
             toolbar.Items.Add(CreateToolButton("停用", ToolbarDisableClick));
             toolbar.Items.Add(CreateToolButton("回滚", ToolbarRollbackClick));
+            toolbar.Items.Add(CreateToolButton("发布中心", ToolbarPublishCenterClick));
             toolbar.Dock = DockStyle.Top;
 
             // ========== 搜索栏 ==========
@@ -831,6 +832,16 @@ namespace HIS.Pricing.Client
             {
                 ShowError("回滚失败", ex);
             }
+        }
+
+        /// <summary>
+        /// 打开新规则平台发布中心。
+        /// 旧工作台保留用于历史规则查看和过渡期维护；新模板/策略发布优先走发布中心。
+        /// </summary>
+        private void ToolbarPublishCenterClick(object sender, EventArgs e)
+        {
+            FrmPolicyPublishCenter center = new FrmPolicyPublishCenter(_client, _operatorId);
+            center.ShowDialog(this);
         }
 
         // ================================================================

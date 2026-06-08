@@ -2,6 +2,7 @@ using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Pricing.AuthorityPrice;
 using Pricing.RuleCenter.Application.Pricing.Builders;
 using Pricing.RuleCenter.Application.Pricing.Persistence;
+using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Application.Pricing.Validation;
 using Pricing.RuleCenter.Core.Aggregates.Quota;
 using Pricing.RuleCenter.Core.Constants;
@@ -19,6 +20,7 @@ public sealed class PricingSimulateWorkflow
     private readonly AuthorityPriceChecker _authorityPriceChecker;
     private readonly PricingRequestLogWriter _requestLogWriter;
     private readonly PricingTraceStepWriter _traceStepWriter;
+    private readonly RuntimePackageTraceResolver _runtimePackageTraceResolver;
     private readonly IClock _clock;
     private readonly ILogger _logger;
 
@@ -30,6 +32,7 @@ public sealed class PricingSimulateWorkflow
         AuthorityPriceChecker authorityPriceChecker,
         PricingRequestLogWriter requestLogWriter,
         PricingTraceStepWriter traceStepWriter,
+        RuntimePackageTraceResolver runtimePackageTraceResolver,
         IClock clock,
         ILogger logger)
     {
@@ -37,6 +40,7 @@ public sealed class PricingSimulateWorkflow
         _authorityPriceChecker = authorityPriceChecker;
         _requestLogWriter = requestLogWriter;
         _traceStepWriter = traceStepWriter;
+        _runtimePackageTraceResolver = runtimePackageTraceResolver;
         _clock = clock;
         _logger = logger;
     }
@@ -75,15 +79,17 @@ public sealed class PricingSimulateWorkflow
             calculations.Add(new ItemPricingCalculation(item, result));
         }
 
+        var runtimeTrace = await _runtimePackageTraceResolver.ResolveAsync(calculations);
         var requestLog = await _requestLogWriter.SaveAsync(new RequestLogSaveInput
         {
             Request = request,
             Items = items,
             Calculations = calculations,
             CallType = "SIMULATE",
-            BusinessStatus = BusinessStatusCodes.Simulated
+            BusinessStatus = BusinessStatusCodes.Simulated,
+            RuntimeTrace = runtimeTrace
         });
-        await _traceStepWriter.SaveAsync(requestLog.RequestId, requestLog.TraceId, calculations);
+        await _traceStepWriter.SaveAsync(requestLog.RequestId, requestLog.TraceId, calculations, runtimeTrace);
 
         var response = PricingResponseBuilder.Build(requestLog.RequestId, calculations, _clock.Now);
         await _requestLogWriter.SaveResponseJsonAsync(requestLog, response);

@@ -1,5 +1,6 @@
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Pricing.Builders;
+using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Core.Aggregates.Charging;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Charging;
@@ -21,6 +22,8 @@ internal sealed record DiscountDetailSaveInput
     public PricingResult Result { get; init; } = null!;
 
     public string Status { get; init; } = string.Empty;
+
+    public RuntimePackageTraceResolution? RuntimeTrace { get; init; }
 }
 
 internal sealed record ChildDiscountDetailSaveInput
@@ -45,6 +48,8 @@ internal sealed record ChildDiscountDetailSaveInput
     public string Status { get; init; } = string.Empty;
 
     public DateTime Now { get; init; }
+
+    public RuntimePackageTraceResolution? RuntimeTrace { get; init; }
 }
 
 /// <summary>
@@ -81,6 +86,7 @@ public sealed class PricingDiscountDetailWriter
         var replacementAmt = result.ReplaceChildResult is null
             ? 0m
             : PricingAmountRounder.RoundFinal(result.ReplaceChildResult.Amount);
+        var firstRuntimeRule = input.RuntimeTrace?.FindRule(firstRuleId == 0 ? null : firstRuleId);
         var mainFinalAmt = result.ReplaceChildResult is null
             ? result.FinalAmount
             : Math.Max(result.FinalAmount - replacementAmt, 0m);
@@ -98,6 +104,10 @@ public sealed class PricingDiscountDetailWriter
             ItemCode = item.ItemCode,
             ItemName = item.ItemName,
             RuleId = firstRuleId == 0 ? null : firstRuleId,
+            RuntimePackageId = input.RuntimeTrace?.RuntimePackageId,
+            RuntimeRuleId = firstRuleId == 0 ? null : firstRuleId,
+            SourcePolicyVersionId = firstRuntimeRule?.SourcePolicyVersionId,
+            SourceTemplateVersionId = firstRuntimeRule?.SourceTemplateVersionId,
             ResultGroupNo = resultGroupNo,
             OriginalQty = item.InputQty,
             ConvertedQty = result.ConvertedQty,
@@ -129,7 +139,8 @@ public sealed class PricingDiscountDetailWriter
                 MainDiscountId = mainDiscountId,
                 FirstRuleId = firstRuleId,
                 Status = status,
-                Now = now
+                Now = now,
+                RuntimeTrace = input.RuntimeTrace
             });
             return;
         }
@@ -146,6 +157,10 @@ public sealed class PricingDiscountDetailWriter
             ItemCode = replacement.ItemCode,
             ItemName = replacement.ItemName,
             RuleId = firstRuleId == 0 ? null : firstRuleId,
+            RuntimePackageId = input.RuntimeTrace?.RuntimePackageId,
+            RuntimeRuleId = firstRuleId == 0 ? null : firstRuleId,
+            SourcePolicyVersionId = firstRuntimeRule?.SourcePolicyVersionId,
+            SourceTemplateVersionId = firstRuntimeRule?.SourceTemplateVersionId,
             ResultGroupNo = resultGroupNo,
             ParentDiscountId = mainDiscountId,
             ConvertedQty = replacement.Qty,
@@ -175,7 +190,8 @@ public sealed class PricingDiscountDetailWriter
             MainDiscountId = mainDiscountId,
             FirstRuleId = firstRuleId,
             Status = status,
-            Now = now
+            Now = now,
+            RuntimeTrace = input.RuntimeTrace
         });
     }
 
@@ -186,6 +202,7 @@ public sealed class PricingDiscountDetailWriter
         foreach (var child in input.ChildPricingResults)
         {
             var childAmount = PricingAmountRounder.RoundFinal(child.Amount);
+            var runtimeRule = input.RuntimeTrace?.FindRule(input.FirstRuleId == 0 ? null : input.FirstRuleId);
             var childDetail = new ChargeDiscountDetail
             {
                 RequestId = input.RequestId,
@@ -197,6 +214,10 @@ public sealed class PricingDiscountDetailWriter
                 ItemCode = child.ItemCode,
                 ItemName = child.ItemName,
                 RuleId = input.FirstRuleId == 0 ? null : input.FirstRuleId,
+                RuntimePackageId = input.RuntimeTrace?.RuntimePackageId,
+                RuntimeRuleId = input.FirstRuleId == 0 ? null : input.FirstRuleId,
+                SourcePolicyVersionId = runtimeRule?.SourcePolicyVersionId,
+                SourceTemplateVersionId = runtimeRule?.SourceTemplateVersionId,
                 ResultGroupNo = input.ResultGroupNo,
                 ParentDiscountId = input.MainDiscountId,
                 ConvertedQty = child.Qty,

@@ -704,4 +704,280 @@ namespace HIS.Pricing.Client
         /// <summary>备注</summary>
         public string Remark { get; set; }
     }
+
+    // ================================================================
+    // 新规则平台 DTO
+    // ================================================================
+
+    public class TemplateResponse
+    {
+        public long TemplateId { get; set; }
+        public string TemplateCode { get; set; }
+        public string TemplateName { get; set; }
+        public string Category { get; set; }
+        public string RiskLevel { get; set; }
+        public string ExpressionMode { get; set; }
+        public string Status { get; set; }
+        public int CurrentVersionNo { get; set; }
+    }
+
+    public sealed class TemplateDetailResponse : TemplateResponse
+    {
+        public List<TemplateVersionResponse> Versions { get; set; }
+    }
+
+    public sealed class TemplateVersionResponse
+    {
+        public long TemplateVersionId { get; set; }
+        public long TemplateId { get; set; }
+        public int VersionNo { get; set; }
+        public string VersionStatus { get; set; }
+        public string CapabilityFamily { get; set; }
+        public string MergeMode { get; set; }
+        public string Checksum { get; set; }
+        public string Description { get; set; }
+        public List<TemplateParamDefDto> ParamDefs { get; set; }
+        public List<TemplateStepDefDto> StepDefs { get; set; }
+        public List<TemplateScopeDefDto> ScopeDefs { get; set; }
+    }
+
+    public sealed class TemplateParamDefDto
+    {
+        public string ParamCode { get; set; }
+        public string ParamName { get; set; }
+        public string ValueType { get; set; }
+        public bool IsRequired { get; set; }
+        public string DefaultText { get; set; }
+        public decimal? DefaultNumber { get; set; }
+        public bool? DefaultBool { get; set; }
+        public string DictType { get; set; }
+        public decimal? MinValue { get; set; }
+        public decimal? MaxValue { get; set; }
+        public string RegexRule { get; set; }
+        public string UiControl { get; set; }
+        public string HelpText { get; set; }
+        public string RiskFlag { get; set; }
+        public int SortNo { get; set; }
+    }
+
+    public sealed class TemplateStepDefDto
+    {
+        public int StepNo { get; set; }
+        public string StepKind { get; set; }
+        public string CapabilityCode { get; set; }
+        public string ActionType { get; set; }
+        public string ExecutorCode { get; set; }
+        public string OnError { get; set; }
+        public string StepConfigClob { get; set; }
+    }
+
+    public sealed class TemplateScopeDefDto
+    {
+        public string ScopeDimension { get; set; }
+        public bool IsRequired { get; set; }
+        public bool AllowMultiple { get; set; }
+        public int SortNo { get; set; }
+    }
+
+    public sealed class TemplateCreateRequest
+    {
+        public string TemplateCode { get; set; }
+        public string TemplateName { get; set; }
+        public string Category { get; set; }
+        public string RiskLevel { get; set; }
+        public string ExpressionMode { get; set; }
+        public string CreatedBy { get; set; }
+    }
+
+    public sealed class TemplateUpdateRequest
+    {
+        public string TemplateName { get; set; }
+        public string Category { get; set; }
+        public string RiskLevel { get; set; }
+        public string ExpressionMode { get; set; }
+        public string Status { get; set; }
+        public string UpdatedBy { get; set; }
+    }
+
+    public sealed class TemplateVersionSaveRequest
+    {
+        public long? TemplateVersionId { get; set; }
+        public int? VersionNo { get; set; }
+        public string CapabilityFamily { get; set; }
+        public string MergeMode { get; set; }
+        public string Description { get; set; }
+        public string Checksum { get; set; }
+        public List<TemplateParamDefDto> ParamDefs { get; set; }
+        public List<TemplateStepDefDto> StepDefs { get; set; }
+        public List<TemplateScopeDefDto> ScopeDefs { get; set; }
+    }
+
+    public class PolicyResponse
+    {
+        public long PolicyId { get; set; }
+        public string PolicyCode { get; set; }
+        public string PolicyName { get; set; }
+        public long TemplateId { get; set; }
+        public string OwnerType { get; set; }
+        public string PublishProfile { get; set; }
+        public string Status { get; set; }
+        public int CurrentVersionNo { get; set; }
+    }
+
+    public sealed class PolicyDetailResponse : PolicyResponse
+    {
+        public List<PolicyVersionResponse> Versions { get; set; }
+    }
+
+    public sealed class PolicyVersionResponse
+    {
+        public long PolicyVersionId { get; set; }
+        public long PolicyId { get; set; }
+        public long TemplateVersionId { get; set; }
+        public int VersionNo { get; set; }
+        public string PolicyStatus { get; set; }
+        public DateTime? EffectiveFrom { get; set; }
+        public DateTime? EffectiveTo { get; set; }
+        public string BindingType { get; set; }
+        public string ScopeLevel { get; set; }
+        public int PriorityWeight { get; set; }
+        public string Checksum { get; set; }
+        public long? LastBuiltPackageId { get; set; }
+        public List<PolicyBindingDto> Bindings { get; set; }
+        public List<PolicyScopeDto> Scopes { get; set; }
+        public List<PolicyParamDto> Params { get; set; }
+    }
+
+    public sealed class PolicyBindingDto
+    {
+        public string BindingType { get; set; }
+        public string ItemCode { get; set; }
+        public string ItemName { get; set; }
+        public string GroupCode { get; set; }
+        public string GroupName { get; set; }
+    }
+
+    public sealed class PolicyScopeDto
+    {
+        public string ScopeDimension { get; set; }
+        public string ScopeOperator { get; set; }
+        public string ScopeValueText { get; set; }
+        public decimal? ScopeValueNumber { get; set; }
+        public DateTime? ScopeValueDate { get; set; }
+        public string ScopeJson { get; set; }
+    }
+
+    public sealed class PolicyParamDto
+    {
+        public string ParamCode { get; set; }
+        public string ValueType { get; set; }
+        public string ValueText { get; set; }
+        public decimal? ValueNumber { get; set; }
+        public DateTime? ValueDate { get; set; }
+        public bool? ValueBool { get; set; }
+        public string ExprText { get; set; }
+        public string ExprLevel { get; set; }
+    }
+
+    public sealed class PolicyCreateRequest
+    {
+        public string PolicyCode { get; set; }
+        public string PolicyName { get; set; }
+        public long TemplateId { get; set; }
+        public string OwnerType { get; set; }
+        public string PublishProfile { get; set; }
+        public string CreatedBy { get; set; }
+    }
+
+    public sealed class PolicyUpdateRequest
+    {
+        public string PolicyName { get; set; }
+        public string OwnerType { get; set; }
+        public string PublishProfile { get; set; }
+        public string Status { get; set; }
+        public string UpdatedBy { get; set; }
+    }
+
+    public sealed class PolicyVersionSaveRequest
+    {
+        public long? PolicyVersionId { get; set; }
+        public int? VersionNo { get; set; }
+        public long TemplateVersionId { get; set; }
+        public string BindingType { get; set; }
+        public string ScopeLevel { get; set; }
+        public int PriorityWeight { get; set; }
+        public DateTime? EffectiveFrom { get; set; }
+        public DateTime? EffectiveTo { get; set; }
+        public string Checksum { get; set; }
+        public List<PolicyBindingDto> Bindings { get; set; }
+        public List<PolicyScopeDto> Scopes { get; set; }
+        public List<PolicyParamDto> Params { get; set; }
+    }
+
+    public sealed class PolicyPreviewResponse
+    {
+        public long PolicyVersionId { get; set; }
+        public string PolicyCode { get; set; }
+        public long TemplateVersionId { get; set; }
+        public string CapabilityFamily { get; set; }
+        public string MergeMode { get; set; }
+        public List<string> BindingSummary { get; set; }
+        public List<string> ScopeSummary { get; set; }
+        public List<string> ActionChain { get; set; }
+    }
+
+    public sealed class PolicyValidateResponse
+    {
+        public long PolicyVersionId { get; set; }
+        public string PolicyStatus { get; set; }
+    }
+
+    public sealed class PolicyReviewSubmitRequest
+    {
+        public string SubmittedBy { get; set; }
+        public string ReviewStage { get; set; }
+    }
+
+    public sealed class PolicyReviewDecisionRequest
+    {
+        public string ReviewedBy { get; set; }
+        public string ReviewComment { get; set; }
+    }
+
+    public sealed class PolicyImportRequest
+    {
+        public List<long> RuleIds { get; set; }
+        public string ImportedBy { get; set; }
+    }
+
+    public sealed class RuntimePackagePublishRequest
+    {
+        public List<long> PolicyVersionIds { get; set; }
+        public string PublishedBy { get; set; }
+    }
+
+    public sealed class RuntimePackageOperationRequest
+    {
+        public string OperatedBy { get; set; }
+    }
+
+    public sealed class RuntimePackageHistoryResponse
+    {
+        public long PackageId { get; set; }
+        public long PackageVersion { get; set; }
+        public string PackageStatus { get; set; }
+        public string BuiltBy { get; set; }
+        public DateTime? BuiltAt { get; set; }
+        public string ActivatedBy { get; set; }
+        public DateTime? ActivatedAt { get; set; }
+    }
+
+    public sealed class PolicyPackageDiffResult
+    {
+        public long CandidatePackageId { get; set; }
+        public long? ActivePackageId { get; set; }
+        public List<long> AddedPolicyVersionIds { get; set; }
+        public List<long> RemovedPolicyVersionIds { get; set; }
+        public List<long> UnchangedPolicyVersionIds { get; set; }
+    }
 }

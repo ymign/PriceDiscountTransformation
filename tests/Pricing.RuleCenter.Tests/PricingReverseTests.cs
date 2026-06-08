@@ -5,8 +5,11 @@ using Pricing.RuleCenter.Application.Pricing;
 using Pricing.RuleCenter.Application.Pricing.AuthorityPrice;
 using Pricing.RuleCenter.Application.Pricing.Idempotency;
 using Pricing.RuleCenter.Application.Pricing.Persistence;
+using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Application.Pricing.UseCases;
 using Pricing.RuleCenter.Core.Interfaces;
+using Pricing.RuleCenter.Core.Interfaces.Runtime;
+using Pricing.RuleCenter.Core.Aggregates.Runtime;
 using Pricing.RuleCenter.Core.Models;
 using Pricing.RuleCenter.Core.Options;
 using Xunit;
@@ -794,6 +797,9 @@ public sealed class PricingReverseTests
         var requestLogWriter = new PricingRequestLogWriter(requestRepository, clock);
         var traceStepWriter = new PricingTraceStepWriter(traceStepRepository, clock);
         var discountDetailWriter = new PricingDiscountDetailWriter(discountRepository, clock);
+        var runtimeTraceResolver = new RuntimePackageTraceResolver(
+            new EmptyRuntimePackageStateRepository(),
+            new EmptyRuntimeRuleReadRepository());
         var limitOccupyWriter = new PricingLimitOccupyWriter(
             limitRepository,
             options,
@@ -812,6 +818,7 @@ public sealed class PricingReverseTests
                 discountDetailWriter,
                 limitOccupyWriter,
                 reverseLogWriter,
+                runtimeTraceResolver,
                 unitOfWork,
                 options,
                 clock,
@@ -826,6 +833,7 @@ public sealed class PricingReverseTests
                 discountDetailWriter,
                 limitOccupyWriter,
                 reverseLogWriter,
+                runtimeTraceResolver,
                 unitOfWork,
                 options,
                 clock,
@@ -840,6 +848,7 @@ public sealed class PricingReverseTests
                 discountDetailWriter,
                 limitOccupyWriter,
                 reverseLogWriter,
+                runtimeTraceResolver,
                 unitOfWork,
                 options,
                 clock,
@@ -854,6 +863,7 @@ public sealed class PricingReverseTests
                 discountDetailWriter,
                 limitOccupyWriter,
                 reverseLogWriter,
+                runtimeTraceResolver,
                 unitOfWork,
                 options,
                 clock,
@@ -868,6 +878,7 @@ public sealed class PricingReverseTests
                 discountDetailWriter,
                 limitOccupyWriter,
                 reverseLogWriter,
+                runtimeTraceResolver,
                 unitOfWork,
                 options,
                 clock,
@@ -882,6 +893,7 @@ public sealed class PricingReverseTests
                 discountDetailWriter,
                 limitOccupyWriter,
                 reverseLogWriter,
+                runtimeTraceResolver,
                 unitOfWork,
                 options,
                 clock,
@@ -899,6 +911,28 @@ public sealed class PricingReverseTests
         public void Dispose()
         {
         }
+    }
+
+    private sealed class EmptyRuntimePackageStateRepository : IRuntimePackageStateRepository
+    {
+        public Task<RuntimePackageState?> GetActiveAsync() => Task.FromResult<RuntimePackageState?>(null);
+        public Task<RuntimePackageState?> GetActiveForUpdateAsync() => Task.FromResult<RuntimePackageState?>(null);
+        public Task UpsertAsync(RuntimePackageState entity) => Task.CompletedTask;
+    }
+
+    private sealed class EmptyRuntimeRuleReadRepository : IRuntimeRuleReadRepository
+    {
+        public Task<IReadOnlyList<RuntimeRule>> GetRulesByItemCodeAsync(long packageId, string itemCode) =>
+            Task.FromResult((IReadOnlyList<RuntimeRule>)Array.Empty<RuntimeRule>());
+
+        public Task<IReadOnlyList<RuntimeRule>> GetRulesByIdsAsync(IReadOnlyCollection<long> runtimeRuleIds) =>
+            Task.FromResult((IReadOnlyList<RuntimeRule>)Array.Empty<RuntimeRule>());
+
+        public Task<IReadOnlyDictionary<long, IReadOnlyList<RuntimeCondition>>> GetConditionsByRuleIdsAsync(IReadOnlyCollection<long> runtimeRuleIds) =>
+            Task.FromResult((IReadOnlyDictionary<long, IReadOnlyList<RuntimeCondition>>)new Dictionary<long, IReadOnlyList<RuntimeCondition>>());
+
+        public Task<IReadOnlyDictionary<long, IReadOnlyList<RuntimeAction>>> GetActionsByRuleIdsAsync(IReadOnlyCollection<long> runtimeRuleIds) =>
+            Task.FromResult((IReadOnlyDictionary<long, IReadOnlyList<RuntimeAction>>)new Dictionary<long, IReadOnlyList<RuntimeAction>>());
     }
 
     private sealed class ReverseRequestLogRepository : IChargeRequestLogRepository

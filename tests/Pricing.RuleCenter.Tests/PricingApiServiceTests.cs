@@ -6,8 +6,12 @@ using Pricing.RuleCenter.Application.Pricing;
 using Pricing.RuleCenter.Application.Pricing.AuthorityPrice;
 using Pricing.RuleCenter.Application.Pricing.Idempotency;
 using Pricing.RuleCenter.Application.Pricing.Persistence;
+using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Application.Pricing.UseCases;
+using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
+using Pricing.RuleCenter.Core.Interfaces.Runtime;
+using Pricing.RuleCenter.Core.Aggregates.Runtime;
 using Pricing.RuleCenter.Core.Models;
 using Pricing.RuleCenter.Core.Options;
 using Xunit;
@@ -692,6 +696,81 @@ public sealed class PricingApiServiceTests
     }
 
     [Fact]
+    public async Task ConfirmAsync_PersistsRuntimePackageAndRuleTraceMetadata()
+    {
+        var requestRepository = new InMemoryChargeRequestLogRepository();
+        var discountRepository = new CapturingChargeDiscountDetailRepository();
+        var traceRepository = new CapturingChargeTraceStepRepository();
+        var limitRepository = new CapturingLimitOccupyRepository();
+        var service = CreatePricingApiService(
+            new RuntimeAwareTracePricingEngine(),
+            new EmptyRuleHeaderRepository(),
+            requestRepository,
+            discountRepository,
+            traceRepository,
+            limitRepository,
+            new EmptyChargeReverseLogRepository(),
+            new EmptyPriceMasterRepository(),
+            new NoopUnitOfWork(),
+            Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
+            NullLogger<PricingApiService>.Instance,
+            new FixedRuntimePackageStateRepository(new RuntimePackageState
+            {
+                StateCode = RuntimePackageStateCodes.Active,
+                ActivePackageId = 99,
+                ActivePackageVersion = 3
+            }),
+            new FixedRuntimeRuleReadRepository(new RuntimeRule
+            {
+                RuntimeRuleId = 501,
+                PackageId = 99,
+                SourcePolicyVersionId = 7001,
+                SourceTemplateVersionId = 8001,
+                TargetItemCode = "ITEM_TRACE",
+                CapabilityFamily = "FORMULA_PRICING",
+                MergeMode = "SINGLE_WINNER",
+                ScopeLevel = "SCENE",
+                PriorityKey = "001|001|998|005|0010|000001|000000000001",
+                MatchKey = "FORMULA_PRICING|ITEM:ITEM_TRACE|SCENE"
+            }));
+
+        await service.ConfirmAsync(new PricingCalculateRequest
+        {
+            RequestNo = "REQ-RUNTIME-TRACE",
+            BusinessRequestNo = "BR-RUNTIME-TRACE",
+            SourceSystem = "HIS",
+            PatientId = "P001",
+            ChargeNo = "C-RUNTIME-TRACE",
+            BusinessChargeTime = new DateTime(2026, 5, 10, 9, 30, 0),
+            Items = new[]
+            {
+                new PricingCalculateItemRequest
+                {
+                    ChargeDetailNo = "CD-RUNTIME-TRACE",
+                    ItemCode = "ITEM_TRACE",
+                    ItemName = "追溯项目",
+                    InputQty = 1m,
+                    UnitPrice = 10m
+                }
+            }
+        });
+
+        var requestLog = Assert.Single(requestRepository.Inserted);
+        Assert.Equal(99, requestLog.RuntimePackageId);
+        Assert.Equal(3, requestLog.RuntimePackageVersion);
+        var traceStep = Assert.Single(traceRepository.Inserted);
+        Assert.Equal(99, traceStep.RuntimePackageId);
+        Assert.Equal(501, traceStep.RuntimeRuleId);
+        Assert.Equal(7001, traceStep.SourcePolicyVersionId);
+        Assert.Equal(8001, traceStep.SourceTemplateVersionId);
+        var discountDetail = Assert.Single(discountRepository.Inserted);
+        Assert.Equal(99, discountDetail.RuntimePackageId);
+        Assert.Equal(501, discountDetail.RuntimeRuleId);
+        Assert.Equal(7001, discountDetail.SourcePolicyVersionId);
+        Assert.Equal(8001, discountDetail.SourceTemplateVersionId);
+    }
+
+    [Fact]
     public async Task ConfirmAsync_PersistsChargeDetailNoIntoLimitOccupies()
     {
         var requestRepository = new InMemoryChargeRequestLogRepository();
@@ -1109,7 +1188,9 @@ public sealed class PricingApiServiceTests
         IPriceMasterRepository priceMasterRepository,
         IUnitOfWork unitOfWork,
         IOptions<PricingOptions> options,
-        ILogger<PricingApiService> logger)
+        ILogger<PricingApiService> logger,
+        IRuntimePackageStateRepository? runtimePackageStateRepository = null,
+        IRuntimeRuleReadRepository? runtimeRuleReadRepository = null)
     {
         var calculationDependencies = new PricingApiCalculationDependencies(
             engine,
@@ -1130,6 +1211,9 @@ public sealed class PricingApiServiceTests
         var requestLogWriter = new PricingRequestLogWriter(requestLogRepository, clock);
         var traceStepWriter = new PricingTraceStepWriter(traceStepRepository, clock);
         var discountDetailWriter = new PricingDiscountDetailWriter(discountRepository, clock);
+        var runtimeTraceResolver = new RuntimePackageTraceResolver(
+            runtimePackageStateRepository ?? new EmptyRuntimePackageStateRepository(),
+            runtimeRuleReadRepository ?? new EmptyRuntimeRuleReadRepository());
         var limitOccupyWriter = new PricingLimitOccupyWriter(
             limitRepository,
             options,
@@ -1148,6 +1232,7 @@ public sealed class PricingApiServiceTests
                 discountDetailWriter,
                 limitOccupyWriter,
                 reverseLogWriter,
+                runtimeTraceResolver,
                 unitOfWork,
                 options,
                 clock,
@@ -1162,6 +1247,7 @@ public sealed class PricingApiServiceTests
                 discountDetailWriter,
                 limitOccupyWriter,
                 reverseLogWriter,
+                runtimeTraceResolver,
                 unitOfWork,
                 options,
                 clock,
@@ -1176,6 +1262,7 @@ public sealed class PricingApiServiceTests
                 discountDetailWriter,
                 limitOccupyWriter,
                 reverseLogWriter,
+                runtimeTraceResolver,
                 unitOfWork,
                 options,
                 clock,
@@ -1190,6 +1277,7 @@ public sealed class PricingApiServiceTests
                 discountDetailWriter,
                 limitOccupyWriter,
                 reverseLogWriter,
+                runtimeTraceResolver,
                 unitOfWork,
                 options,
                 clock,
@@ -1204,6 +1292,7 @@ public sealed class PricingApiServiceTests
                 discountDetailWriter,
                 limitOccupyWriter,
                 reverseLogWriter,
+                runtimeTraceResolver,
                 unitOfWork,
                 options,
                 clock,
@@ -1218,6 +1307,7 @@ public sealed class PricingApiServiceTests
                 discountDetailWriter,
                 limitOccupyWriter,
                 reverseLogWriter,
+                runtimeTraceResolver,
                 unitOfWork,
                 options,
                 clock,
@@ -1235,6 +1325,66 @@ public sealed class PricingApiServiceTests
         public void Dispose()
         {
         }
+    }
+
+    private sealed class EmptyRuntimePackageStateRepository : IRuntimePackageStateRepository
+    {
+        public Task<RuntimePackageState?> GetActiveAsync() => Task.FromResult<RuntimePackageState?>(null);
+        public Task<RuntimePackageState?> GetActiveForUpdateAsync() => Task.FromResult<RuntimePackageState?>(null);
+        public Task UpsertAsync(RuntimePackageState entity) => Task.CompletedTask;
+    }
+
+    private sealed class EmptyRuntimeRuleReadRepository : IRuntimeRuleReadRepository
+    {
+        public Task<IReadOnlyList<RuntimeRule>> GetRulesByItemCodeAsync(long packageId, string itemCode) =>
+            Task.FromResult((IReadOnlyList<RuntimeRule>)Array.Empty<RuntimeRule>());
+
+        public Task<IReadOnlyList<RuntimeRule>> GetRulesByIdsAsync(IReadOnlyCollection<long> runtimeRuleIds) =>
+            Task.FromResult((IReadOnlyList<RuntimeRule>)Array.Empty<RuntimeRule>());
+
+        public Task<IReadOnlyDictionary<long, IReadOnlyList<RuntimeCondition>>> GetConditionsByRuleIdsAsync(IReadOnlyCollection<long> runtimeRuleIds) =>
+            Task.FromResult((IReadOnlyDictionary<long, IReadOnlyList<RuntimeCondition>>)new Dictionary<long, IReadOnlyList<RuntimeCondition>>());
+
+        public Task<IReadOnlyDictionary<long, IReadOnlyList<RuntimeAction>>> GetActionsByRuleIdsAsync(IReadOnlyCollection<long> runtimeRuleIds) =>
+            Task.FromResult((IReadOnlyDictionary<long, IReadOnlyList<RuntimeAction>>)new Dictionary<long, IReadOnlyList<RuntimeAction>>());
+    }
+
+    private sealed class FixedRuntimePackageStateRepository : IRuntimePackageStateRepository
+    {
+        private readonly RuntimePackageState _state;
+
+        public FixedRuntimePackageStateRepository(RuntimePackageState state)
+        {
+            _state = state;
+        }
+
+        public Task<RuntimePackageState?> GetActiveAsync() => Task.FromResult<RuntimePackageState?>(_state);
+        public Task<RuntimePackageState?> GetActiveForUpdateAsync() => Task.FromResult<RuntimePackageState?>(_state);
+        public Task UpsertAsync(RuntimePackageState entity) => Task.CompletedTask;
+    }
+
+    private sealed class FixedRuntimeRuleReadRepository : IRuntimeRuleReadRepository
+    {
+        private readonly RuntimeRule _rule;
+
+        public FixedRuntimeRuleReadRepository(RuntimeRule rule)
+        {
+            _rule = rule;
+        }
+
+        public Task<IReadOnlyList<RuntimeRule>> GetRulesByItemCodeAsync(long packageId, string itemCode) =>
+            Task.FromResult((IReadOnlyList<RuntimeRule>)new[] { _rule });
+
+        public Task<IReadOnlyList<RuntimeRule>> GetRulesByIdsAsync(IReadOnlyCollection<long> runtimeRuleIds) =>
+            Task.FromResult((IReadOnlyList<RuntimeRule>)(runtimeRuleIds.Contains(_rule.RuntimeRuleId)
+                ? new[] { _rule }
+                : Array.Empty<RuntimeRule>()));
+
+        public Task<IReadOnlyDictionary<long, IReadOnlyList<RuntimeCondition>>> GetConditionsByRuleIdsAsync(IReadOnlyCollection<long> runtimeRuleIds) =>
+            Task.FromResult((IReadOnlyDictionary<long, IReadOnlyList<RuntimeCondition>>)new Dictionary<long, IReadOnlyList<RuntimeCondition>>());
+
+        public Task<IReadOnlyDictionary<long, IReadOnlyList<RuntimeAction>>> GetActionsByRuleIdsAsync(IReadOnlyCollection<long> runtimeRuleIds) =>
+            Task.FromResult((IReadOnlyDictionary<long, IReadOnlyList<RuntimeAction>>)new Dictionary<long, IReadOnlyList<RuntimeAction>>());
     }
 
     private static PricingCalculateRequest CreateValidCalculateRequest(
@@ -1473,6 +1623,36 @@ public sealed class PricingApiServiceTests
                         BusinessChargeTime = context.BusinessChargeTime
                     }
                 }
+            });
+        }
+    }
+
+    private sealed class RuntimeAwareTracePricingEngine : IPricingEngine
+    {
+        public Task<PricingResult> CalculateAsync(PricingContext context, BatchPricingContext? batchContext = null)
+        {
+            return Task.FromResult(new PricingResult
+            {
+                IsSpecialItem = true,
+                InputQty = context.InputQty,
+                ConvertedQty = context.InputQty,
+                FinalQty = context.InputQty,
+                UnitPrice = context.UnitPrice,
+                FinalAmount = context.InputQty * context.UnitPrice,
+                DiscountAmount = 0m,
+                TraceSteps = new[]
+                {
+                    new TraceStep
+                    {
+                        StepNo = 1,
+                        StepType = "MATCH",
+                        StepDesc = "命中运行时规则",
+                        InputValue = context.InputQty,
+                        OutputValue = context.InputQty,
+                        RuntimeRuleId = 501
+                    }
+                },
+                MatchedRuleIds = new[] { 501L }
             });
         }
     }

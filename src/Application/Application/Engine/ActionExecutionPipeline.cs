@@ -128,6 +128,7 @@ public sealed class ActionExecutionPipeline
             // 数量变化目前未单独快照（只记录金额），后续可扩展 InputSnapshot/OutputSnapshot
             // 保存完整上下文 JSON，支持更细粒度的审计。
             var inputValue = context.FinalAmount;
+            var traceStepCountBeforeExecute = context.TraceSteps.Count;
 
             try
             {
@@ -138,6 +139,7 @@ public sealed class ActionExecutionPipeline
                 // 前面已经通过 CanHandle 确认只有一个执行器可以处理当前动作。
                 // 这里不再循环所有候选执行器，避免 ExecutorCode 配错时静默跳过，也避免重复执行同一动作。
                 await executors[0].ExecuteAsync(action, context);
+                StampRuntimeRuleId(context.TraceSteps, traceStepCountBeforeExecute, action.RuleId);
 
                 // ========== 第三阶段：写成功追溯步骤 ==========
                 // StepType 必须映射到数据库 CHECK 约束允许的稳定类别（CONVERT/FORMULA/LIMIT/DISCOUNT/VALIDATE），
@@ -153,6 +155,7 @@ public sealed class ActionExecutionPipeline
                     StepDesc = $"执行 {action.ActionType}",
                     InputValue = inputValue,
                     OutputValue = context.FinalAmount,
+                    RuntimeRuleId = action.RuleId,
                     ParamsJson = action.ParamsJson
                 });
             }
@@ -184,7 +187,8 @@ public sealed class ActionExecutionPipeline
                         StepType = "ERROR",
                         StepDesc = $"执行异常(已跳过): {ex.Message}",
                         InputValue = inputValue,
-                        OutputValue = context.FinalAmount
+                        OutputValue = context.FinalAmount,
+                        RuntimeRuleId = action.RuleId
                     });
                 }
 
@@ -261,5 +265,16 @@ public sealed class ActionExecutionPipeline
     private static bool IsWarnOnError(RuleAction action)
     {
         return string.Equals(action.OnError, "WARN", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void StampRuntimeRuleId(IReadOnlyList<TraceStep> traceSteps, int startIndex, long runtimeRuleId)
+    {
+        for (var index = startIndex; index < traceSteps.Count; index++)
+        {
+            if (!traceSteps[index].RuntimeRuleId.HasValue)
+            {
+                traceSteps[index].RuntimeRuleId = runtimeRuleId;
+            }
+        }
     }
 }
