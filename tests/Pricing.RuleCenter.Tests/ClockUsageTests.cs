@@ -11,7 +11,7 @@ public sealed class ClockUsageTests
         var srcRoot = Path.Combine(repositoryRoot, "src");
         var allowedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            Path.GetFullPath(Path.Combine(srcRoot, "Infrastructure", "SystemClock.cs"))
+            Path.GetFullPath(Path.Combine(srcRoot, "Pricing.RuleCenter.Infrastructure", "SystemClock.cs"))
         };
 
         var violations = Directory

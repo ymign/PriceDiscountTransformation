@@ -15,7 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\API\Pricing.RuleCenter.Api.csproj" />
+    <ProjectReference Include="..\..\src\Pricing.RuleCenter.Api\Pricing.RuleCenter.Api.csproj" />
   </ItemGroup>
 
   <ItemGroup>

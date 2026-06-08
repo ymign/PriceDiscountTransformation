@@ -52,8 +52,8 @@ public sealed class ProjectReleaseGateTests
         var root = FindRepositoryRoot();
         var projectFiles = new[]
         {
-            Path.Combine(root, "src", "Application", "Pricing.RuleCenter.Application.csproj"),
-            Path.Combine(root, "src", "Infrastructure", "Pricing.RuleCenter.Infrastructure.csproj")
+            Path.Combine(root, "src", "Pricing.RuleCenter.Application", "Pricing.RuleCenter.Application.csproj"),
+            Path.Combine(root, "src", "Pricing.RuleCenter.Infrastructure", "Pricing.RuleCenter.Infrastructure.csproj")
         };
 
         var failures = new List<string>();
