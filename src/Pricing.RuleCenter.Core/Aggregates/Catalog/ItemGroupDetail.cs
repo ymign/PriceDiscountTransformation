@@ -44,7 +44,7 @@ public sealed class ItemGroupDetail
     /// </summary>
     /// <remarks>
     /// 对应 HIS 物价主数据表 FIN_COM_UNDRUGINFO.ITEM_CODE。
-    /// 是规则匹配、价格校验和限额累计的核心维度。
+    /// 是规则匹配、价格诊断和限额累计的核心维度。
     /// 同一项目组内同一项目编码不应重复。
     /// </remarks>
         public string ItemCode { get; set; } = string.Empty;

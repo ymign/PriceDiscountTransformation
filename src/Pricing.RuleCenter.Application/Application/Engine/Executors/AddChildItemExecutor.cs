@@ -33,7 +33,7 @@ namespace Pricing.RuleCenter.Core.Engine.Executors;
 /// 【约束引用】
 /// <list type="bullet">
 ///   <item><description>子项加收必须与主项目同 resultGroupNo 原子 commit/cancel</description></item>
-///   <item><description>子项单价来源为权威物价主数据，不得直接信任渠道传入值</description></item>
+///   <item><description>子项单价当前来自规则配置，后续可接入权威物价诊断；不从渠道请求直接带入</description></item>
 ///   <item><description>金额取整不在本执行器处理，最终由 PricingEngine 统一保留 2 位小数、四舍五入</description></item>
 /// </list>
 /// </para>

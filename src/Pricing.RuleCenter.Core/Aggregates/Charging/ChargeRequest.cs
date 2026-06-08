@@ -221,7 +221,7 @@ public sealed class ChargeRequest
     /// 项目编码，对应 HIS 物价主数据表 FIN_COM_UNDRUGINFO.ITEM_CODE。
     /// </summary>
     /// <remarks>
-    /// 是规则匹配、价格校验和限额累计的核心维度。
+    /// 是规则匹配、价格诊断和限额累计的核心维度。
     /// "特殊项目"和"折价项目"是同一标识，通过该编码区分是否为特殊计价项目。
     /// </remarks>
     public string? ItemCode { get; set; }
@@ -358,8 +358,8 @@ public sealed class ChargeRequest
     /// </summary>
     /// <remarks>
     /// 当 IsSuccess = "N" 时，记录具体错误原因，用于排查和运维。
-    /// 常见错误码：PRICE_MISMATCH（单价不匹配）、RULE_NOT_FOUND（规则未找到）、
-    /// LIMIT_EXCEEDED（限额超限）、IDEMPOTENT_MISMATCH（幂等指纹不匹配）。
+    /// 常见错误码：RULE_NOT_FOUND（规则未找到）、LIMIT_EXCEEDED（限额超限）、
+    /// IDEMPOTENT_MISMATCH（幂等指纹不匹配）。单价差异当前只记录诊断日志，不写入失败原因。
     /// </remarks>
     public string? ErrorMessage { get; set; }
 

@@ -29,7 +29,7 @@ public sealed class PricingContext
     /// </summary>
     public string? VisitId { get; set; }
     /// <summary>
-    /// 项目编码，是规则匹配、价格校验和限额累计的核心维度
+    /// 项目编码，是规则匹配、价格诊断和限额累计的核心维度
     /// </summary>
     public string ItemCode { get; set; } = string.Empty;
     /// <summary>
@@ -45,7 +45,7 @@ public sealed class PricingContext
     /// </summary>
     public string? Unit { get; set; }
     /// <summary>
-    /// 项目单价，confirm 时应与权威物价主数据强校验
+    /// 项目单价，来源为渠道传入值；权威物价差异仅记录诊断日志。
     /// </summary>
     public decimal UnitPrice { get; set; }
     /// <summary>

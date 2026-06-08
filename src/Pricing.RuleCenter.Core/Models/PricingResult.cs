@@ -66,9 +66,8 @@ public sealed class PricingResult
     /// 项目单价。
     /// </summary>
     /// <remarks>
-    /// 项目权威单价，来源为 HIS 物价主数据表 FIN_COM_UNDRUGINFO。
-    /// confirm 阶段计价中心不得直接信任渠道传入的 unitPrice，必须读取权威单价或强校验，
-    /// 不一致时返回 PRICE_MISMATCH 错误码。
+    /// 当前计价结果沿用渠道传入的收费单价。
+    /// 规则中心会按 HIS 物价主数据记录权威单价诊断日志，但不会因差异返回 PRICE_MISMATCH。
     /// 单位：元（人民币），精度 NUMBER(18,4)。
     /// </remarks>
     public decimal UnitPrice { get; set; }

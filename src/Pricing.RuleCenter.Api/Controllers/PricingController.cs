@@ -46,8 +46,7 @@ namespace Pricing.RuleCenter.Api.Controllers;
 /// <list type="bullet">
 ///   <item>confirm 接口必须幂等，REQUEST_FINGERPRINT 用于防重放。</item>
 ///   <item>超时重试必须复用同一业务号（businessRequestNo），不得生成新 RequestId。</item>
-///   <item>confirm 不得直接信任渠道传入的 unitPrice，计价中心必须读取权威单价或强校验，
-///         不一致时返回 PRICE_MISMATCH 错误码。</item>
+///   <item>权威单价当前作为诊断日志使用，缺价或差异仅记录 Warning，不阻断 simulate/confirm 流程。</item>
 ///   <item>并发额度控制通过 PR_LIMIT_LOCK + SELECT FOR UPDATE 实现，TIME_WINDOW 必须锁定
 ///         业务时间窗口覆盖的全部小时桶。</item>
 ///   <item>计价服务不可用时，渠道不得回退为普通计价，必须转人工或暂停。</item>
@@ -160,8 +159,7 @@ public sealed class PricingController : ControllerBase
     /// REQUEST_FINGERPRINT 用于防重放。
     /// </para>
     /// <para>
-    /// 单价校验：confirm 不得直接信任渠道传入的 unitPrice，计价中心必须读取权威单价
-    /// 或强校验，不一致返回 PRICE_MISMATCH 错误码。
+    /// 单价诊断：confirm 会读取权威物价主数据并记录差异日志，但不会因单价差异拦截业务流程。
     /// </para>
     /// </summary>
     /// <param name="request">

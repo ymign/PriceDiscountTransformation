@@ -42,7 +42,7 @@ public sealed class PricingConfirmWorkflow
     private readonly IChargeRequestLogRepository _requestLogRepository;
 
     /// <summary>
-    /// 权威价格校验器，防止渠道传入错误单价导致资损。
+    /// 权威价格诊断器，用于记录渠道传价与 HIS 物价主数据的差异。
     /// </summary>
     private readonly AuthorityPriceChecker _authorityPriceChecker;
 
@@ -111,7 +111,7 @@ public sealed class PricingConfirmWorkflow
     /// </summary>
     /// <param name="engine">计价核心引擎。</param>
     /// <param name="requestLogRepository">请求日志仓储。</param>
-    /// <param name="authorityPriceChecker">权威价格校验器。</param>
+    /// <param name="authorityPriceChecker">权威价格诊断器。</param>
     /// <param name="idempotencyService">幂等服务。</param>
     /// <param name="requestLogWriter">请求日志写入器。</param>
     /// <param name="traceStepWriter">计算步骤写入器。</param>
@@ -165,8 +165,8 @@ public sealed class PricingConfirmWorkflow
     /// <returns>确认计价结果，包含 requestId、过期时间和每条明细的计价结果。</returns>
     public async Task<PricingCalculateResponse> ExecuteAsync(PricingCalculateRequest request)
     {
-        // ========== 第一阶段：请求校验和权威单价校验 ==========
-        // confirm 会产生资金影响，因此缺少业务请求号或单价异常必须在进入事务前失败。
+        // ========== 第一阶段：请求校验和权威单价诊断 ==========
+        // confirm 会产生资金影响，缺少业务请求号仍需拦截；单价差异只记录日志，不阻断流程。
         var items = PricingRequestGuard.GetRequiredItems(request);
         var firstItem = items[0];
         _logger.LogInformation(
@@ -181,7 +181,7 @@ public sealed class PricingConfirmWorkflow
             PricingRequestGuard.EnsureConfirmRequest(request);
         }
 
-        await _authorityPriceChecker.CheckAsync(items);
+        await _authorityPriceChecker.CheckAsync(request, items);
 
         // ========== 第二阶段：事务外幂等快路径 ==========
         // 已存在的 confirm 可以直接复用首次响应，减少重复重试对数据库锁的压力。

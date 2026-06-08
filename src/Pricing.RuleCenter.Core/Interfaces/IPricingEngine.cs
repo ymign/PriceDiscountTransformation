@@ -25,7 +25,7 @@ namespace Pricing.RuleCenter.Core.Interfaces;
 /// 实现约束：
 ///   - 金额类型始终使用 decimal，禁止 double/float。
 ///   - 中间计算保留全部精度，最终金额保留2位小数、四舍五入。
-///   - 权威单价必须由引擎内部读取，不得直接信任渠道传入的 unitPrice。
+///   - 计价引擎沿用上下文中的 unitPrice；权威单价差异由应用层诊断日志记录，不在引擎内阻断。
 ///   - 公式不自动跳过限制：是否执行数量/时间窗/同组/同手术限制以规则动作配置为准。
 /// </summary>
 public interface IPricingEngine

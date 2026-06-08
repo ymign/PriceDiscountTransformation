@@ -62,7 +62,7 @@ public sealed class RuleHeaderResponse
 
     /// <summary>
     /// 项目编码，当 <see cref="RuleScope"/> 为 ITEM 时必填。
-    /// 是规则匹配、权威单价校验和限额累计的核心维度。
+    /// 是规则匹配、权威单价诊断和限额累计的核心维度。
     /// 编码对应 HIS 物价主数据中的项目编码。
     /// </summary>
     [JsonPropertyName("item_code")]

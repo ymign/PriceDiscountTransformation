@@ -48,7 +48,7 @@ public sealed class SpecialFlagQueryRequest
 public sealed class SpecialFlagRequest
 {
     /// <summary>
-    /// 项目编码，是规则匹配、价格校验和限额累计的核心维度。
+    /// 项目编码，是规则匹配、价格诊断和限额累计的核心维度。
     /// </summary>
     [JsonPropertyName("item_code")]
     public string ItemCode { get; init; } = string.Empty;
@@ -96,7 +96,7 @@ public sealed class SpecialFlagRequest
 public sealed class SpecialFlagResponse
 {
     /// <summary>
-    /// 项目编码，是规则匹配、价格校验和限额累计的核心维度
+    /// 项目编码，是规则匹配、价格诊断和限额累计的核心维度
     /// </summary>
     [JsonPropertyName("item_code")]
     public string ItemCode { get; init; } = string.Empty;

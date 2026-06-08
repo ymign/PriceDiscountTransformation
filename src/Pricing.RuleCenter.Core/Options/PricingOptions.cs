@@ -13,7 +13,7 @@ namespace Pricing.RuleCenter.Core.Options;
 /// 1. 数据库连接（<see cref="OracleConnectionString"/>）
 /// 2. confirm 占用保护（<see cref="ConfirmExpireMinutes"/>）和过期清理（<see cref="ExpireCleanupIntervalSeconds"/>）
 /// 3. 外部调用容错（<see cref="HttpTimeoutSeconds"/>、<see cref="MaxRetryCount"/>）
-/// 4. 资金安全开关（<see cref="EnableAuthorityPriceCheck"/>）
+/// 4. 权威单价诊断开关（<see cref="EnableAuthorityPriceCheck"/>）
 /// </para>
 /// <para>
 /// 所有时间相关的配置均使用整数类型，避免配置文件中的浮点解析精度问题。
@@ -48,7 +48,7 @@ public sealed class PricingOptions
 
     /// <summary>
     /// HTTP 调用超时时间，单位秒，默认 10 秒。
-    /// 用于后续对接外部服务（如 HIS 物价主数据查询、权威单价校验）时统一设置超时。
+    /// 用于后续对接外部服务（如 HIS 物价主数据查询、权威单价诊断）时统一设置超时。
     /// 超时后应按重试策略（<see cref="MaxRetryCount"/>）进行有限次重试。
     /// </summary>
     public int HttpTimeoutSeconds { get; set; } = 10;
@@ -70,10 +70,19 @@ public sealed class PricingOptions
     public int CacheVersionSyncIntervalSeconds { get; set; } = 3;
 
     /// <summary>
-    /// 是否启用权威物价校验，默认 true。
-    /// 启用后，confirm（确认计价）时会校验调用方传入的单价与 HIS 物价主数据是否一致。
-    /// 不一致时返回 PRICE_MISMATCH 错误，防止调用方传入错误单价导致资损。
-    /// 此开关是资金安全硬约束，生产环境必须为 true。仅在开发和测试环境可临时关闭。
+    /// 是否启用权威物价诊断日志，默认 true。
+    /// 启用后，试算和确认计价会比较调用方传入单价与 HIS 物价主数据是否一致。
+    /// 不一致时只记录 Warning 日志，不返回 PRICE_MISMATCH，也不影响业务流程。
+    /// 该字段沿用历史命名以减少配置破坏面，语义已经从强校验降级为诊断。
     /// </summary>
     public bool EnableAuthorityPriceCheck { get; set; } = true;
+
+    /// <summary>
+    /// 儿童价年龄上界（不包含），默认 6，表示 6 岁以下使用儿童价。
+    /// </summary>
+    /// <remarks>
+    /// 该值只影响权威单价诊断选择哪一个 HIS 价格列，不替代规则引擎中的年龄条件。
+    /// 如业务口径调整为“6 岁及以下”，应把这里改为 7 或补充更精确的出生日期判断。
+    /// </remarks>
+    public int ChildPriceAgeExclusive { get; set; } = 6;
 }

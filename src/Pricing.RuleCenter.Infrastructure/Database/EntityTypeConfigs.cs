@@ -355,6 +355,8 @@ public static class EntityTypeConfigs
         db.MappingTables.Add(typeof(PriceMasterItem).Name, "FIN_COM_UNDRUGINFO");
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PriceMasterItem), PropertyName = nameof(PriceMasterItem.ItemCode), DbColumnName = "ITEM_CODE" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PriceMasterItem), PropertyName = nameof(PriceMasterItem.UnitPrice), DbColumnName = "UNIT_PRICE" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PriceMasterItem), PropertyName = nameof(PriceMasterItem.ChildPrice), DbColumnName = "UNIT_PRICE1" });
+        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PriceMasterItem), PropertyName = nameof(PriceMasterItem.PerinatalPrice), DbColumnName = "WEICHAN_PRICE" });
     }
 
     public static void ConfigureTemplateAggregate(SqlSugarClient db)

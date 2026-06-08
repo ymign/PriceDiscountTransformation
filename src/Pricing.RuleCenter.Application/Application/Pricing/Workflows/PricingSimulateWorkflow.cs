@@ -31,7 +31,7 @@ public sealed class PricingSimulateWorkflow
     private readonly IPricingEngine _engine;
 
     /// <summary>
-    /// 权威价格校验器，用于在开发开关允许时统一校验明细单价。
+    /// 权威价格诊断器，用于在开关允许时记录明细单价与 HIS 物价主数据的差异。
     /// </summary>
     private readonly AuthorityPriceChecker _authorityPriceChecker;
 
@@ -64,7 +64,7 @@ public sealed class PricingSimulateWorkflow
     /// 初始化试算计价工作流。
     /// </summary>
     /// <param name="engine">计价核心引擎。</param>
-    /// <param name="authorityPriceChecker">权威价格校验器。</param>
+    /// <param name="authorityPriceChecker">权威价格诊断器。</param>
     /// <param name="requestLogWriter">请求日志写入器。</param>
     /// <param name="traceStepWriter">计算步骤写入器。</param>
     /// <param name="runtimePackageTraceResolver">运行包追踪解析器。</param>
@@ -95,8 +95,8 @@ public sealed class PricingSimulateWorkflow
     /// <returns>试算结果，包含金额、数量、命中规则和追踪步骤。</returns>
     public async Task<PricingCalculateResponse> ExecuteAsync(PricingCalculateRequest request)
     {
-        // ========== 第一阶段：基础校验和价格校验 ==========
-        // 试算不占额，但仍要尽早暴露请求结构错误和单价异常，避免前端展示不可落账的结果。
+        // ========== 第一阶段：基础校验和价格诊断 ==========
+        // 试算不占额；请求结构错误仍拦截，单价差异只记录日志供联调和对账排查。
         var items = PricingRequestGuard.GetRequiredItems(request);
 
         var firstItem = items[0];
@@ -104,7 +104,7 @@ public sealed class PricingSimulateWorkflow
             "SIMULATE 开始 SourceSystem={SourceSystem}, PatientId={PatientId}, ItemCode={ItemCode}, InputQty={InputQty}",
             request.SourceSystem, request.PatientId, firstItem.ItemCode, firstItem.InputQty);
 
-        await _authorityPriceChecker.CheckAsync(items);
+        await _authorityPriceChecker.CheckAsync(request, items);
 
         // ========== 第二阶段：捕获运行包上下文 ==========
         // 同一次请求内的多条费用必须使用同一个激活运行包，避免规则发布瞬间造成同单明细版本不一致。

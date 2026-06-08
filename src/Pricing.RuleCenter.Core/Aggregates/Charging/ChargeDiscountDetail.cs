@@ -90,7 +90,7 @@ public sealed class ChargeDiscountDetail
     /// </summary>
     /// <remarks>
     /// 对应 HIS 物价主数据表 FIN_COM_UNDRUGINFO.ITEM_CODE。
-    /// 是规则匹配、价格校验和限额累计的核心维度。
+    /// 是规则匹配、价格诊断和限额累计的核心维度。
     /// </remarks>
         public string? ItemCode { get; set; }
 
@@ -238,8 +238,8 @@ public sealed class ChargeDiscountDetail
     /// 项目单价。
     /// </summary>
     /// <remarks>
-    /// 项目权威单价，来源为 HIS 物价主数据表 FIN_COM_UNDRUGINFO。
-    /// confirm 阶段计价中心必须读取权威单价或强校验，不一致返回 PRICE_MISMATCH。
+    /// 本次计价实际采用的项目单价，通常来自渠道请求明细。
+    /// 权威物价主数据差异只进入诊断日志，不影响该明细落库。
     /// 单位：元（人民币），精度 NUMBER(18,4)。
     /// </remarks>
         public decimal? UnitPrice { get; set; }

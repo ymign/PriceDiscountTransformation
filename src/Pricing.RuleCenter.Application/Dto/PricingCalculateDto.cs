@@ -126,7 +126,7 @@ public sealed class PricingCalculateItemRequest
     public string? ChargeDetailNo { get; init; }
 
     /// <summary>
-    /// 项目编码，是规则匹配、价格校验和限额累计的核心维度。
+    /// 项目编码，是规则匹配、价格诊断和限额累计的核心维度。
     /// 该字段属于费用明细层；统一计价请求根对象不再放单个 ItemCode。
     /// </summary>
     [Required(ErrorMessage = "项目编码不能为空")]
@@ -157,7 +157,7 @@ public sealed class PricingCalculateItemRequest
     [JsonPropertyName("unit")]
     public string? Unit { get; init; }
     /// <summary>
-    /// 项目单价，confirm 时应与权威物价主数据强校验。
+    /// 项目单价，规则中心仅与权威物价主数据做诊断对比，不因差异拦截请求。
     /// </summary>
     [JsonPropertyName("unit_price")]
     public decimal UnitPrice { get; init; }

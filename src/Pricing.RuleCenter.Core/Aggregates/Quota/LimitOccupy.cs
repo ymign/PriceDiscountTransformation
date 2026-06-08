@@ -109,7 +109,7 @@ public sealed class LimitOccupy
     /// 项目编码，对应 HIS 物价主数据表 FIN_COM_UNDRUGINFO.ITEM_CODE。
     /// </summary>
     /// <remarks>
-    /// 是规则匹配、价格校验和限额累计的核心维度。
+    /// 是规则匹配、价格诊断和限额累计的核心维度。
     /// 可为空，空值表示该占用记录不关联特定项目（如全局限额场景）。
     /// </remarks>
     public string? ItemCode { get; set; }

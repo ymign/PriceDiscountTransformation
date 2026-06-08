@@ -97,11 +97,19 @@ public sealed class NPlusOneGuardTests
             Options.Create(new PricingOptions { EnableAuthorityPriceCheck = true }),
             NullLogger<AuthorityPriceChecker>.Instance);
 
-        await checker.CheckAsync(new[]
+        var request = new PricingCalculateRequest
         {
-            new PricingCalculateItemRequest { ItemCode = "ITEM001", UnitPrice = 10m, InputQty = 1m },
-            new PricingCalculateItemRequest { ItemCode = "ITEM002", UnitPrice = 20m, InputQty = 1m }
-        });
+            PatientId = "P001",
+            SourceSystem = "HIS",
+            BusinessChargeTime = new DateTime(2026, 6, 8, 10, 0, 0),
+            Items = new[]
+            {
+                new PricingCalculateItemRequest { ItemCode = "ITEM001", UnitPrice = 10m, InputQty = 1m },
+                new PricingCalculateItemRequest { ItemCode = "ITEM002", UnitPrice = 20m, InputQty = 1m }
+            }
+        };
+
+        await checker.CheckAsync(request, request.Items);
 
         Assert.Equal(1, repository.BatchCallCount);
     }

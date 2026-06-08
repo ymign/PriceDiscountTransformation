@@ -52,7 +52,7 @@ public sealed class PricingCalculateResponse
     [JsonPropertyName("final_qty")]
     public decimal FinalQty { get; init; }
     /// <summary>
-    /// 项目单价，confirm 时应与权威物价主数据强校验
+    /// 项目单价，沿用本次请求明细进入计价链路的单价。
     /// </summary>
     [JsonPropertyName("unit_price")]
     public decimal UnitPrice { get; init; }
@@ -154,7 +154,7 @@ public sealed class PricingCalculateItemResponse
     [JsonPropertyName("runtime_package_version")]
     public long? RuntimePackageVersion { get; init; }
     /// <summary>
-    /// 项目编码，是规则匹配、价格校验和限额累计的核心维度。
+    /// 项目编码，是规则匹配、价格诊断和限额累计的核心维度。
     /// 该字段属于单条费用明细响应；多明细请求通过 Items 返回多条结果，响应根对象不再放单个 ItemCode。
     /// </summary>
     [JsonPropertyName("item_code")]
@@ -185,7 +185,7 @@ public sealed class PricingCalculateItemResponse
     [JsonPropertyName("converted_qty")]
     public decimal ConvertedQty { get; init; }
     /// <summary>
-    /// 项目单价，confirm 时应与权威物价主数据强校验。
+    /// 项目单价，沿用本条费用明细进入计价链路的单价。
     /// </summary>
     [JsonPropertyName("unit_price")]
     public decimal UnitPrice { get; init; }

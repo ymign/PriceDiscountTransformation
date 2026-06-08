@@ -208,7 +208,7 @@ public sealed class TraceStepResponse
     /// <summary>
     /// 步骤类型，由 DDL 约束为固定枚举值。
     /// MATCH（规则匹配）、CONVERT（双单位换算）、FORMULA（公式计算）、
-    /// LIMIT（数量/金额限制校验）、DISCOUNT（折价计算）、VALIDATE（校验，如权威单价校验）、
+    /// LIMIT（数量/金额限制校验）、DISCOUNT（折价计算）、VALIDATE（校验或诊断）、
     /// ERROR（异常步骤，记录失败原因）。
     /// </summary>
     [JsonPropertyName("step_type")]

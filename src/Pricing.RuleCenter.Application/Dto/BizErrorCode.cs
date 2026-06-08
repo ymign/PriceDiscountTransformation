@@ -13,7 +13,7 @@ namespace Pricing.RuleCenter.Application.Dto;
 /// <list type="bullet">
 ///   <item>0 — 成功</item>
 ///   <item>1001-1099 — 规则配置类错误（规则不存在、版本冲突等）</item>
-///   <item>2001-2099 — 计价计算类错误（单价校验失败、限额超限等）</item>
+///   <item>2001-2099 — 计价计算类错误（历史单价不匹配、限额超限等）</item>
 ///   <item>3001-3099 — 状态流转类错误（版本状态不允许发布、请求状态不允许操作等）</item>
 ///   <item>4001-4099 — 限额占用类错误（额度不足、并发冲突、锁获取失败等）</item>
 ///   <item>9001-9099 — 系统级错误（数据库异常、服务降级等）</item>
@@ -161,7 +161,7 @@ public static class BizErrorCode
 
     // ========== 计价计算类错误（2001-2099） ==========
 
-    /// <summary>单价校验失败（渠道传入单价与权威单价不一致）。</summary>
+    /// <summary>历史预留错误码：单价不匹配。当前计价链路只记录权威单价诊断日志，不主动返回该错误。</summary>
     public const int PriceMismatch = 2001;
 
     /// <summary>规则匹配失败（未找到匹配的规则）。</summary>

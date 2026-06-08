@@ -1,21 +1,43 @@
+using System.Globalization;
+using System.Text.Json;
 using Microsoft.Extensions.Options;
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Core.Interfaces;
+using Pricing.RuleCenter.Core.Models;
 using Pricing.RuleCenter.Core.Options;
 
 namespace Pricing.RuleCenter.Application.Pricing.AuthorityPrice;
 
 /// <summary>
-/// 权威物价校验器，负责在计价前核对渠道传入单价与物价主数据是否一致。
+/// 权威物价诊断器，负责记录渠道传入单价与物价主数据的差异。
 /// </summary>
 public sealed class AuthorityPriceChecker
 {
+    private static readonly string[] PriceTypeKeys =
+    [
+        "price_type",
+        "patient_price_type",
+        "price_form",
+        "pact_price_form",
+        "patient_type"
+    ];
+
+    private static readonly string[] PerinatalFlagKeys =
+    [
+        "is_perinatal",
+        "perinatal",
+        "is_weichan",
+        "is_wei_chan",
+        "weichan_flag",
+        "wei_chan_flag"
+    ];
+
     private readonly IPriceMasterRepository _priceMasterRepository;
     private readonly PricingOptions _options;
     private readonly ILogger<AuthorityPriceChecker> _logger;
 
     /// <summary>
-    /// 初始化权威物价校验器。
+    /// 初始化权威物价诊断器。
     /// </summary>
     /// <param name="priceMasterRepository">权威物价主数据仓储。</param>
     /// <param name="options">计价配置项。</param>
@@ -31,42 +53,270 @@ public sealed class AuthorityPriceChecker
     }
 
     /// <summary>
-    /// 校验每条费用明细的请求单价是否与权威物价一致。
+    /// 诊断每条费用明细的请求单价是否与权威物价一致。
     /// </summary>
+    /// <param name="request">计价请求上下文，用于解析患者年龄、围产标识等价格类型条件。</param>
     /// <param name="items">计价费用明细。</param>
-    public async Task CheckAsync(IReadOnlyList<PricingCalculateItemRequest> items)
+    /// <remarks>
+    /// 该方法只记录诊断日志，不抛出 PRICE_MISMATCH，也不影响试算或确认流程。
+    /// 基础单价仍由 HIS 负责带出；规则中心只把差异作为后续联调和对账线索。
+    /// </remarks>
+    public async Task CheckAsync(PricingCalculateRequest request, IReadOnlyList<PricingCalculateItemRequest> items)
     {
         if (!_options.EnableAuthorityPriceCheck)
         {
             return;
         }
 
-        var authorityPrices = await _priceMasterRepository.GetUnitPricesAsync(
+        var priceItems = await _priceMasterRepository.GetPriceItemsAsync(
             items.Select(item => item.ItemCode).ToArray());
 
         foreach (var item in items)
         {
-            if (!authorityPrices.TryGetValue(item.ItemCode, out var authorityPrice) || !authorityPrice.HasValue)
+            var itemCode = item.ItemCode.Trim();
+            var priceKind = ResolvePriceKind(request, item);
+            var priceKindName = GetPriceKindName(priceKind);
+            if (!priceItems.TryGetValue(itemCode, out var priceItem) || priceItem is null)
             {
                 _logger.LogWarning(
-                    "权威单价校验失败: 未找到项目权威单价 ItemCode={ItemCode}",
-                    item.ItemCode);
-                throw new BizException(
-                    BizErrorCode.PriceMismatch,
-                    409,
-                    $"未找到项目 {item.ItemCode} 的权威单价");
+                    "权威单价诊断: 未找到项目权威单价 ItemCode={ItemCode}, PriceKind={PriceKind}, RequestPrice={RequestPrice}",
+                    itemCode, priceKindName, item.UnitPrice);
+                continue;
+            }
+
+            var authorityPrice = GetAuthorityPrice(priceItem, priceKind);
+            if (!authorityPrice.HasValue)
+            {
+                _logger.LogWarning(
+                    "权威单价诊断: 项目价格列为空 ItemCode={ItemCode}, PriceKind={PriceKind}, RequestPrice={RequestPrice}",
+                    itemCode, priceKindName, item.UnitPrice);
+                continue;
             }
 
             if (Math.Round(authorityPrice.Value, 4) != Math.Round(item.UnitPrice, 4))
             {
                 _logger.LogWarning(
-                    "权威单价校验失败: 单价不一致 ItemCode={ItemCode}, AuthorityPrice={AuthorityPrice}, RequestPrice={RequestPrice}",
-                    item.ItemCode, authorityPrice.Value, item.UnitPrice);
-                throw new BizException(
-                    BizErrorCode.PriceMismatch,
-                    409,
-                    $"项目 {item.ItemCode} 权威单价={authorityPrice.Value}, 请求单价={item.UnitPrice}");
+                    "权威单价诊断: 单价不一致 ItemCode={ItemCode}, PriceKind={PriceKind}, AuthorityPrice={AuthorityPrice}, RequestPrice={RequestPrice}",
+                    itemCode, priceKindName, authorityPrice.Value, item.UnitPrice);
             }
         }
+    }
+
+    private AuthorityPriceKind ResolvePriceKind(PricingCalculateRequest request, PricingCalculateItemRequest item)
+    {
+        if (TryResolveExplicitPriceKind(item.ExtraParams, out var itemPriceKind))
+        {
+            return itemPriceKind;
+        }
+
+        if (TryResolveExplicitPriceKind(request.ExtraParams, out var requestPriceKind))
+        {
+            return requestPriceKind;
+        }
+
+        if (TryResolveBoolean(item.ExtraParams, PerinatalFlagKeys, out var itemIsPerinatal) && itemIsPerinatal)
+        {
+            return AuthorityPriceKind.Perinatal;
+        }
+
+        if (TryResolveBoolean(request.ExtraParams, PerinatalFlagKeys, out var requestIsPerinatal) && requestIsPerinatal)
+        {
+            return AuthorityPriceKind.Perinatal;
+        }
+
+        var childPriceAgeExclusive = _options.ChildPriceAgeExclusive <= 0
+            ? 6
+            : _options.ChildPriceAgeExclusive;
+        if (request.PatientAge is >= 0 && request.PatientAge < childPriceAgeExclusive)
+        {
+            return AuthorityPriceKind.Child;
+        }
+
+        return AuthorityPriceKind.Normal;
+    }
+
+    private static decimal? GetAuthorityPrice(PriceMasterItem priceItem, AuthorityPriceKind priceKind) =>
+        priceKind switch
+        {
+            AuthorityPriceKind.Child => priceItem.ChildPrice,
+            AuthorityPriceKind.Perinatal => priceItem.PerinatalPrice,
+            _ => priceItem.UnitPrice
+        };
+
+    private static string GetPriceKindName(AuthorityPriceKind priceKind) =>
+        priceKind switch
+        {
+            AuthorityPriceKind.Child => "儿童价",
+            AuthorityPriceKind.Perinatal => "围产价",
+            _ => "三甲价"
+        };
+
+    private static bool TryResolveExplicitPriceKind(
+        Dictionary<string, object?>? extraParams,
+        out AuthorityPriceKind priceKind)
+    {
+        priceKind = AuthorityPriceKind.Normal;
+        if (!TryGetExtraParam(extraParams, PriceTypeKeys, out var rawValue))
+        {
+            return false;
+        }
+
+        var text = ReadString(rawValue);
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        var normalized = text
+            .Trim()
+            .Replace(" ", string.Empty, StringComparison.Ordinal)
+            .Replace("_", string.Empty, StringComparison.Ordinal)
+            .Replace("-", string.Empty, StringComparison.Ordinal)
+            .ToUpperInvariant();
+
+        switch (normalized)
+        {
+            case "5":
+            case "PERINATAL":
+            case "WEICHAN":
+            case "WEICHANPRICE":
+            case "WEICHANCENTER":
+            case "围产":
+            case "围产价":
+            case "围产中心价":
+                priceKind = AuthorityPriceKind.Perinatal;
+                return true;
+
+            case "2":
+            case "CHILD":
+            case "CHILDPRICE":
+            case "UNITPRICE1":
+            case "儿童":
+            case "儿童价":
+                priceKind = AuthorityPriceKind.Child;
+                return true;
+
+            case "0":
+            case "NORMAL":
+            case "DEFAULT":
+            case "STANDARD":
+            case "UNITPRICE":
+            case "三甲":
+            case "三甲价":
+                priceKind = AuthorityPriceKind.Normal;
+                return true;
+
+            default:
+                return false;
+        }
+    }
+
+    private static bool TryResolveBoolean(
+        Dictionary<string, object?>? extraParams,
+        IReadOnlyCollection<string> keys,
+        out bool result)
+    {
+        result = false;
+        if (!TryGetExtraParam(extraParams, keys, out var rawValue))
+        {
+            return false;
+        }
+
+        return TryReadBoolean(rawValue, out result);
+    }
+
+    private static bool TryGetExtraParam(
+        Dictionary<string, object?>? extraParams,
+        IReadOnlyCollection<string> keys,
+        out object? value)
+    {
+        value = null;
+        if (extraParams is null)
+        {
+            return false;
+        }
+
+        foreach (var pair in extraParams)
+        {
+            if (keys.Any(key => string.Equals(key, pair.Key, StringComparison.OrdinalIgnoreCase)))
+            {
+                value = pair.Value;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string? ReadString(object? value) =>
+        value switch
+        {
+            null => null,
+            string text => text,
+            bool flag => flag ? "true" : "false",
+            JsonElement { ValueKind: JsonValueKind.String } element => element.GetString(),
+            JsonElement { ValueKind: JsonValueKind.Number } element => element.GetRawText(),
+            JsonElement { ValueKind: JsonValueKind.True } => "true",
+            JsonElement { ValueKind: JsonValueKind.False } => "false",
+            IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
+            _ => value.ToString()
+        };
+
+    private static bool TryReadBoolean(object? value, out bool result)
+    {
+        result = false;
+        switch (value)
+        {
+            case bool flag:
+                result = flag;
+                return true;
+            case string text:
+                return TryReadBooleanText(text, out result);
+            case JsonElement { ValueKind: JsonValueKind.True }:
+                result = true;
+                return true;
+            case JsonElement { ValueKind: JsonValueKind.False }:
+                result = false;
+                return true;
+            case JsonElement { ValueKind: JsonValueKind.String } element:
+                return TryReadBooleanText(element.GetString(), out result);
+            case JsonElement { ValueKind: JsonValueKind.Number } element:
+                return TryReadBooleanText(element.GetRawText(), out result);
+            case IFormattable formattable:
+                return TryReadBooleanText(formattable.ToString(null, CultureInfo.InvariantCulture), out result);
+            default:
+                return false;
+        }
+    }
+
+    private static bool TryReadBooleanText(string? text, out bool result)
+    {
+        result = false;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        var normalized = text.Trim().ToUpperInvariant();
+        if (normalized is "TRUE" or "1" or "Y" or "YES" or "是")
+        {
+            result = true;
+            return true;
+        }
+
+        if (normalized is "FALSE" or "0" or "N" or "NO" or "否")
+        {
+            result = false;
+            return true;
+        }
+
+        return false;
+    }
+
+    private enum AuthorityPriceKind
+    {
+        Normal,
+        Child,
+        Perinatal
     }
 }
