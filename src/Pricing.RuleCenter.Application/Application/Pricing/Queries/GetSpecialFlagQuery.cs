@@ -33,13 +33,13 @@ public sealed class GetSpecialFlagQueryHandler : IRequestHandler<GetSpecialFlagQ
 {
     private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(5);
 
-    private readonly PricingAppService _service;
+    private readonly PricingSpecialFlagResolver _resolver;
     private readonly IMemoryCache _cache;
 
     /// <summary>初始化处理器。</summary>
-    public GetSpecialFlagQueryHandler(PricingAppService service, IMemoryCache cache)
+    public GetSpecialFlagQueryHandler(PricingSpecialFlagResolver resolver, IMemoryCache cache)
     {
-        _service = service;
+        _resolver = resolver;
         _cache = cache;
     }
 
@@ -52,7 +52,7 @@ public sealed class GetSpecialFlagQueryHandler : IRequestHandler<GetSpecialFlagQ
             return cached;
         }
 
-        var result = await _service.GetSpecialFlagAsync(request.ToRequest());
+        var result = await _resolver.ResolveAsync(request.ToRequest());
         _cache.Set(cacheKey, result, CacheDuration);
         return result;
     }

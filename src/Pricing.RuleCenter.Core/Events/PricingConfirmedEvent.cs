@@ -6,7 +6,7 @@ namespace Pricing.RuleCenter.Core.Events;
 /// <remarks>
 /// <para>
 /// 【触发场景】
-/// 渠道调用 POST /api/pricing/calculate/confirm，PricingAppService 在事务内
+/// 渠道调用 POST /api/pricing/calculate/confirm，PricingConfirmWorkflow 在事务内
 /// 完成引擎计算、写请求日志、写折价明细、写限额占用后，产生此事件。
 /// </para>
 /// <para>

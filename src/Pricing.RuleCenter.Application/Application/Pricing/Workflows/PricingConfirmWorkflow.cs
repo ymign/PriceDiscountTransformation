@@ -12,6 +12,7 @@ using Pricing.RuleCenter.Core.Interfaces.Charging;
 using Pricing.RuleCenter.Core.Interfaces.Quota;
 using Pricing.RuleCenter.Core.Models;
 using Pricing.RuleCenter.Core.Options;
+using Microsoft.Extensions.Options;
 
 namespace Pricing.RuleCenter.Application.Pricing;
 
@@ -34,7 +35,7 @@ public sealed class PricingConfirmWorkflow
     private readonly ILimitOccupyRepository _limitRepository;
     private readonly PricingOptions _options;
     private readonly IClock _clock;
-    private readonly ILogger _logger;
+    private readonly ILogger<PricingConfirmWorkflow> _logger;
 
     /// <summary>
     /// 初始化确认计价 workflow。
@@ -52,9 +53,9 @@ public sealed class PricingConfirmWorkflow
         PricingTransactionExecutor transactionExecutor,
         PricingIdempotentResponseReader idempotentResponseReader,
         ILimitOccupyRepository limitRepository,
-        PricingOptions options,
+        IOptions<PricingOptions> options,
         IClock clock,
-        ILogger logger)
+        ILogger<PricingConfirmWorkflow> logger)
     {
         _engine = engine;
         _requestLogRepository = requestLogRepository;
@@ -68,7 +69,7 @@ public sealed class PricingConfirmWorkflow
         _transactionExecutor = transactionExecutor;
         _idempotentResponseReader = idempotentResponseReader;
         _limitRepository = limitRepository;
-        _options = options;
+        _options = options.Value;
         _clock = clock;
         _logger = logger;
     }

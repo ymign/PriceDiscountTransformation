@@ -25,7 +25,7 @@ public sealed class PricingReverseWorkflow
     private readonly PricingTransactionExecutor _transactionExecutor;
     private readonly PricingReverseHistoryReader _reverseHistoryReader;
     private readonly IClock _clock;
-    private readonly ILogger _logger;
+    private readonly ILogger<PricingReverseWorkflow> _logger;
 
     /// <summary>
     /// 初始化退费冲正 workflow。
@@ -50,7 +50,7 @@ public sealed class PricingReverseWorkflow
         PricingTransactionExecutor transactionExecutor,
         PricingReverseHistoryReader reverseHistoryReader,
         IClock clock,
-        ILogger logger)
+        ILogger<PricingReverseWorkflow> logger)
     {
         _requestLogRepository = requestLogRepository;
         _discountRepository = discountRepository;

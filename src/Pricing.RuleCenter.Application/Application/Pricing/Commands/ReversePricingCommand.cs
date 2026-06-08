@@ -9,18 +9,18 @@ public sealed record ReversePricingCommand(PricingReverseRequest Request) : IReq
 /// <summary>退费冲正命令处理器。</summary>
 public sealed class ReversePricingCommandHandler : IRequestHandler<ReversePricingCommand>
 {
-    private readonly PricingAppService _service;
+    private readonly PricingReverseWorkflow _workflow;
 
     /// <summary>初始化处理器。</summary>
-    public ReversePricingCommandHandler(PricingAppService service)
+    public ReversePricingCommandHandler(PricingReverseWorkflow workflow)
     {
-        _service = service;
+        _workflow = workflow;
     }
 
     /// <inheritdoc />
     public async Task<Unit> Handle(ReversePricingCommand request, CancellationToken cancellationToken)
     {
-        await _service.ReverseAsync(request.Request);
+        await _workflow.ExecuteAsync(request.Request);
         return Unit.Value;
     }
 }

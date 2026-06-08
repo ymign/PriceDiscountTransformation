@@ -154,7 +154,7 @@ public sealed class ExpireCleanupAppService : BackgroundService
             {
                 // 重新读取当前状态，而不是依赖扫描时的快照。
                 // 在扫描到处理之间的时间窗口内，HIS 可能已经 commit 或 cancel 了该记录。
-                await limitRepo.EnsureAndLockAsync(new[] { PricingAppService.BuildRequestLockKey(log.RequestId) });
+                await limitRepo.EnsureAndLockAsync(new[] { PricingLockKeyBuilder.BuildRequestLockKey(log.RequestId) });
                 var current = await requestLogRepo.GetByIdAsync(log.RequestId);
                 if (current is null || current.BusinessStatus != BusinessStatusCodes.ConfirmPending)
                 {

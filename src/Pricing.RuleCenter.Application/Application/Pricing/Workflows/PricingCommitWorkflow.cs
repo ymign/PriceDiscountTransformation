@@ -5,6 +5,7 @@ using Pricing.RuleCenter.Core.Interfaces.Quota;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Options;
 using Pricing.RuleCenter.Application.Pricing.Validation;
+using Microsoft.Extensions.Options;
 
 namespace Pricing.RuleCenter.Application.Pricing;
 
@@ -19,7 +20,7 @@ public sealed class PricingCommitWorkflow
     private readonly PricingTransactionExecutor _transactionExecutor;
     private readonly PricingOptions _options;
     private readonly IClock _clock;
-    private readonly ILogger _logger;
+    private readonly ILogger<PricingCommitWorkflow> _logger;
 
     /// <summary>
     /// 初始化落账提交 workflow。
@@ -36,15 +37,15 @@ public sealed class PricingCommitWorkflow
         IChargeDiscountDetailRepository discountRepository,
         ILimitOccupyRepository limitRepository,
         PricingTransactionExecutor transactionExecutor,
-        PricingOptions options,
+        IOptions<PricingOptions> options,
         IClock clock,
-        ILogger logger)
+        ILogger<PricingCommitWorkflow> logger)
     {
         _requestLogRepository = requestLogRepository;
         _discountRepository = discountRepository;
         _limitRepository = limitRepository;
         _transactionExecutor = transactionExecutor;
-        _options = options;
+        _options = options.Value;
         _clock = clock;
         _logger = logger;
     }

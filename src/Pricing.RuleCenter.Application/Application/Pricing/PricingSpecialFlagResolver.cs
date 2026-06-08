@@ -32,7 +32,7 @@ public sealed class PricingSpecialFlagResolver
         IClock clock,
         RuntimePackageTraceResolver? runtimePackageTraceResolver = null,
         ConditionEvaluatorFactory? conditionEvaluatorFactory = null,
-        ILogger? logger = null)
+        ILogger<PricingSpecialFlagResolver>? logger = null)
     {
         _headerRepository = headerRepository;
         _clock = clock;
@@ -41,7 +41,7 @@ public sealed class PricingSpecialFlagResolver
             ? null
             : new RuleConditionGroupMatcher(
                 conditionEvaluatorFactory,
-                logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+                logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<PricingSpecialFlagResolver>.Instance);
     }
 
     /// <summary>

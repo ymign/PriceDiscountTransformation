@@ -10,17 +10,17 @@ public sealed record ConfirmPricingCommand(PricingCalculateRequest Request)
 /// <summary>确认计价命令处理器。</summary>
 public sealed class ConfirmPricingCommandHandler : IRequestHandler<ConfirmPricingCommand, PricingCalculateResponse>
 {
-    private readonly PricingAppService _service;
+    private readonly PricingConfirmWorkflow _workflow;
 
     /// <summary>初始化处理器。</summary>
-    public ConfirmPricingCommandHandler(PricingAppService service)
+    public ConfirmPricingCommandHandler(PricingConfirmWorkflow workflow)
     {
-        _service = service;
+        _workflow = workflow;
     }
 
     /// <inheritdoc />
     public Task<PricingCalculateResponse> Handle(ConfirmPricingCommand request, CancellationToken cancellationToken)
     {
-        return _service.ConfirmAsync(request.Request);
+        return _workflow.ExecuteAsync(request.Request);
     }
 }

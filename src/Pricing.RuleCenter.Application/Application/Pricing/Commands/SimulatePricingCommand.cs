@@ -10,17 +10,17 @@ public sealed record SimulatePricingCommand(PricingCalculateRequest Request)
 /// <summary>试算计价命令处理器。</summary>
 public sealed class SimulatePricingCommandHandler : IRequestHandler<SimulatePricingCommand, PricingCalculateResponse>
 {
-    private readonly PricingAppService _service;
+    private readonly PricingSimulateWorkflow _workflow;
 
     /// <summary>初始化处理器。</summary>
-    public SimulatePricingCommandHandler(PricingAppService service)
+    public SimulatePricingCommandHandler(PricingSimulateWorkflow workflow)
     {
-        _service = service;
+        _workflow = workflow;
     }
 
     /// <inheritdoc />
     public Task<PricingCalculateResponse> Handle(SimulatePricingCommand request, CancellationToken cancellationToken)
     {
-        return _service.SimulateAsync(request.Request);
+        return _workflow.ExecuteAsync(request.Request);
     }
 }

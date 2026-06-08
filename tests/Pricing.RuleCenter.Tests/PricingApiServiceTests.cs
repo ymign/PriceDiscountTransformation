@@ -7,7 +7,6 @@ using Pricing.RuleCenter.Application.Pricing.AuthorityPrice;
 using Pricing.RuleCenter.Application.Pricing.Idempotency;
 using Pricing.RuleCenter.Application.Pricing.Persistence;
 using Pricing.RuleCenter.Application.RuntimePackages;
-using Pricing.RuleCenter.Application.Pricing.UseCases;
 using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Engine;
 using Pricing.RuleCenter.Core.Engine.Evaluators;
@@ -1298,17 +1297,6 @@ public sealed class PricingApiServiceTests
         IRuntimeRuleReadRepository? runtimeRuleReadRepository = null,
         ConditionEvaluatorFactory? conditionEvaluatorFactory = null)
     {
-        var calculationDependencies = new PricingApiCalculationDependencies(
-            engine,
-            headerRepository,
-            priceMasterRepository,
-            conditionEvaluatorFactory);
-        var repositories = new PricingApiPersistenceRepositories(
-            requestLogRepository,
-            discountRepository,
-            traceStepRepository,
-            limitRepository,
-            reverseLogRepository);
         var authorityPriceChecker = new AuthorityPriceChecker(
             priceMasterRepository,
             options,
@@ -1327,98 +1315,71 @@ public sealed class PricingApiServiceTests
             NullLogger<PricingLimitOccupyWriter>.Instance,
             clock);
         var reverseLogWriter = new PricingReverseLogWriter(requestLogRepository, reverseLogRepository, clock);
+        var transactionExecutor = new PricingTransactionExecutor(
+            unitOfWork,
+            NullLogger<PricingTransactionExecutor>.Instance);
+        var idempotentResponseReader = new PricingIdempotentResponseReader(
+            NullLogger<PricingIdempotentResponseReader>.Instance);
+        var reverseHistoryReader = new PricingReverseHistoryReader(reverseLogRepository);
+        var specialFlagResolver = new PricingSpecialFlagResolver(
+            headerRepository,
+            clock,
+            runtimeTraceResolver,
+            conditionEvaluatorFactory,
+            NullLogger<PricingSpecialFlagResolver>.Instance);
 
         return new PricingApiService(
-            new SimulatePricingUseCase(
-                calculationDependencies,
-                repositories,
+            new PricingSimulateWorkflow(
+                engine,
+                authorityPriceChecker,
+                requestLogWriter,
+                traceStepWriter,
+                runtimeTraceResolver,
+                clock,
+                NullLogger<PricingSimulateWorkflow>.Instance),
+            new PricingConfirmWorkflow(
+                engine,
+                requestLogRepository,
                 authorityPriceChecker,
                 idempotencyService,
                 requestLogWriter,
                 traceStepWriter,
                 discountDetailWriter,
                 limitOccupyWriter,
-                reverseLogWriter,
                 runtimeTraceResolver,
-                unitOfWork,
+                transactionExecutor,
+                idempotentResponseReader,
+                limitRepository,
                 options,
                 clock,
-                NullLogger<SimulatePricingUseCase>.Instance),
-            new ConfirmPricingUseCase(
-                calculationDependencies,
-                repositories,
-                authorityPriceChecker,
-                idempotencyService,
-                requestLogWriter,
-                traceStepWriter,
-                discountDetailWriter,
+                NullLogger<PricingConfirmWorkflow>.Instance),
+            new PricingCommitWorkflow(
+                requestLogRepository,
+                discountRepository,
+                limitRepository,
+                transactionExecutor,
+                options,
+                clock,
+                NullLogger<PricingCommitWorkflow>.Instance),
+            new PricingCancelWorkflow(
+                requestLogRepository,
+                discountRepository,
+                limitRepository,
+                transactionExecutor,
+                clock,
+                NullLogger<PricingCancelWorkflow>.Instance),
+            new PricingReverseWorkflow(
+                requestLogRepository,
+                discountRepository,
+                limitRepository,
+                reverseLogRepository,
+                reverseLogWriter,
                 limitOccupyWriter,
-                reverseLogWriter,
-                runtimeTraceResolver,
-                unitOfWork,
-                options,
+                transactionExecutor,
+                reverseHistoryReader,
                 clock,
-                NullLogger<ConfirmPricingUseCase>.Instance),
-            new CommitPricingUseCase(
-                calculationDependencies,
-                repositories,
-                authorityPriceChecker,
-                idempotencyService,
-                requestLogWriter,
-                traceStepWriter,
-                discountDetailWriter,
-                limitOccupyWriter,
-                reverseLogWriter,
-                runtimeTraceResolver,
-                unitOfWork,
-                options,
-                clock,
-                NullLogger<CommitPricingUseCase>.Instance),
-            new CancelPricingUseCase(
-                calculationDependencies,
-                repositories,
-                authorityPriceChecker,
-                idempotencyService,
-                requestLogWriter,
-                traceStepWriter,
-                discountDetailWriter,
-                limitOccupyWriter,
-                reverseLogWriter,
-                runtimeTraceResolver,
-                unitOfWork,
-                options,
-                clock,
-                NullLogger<CancelPricingUseCase>.Instance),
-            new ReversePricingUseCase(
-                calculationDependencies,
-                repositories,
-                authorityPriceChecker,
-                idempotencyService,
-                requestLogWriter,
-                traceStepWriter,
-                discountDetailWriter,
-                limitOccupyWriter,
-                reverseLogWriter,
-                runtimeTraceResolver,
-                unitOfWork,
-                options,
-                clock,
-                NullLogger<ReversePricingUseCase>.Instance),
-            new GetSpecialFlagUseCase(
-                calculationDependencies,
-                repositories,
-                authorityPriceChecker,
-                idempotencyService,
-                requestLogWriter,
-                traceStepWriter,
-                discountDetailWriter,
-                limitOccupyWriter,
-                reverseLogWriter,
-                runtimeTraceResolver,
-                unitOfWork,
-                options,
-                clock,
-                NullLogger<GetSpecialFlagUseCase>.Instance));
+                NullLogger<PricingReverseWorkflow>.Instance),
+            specialFlagResolver);
     }
 
     private sealed class NoopUnitOfWork : IUnitOfWork

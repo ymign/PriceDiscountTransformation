@@ -17,7 +17,7 @@ public sealed class PricingCancelWorkflow
     private readonly ILimitOccupyRepository _limitRepository;
     private readonly PricingTransactionExecutor _transactionExecutor;
     private readonly IClock _clock;
-    private readonly ILogger _logger;
+    private readonly ILogger<PricingCancelWorkflow> _logger;
 
     /// <summary>
     /// 初始化取消确认计价 workflow。
@@ -34,7 +34,7 @@ public sealed class PricingCancelWorkflow
         ILimitOccupyRepository limitRepository,
         PricingTransactionExecutor transactionExecutor,
         IClock clock,
-        ILogger logger)
+        ILogger<PricingCancelWorkflow> logger)
     {
         _requestLogRepository = requestLogRepository;
         _discountRepository = discountRepository;

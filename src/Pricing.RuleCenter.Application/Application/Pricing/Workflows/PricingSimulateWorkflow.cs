@@ -22,7 +22,7 @@ public sealed class PricingSimulateWorkflow
     private readonly PricingTraceStepWriter _traceStepWriter;
     private readonly RuntimePackageTraceResolver _runtimePackageTraceResolver;
     private readonly IClock _clock;
-    private readonly ILogger _logger;
+    private readonly ILogger<PricingSimulateWorkflow> _logger;
 
     /// <summary>
     /// 初始化试算计价 workflow。
@@ -34,7 +34,7 @@ public sealed class PricingSimulateWorkflow
         PricingTraceStepWriter traceStepWriter,
         RuntimePackageTraceResolver runtimePackageTraceResolver,
         IClock clock,
-        ILogger logger)
+        ILogger<PricingSimulateWorkflow> logger)
     {
         _engine = engine;
         _authorityPriceChecker = authorityPriceChecker;

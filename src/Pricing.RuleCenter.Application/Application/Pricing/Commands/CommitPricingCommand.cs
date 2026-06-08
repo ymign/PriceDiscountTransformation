@@ -9,18 +9,18 @@ public sealed record CommitPricingCommand(PricingCommitRequest Request) : IReque
 /// <summary>落账提交命令处理器。</summary>
 public sealed class CommitPricingCommandHandler : IRequestHandler<CommitPricingCommand>
 {
-    private readonly PricingAppService _service;
+    private readonly PricingCommitWorkflow _workflow;
 
     /// <summary>初始化处理器。</summary>
-    public CommitPricingCommandHandler(PricingAppService service)
+    public CommitPricingCommandHandler(PricingCommitWorkflow workflow)
     {
-        _service = service;
+        _workflow = workflow;
     }
 
     /// <inheritdoc />
     public async Task<Unit> Handle(CommitPricingCommand request, CancellationToken cancellationToken)
     {
-        await _service.CommitAsync(request.Request);
+        await _workflow.ExecuteAsync(request.Request);
         return Unit.Value;
     }
 }
