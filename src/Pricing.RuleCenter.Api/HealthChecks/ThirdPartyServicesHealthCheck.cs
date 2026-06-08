@@ -73,7 +73,7 @@ public sealed class ThirdPartyServicesHealthCheck : IHealthCheck
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "第三方服务健康检查失败 Target={Target}", name);
+                _logger.LogWarning(ex, "第三方服务健康检查失败 目标={Target}", name);
                 checkedTargets[name] = ex.GetType().Name;
                 failures.Add($"{name}:{ex.GetType().Name}");
             }

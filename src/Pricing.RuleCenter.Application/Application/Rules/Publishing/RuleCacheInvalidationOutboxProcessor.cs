@@ -82,7 +82,7 @@ public sealed class RuleCacheInvalidationOutboxProcessor
 
             _logger.LogWarning(
                 ex,
-                "规则缓存失效 outbox 处理失败 OutboxId={OutboxId}, Scope={Scope}, RetryCount={RetryCount}, NextRetryAt={NextRetryAt}",
+                "规则缓存失效发件箱处理失败 发件箱ID={OutboxId}, 范围={Scope}, 重试次数={RetryCount}, 下次重试时间={NextRetryAt}",
                 item.OutboxId,
                 item.CacheScope,
                 retryCount,

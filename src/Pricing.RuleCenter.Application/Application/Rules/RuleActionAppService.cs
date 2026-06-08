@@ -158,7 +158,7 @@ public sealed class RuleActionAppService
             throw;
         }
 
-        _logger.LogInformation("保存规则动作 RuleId={RuleId}, VersionNo={VersionNo}, Count={Count}",
+        _logger.LogInformation("保存规则动作 规则ID={RuleId}, 版本号={VersionNo}, 数量={Count}",
             ruleId, versionNo, entities.Count);
 
         // 动作决定了规则的计价行为（公式计算、数量限制、金额限制、换算等），
@@ -198,7 +198,7 @@ public sealed class RuleActionAppService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "写入变更日志失败 RuleId={RuleId}, ChangeType={ChangeType}", ruleId, changeType);
+            _logger.LogWarning(ex, "写入变更日志失败 规则ID={RuleId}, 变更类型={ChangeType}", ruleId, changeType);
         }
     }
 

@@ -123,7 +123,7 @@ public sealed class FormulaDefAppService
         // ========== 第三阶段：写入并输出审计日志 ==========
         // 公式新增会改变规则动作可选能力，需要保留操作线索。
         var id = await _repository.InsertAsync(entity);
-        _logger.LogInformation("新增公式定义 {FormulaCode}, ID={FormulaId}",
+        _logger.LogInformation("新增公式定义 编码={FormulaCode}, 公式ID={FormulaId}",
             request.FormulaCode, id);
 
         // ========== 第四阶段：写入变更日志 ==========
@@ -163,7 +163,7 @@ public sealed class FormulaDefAppService
         entity.Remark = request.Remark;
 
         await _repository.UpdateAsync(entity);
-        _logger.LogInformation("更新公式定义 {FormulaId}, 编码={FormulaCode}", formulaId, entity.FormulaCode);
+        _logger.LogInformation("更新公式定义 公式ID={FormulaId}, 编码={FormulaCode}", formulaId, entity.FormulaCode);
 
         // ========== 写入变更日志 ==========
         // 修改执行器编码会改变运行时的公式计算行为，修改参数结构会影响前端配置页面，
@@ -192,7 +192,7 @@ public sealed class FormulaDefAppService
         var newEnabled = entity.IsEnabled == EnableFlag.Yes ? EnableFlag.No : EnableFlag.Yes;
         await _repository.SetEnabledAsync(formulaId, newEnabled);
 
-        _logger.LogInformation("切换公式 {FormulaId} 状态为 {Enabled}", formulaId, newEnabled);
+        _logger.LogInformation("切换公式状态 公式ID={FormulaId}, 启用状态={Enabled}", formulaId, newEnabled);
 
         // ========== 第三阶段：写入变更日志 ==========
         // 状态切换会限制或放开配置页面的公式选择范围，停用可能导致已有规则在下次发布时无法引用该公式，
@@ -233,7 +233,7 @@ public sealed class FormulaDefAppService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "写入变更日志失败 ChangeType={ChangeType}", changeType);
+            _logger.LogWarning(ex, "写入变更日志失败 变更类型={ChangeType}", changeType);
         }
     }
 

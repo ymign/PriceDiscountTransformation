@@ -182,7 +182,7 @@ public sealed class RuleApprovalAppService
         });
 
         _logger.LogInformation(
-            "提交规则审批 RuleId={RuleId}, VersionNo={VersionNo}, ActionType={ActionType}, ApprovalId={ApprovalId}",
+            "提交规则审批 规则ID={RuleId}, 版本号={VersionNo}, 审批动作={ActionType}, 审批ID={ApprovalId}",
             ruleId, versionNo, normalizedActionType, approvalId);
 
         return approvalId;
@@ -300,7 +300,7 @@ public sealed class RuleApprovalAppService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "写入审批变更日志失败 RuleId={RuleId}, ChangeType={ChangeType}", entity.RuleId, entity.ChangeType);
+            _logger.LogWarning(ex, "写入审批变更日志失败 规则ID={RuleId}, 变更类型={ChangeType}", entity.RuleId, entity.ChangeType);
         }
     }
 

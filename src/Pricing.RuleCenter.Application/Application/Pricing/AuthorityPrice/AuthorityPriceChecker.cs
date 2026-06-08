@@ -79,7 +79,7 @@ public sealed class AuthorityPriceChecker
             if (!priceItems.TryGetValue(itemCode, out var priceItem) || priceItem is null)
             {
                 _logger.LogWarning(
-                    "权威单价诊断: 未找到项目权威单价 ItemCode={ItemCode}, PriceKind={PriceKind}, RequestPrice={RequestPrice}",
+                    "权威单价诊断：未找到项目权威单价 项目编码={ItemCode}, 价格类型={PriceKind}, 请求单价={RequestPrice}",
                     itemCode, priceKindName, item.UnitPrice);
                 continue;
             }
@@ -88,7 +88,7 @@ public sealed class AuthorityPriceChecker
             if (!authorityPrice.HasValue)
             {
                 _logger.LogWarning(
-                    "权威单价诊断: 项目价格列为空 ItemCode={ItemCode}, PriceKind={PriceKind}, RequestPrice={RequestPrice}",
+                    "权威单价诊断：项目价格列为空 项目编码={ItemCode}, 价格类型={PriceKind}, 请求单价={RequestPrice}",
                     itemCode, priceKindName, item.UnitPrice);
                 continue;
             }
@@ -96,7 +96,7 @@ public sealed class AuthorityPriceChecker
             if (Math.Round(authorityPrice.Value, 4) != Math.Round(item.UnitPrice, 4))
             {
                 _logger.LogWarning(
-                    "权威单价诊断: 单价不一致 ItemCode={ItemCode}, PriceKind={PriceKind}, AuthorityPrice={AuthorityPrice}, RequestPrice={RequestPrice}",
+                    "权威单价诊断：单价不一致 项目编码={ItemCode}, 价格类型={PriceKind}, 权威单价={AuthorityPrice}, 请求单价={RequestPrice}",
                     itemCode, priceKindName, authorityPrice.Value, item.UnitPrice);
             }
         }

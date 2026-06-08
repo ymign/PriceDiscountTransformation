@@ -156,7 +156,7 @@ public sealed class RuleMatchService : IRuleRuntimeCacheInvalidator
         var ordered = await _actionPlanBuilder.BuildAsync(allActions, matchedRules);
 
         _logger.LogInformation(
-            "规则匹配 ItemCode={ItemCode}, 命中 {RuleCount} 条规则, {ActionCount} 个动作",
+            "规则匹配 项目编码={ItemCode}, 命中规则数={RuleCount}, 动作数={ActionCount}",
             context.ItemCode, matchedRules.Count, ordered.Count);
 
         return (matchedRules, ordered);

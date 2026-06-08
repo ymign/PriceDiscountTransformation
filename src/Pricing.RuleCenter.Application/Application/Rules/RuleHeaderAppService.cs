@@ -273,7 +273,7 @@ public sealed class RuleHeaderAppService
 
         // 版本草稿由 RuleVersionAppService 单独创建，保持"主档"和"版本内容"的职责边界清晰。
         var id = await _repository.InsertAsync(entity);
-        _logger.LogInformation("新增规则 {RuleCode}, ID={RuleId}", request.RuleCode, id);
+        _logger.LogInformation("新增规则 编码={RuleCode}, 规则ID={RuleId}", request.RuleCode, id);
 
         // 主档创建是规则生命周期的起点，必须记录审计日志，便于后续追溯规则来源。
         // 变更日志写入失败不应阻断主业务流程，因此使用 try-catch 包裹。
@@ -322,7 +322,7 @@ public sealed class RuleHeaderAppService
         entity.UpdatedAt = _clock.Now;
 
         await _repository.UpdateAsync(entity);
-        _logger.LogInformation("更新规则主档 RuleId={RuleId}", ruleId);
+        _logger.LogInformation("更新规则主档 规则ID={RuleId}", ruleId);
         ClearEffectiveCache();
 
         // 主档更新可能影响规则匹配条件（如项目编码、生效时间、优先级等），
@@ -408,7 +408,7 @@ public sealed class RuleHeaderAppService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "写入变更日志失败 RuleId={RuleId}, ChangeType={ChangeType}",
+            _logger.LogWarning(ex, "写入变更日志失败 规则ID={RuleId}, 变更类型={ChangeType}",
                 input.RuleId, input.ChangeType);
         }
     }

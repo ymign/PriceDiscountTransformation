@@ -99,13 +99,13 @@ public sealed class CacheVersionSynchronizer : ICacheVersionSynchronizer
         if (invalidateRules)
         {
             var removed = EffectiveRuleCacheKeys.Clear(_cache);
-            _logger.LogInformation("检测到缓存版本变化，已清理生效规则缓存 Scope={Scope}, Removed={Removed}", cacheScope, removed);
+            _logger.LogInformation("检测到缓存版本变化，已清理生效规则缓存 范围={Scope}, 清理数量={Removed}", cacheScope, removed);
         }
 
         if (invalidateRuntime)
         {
             _runtimeCacheInvalidator.ClearRuntimeCache();
-            _logger.LogInformation("检测到缓存版本变化，已清理运行期规则缓存 Scope={Scope}", cacheScope);
+            _logger.LogInformation("检测到缓存版本变化，已清理运行期规则缓存 范围={Scope}", cacheScope);
         }
 
         _localState.SetVersion(cacheScope, remoteVersion);

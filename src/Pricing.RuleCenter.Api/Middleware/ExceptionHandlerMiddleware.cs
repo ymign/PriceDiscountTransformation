@@ -39,11 +39,11 @@ public sealed class ExceptionHandlerMiddleware
 
         if (mapping.StatusCode >= 500)
         {
-            _logger.LogError(exception, "未处理异常 TraceId={TraceId}, Path={Path}", traceId, context.Request.Path);
+            _logger.LogError(exception, "未处理异常 追踪号={TraceId}, 路径={Path}", traceId, context.Request.Path);
         }
         else
         {
-            _logger.LogWarning(exception, "业务异常 TraceId={TraceId}, Path={Path}", traceId, context.Request.Path);
+            _logger.LogWarning(exception, "业务异常 追踪号={TraceId}, 路径={Path}", traceId, context.Request.Path);
         }
 
         context.Response.StatusCode = mapping.StatusCode;

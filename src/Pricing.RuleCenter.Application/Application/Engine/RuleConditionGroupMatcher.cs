@@ -48,7 +48,7 @@ public sealed class RuleConditionGroupMatcher
                 var evaluator = _evaluatorFactory.GetEvaluator(condition.ConditionType);
                 if (evaluator is null)
                 {
-                    _logger.LogWarning("未找到条件评估器: {ConditionType}，RuleId={RuleId}",
+                    _logger.LogWarning("未找到条件评估器：条件类型={ConditionType}，规则ID={RuleId}",
                         condition.ConditionType, condition.RuleId);
                     allMatch = false;
                     break;

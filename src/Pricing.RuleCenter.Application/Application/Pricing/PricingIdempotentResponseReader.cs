@@ -45,7 +45,7 @@ public sealed class PricingIdempotentResponseReader
         }
         catch (JsonException ex)
         {
-            _logger.LogError(ex, "幂等响应快照解析失败 RequestId={RequestId}", log.RequestId);
+            _logger.LogError(ex, "幂等响应快照解析失败 请求ID={RequestId}", log.RequestId);
         }
 
         throw new BizException(

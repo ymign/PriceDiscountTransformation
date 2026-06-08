@@ -97,7 +97,7 @@ public sealed class PricingCommitWorkflow
         PricingRequestGuard.EnsureCommitRequest(request);
 
         _logger.LogInformation(
-            "COMMIT 开始 RequestId={RequestId}, ChargeNo={ChargeNo}, CommitNo={CommitNo}, CommittedBy={CommittedBy}, CommittedAt={CommittedAt}",
+            "落账提交开始 请求ID={RequestId}, 收费单号={ChargeNo}, 提交流水号={CommitNo}, 提交人={CommittedBy}, 提交时间={CommittedAt}",
             request.RequestId, request.ChargeNo, request.CommitNo, request.CommittedBy, request.CommittedAt);
 
         await _transactionExecutor.ExecuteAsync(async () =>
@@ -122,7 +122,7 @@ public sealed class PricingCommitWorkflow
                 }
 
                 _logger.LogInformation(
-                    "COMMIT 幂等命中 RequestId={RequestId}, 当前状态={Status}",
+                    "落账提交幂等命中 请求ID={RequestId}, 当前状态={Status}",
                     request.RequestId, log.BusinessStatus);
                 return;
             }
@@ -132,7 +132,7 @@ public sealed class PricingCommitWorkflow
             if (log.BusinessStatus != BusinessStatusCodes.ConfirmPending)
             {
                 _logger.LogWarning(
-                    "COMMIT 状态校验失败 RequestId={RequestId}, 当前状态={Status}, 期望=CONFIRM_PENDING",
+                    "落账提交状态校验失败 请求ID={RequestId}, 当前状态={Status}, 期望状态=CONFIRM_PENDING",
                     request.RequestId, log.BusinessStatus);
                 throw new BizException(
                     BizErrorCode.RequestStatusNotAllowed,
@@ -143,7 +143,7 @@ public sealed class PricingCommitWorkflow
             if (_clock.Now > log.RequestAt.AddMinutes(_options.ConfirmExpireMinutes))
             {
                 _logger.LogWarning(
-                    "COMMIT 已过期 RequestId={RequestId}, RequestAt={RequestAt}, 过期分钟数={ExpireMinutes}",
+                    "落账提交已过期 请求ID={RequestId}, 请求时间={RequestAt}, 过期分钟数={ExpireMinutes}",
                     request.RequestId, log.RequestAt, _options.ConfirmExpireMinutes);
                 throw new BizException(
                     BizErrorCode.RequestStatusNotAllowed,
@@ -165,7 +165,7 @@ public sealed class PricingCommitWorkflow
             await _limitRepository.UpdateStatusByRequestIdAsync(request.RequestId, BusinessStatusCodes.Confirmed);
 
             _logger.LogInformation(
-                "COMMIT 成功 RequestId={RequestId}, SourceSystem={SourceSystem}, ItemCode={ItemCode}, ChargeNo={ChargeNo}, CommitNo={CommitNo}, CommittedBy={CommittedBy}, CommittedAt={CommittedAt}",
+                "落账提交成功 请求ID={RequestId}, 来源系统={SourceSystem}, 项目编码={ItemCode}, 收费单号={ChargeNo}, 提交流水号={CommitNo}, 提交人={CommittedBy}, 提交时间={CommittedAt}",
                 request.RequestId, log.SourceSystem, log.ItemCode, log.ChargeNo,
                 request.CommitNo, request.CommittedBy, request.CommittedAt);
         });

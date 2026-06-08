@@ -87,7 +87,7 @@ public sealed class PricingCancelWorkflow
         PricingRequestGuard.EnsureCancelRequest(request);
 
         _logger.LogInformation(
-            "CANCEL 开始 RequestId={RequestId}, CancelNo={CancelNo}, CancelledBy={CancelledBy}, CancelledAt={CancelledAt}, CancelReason={CancelReason}",
+            "取消确认开始 请求ID={RequestId}, 取消流水号={CancelNo}, 取消人={CancelledBy}, 取消时间={CancelledAt}, 取消原因={CancelReason}",
             request.RequestId, request.CancelNo, request.CancelledBy, request.CancelledAt, request.CancelReason);
 
         await _transactionExecutor.ExecuteAsync(async () =>
@@ -106,7 +106,7 @@ public sealed class PricingCancelWorkflow
             {
                 // 重复取消和后台过期清理后的取消都不会再次释放额度，直接按幂等成功返回。
                 _logger.LogInformation(
-                    "CANCEL 幂等命中 RequestId={RequestId}, 当前状态={Status}",
+                    "取消确认幂等命中 请求ID={RequestId}, 当前状态={Status}",
                     request.RequestId, log.BusinessStatus);
                 return;
             }
@@ -116,7 +116,7 @@ public sealed class PricingCancelWorkflow
             if (log.BusinessStatus != BusinessStatusCodes.ConfirmPending)
             {
                 _logger.LogWarning(
-                    "CANCEL 状态校验失败 RequestId={RequestId}, 当前状态={Status}, 期望=CONFIRM_PENDING",
+                    "取消确认状态校验失败 请求ID={RequestId}, 当前状态={Status}, 期望状态=CONFIRM_PENDING",
                     request.RequestId, log.BusinessStatus);
                 throw new BizException(
                     BizErrorCode.RequestStatusNotAllowed,
@@ -134,7 +134,7 @@ public sealed class PricingCancelWorkflow
             await _limitRepository.UpdateStatusByRequestIdAsync(request.RequestId, BusinessStatusCodes.Cancelled);
 
             _logger.LogInformation(
-                "CANCEL 成功 RequestId={RequestId}, SourceSystem={SourceSystem}, ItemCode={ItemCode}, CancelNo={CancelNo}, CancelledBy={CancelledBy}, CancelledAt={CancelledAt}, 限额已释放",
+                "取消确认成功 请求ID={RequestId}, 来源系统={SourceSystem}, 项目编码={ItemCode}, 取消流水号={CancelNo}, 取消人={CancelledBy}, 取消时间={CancelledAt}, 限额已释放",
                 request.RequestId, log.SourceSystem, log.ItemCode,
                 request.CancelNo, request.CancelledBy, request.CancelledAt);
         });

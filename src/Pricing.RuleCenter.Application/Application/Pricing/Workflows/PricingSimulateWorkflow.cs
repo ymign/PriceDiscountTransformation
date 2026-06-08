@@ -101,7 +101,7 @@ public sealed class PricingSimulateWorkflow
 
         var firstItem = items[0];
         _logger.LogInformation(
-            "SIMULATE 开始 SourceSystem={SourceSystem}, PatientId={PatientId}, ItemCode={ItemCode}, InputQty={InputQty}",
+            "试算开始 来源系统={SourceSystem}, 患者ID={PatientId}, 项目编码={ItemCode}, 输入数量={InputQty}",
             request.SourceSystem, request.PatientId, firstItem.ItemCode, firstItem.InputQty);
 
         await _authorityPriceChecker.CheckAsync(request, items);

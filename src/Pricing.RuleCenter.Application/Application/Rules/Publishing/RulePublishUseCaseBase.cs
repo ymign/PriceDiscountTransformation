@@ -197,7 +197,7 @@ public abstract class RulePublishUseCaseBase
         // 发布改变了当前生效版本，必须立即清除缓存，确保计价引擎读到最新规则集。
         await _cacheCoordinator.InvalidateAfterCommitAsync();
 
-        _logger.LogInformation("发布规则 RuleId={RuleId}, VersionNo={VersionNo}", ruleId, request.VersionNo);
+        _logger.LogInformation("发布规则 规则ID={RuleId}, 版本号={VersionNo}", ruleId, request.VersionNo);
     }
 
     /// <summary>
@@ -229,7 +229,7 @@ public abstract class RulePublishUseCaseBase
         // ========== 第三阶段：清除生效规则缓存 ==========
         await _cacheCoordinator.InvalidateAfterCommitAsync();
 
-        _logger.LogInformation("停用规则 RuleId={RuleId}", ruleId);
+        _logger.LogInformation("停用规则 规则ID={RuleId}", ruleId);
     }
 
     /// <summary>
@@ -263,7 +263,7 @@ public abstract class RulePublishUseCaseBase
 
         var currentHeaderAfterRollback = await _headerRepository.GetByIdAsync(ruleId)
             ?? throw new KeyNotFoundException($"规则不存在: {ruleId}");
-        _logger.LogInformation("回滚规则 RuleId={RuleId}, 从 V{FromVersion} 到 V{ToVersion}",
+        _logger.LogInformation("回滚规则 规则ID={RuleId}, 从版本V{FromVersion}到版本V{ToVersion}",
             ruleId, header.CurrentVersion, currentHeaderAfterRollback.CurrentVersion);
     }
 

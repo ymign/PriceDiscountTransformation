@@ -35,7 +35,7 @@ public sealed class RulePublishCacheInvalidator
         var specialFlagRemoved = SpecialFlagCacheKeys.Clear(_cache);
         _runtimeCacheInvalidator.ClearRuntimeCache();
         _logger.LogDebug(
-            "已清除生效规则缓存、特殊项目标识缓存和规则运行期缓存，生效规则缓存键 {EffectiveRuleCount} 个，特殊项目缓存键 {SpecialFlagCount} 个",
+            "已清除生效规则缓存、特殊项目标识缓存和规则运行期缓存，生效规则缓存键数量={EffectiveRuleCount}，特殊项目缓存键数量={SpecialFlagCount}",
             effectiveRuleRemoved,
             specialFlagRemoved);
     }

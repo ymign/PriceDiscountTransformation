@@ -125,7 +125,7 @@ public sealed class PricingReverseWorkflow
         var reverseNo = request.ReverseNo!;
 
         _logger.LogInformation(
-            "REVERSE 开始 OriginalRequestId={OriginalRequestId}, ItemCode={ItemCode}, ReverseQty={ReverseQty}",
+            "退费冲正开始 原请求ID={OriginalRequestId}, 项目编码={ItemCode}, 退费数量={ReverseQty}",
             request.OriginalRequestId, request.ItemCode, request.ReverseQty);
 
         await _transactionExecutor.ExecuteAsync(async () =>
@@ -159,7 +159,7 @@ public sealed class PricingReverseWorkflow
                 }
 
                 _logger.LogInformation(
-                    "REVERSE 幂等命中 OriginalRequestId={OriginalRequestId}, ReverseNo={ReverseNo}",
+                    "退费冲正幂等命中 原请求ID={OriginalRequestId}, 冲正流水号={ReverseNo}",
                     request.OriginalRequestId, request.ReverseNo);
                 return;
             }
@@ -169,7 +169,7 @@ public sealed class PricingReverseWorkflow
             if (!IsCommittedBusinessStatus(log.BusinessStatus))
             {
                 _logger.LogWarning(
-                    "REVERSE 状态校验失败 OriginalRequestId={OriginalRequestId}, 当前状态={Status}, 期望=CONFIRMED/COMMITTED",
+                    "退费冲正状态校验失败 原请求ID={OriginalRequestId}, 当前状态={Status}, 期望状态=CONFIRMED/COMMITTED",
                     request.OriginalRequestId, log.BusinessStatus);
                 throw new BizException(
                     BizErrorCode.ReverseNotAllowed,
@@ -338,7 +338,7 @@ public sealed class PricingReverseWorkflow
             });
 
             _logger.LogInformation(
-                "REVERSE 成功 OriginalRequestId={OriginalRequestId}, ItemCode={ItemCode}, ReverseQty={ReverseQty}, ReverseAmt={ReverseAmt}, 全退={IsFullReverse}",
+                "退费冲正成功 原请求ID={OriginalRequestId}, 项目编码={ItemCode}, 退费数量={ReverseQty}, 退费金额={ReverseAmt}, 是否全退={IsFullReverse}",
                 request.OriginalRequestId, matchedDetails.FirstOrDefault()?.ItemCode,
                 reverseQty, reverseAmt, isFullReverse);
         });

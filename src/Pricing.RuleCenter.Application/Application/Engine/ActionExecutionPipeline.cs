@@ -88,7 +88,7 @@ public sealed class ActionExecutionPipeline
             if (executors.Length == 0)
             {
                 _logger.LogWarning(
-                    "未找到可处理动作的执行器: ActionType={ActionType}, ExecutorCode={ExecutorCode}, ActionId={ActionId}, CandidateCount={CandidateCount}",
+                    "未找到可处理动作的执行器：动作类型={ActionType}, 执行器编码={ExecutorCode}, 动作ID={ActionId}, 候选数量={CandidateCount}",
                     action.ActionType,
                     action.ExecutorCode,
                     action.ActionId,
@@ -113,7 +113,7 @@ public sealed class ActionExecutionPipeline
             if (executors.Length > 1)
             {
                 _logger.LogError(
-                    "多个执行器同时声明可处理同一动作: ActionType={ActionType}, ExecutorCode={ExecutorCode}, ActionId={ActionId}, ExecutorCount={ExecutorCount}",
+                    "多个执行器同时声明可处理同一动作：动作类型={ActionType}, 执行器编码={ExecutorCode}, 动作ID={ActionId}, 执行器数量={ExecutorCount}",
                     action.ActionType,
                     action.ExecutorCode,
                     action.ActionId,
@@ -166,7 +166,7 @@ public sealed class ActionExecutionPipeline
                 //   STOP — 中断并向上抛出，外层事务回滚。资金动作的默认策略。
                 //   WARN — 记录错误步骤后继续。适合非资金提示类动作。
                 //   SKIP — 仅记录日志后继续。适合纯辅助动作。
-                _logger.LogError(ex, "执行动作失败 ActionType={ActionType}, ActionId={ActionId}",
+                _logger.LogError(ex, "执行动作失败 动作类型={ActionType}, 动作ID={ActionId}",
                     action.ActionType, action.ActionId);
 
                 if (ShouldStopOnError(action))

@@ -124,7 +124,7 @@ public sealed class RuleVersionAppService
         // ========== 第四阶段：记录创建结果 ==========
         // 日志中同时输出 RuleId、VersionNo 和 VersionId，方便从接口返回、数据库记录和日志三方互相定位。
         var id = await _versionRepository.InsertAsync(entity);
-        _logger.LogInformation("新增规则版本 RuleId={RuleId}, VersionNo={VersionNo}, VersionId={VersionId}",
+        _logger.LogInformation("新增规则版本 规则ID={RuleId}, 版本号={VersionNo}, 版本ID={VersionId}",
             ruleId, nextVersionNo, id);
         return id;
     }

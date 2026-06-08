@@ -83,7 +83,7 @@ public sealed class RulePublishExecutionWorkflow
                 var oldVersionEntity = await _versionRepository.GetByRuleAndVersionForUpdateAsync(ruleId, oldVersion);
                 if (oldVersionEntity is null)
                 {
-                    _logger.LogWarning("发布规则时未找到旧版本记录 RuleId={RuleId}, OldVersion={OldVersion}", ruleId, oldVersion);
+                    _logger.LogWarning("发布规则时未找到旧版本记录 规则ID={RuleId}, 旧版本号={OldVersion}", ruleId, oldVersion);
                 }
                 else if (string.Equals(oldVersionEntity.VersionStatus, VersionStatusCodes.Published, StringComparison.OrdinalIgnoreCase))
                 {

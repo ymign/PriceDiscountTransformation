@@ -85,7 +85,7 @@ public static class SqlSugarSetup
             // 排查问题时可将日志级别提高到 Debug 查看实际执行的 SQL。
             db.Aop.OnLogExecuting = (sql, pars) =>
             {
-                logger.LogDebug("SqlSugar SQL: {Sql}", sql);
+                logger.LogDebug("SqlSugar 执行 SQL：{Sql}", sql);
             };
 
             // ========== 第四阶段：统一记录数据库异常 ==========

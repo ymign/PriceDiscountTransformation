@@ -170,13 +170,13 @@ public sealed class PricingConfirmWorkflow
         var items = PricingRequestGuard.GetRequiredItems(request);
         var firstItem = items[0];
         _logger.LogInformation(
-            "CONFIRM 开始 SourceSystem={SourceSystem}, BusinessRequestNo={BusinessRequestNo}, PatientId={PatientId}, ItemCode={ItemCode}, InputQty={InputQty}",
+            "确认计价开始 来源系统={SourceSystem}, 业务请求号={BusinessRequestNo}, 患者ID={PatientId}, 项目编码={ItemCode}, 输入数量={InputQty}",
             request.SourceSystem, request.BusinessRequestNo, request.PatientId, firstItem.ItemCode, firstItem.InputQty);
 
         if (string.IsNullOrWhiteSpace(request.BusinessRequestNo))
         {
             _logger.LogWarning(
-                "CONFIRM 校验失败: BusinessRequestNo 为空, SourceSystem={SourceSystem}",
+                "确认计价校验失败：业务请求号为空，来源系统={SourceSystem}",
                 request.SourceSystem);
             PricingRequestGuard.EnsureConfirmRequest(request);
         }
@@ -191,7 +191,7 @@ public sealed class PricingConfirmWorkflow
         {
             _idempotencyService.EnsureSameFingerprint(existing, fingerprint, request.BusinessRequestNo!);
             _logger.LogInformation(
-                "幂等命中 SourceSystem={SourceSystem}, BusinessRequestNo={BusinessRequestNo}, RequestId={RequestId}, ItemCode={ItemCode}, OriginalStatus={Status}",
+                "确认计价幂等命中 来源系统={SourceSystem}, 业务请求号={BusinessRequestNo}, 请求ID={RequestId}, 项目编码={ItemCode}, 原状态={Status}",
                 request.SourceSystem, request.BusinessRequestNo, existing.RequestId, existing.ItemCode, existing.BusinessStatus);
             return await _idempotentResponseReader.ReadAsync(existing);
         }
@@ -217,7 +217,7 @@ public sealed class PricingConfirmWorkflow
                     request.BusinessRequestNo!);
 
                 _logger.LogInformation(
-                    "CONFIRM 事务内幂等命中 SourceSystem={SourceSystem}, BusinessRequestNo={BusinessRequestNo}, RequestId={RequestId}",
+                    "确认计价事务内幂等命中 来源系统={SourceSystem}, 业务请求号={BusinessRequestNo}, 请求ID={RequestId}",
                     request.SourceSystem, request.BusinessRequestNo, existingInTransaction.RequestId);
                 return await _idempotentResponseReader.ReadAsync(existingInTransaction);
             }
@@ -298,7 +298,7 @@ public sealed class PricingConfirmWorkflow
             await _requestLogWriter.SaveResponseJsonAsync(requestLog, response);
 
             _logger.LogInformation(
-                "CONFIRM 成功 RequestId={RequestId}, SourceSystem={SourceSystem}, BusinessRequestNo={BusinessRequestNo}, ItemCode={ItemCode}, FinalQty={FinalQty}, FinalAmount={FinalAmount}, IsSpecialItem={IsSpecialItem}",
+                "确认计价成功 请求ID={RequestId}, 来源系统={SourceSystem}, 业务请求号={BusinessRequestNo}, 项目编码={ItemCode}, 最终数量={FinalQty}, 最终金额={FinalAmount}, 是否特殊项目={IsSpecialItem}",
                 requestLog.RequestId, request.SourceSystem, request.BusinessRequestNo,
                 firstItem.ItemCode, response.FinalQty, response.FinalAmount, response.IsSpecialItem);
 

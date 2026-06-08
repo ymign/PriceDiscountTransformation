@@ -134,7 +134,7 @@ public sealed class PricingEngine : IPricingEngine
         // ========== 第七阶段：输出计价完成日志 ==========
         // 日志记录关键金额，不记录完整请求，完整快照由请求日志保存。
         _logger.LogInformation(
-            "计价完成 ItemCode={ItemCode}, 原金额={OriginalAmount}, 最终金额={FinalAmount}, 折扣={DiscountAmount}",
+            "计价完成 项目编码={ItemCode}, 原金额={OriginalAmount}, 最终金额={FinalAmount}, 折扣金额={DiscountAmount}",
             context.ItemCode, originalAmount, context.FinalAmount, context.DiscountAmount);
 
         return result;

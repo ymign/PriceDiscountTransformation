@@ -80,7 +80,7 @@ public sealed class PricingLimitOccupyWriter
             await _limitRepository.InsertAsync(occupy);
 
             _logger.LogDebug(
-                "限额占用 RequestId={RequestId}, LimitType={LimitType}, LimitDimensionCode={LimitDimensionCode}, OccupyQty={OccupyQty}, ItemCode={ItemCode}",
+                "限额占用 请求ID={RequestId}, 限额类型={LimitType}, 限额维度编码={LimitDimensionCode}, 占用数量={OccupyQty}, 项目编码={ItemCode}",
                 requestId, occupy.LimitType, occupy.LimitDimensionCode, occupy.OccupyQty, occupy.ItemCode);
         }
     }
@@ -153,7 +153,7 @@ public sealed class PricingLimitOccupyWriter
             });
 
             _logger.LogInformation(
-                "限额释放 OriginalRequestId={OriginalRequestId}, LimitType={LimitType}, LimitDimensionCode={LimitDimensionCode}, ReleaseQty={ReleaseQty}, ReleaseAmt={ReleaseAmt}",
+                "限额释放 原请求ID={OriginalRequestId}, 限额类型={LimitType}, 限额维度编码={LimitDimensionCode}, 释放数量={ReleaseQty}, 释放金额={ReleaseAmt}",
                 request.OriginalRequestId, occupy.LimitType, occupy.LimitDimensionCode, releaseQty, releaseAmt);
         }
     }

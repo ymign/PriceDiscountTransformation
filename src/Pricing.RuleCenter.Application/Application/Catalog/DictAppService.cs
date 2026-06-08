@@ -209,7 +209,7 @@ public sealed class DictAppService
         // 字典变更会影响前端配置可选项，写库后必须清除缓存，否则前端下拉框读到旧数据。
         var id = await _repository.InsertAsync(entity);
         ClearDictCache(request.DictType);
-        _logger.LogInformation("新增字典项 {DictType}/{DictCode}, ID={DictId}",
+        _logger.LogInformation("新增字典项 类型={DictType}, 编码={DictCode}, 字典ID={DictId}",
             request.DictType, request.DictCode, id);
 
         // ========== 第四阶段：写入变更日志 ==========
@@ -243,7 +243,7 @@ public sealed class DictAppService
 
         await _repository.UpdateAsync(entity);
         ClearDictCache(entity.DictType);
-        _logger.LogInformation("更新字典项 {DictId}, 类型={DictType}, 编码={DictCode}",
+        _logger.LogInformation("更新字典项 字典ID={DictId}, 类型={DictType}, 编码={DictCode}",
             dictId, entity.DictType, entity.DictCode);
 
         // ========== 写入变更日志 ==========
@@ -273,7 +273,7 @@ public sealed class DictAppService
         // 不物理删除字典项，是为了保留历史规则配置中已保存编码的可解释性。
         await _repository.SetEnabledAsync(dictId, EnableFlag.No);
         ClearDictCache(entity.DictType);
-        _logger.LogInformation("停用字典项 {DictId}", dictId);
+        _logger.LogInformation("停用字典项 字典ID={DictId}", dictId);
 
         // ========== 第三阶段：写入变更日志 ==========
         // 停用字典项会使前端下拉框不再显示该选项，可能影响规则配置人员的操作，
@@ -313,7 +313,7 @@ public sealed class DictAppService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "写入变更日志失败 ChangeType={ChangeType}", changeType);
+            _logger.LogWarning(ex, "写入变更日志失败 变更类型={ChangeType}", changeType);
         }
     }
 
@@ -335,7 +335,7 @@ public sealed class DictAppService
             _cacheVersionSynchronizer.IncreaseVersionAsync(CacheVersionSynchronizer.ActionTypeOrderScope).GetAwaiter().GetResult();
         }
 
-        _logger.LogDebug("已清除字典缓存: {DictType}", dictType);
+        _logger.LogDebug("已清除字典缓存：类型={DictType}", dictType);
     }
 
     /// <summary>

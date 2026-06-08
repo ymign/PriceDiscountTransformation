@@ -261,7 +261,7 @@ public sealed class RuleConflictDetector
             if (dictItems.Count == 0)
             {
                 _logger.LogWarning(
-                    "PR_DICT 中未找到 DICT_TYPE = {DictType} 的字典项，使用默认互斥动作类型列表",
+                    "PR_DICT 中未找到字典类型={DictType} 的字典项，使用默认互斥动作类型列表",
                     MutuallyExclusiveActionTypeDictType);
                 _mutuallyExclusiveActionsCache = new HashSet<string>(
                     DefaultMutuallyExclusiveActions,

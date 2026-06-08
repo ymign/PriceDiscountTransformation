@@ -173,7 +173,7 @@ public sealed class RuleActionPlanBuilder
             if (dictItems.Count == 0)
             {
                 _logger.LogWarning(
-                    "PR_DICT 中未找到 DICT_TYPE = {DictType} 的字典项，使用默认动作执行顺序",
+                    "PR_DICT 中未找到字典类型={DictType} 的字典项，使用默认动作执行顺序",
                     ActionTypeOrderDictType);
                 s_actionTypeOrderCache = new Dictionary<string, int>(DefaultActionTypeOrder, StringComparer.OrdinalIgnoreCase);
                 s_cacheLoaded = true;

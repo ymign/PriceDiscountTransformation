@@ -183,17 +183,17 @@ public sealed class ExpireCleanupAppService : BackgroundService
                 // 回滚本条记录的变更，但不向上抛出，确保后续记录继续处理。
                 // 如果 throw 会导致本轮剩余记录全部跳过，影响额度及时释放。
                 await unitOfWork.RollbackAsync();
-                _logger.LogError(ex, "过期清理单条失败 RequestId={RequestId}，跳过继续", log.RequestId);
+                _logger.LogError(ex, "过期清理单条失败 请求ID={RequestId}，跳过继续", log.RequestId);
                 continue;
             }
 
-            _logger.LogInformation("过期清理 RequestId={RequestId}", log.RequestId);
+            _logger.LogInformation("过期清理 请求ID={RequestId}", log.RequestId);
         }
 
         // 仅在有处理记录时输出汇总日志，避免无操作时产生大量空日志。
         if (expired.Count > 0)
         {
-            _logger.LogInformation("过期清理完成, 处理 {Count} 条记录", expired.Count);
+            _logger.LogInformation("过期清理完成，已处理 {Count} 条记录", expired.Count);
         }
     }
 }

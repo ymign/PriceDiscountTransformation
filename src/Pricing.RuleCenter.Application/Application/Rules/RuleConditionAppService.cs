@@ -155,7 +155,7 @@ public sealed class RuleConditionAppService
             throw;
         }
 
-        _logger.LogInformation("保存规则条件 RuleId={RuleId}, VersionNo={VersionNo}, Count={Count}",
+        _logger.LogInformation("保存规则条件 规则ID={RuleId}, 版本号={VersionNo}, 数量={Count}",
             ruleId, versionNo, entities.Count);
 
         // 条件决定了规则的匹配范围（项目、场景、部位、时间等），
@@ -195,7 +195,7 @@ public sealed class RuleConditionAppService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "写入变更日志失败 RuleId={RuleId}, ChangeType={ChangeType}", ruleId, changeType);
+            _logger.LogWarning(ex, "写入变更日志失败 规则ID={RuleId}, 变更类型={ChangeType}", ruleId, changeType);
         }
     }
 

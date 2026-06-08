@@ -81,11 +81,11 @@ public sealed class GlobalExceptionFilter : IExceptionFilter
         // 业务异常（参数错误、资源不存在）使用 Warning 级别，避免大量 Error 日志淹没真正的系统故障。
         if (context.Exception is ArgumentException or KeyNotFoundException or BizException or LimitLockException)
         {
-            _logger.LogWarning(context.Exception, "业务异常: {Path}", context.HttpContext.Request.Path);
+            _logger.LogWarning(context.Exception, "业务异常：路径={Path}", context.HttpContext.Request.Path);
         }
         else
         {
-            _logger.LogError(context.Exception, "未处理异常: {Path}", context.HttpContext.Request.Path);
+            _logger.LogError(context.Exception, "未处理异常：路径={Path}", context.HttpContext.Request.Path);
         }
 
         // ========== 第二阶段：按异常类型映射业务响应 ==========

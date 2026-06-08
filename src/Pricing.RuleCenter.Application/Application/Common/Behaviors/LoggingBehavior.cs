@@ -28,13 +28,13 @@ public sealed class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRe
         var traceId = Activity.Current?.TraceId.ToString() ?? Guid.NewGuid().ToString("N");
         var requestName = typeof(TRequest).Name;
 
-        _logger.LogInformation("开始处理请求 {RequestName}, TraceId={TraceId}", requestName, traceId);
+        _logger.LogInformation("开始处理请求 请求名称={RequestName}, 追踪号={TraceId}", requestName, traceId);
         try
         {
             var response = await next();
             stopwatch.Stop();
             _logger.LogInformation(
-                "完成处理请求 {RequestName}, TraceId={TraceId}, ElapsedMs={ElapsedMs}",
+                "完成处理请求 请求名称={RequestName}, 追踪号={TraceId}, 耗时毫秒={ElapsedMs}",
                 requestName,
                 traceId,
                 stopwatch.ElapsedMilliseconds);
@@ -45,7 +45,7 @@ public sealed class LoggingBehavior<TRequest, TResponse> : IPipelineBehavior<TRe
             stopwatch.Stop();
             _logger.LogError(
                 ex,
-                "处理请求失败 {RequestName}, TraceId={TraceId}, ElapsedMs={ElapsedMs}",
+                "处理请求失败 请求名称={RequestName}, 追踪号={TraceId}, 耗时毫秒={ElapsedMs}",
                 requestName,
                 traceId,
                 stopwatch.ElapsedMilliseconds);
