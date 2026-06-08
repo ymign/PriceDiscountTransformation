@@ -32,7 +32,7 @@ internal static class RuleCenterLoggingExtensions
 
     public static void LogApplicationStarting(IConfiguration configuration, IWebHostEnvironment environment)
     {
-        LogStartupEvent("application_starting", RuleCenterStartupInfo.Create(configuration, environment));
+        LogStartupEvent("应用启动中", RuleCenterStartupInfo.Create(configuration, environment));
     }
 
     public static void LogApplicationStartedOnStarted(this WebApplication app)
@@ -40,7 +40,7 @@ internal static class RuleCenterLoggingExtensions
         app.Lifetime.ApplicationStarted.Register(() =>
         {
             LogStartupEvent(
-                "application_started",
+                "应用启动完成",
                 RuleCenterStartupInfo.Create(app.Configuration, app.Environment, app.Urls));
         });
     }
@@ -49,14 +49,14 @@ internal static class RuleCenterLoggingExtensions
     {
         if (app is null)
         {
-            Log.Fatal(exception, "application_startup_failed");
+            Log.Fatal(exception, "应用启动失败");
             return;
         }
 
         LogStartupEvent(
             LogEventLevel.Fatal,
             exception,
-            "application_startup_failed",
+            "应用启动失败",
             RuleCenterStartupInfo.Create(app.Configuration, app.Environment, app.Urls));
     }
 
@@ -68,7 +68,7 @@ internal static class RuleCenterLoggingExtensions
         }
 
         LogStartupEvent(
-            "application_stopped",
+            "应用已停止",
             RuleCenterStartupInfo.Create(app.Configuration, app.Environment, app.Urls));
     }
 
@@ -86,7 +86,7 @@ internal static class RuleCenterLoggingExtensions
         Log.Write(
             level,
             exception,
-            "{event_name} service_name={service_name} environment={environment} content_root={content_root} urls={urls} swagger_enabled={swagger_enabled} build_commit={build_commit} build_branch={build_branch} build_time_utc={build_time_utc}",
+            "启动事件={event_name} 服务名称={service_name} 运行环境={environment} 内容根目录={content_root} 监听地址={urls} Swagger是否启用={swagger_enabled} 构建提交={build_commit} 构建分支={build_branch} 构建时间UTC={build_time_utc}",
             eventName,
             info.ServiceName,
             info.Environment,
