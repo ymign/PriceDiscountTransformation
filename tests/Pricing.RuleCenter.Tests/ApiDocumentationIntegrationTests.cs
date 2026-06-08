@@ -12,6 +12,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Pricing.RuleCenter.Application.Dto;
+using Pricing.RuleCenter.Api.Startup;
 using Xunit;
 
 namespace Pricing.RuleCenter.Tests;
@@ -109,6 +110,35 @@ public sealed class ApiDocumentationIntegrationTests
         Assert.False(string.IsNullOrWhiteSpace(data.GetProperty("service_version").GetString()));
         Assert.Equal("1.0", data.GetProperty("protocol_version").GetString());
         Assert.False(data.TryGetProperty("buildCommit", out _));
+    }
+
+    [Fact]
+    public void StartupInfo_ResolvesOperationalMetadataFromConfiguration()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Swagger:Enabled"] = "true",
+                ["Build:Commit"] = "abc1234",
+                ["Build:Branch"] = "main",
+                ["Build:TimeUtc"] = "2026-06-08T10:00:00Z"
+            })
+            .Build();
+
+        var startupInfo = RuleCenterStartupInfo.Create(
+            configuration,
+            "Production",
+            "D:\\rulecenter",
+            new[] { "http://localhost:8080" });
+
+        Assert.Equal("Pricing.RuleCenter.Api", startupInfo.ServiceName);
+        Assert.Equal("Production", startupInfo.Environment);
+        Assert.Equal("D:\\rulecenter", startupInfo.ContentRoot);
+        Assert.Equal("http://localhost:8080", startupInfo.Urls);
+        Assert.True(startupInfo.SwaggerEnabled);
+        Assert.Equal("abc1234", startupInfo.BuildCommit);
+        Assert.Equal("main", startupInfo.BuildBranch);
+        Assert.Equal("2026-06-08T10:00:00Z", startupInfo.BuildTimeUtc);
     }
 
     [Fact]
