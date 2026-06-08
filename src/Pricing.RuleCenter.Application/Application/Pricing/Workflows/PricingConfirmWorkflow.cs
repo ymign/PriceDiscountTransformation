@@ -17,29 +17,113 @@ using Microsoft.Extensions.Options;
 namespace Pricing.RuleCenter.Application.Pricing;
 
 /// <summary>
-/// 确认计价 workflow。
+/// 确认计价工作流，负责正式计价、幂等保护、额度占用和折价明细落库。
 /// </summary>
+/// <remarks>
+/// <para>
+/// confirm 是收费链路中唯一会占用限额的入口。它必须在事务内完成规则计算、请求日志、追踪步骤、
+/// 折价明细和限额占用写入，避免 HIS 重试或并发收费造成额度突破。
+/// </para>
+/// <para>
+/// 幂等键为 <c>sourceSystem + businessRequestNo + callType</c>。同一业务号重复 confirm 必须返回首次结果，
+/// 不允许重复写占用；同一业务号但请求指纹不同则按幂等冲突处理。
+/// </para>
+/// </remarks>
 public sealed class PricingConfirmWorkflow
 {
+    /// <summary>
+    /// 计价核心引擎，负责执行规则匹配和动作链。
+    /// </summary>
     private readonly IPricingEngine _engine;
+
+    /// <summary>
+    /// 请求日志仓储，用于事务内二次查询幂等记录。
+    /// </summary>
     private readonly IChargeRequestLogRepository _requestLogRepository;
+
+    /// <summary>
+    /// 权威价格校验器，防止渠道传入错误单价导致资损。
+    /// </summary>
     private readonly AuthorityPriceChecker _authorityPriceChecker;
+
+    /// <summary>
+    /// 幂等服务，负责业务键查询、请求指纹构建和冲突判定。
+    /// </summary>
     private readonly PricingIdempotencyService _idempotencyService;
+
+    /// <summary>
+    /// 请求日志写入器，负责保存 CONFIRM_PENDING 请求和响应快照。
+    /// </summary>
     private readonly PricingRequestLogWriter _requestLogWriter;
+
+    /// <summary>
+    /// 计算步骤写入器，负责保存本次 confirm 的规则执行过程。
+    /// </summary>
     private readonly PricingTraceStepWriter _traceStepWriter;
+
+    /// <summary>
+    /// 折价明细写入器，负责记录每条费用的最终数量、金额和特殊计价结果。
+    /// </summary>
     private readonly PricingDiscountDetailWriter _discountDetailWriter;
+
+    /// <summary>
+    /// 限额占用写入器，只对命中特殊项目的明细写入待提交占用。
+    /// </summary>
     private readonly PricingLimitOccupyWriter _limitOccupyWriter;
+
+    /// <summary>
+    /// 运行包追踪解析器，保证同一 confirm 请求内使用同一个激活运行包快照。
+    /// </summary>
     private readonly RuntimePackageTraceResolver _runtimePackageTraceResolver;
+
+    /// <summary>
+    /// 计价事务执行器，统一处理 Oracle 事务提交和回滚。
+    /// </summary>
     private readonly PricingTransactionExecutor _transactionExecutor;
+
+    /// <summary>
+    /// 幂等响应读取器，用于重复 confirm 时复用首次响应。
+    /// </summary>
     private readonly PricingIdempotentResponseReader _idempotentResponseReader;
+
+    /// <summary>
+    /// 限额占用仓储，用于抢占幂等锁和额度锁。
+    /// </summary>
     private readonly ILimitOccupyRepository _limitRepository;
+
+    /// <summary>
+    /// 计价配置，主要使用 confirm 保护占用的过期时间。
+    /// </summary>
     private readonly PricingOptions _options;
+
+    /// <summary>
+    /// 统一时钟，用于响应时间、过期时间和日志时间。
+    /// </summary>
     private readonly IClock _clock;
+
+    /// <summary>
+    /// confirm 工作流日志对象。
+    /// </summary>
     private readonly ILogger<PricingConfirmWorkflow> _logger;
 
     /// <summary>
-    /// 初始化确认计价 workflow。
+    /// 初始化确认计价工作流。
     /// </summary>
+    /// <param name="engine">计价核心引擎。</param>
+    /// <param name="requestLogRepository">请求日志仓储。</param>
+    /// <param name="authorityPriceChecker">权威价格校验器。</param>
+    /// <param name="idempotencyService">幂等服务。</param>
+    /// <param name="requestLogWriter">请求日志写入器。</param>
+    /// <param name="traceStepWriter">计算步骤写入器。</param>
+    /// <param name="discountDetailWriter">折价明细写入器。</param>
+    /// <param name="limitOccupyWriter">限额占用写入器。</param>
+    /// <param name="runtimePackageTraceResolver">运行包追踪解析器。</param>
+    /// <param name="transactionExecutor">计价事务执行器。</param>
+    /// <param name="idempotentResponseReader">幂等响应读取器。</param>
+    /// <param name="limitRepository">限额占用仓储。</param>
+    /// <param name="options">计价配置。</param>
+    /// <param name="clock">统一时钟。</param>
+    /// <param name="logger">confirm 工作流日志对象。</param>
     public PricingConfirmWorkflow(
         IPricingEngine engine,
         IChargeRequestLogRepository requestLogRepository,
@@ -77,8 +161,12 @@ public sealed class PricingConfirmWorkflow
     /// <summary>
     /// 执行确认计价。
     /// </summary>
+    /// <param name="request">确认计价请求，必须包含稳定的业务请求号。</param>
+    /// <returns>确认计价结果，包含 requestId、过期时间和每条明细的计价结果。</returns>
     public async Task<PricingCalculateResponse> ExecuteAsync(PricingCalculateRequest request)
     {
+        // ========== 第一阶段：请求校验和权威单价校验 ==========
+        // confirm 会产生资金影响，因此缺少业务请求号或单价异常必须在进入事务前失败。
         var items = PricingRequestGuard.GetRequiredItems(request);
         var firstItem = items[0];
         _logger.LogInformation(
@@ -95,6 +183,8 @@ public sealed class PricingConfirmWorkflow
 
         await _authorityPriceChecker.CheckAsync(items);
 
+        // ========== 第二阶段：事务外幂等快路径 ==========
+        // 已存在的 confirm 可以直接复用首次响应，减少重复重试对数据库锁的压力。
         var idempotency = await _idempotencyService.CheckConfirmAsync(request, items, "CONFIRM");
         var fingerprint = idempotency.Fingerprint;
         if (idempotency.ExistingRequest is { } existing)
@@ -108,6 +198,8 @@ public sealed class PricingConfirmWorkflow
 
         return await _transactionExecutor.ExecuteAsync(async () =>
         {
+            // ========== 第三阶段：抢占幂等锁并做事务内二次幂等检查 ==========
+            // 并发请求可能同时通过事务外查询，因此必须在同一个业务键锁内再次读取请求日志。
             await _limitRepository.EnsureAndLockAsync(new[]
             {
                 PricingLockKeyBuilder.BuildIdempotencyLockKey(request.SourceSystem, request.BusinessRequestNo!, "CONFIRM")
@@ -130,9 +222,13 @@ public sealed class PricingConfirmWorkflow
                 return await _idempotentResponseReader.ReadAsync(existingInTransaction);
             }
 
+            // ========== 第四阶段：固定运行包上下文 ==========
+            // 同一 confirm 请求内所有明细必须使用同一个运行包，避免发布瞬间出现一单多版本。
             var runtimePackageContext = await _runtimePackageTraceResolver.CaptureContextAsync();
             using var runtimePackageScope = _runtimePackageTraceResolver.BeginScope(runtimePackageContext);
 
+            // ========== 第五阶段：逐条明细计价并累计本请求内占用 ==========
+            // ShouldLockLimits=true 表示规则执行器可以对数据库限额维度加锁，防止多渠道并发突破。
             var inRequestOccupiedQtyByLimitDimension = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
             var inRequestLimitOccupies = new List<LimitOccupy>();
             var batchContext = items.Count > 1 ? new BatchPricingContext() : null;
@@ -153,6 +249,8 @@ public sealed class PricingConfirmWorkflow
                 calculations.Add(new ItemPricingCalculation(item, result));
             }
 
+            // ========== 第六阶段：写请求、步骤、明细和限额占用 ==========
+            // 所有持久化操作必须和 confirm 事务绑定，任一写入失败都回滚，避免“有占额无请求”或“有请求无明细”。
             var runtimeTrace = await _runtimePackageTraceResolver.ResolveAsync(calculations);
             var requestLog = await _requestLogWriter.SaveAsync(new RequestLogSaveInput
             {
@@ -188,6 +286,8 @@ public sealed class PricingConfirmWorkflow
                 }
             }
 
+            // ========== 第七阶段：保存响应快照 ==========
+            // 响应 JSON 是后续幂等重试的事实来源，必须在事务内和请求日志一起落库。
             var response = PricingResponseBuilder.Build(
                 requestLog.RequestId,
                 requestLog.TraceId,
@@ -211,6 +311,7 @@ public sealed class PricingConfirmWorkflow
         List<LimitOccupy> inRequestLimitOccupies,
         PricingResult result)
     {
+        // 批量 confirm 中同一请求的前置明细占用要影响后续明细，避免一单内多条费用绕过窗口或同组限制。
         foreach (var occupy in result.LimitOccupies.Where(o =>
                      !string.IsNullOrWhiteSpace(o.LimitType) &&
                      !string.IsNullOrWhiteSpace(o.LimitDimensionCode)))

@@ -12,19 +12,68 @@ using Pricing.RuleCenter.Core.Services;
 namespace Pricing.RuleCenter.Application.Pricing;
 
 /// <summary>
-/// 退费冲正 workflow。
+/// 退费冲正工作流，负责对已落账的计价请求执行退费、冲销和额度释放。
 /// </summary>
+/// <remarks>
+/// <para>
+/// reverse 只处理已经 commit/confirmed 的记录。它不重新执行原始计价规则，而是基于原收费明细、
+/// 历史退费记录和本次退费请求计算可退数量/金额，并写入冲正日志。
+/// </para>
+/// <para>
+/// 部分退费必须保证“本次退费 + 历史已退”不超过原有效收费，且主子项目同组结果需要按 resultGroupNo
+/// 做组内保护，避免只退主项或只退子项造成金额和额度口径不一致。
+/// </para>
+/// </remarks>
 public sealed class PricingReverseWorkflow
 {
+    /// <summary>
+    /// 请求日志仓储，用于读取原始已落账请求并在全退时推进状态。
+    /// </summary>
     private readonly IChargeRequestLogRepository _requestLogRepository;
+
+    /// <summary>
+    /// 折价明细仓储，用于定位可退费明细和原计价结果。
+    /// </summary>
     private readonly IChargeDiscountDetailRepository _discountRepository;
+
+    /// <summary>
+    /// 限额占用仓储，用于锁定原请求和退费流水维度。
+    /// </summary>
     private readonly ILimitOccupyRepository _limitRepository;
+
+    /// <summary>
+    /// 冲正日志仓储，用于读取历史退费记录并做 ReverseNo 幂等判断。
+    /// </summary>
     private readonly IChargeReverseLogRepository _reverseLogRepository;
+
+    /// <summary>
+    /// 冲正请求和明细日志写入器。
+    /// </summary>
     private readonly PricingReverseLogWriter _reverseLogWriter;
+
+    /// <summary>
+    /// 限额占用写入器，用于部分退费时写入负向占用释放额度。
+    /// </summary>
     private readonly PricingLimitOccupyWriter _limitOccupyWriter;
+
+    /// <summary>
+    /// 事务执行器，保证冲正日志和额度释放原子提交。
+    /// </summary>
     private readonly PricingTransactionExecutor _transactionExecutor;
+
+    /// <summary>
+    /// 历史冲正读取器，用于汇总已退数量和已退金额。
+    /// </summary>
     private readonly PricingReverseHistoryReader _reverseHistoryReader;
+
+    /// <summary>
+    /// 统一时钟，用于默认退费时间和状态更新时间。
+    /// </summary>
     private readonly IClock _clock;
+
+    /// <summary>
+    /// reverse 工作流日志对象。
+    /// </summary>
     private readonly ILogger<PricingReverseWorkflow> _logger;
 
     /// <summary>
@@ -70,6 +119,8 @@ public sealed class PricingReverseWorkflow
     /// <param name="request">冲正请求。</param>
     public async Task ExecuteAsync(PricingReverseRequest request)
     {
+        // ========== 第一阶段：请求结构校验 ==========
+        // ReverseNo 是退费幂等键，缺失时无法区分“重试同一次退费”和“新的退费动作”。
         PricingRequestGuard.EnsureReverseRequest(request);
         var reverseNo = request.ReverseNo!;
 
@@ -79,6 +130,8 @@ public sealed class PricingReverseWorkflow
 
         await _transactionExecutor.ExecuteAsync(async () =>
         {
+            // ========== 第二阶段：锁定原请求和退费流水 ==========
+            // 原请求锁防止 commit/cancel/reverse 并发推进；退费流水锁防止相同 ReverseNo 并发重复写入。
             await _limitRepository.EnsureAndLockAsync(new[]
             {
                 PricingLockKeyBuilder.BuildRequestLockKey(request.OriginalRequestId),
@@ -96,6 +149,7 @@ public sealed class PricingReverseWorkflow
                 string.Equals(r.ReverseNo, request.ReverseNo, StringComparison.OrdinalIgnoreCase));
             if (sameReverseNo is not null)
             {
+                // 相同 ReverseNo 代表 HIS 重试同一笔退费；参数必须一致，否则按幂等冲突处理。
                 if (!PricingReverseDetailSelector.IsSameReverseRequest(sameReverseNo, request))
                 {
                     throw new BizException(
@@ -110,6 +164,8 @@ public sealed class PricingReverseWorkflow
                 return;
             }
 
+            // ========== 第三阶段：状态和可退明细校验 ==========
+            // 只有已落账记录才允许 reverse；未 commit 的请求应通过 cancel 或过期清理释放额度。
             if (!IsCommittedBusinessStatus(log.BusinessStatus))
             {
                 _logger.LogWarning(
@@ -131,6 +187,8 @@ public sealed class PricingReverseWorkflow
                     "未找到可退费的原收费明细");
             }
 
+            // ========== 第四阶段：计算本次可退数量和金额 ==========
+            // 默认退费数量为匹配明细全退；显式传 ReverseQty 时按原金额比例折算退费金额。
             var allOriginalQty = details
                 .Where(d => d.Status == BusinessStatusCodes.Confirmed || d.Status == BusinessStatusCodes.Committed)
                 .Sum(d => d.FinalQty ?? 0);
@@ -167,10 +225,13 @@ public sealed class PricingReverseWorkflow
                     $"原有效金额={originalAmt}, 历史已退={historicalReversedAmt}, 本次退费={reverseAmt}");
             }
 
+            // 全退判断同时看原请求整体数量和匹配明细金额，避免多明细部分退费误判为整单冲正。
             var isFullReverse =
                 allHistoricalReversedQty + reverseQty == allOriginalQty &&
                 historicalReversedAmt + reverseAmt == originalAmt;
 
+            // ========== 第五阶段：主子项目结果组保护 ==========
+            // 同一 resultGroupNo 通常代表主项目和子项加收的原子结果，退费分摊不能突破组内原数量/金额。
             var groupedDetails = matchedDetails
                 .Where(d => !string.IsNullOrWhiteSpace(d.ResultGroupNo))
                 .GroupBy(d => d.ResultGroupNo)
@@ -195,6 +256,7 @@ public sealed class PricingReverseWorkflow
                 decimal groupReverseAmt;
                 if (group.Key == groupedDetails.Last().Key)
                 {
+                    // 最后一组承接前面比例分摊后的差额，避免 decimal 除法造成总退费数量/金额不闭合。
                     var allocatedQty = groupedDetails.Where(g => g.Key != group.Key)
                         .Sum(g => originalQty == 0 ? 0 : reverseQty * g.Sum(d => d.FinalQty ?? 0) / originalQty);
                     var allocatedAmt = groupedDetails.Where(g => g.Key != group.Key)
@@ -226,6 +288,8 @@ public sealed class PricingReverseWorkflow
                 }
             }
 
+            // ========== 第六阶段：推进原请求状态或写负向占用 ==========
+            // 全退直接把原请求及占用标记为 REVERSED；部分退费通过负向占用抵扣额度，保留原请求有效状态。
             if (isFullReverse)
             {
                 log.BusinessStatus = BusinessStatusCodes.Reversed;
@@ -260,6 +324,8 @@ public sealed class PricingReverseWorkflow
                 });
             }
 
+            // ========== 第七阶段：落冲正明细日志 ==========
+            // 冲正日志是后续幂等、累计已退数量/金额和审计追溯的事实来源。
             await _reverseLogWriter.SaveReverseLogAsync(new ReverseLogSaveInput
             {
                 Request = request,
@@ -280,6 +346,7 @@ public sealed class PricingReverseWorkflow
 
     private static bool IsCommittedBusinessStatus(string? businessStatus)
     {
+        // 兼容旧命名 COMMITTED 和当前 CONFIRMED，避免历史数据状态差异阻断正常退费。
         return string.Equals(businessStatus, BusinessStatusCodes.Confirmed, StringComparison.OrdinalIgnoreCase) ||
                string.Equals(businessStatus, BusinessStatusCodes.Committed, StringComparison.OrdinalIgnoreCase);
     }

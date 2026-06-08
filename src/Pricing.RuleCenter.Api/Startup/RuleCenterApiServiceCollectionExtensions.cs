@@ -35,8 +35,23 @@ using Pricing.RuleCenter.Infrastructure;
 
 namespace Pricing.RuleCenter.Api.Startup;
 
+/// <summary>
+/// API 依赖注入注册扩展。
+/// </summary>
+/// <remarks>
+/// <para>
+/// 该类是规则中心 API 的组合根，集中注册基础设施、应用服务、认证授权、后台任务、规则引擎、健康检查和 Swagger。
+/// 业务实现仍然分布在 Application/Core/Infrastructure 各层，避免控制器或 Program 直接了解过多实现细节。
+/// </para>
+/// </remarks>
 internal static class RuleCenterApiServiceCollectionExtensions
 {
+    /// <summary>
+    /// 注册规则中心 API 所需的全部服务。
+    /// </summary>
+    /// <param name="services">ASP.NET Core 服务集合。</param>
+    /// <param name="configuration">应用配置，用于绑定数据库、认证、Swagger 等运行参数。</param>
+    /// <returns>注册后的服务集合。</returns>
     public static IServiceCollection AddRuleCenterApi(
         this IServiceCollection services,
         IConfiguration configuration)
@@ -52,8 +67,21 @@ internal static class RuleCenterApiServiceCollectionExtensions
         return services;
     }
 
+    /// <summary>
+    /// 注册应用层用例服务、规则发布服务、计价工作流和 MediatR 管道。
+    /// </summary>
+    /// <param name="services">ASP.NET Core 服务集合。</param>
+    /// <returns>注册后的服务集合。</returns>
+    /// <remarks>
+    /// <para>
+    /// 这里的生命周期统一使用 Scoped：一次 HTTP 请求或后台任务内共享同一依赖作用域，
+    /// 既能复用仓储上下文，也避免把带请求状态的服务提升为 Singleton。
+    /// </para>
+    /// </remarks>
     private static IServiceCollection AddRuleCenterApplicationServices(this IServiceCollection services)
     {
+        // ========== 规则维护与发布 ==========
+        // 包含旧规则表维护、新策略平台、运行包编译/激活/回滚，以及发布时的冲突和审批校验。
         services.AddScoped<DictAppService>();
         services.AddScoped<FormulaDefAppService>();
         services.AddScoped<RuleHeaderAppService>();
@@ -107,6 +135,9 @@ internal static class RuleCenterApiServiceCollectionExtensions
         services.AddScoped<RuntimePackageRollbackService>();
         services.AddScoped<RuntimePackagePublishService>();
         services.AddScoped<LegacyRuleAuthoringGuardFilter>();
+
+        // ========== 计价请求生命周期 ==========
+        // simulate 只试算和留痕；confirm 负责幂等、占额和折价明细；commit/cancel/reverse 推进资金状态。
         services.AddScoped<AuthorityPriceChecker>();
         services.AddScoped<PricingIdempotencyService>();
         services.AddScoped<PricingRequestLogWriter>();
@@ -134,6 +165,19 @@ internal static class RuleCenterApiServiceCollectionExtensions
         return services;
     }
 
+    /// <summary>
+    /// 注册基于 API Key 的服务间认证和授权策略。
+    /// </summary>
+    /// <param name="services">ASP.NET Core 服务集合。</param>
+    /// <param name="configuration">认证配置节。</param>
+    /// <returns>注册后的服务集合。</returns>
+    /// <remarks>
+    /// <para>
+    /// 计价服务面向 HIS、自助机、微信等后端渠道，不使用 Cookie 登录态。
+    /// API Key 角色分为 <c>pricing.service</c> 和 <c>pricing.admin</c>：
+    /// 前者调用计价接口，后者维护规则、发布运行包和查询管理数据。
+    /// </para>
+    /// </remarks>
     private static IServiceCollection AddRuleCenterSecurity(
         this IServiceCollection services,
         IConfiguration configuration)
@@ -185,6 +229,14 @@ internal static class RuleCenterApiServiceCollectionExtensions
         return services;
     }
 
+    /// <summary>
+    /// 注册后台任务。
+    /// </summary>
+    /// <param name="services">ASP.NET Core 服务集合。</param>
+    /// <returns>注册后的服务集合。</returns>
+    /// <remarks>
+    /// 后台任务负责 confirm 过期清理和多实例缓存版本同步，属于计价资金安全和规则发布一致性的基础设施。
+    /// </remarks>
     private static IServiceCollection AddRuleCenterHostedServices(this IServiceCollection services)
     {
         services.AddHostedService<ExpireCleanupAppService>();
@@ -193,8 +245,20 @@ internal static class RuleCenterApiServiceCollectionExtensions
         return services;
     }
 
+    /// <summary>
+    /// 注册规则匹配和动作执行引擎。
+    /// </summary>
+    /// <param name="services">ASP.NET Core 服务集合。</param>
+    /// <returns>注册后的服务集合。</returns>
+    /// <remarks>
+    /// <para>
+    /// 规则引擎使用“条件评估器 + 动作执行器”组合模式。
+    /// 新增规则能力时优先新增 evaluator/executor，而不是在控制器或工作流中硬编码分支。
+    /// </para>
+    /// </remarks>
     private static IServiceCollection AddRuleCenterRuleEngine(this IServiceCollection services)
     {
+        // 条件评估器只判断“是否命中”，不直接修改计价结果。
         services.AddScoped<IRuleConditionEvaluator, ItemMatchEvaluator>();
         services.AddScoped<IRuleConditionEvaluator, ChargeSceneMatchEvaluator>();
         services.AddScoped<IRuleConditionEvaluator, BodyPartMatchEvaluator>();
@@ -208,6 +272,7 @@ internal static class RuleCenterApiServiceCollectionExtensions
         services.AddScoped<IRuleConditionEvaluator, DiagnosisMatchEvaluator>();
         services.AddScoped<IRuleConditionEvaluator, DeviceTypeMatchEvaluator>();
 
+        // 动作执行器负责修改计价上下文，如数量限制、公式折价、金额封顶、子项加收等。
         services.AddScoped<IRuleActionExecutor, AmountFloorExecutor>();
         services.AddScoped<IRuleActionExecutor, AmountCeilingExecutor>();
         services.AddScoped<IRuleActionExecutor, IncrementPercentExecutor>();
@@ -245,6 +310,11 @@ internal static class RuleCenterApiServiceCollectionExtensions
         return services;
     }
 
+    /// <summary>
+    /// 注册健康检查。
+    /// </summary>
+    /// <param name="services">ASP.NET Core 服务集合。</param>
+    /// <returns>注册后的服务集合。</returns>
     private static IServiceCollection AddRuleCenterHealthChecks(this IServiceCollection services)
     {
         services.AddHttpClient("health-checks");
@@ -255,6 +325,18 @@ internal static class RuleCenterApiServiceCollectionExtensions
         return services;
     }
 
+    /// <summary>
+    /// 注册控制器、JSON 序列化和 Swagger 文档。
+    /// </summary>
+    /// <param name="services">ASP.NET Core 服务集合。</param>
+    /// <param name="configuration">Swagger 配置节。</param>
+    /// <returns>注册后的服务集合。</returns>
+    /// <remarks>
+    /// <para>
+    /// API 对外使用 snake_case 字段格式，因此控制器查询参数和 System.Text.Json 序列化都在这里统一配置，
+    /// 避免每个接口自行处理命名转换。
+    /// </para>
+    /// </remarks>
     private static IServiceCollection AddRuleCenterControllersAndDocumentation(
         this IServiceCollection services,
         IConfiguration configuration)
