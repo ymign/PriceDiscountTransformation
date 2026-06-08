@@ -105,6 +105,7 @@ builder.Services.AddScoped<RuntimePackageQueryAppService>();
 builder.Services.AddScoped<RuntimePackageActivationService>();
 builder.Services.AddScoped<RuntimePackageRollbackService>();
 builder.Services.AddScoped<RuntimePackagePublishService>();
+builder.Services.AddScoped<LegacyRuleAuthoringGuardFilter>();
 builder.Services.AddScoped<PricingAppCalculationDependencies>();
 builder.Services.AddScoped<PricingAppPersistenceRepositories>();
 builder.Services.AddScoped<AuthorityPriceChecker>();

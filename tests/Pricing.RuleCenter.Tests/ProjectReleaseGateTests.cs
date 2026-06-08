@@ -1,4 +1,8 @@
 using System.Xml.Linq;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Filters;
+using Pricing.RuleCenter.Api.Controllers;
+using Pricing.RuleCenter.Api.Security;
 using Xunit;
 
 namespace Pricing.RuleCenter.Tests;
@@ -99,6 +103,34 @@ public sealed class ProjectReleaseGateTests
         Assert.Contains(@".\scripts\run-oracle-integration-tests.ps1", workflowContent, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("PRICING_ORACLE_CONNECTION_STRING", workflowContent, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("docker", workflowContent, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void LegacyAuthoringControllers_ShouldBeHiddenFromSwaggerAndGuarded()
+    {
+        var controllers = new[]
+        {
+            typeof(RuleHeaderController),
+            typeof(RuleVersionController),
+            typeof(RuleConditionController),
+            typeof(RuleActionController),
+            typeof(RuleApprovalController),
+            typeof(RulePublishController)
+        };
+
+        foreach (var controller in controllers)
+        {
+            var explorer = controller.GetCustomAttributes(typeof(ApiExplorerSettingsAttribute), inherit: false)
+                .Cast<ApiExplorerSettingsAttribute>()
+                .SingleOrDefault();
+            Assert.NotNull(explorer);
+            Assert.True(explorer!.IgnoreApi);
+
+            var serviceFilter = controller.GetCustomAttributes(typeof(ServiceFilterAttribute), inherit: false)
+                .Cast<ServiceFilterAttribute>()
+                .SingleOrDefault(attribute => attribute.ServiceType == typeof(LegacyRuleAuthoringGuardFilter));
+            Assert.NotNull(serviceFilter);
+        }
     }
 
     private static string FindRepositoryRoot()

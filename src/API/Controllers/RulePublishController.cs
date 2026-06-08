@@ -6,6 +6,7 @@ using Pricing.RuleCenter.Application.Rules;
 using Pricing.RuleCenter.Application.Catalog;
 using Pricing.RuleCenter.Application.Trace;
 using Pricing.RuleCenter.Application.Background;
+using Pricing.RuleCenter.Api.Security;
 
 namespace Pricing.RuleCenter.Api.Controllers;
 
@@ -46,7 +47,9 @@ namespace Pricing.RuleCenter.Api.Controllers;
 /// 状态机约束和缓存失效由 <see cref="RulePublishAppService"/> 统一执行。
 /// </remarks>
 [ApiController]
+[ApiExplorerSettings(IgnoreApi = true)]
 [Authorize(Policy = "RuleAdmin")]
+[ServiceFilter(typeof(LegacyRuleAuthoringGuardFilter))]
 [Route("api/pricing/rules/{ruleId:long}")]
 public sealed class RulePublishController : ControllerBase
 {

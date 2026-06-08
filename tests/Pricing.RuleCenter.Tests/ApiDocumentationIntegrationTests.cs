@@ -32,6 +32,11 @@ public sealed class ApiDocumentationIntegrationTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
         Assert.Contains("Pricing RuleCenter API", body);
+        Assert.Contains("/api/pricing/templates", body);
+        Assert.Contains("/api/pricing/policies", body);
+        Assert.Contains("/api/pricing/runtime-packages/publish", body);
+        Assert.DoesNotContain("/api/pricing/rules/1/publish", body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("/api/pricing/rules/{ruleId}/publish", body, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

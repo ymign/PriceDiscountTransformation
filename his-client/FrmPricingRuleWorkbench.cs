@@ -644,17 +644,7 @@ namespace HIS.Pricing.Client
         /// </summary>
         private void ToolbarNewClick(object sender, EventArgs e)
         {
-            _creatingNew = true;
-            _selectedRule = null;
-            ClearBasicFields();
-            _txtRuleCode.ReadOnly = false;
-            _txtRuleCode.Text = "RULE_" + DateTime.Now.ToString("yyyyMMddHHmmss");
-            _numPriority.Value = 100;
-            BindConditions(new List<RuleConditionItemRequest>());
-            BindActions(new List<RuleActionItemRequest>());
-            _gridVersions.DataSource = null;
-            _gridPublishHistory.DataSource = null;
-            _gridChangeLogs.DataSource = null;
+            ShowLegacyAuthoringRetiredMessage();
         }
 
         /// <summary>
@@ -664,31 +654,7 @@ namespace HIS.Pricing.Client
         /// </summary>
         private void ToolbarSaveClick(object sender, EventArgs e)
         {
-            try
-            {
-                if (_creatingNew)
-                {
-                    // 新建模式：创建规则头，成功后退出新建模式
-                    ApiResponse<long> response = _client.CreateRule(BuildCreateRequest());
-                    EnsureSuccess(response);
-                    _creatingNew = false;
-                    SearchRules();
-                    MessageBox.Show(this, "规则已保存，请创建草稿版本后维护条件和动作。", "保存成功");
-                }
-                else
-                {
-                    // 编辑模式：更新已有规则头
-                    EnsureRuleSelected();
-                    ApiResponse response = _client.UpdateRule(_selectedRule.RuleId, BuildUpdateRequest());
-                    EnsureSuccess(response);
-                    SearchRules();
-                    MessageBox.Show(this, "规则已保存。", "保存成功");
-                }
-            }
-            catch (Exception ex)
-            {
-                ShowError("保存规则失败", ex);
-            }
+            ShowLegacyAuthoringRetiredMessage();
         }
 
         /// <summary>
@@ -698,18 +664,7 @@ namespace HIS.Pricing.Client
         /// </summary>
         private void ToolbarCreateVersionClick(object sender, EventArgs e)
         {
-            try
-            {
-                EnsureRuleSelected();
-                ApiResponse<long> response = _client.CreateDraftVersion(_selectedRule.RuleId);
-                EnsureSuccess(response);
-                LoadRuleDetail(_selectedRule.RuleId);
-                MessageBox.Show(this, "草稿版本已创建。", "新建版本");
-            }
-            catch (Exception ex)
-            {
-                ShowError("新建版本失败", ex);
-            }
+            ShowLegacyAuthoringRetiredMessage();
         }
 
         /// <summary>
@@ -719,19 +674,7 @@ namespace HIS.Pricing.Client
         /// </summary>
         private void ToolbarSaveConditionsClick(object sender, EventArgs e)
         {
-            try
-            {
-                EnsureRuleSelected();
-                int versionNo = GetEditableVersionNo();
-                ApiResponse response = _client.SaveConditions(_selectedRule.RuleId, versionNo, BuildConditionSaveRequest());
-                EnsureSuccess(response);
-                LoadConditions(_selectedRule.RuleId, versionNo);
-                MessageBox.Show(this, "条件已保存。", "保存条件");
-            }
-            catch (Exception ex)
-            {
-                ShowError("保存条件失败", ex);
-            }
+            ShowLegacyAuthoringRetiredMessage();
         }
 
         /// <summary>
@@ -741,19 +684,7 @@ namespace HIS.Pricing.Client
         /// </summary>
         private void ToolbarSaveActionsClick(object sender, EventArgs e)
         {
-            try
-            {
-                EnsureRuleSelected();
-                int versionNo = GetEditableVersionNo();
-                ApiResponse response = _client.SaveActions(_selectedRule.RuleId, versionNo, BuildActionSaveRequest());
-                EnsureSuccess(response);
-                LoadActions(_selectedRule.RuleId, versionNo);
-                MessageBox.Show(this, "动作已保存。", "保存动作");
-            }
-            catch (Exception ex)
-            {
-                ShowError("保存动作失败", ex);
-            }
+            ShowLegacyAuthoringRetiredMessage();
         }
 
         /// <summary>
@@ -763,25 +694,7 @@ namespace HIS.Pricing.Client
         /// </summary>
         private void ToolbarPublishClick(object sender, EventArgs e)
         {
-            try
-            {
-                EnsureRuleSelected();
-                int versionNo = GetEditableVersionNo();
-                ApiResponse response = _client.PublishRule(_selectedRule.RuleId, new RulePublishRequest
-                {
-                    VersionNo = versionNo,
-                    PublishedBy = _operatorId,
-                    Remark = "HIS 工作台发布"
-                });
-                EnsureSuccess(response);
-                LoadRuleDetail(_selectedRule.RuleId);
-                SearchRules();
-                MessageBox.Show(this, "规则已发布。", "发布");
-            }
-            catch (Exception ex)
-            {
-                ShowError("发布失败", ex);
-            }
+            ShowLegacyAuthoringRetiredMessage();
         }
 
         /// <summary>
@@ -790,23 +703,7 @@ namespace HIS.Pricing.Client
         /// </summary>
         private void ToolbarDisableClick(object sender, EventArgs e)
         {
-            try
-            {
-                EnsureRuleSelected();
-                ApiResponse response = _client.DisableRule(_selectedRule.RuleId, new RuleDisableRequest
-                {
-                    PublishedBy = _operatorId,
-                    Remark = "HIS 工作台停用"
-                });
-                EnsureSuccess(response);
-                LoadRuleDetail(_selectedRule.RuleId);
-                SearchRules();
-                MessageBox.Show(this, "规则已停用。", "停用");
-            }
-            catch (Exception ex)
-            {
-                ShowError("停用失败", ex);
-            }
+            ShowLegacyAuthoringRetiredMessage();
         }
 
         /// <summary>
@@ -815,23 +712,7 @@ namespace HIS.Pricing.Client
         /// </summary>
         private void ToolbarRollbackClick(object sender, EventArgs e)
         {
-            try
-            {
-                EnsureRuleSelected();
-                ApiResponse response = _client.RollbackRule(_selectedRule.RuleId, new RuleRollbackRequest
-                {
-                    PublishedBy = _operatorId,
-                    Remark = "HIS 工作台回滚"
-                });
-                EnsureSuccess(response);
-                LoadRuleDetail(_selectedRule.RuleId);
-                SearchRules();
-                MessageBox.Show(this, "规则已回滚。", "回滚");
-            }
-            catch (Exception ex)
-            {
-                ShowError("回滚失败", ex);
-            }
+            ShowLegacyAuthoringRetiredMessage();
         }
 
         /// <summary>
@@ -842,6 +723,17 @@ namespace HIS.Pricing.Client
         {
             FrmPolicyPublishCenter center = new FrmPolicyPublishCenter(_client, _operatorId);
             center.ShowDialog(this);
+        }
+
+        private void ShowLegacyAuthoringRetiredMessage()
+        {
+            MessageBox.Show(
+                this,
+                "旧规则写维护入口已退役，请改用“发布中心”操作模板、策略和运行时包。",
+                "入口已退役",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            ToolbarPublishCenterClick(this, EventArgs.Empty);
         }
 
         // ================================================================

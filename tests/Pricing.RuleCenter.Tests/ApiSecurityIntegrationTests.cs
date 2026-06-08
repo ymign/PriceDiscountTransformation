@@ -44,6 +44,25 @@ public sealed class ApiSecurityIntegrationTests
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
+    [Fact]
+    public async Task RulePublish_WithAdminApiKey_ReturnsGoneWhenLegacyAuthoringDisabled()
+    {
+        await using var factory = new SecureApiFactory();
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        client.DefaultRequestHeaders.Add("X-Api-Key", "admin-key");
+
+        var response = await client.PostAsJsonAsync("/api/pricing/rules/1/publish", new
+        {
+            versionNo = 1,
+            publishedBy = "tester"
+        });
+
+        Assert.Equal(HttpStatusCode.Gone, response.StatusCode);
+    }
+
     private sealed class SecureApiFactory : WebApplicationFactory<Program>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder)
