@@ -2,6 +2,7 @@ using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
 using Pricing.RuleCenter.Core.Interfaces.Charging;
 using Pricing.RuleCenter.Core.Interfaces.Quota;
+using Pricing.RuleCenter.Core.Engine;
 
 namespace Pricing.RuleCenter.Application.Pricing;
 
@@ -20,14 +21,17 @@ public sealed class PricingAppCalculationDependencies
     /// <param name="engine">计价引擎，负责规则匹配和动作执行。</param>
     /// <param name="headerRepository">规则头仓储，用于 special-flag 查询。</param>
     /// <param name="priceMasterRepository">权威物价仓储，用于校验渠道传入单价。</param>
+    /// <param name="conditionEvaluatorFactory">条件评估器工厂，用于 special-flag 按查询维度预判规则命中。</param>
     public PricingAppCalculationDependencies(
         IPricingEngine engine,
         IRuleHeaderRepository headerRepository,
-        IPriceMasterRepository priceMasterRepository)
+        IPriceMasterRepository priceMasterRepository,
+        ConditionEvaluatorFactory? conditionEvaluatorFactory = null)
     {
         Engine = engine;
         HeaderRepository = headerRepository;
         PriceMasterRepository = priceMasterRepository;
+        ConditionEvaluatorFactory = conditionEvaluatorFactory;
     }
 
     /// <summary>
@@ -44,6 +48,11 @@ public sealed class PricingAppCalculationDependencies
     /// 权威物价仓储，用于 confirm/simulate 前的单价强校验。
     /// </summary>
     public IPriceMasterRepository PriceMasterRepository { get; }
+
+    /// <summary>
+    /// 条件评估器工厂，用于特殊项目标识查询按场景、部位、就诊类型等维度预判命中。
+    /// </summary>
+    public ConditionEvaluatorFactory? ConditionEvaluatorFactory { get; }
 }
 
 /// <summary>

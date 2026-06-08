@@ -94,7 +94,12 @@ public sealed class PricingSimulateWorkflow
         });
         await _traceStepWriter.SaveAsync(requestLog.RequestId, requestLog.TraceId, calculations, runtimeTrace);
 
-        var response = PricingResponseBuilder.Build(requestLog.RequestId, calculations, _clock.Now);
+        var response = PricingResponseBuilder.Build(
+            requestLog.RequestId,
+            requestLog.TraceId,
+            calculations,
+            _clock.Now,
+            runtimeTrace);
         await _requestLogWriter.SaveResponseJsonAsync(requestLog, response);
         return response;
     }

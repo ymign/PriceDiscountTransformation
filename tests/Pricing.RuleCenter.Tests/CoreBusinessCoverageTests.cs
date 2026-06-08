@@ -444,13 +444,25 @@ public sealed class CoreBusinessCoverageTests
         AssertInvalid(new CancelPricingCommandValidator(), new CancelPricingCommand(new PricingCancelRequest { RequestId = 0 }), "Request.RequestId");
         AssertInvalid(new ReversePricingCommandValidator(), new ReversePricingCommand(new PricingReverseRequest { OriginalRequestId = 0, ReverseNo = "" }), "Request.OriginalRequestId", "Request.ReverseNo");
         AssertInvalid(new GetSpecialFlagQueryValidator(), new GetSpecialFlagQuery(" "), "ItemCode");
+        AssertInvalid(
+            new CommitPricingCommandValidator(),
+            new CommitPricingCommand(new PricingCommitRequest { RequestId = 1, CommittedAt = default(DateTime) }),
+            "Request.CommittedAt");
+        AssertInvalid(
+            new CancelPricingCommandValidator(),
+            new CancelPricingCommand(new PricingCancelRequest { RequestId = 1, CancelledAt = default(DateTime) }),
+            "Request.CancelledAt");
+        AssertInvalid(
+            new GetSpecialFlagQueryValidator(),
+            new GetSpecialFlagQuery("ITEM001", BusinessChargeTime: default(DateTime)),
+            "BusinessChargeTime");
 
         Assert.True(new SimulatePricingCommandValidator().Validate(new SimulatePricingCommand(CreateCalculateRequest())).IsValid);
         Assert.True(new ConfirmPricingCommandValidator().Validate(new ConfirmPricingCommand(CreateCalculateRequest())).IsValid);
-        Assert.True(new CommitPricingCommandValidator().Validate(new CommitPricingCommand(new PricingCommitRequest { RequestId = 1 })).IsValid);
-        Assert.True(new CancelPricingCommandValidator().Validate(new CancelPricingCommand(new PricingCancelRequest { RequestId = 1 })).IsValid);
-        Assert.True(new ReversePricingCommandValidator().Validate(new ReversePricingCommand(new PricingReverseRequest { OriginalRequestId = 1, ReverseNo = "REV-1" })).IsValid);
-        Assert.True(new GetSpecialFlagQueryValidator().Validate(new GetSpecialFlagQuery("ITEM001")).IsValid);
+        Assert.True(new CommitPricingCommandValidator().Validate(new CommitPricingCommand(new PricingCommitRequest { RequestId = 1, CommitNo = "COMMIT-1", CommittedBy = "OP", CommittedAt = DateTime.Now })).IsValid);
+        Assert.True(new CancelPricingCommandValidator().Validate(new CancelPricingCommand(new PricingCancelRequest { RequestId = 1, CancelNo = "CANCEL-1", CancelledBy = "OP", CancelReason = "用户取消", CancelledAt = DateTime.Now })).IsValid);
+        Assert.True(new ReversePricingCommandValidator().Validate(new ReversePricingCommand(new PricingReverseRequest { OriginalRequestId = 1, ReverseNo = "REV-1", SourceSystem = "HIS" })).IsValid);
+        Assert.True(new GetSpecialFlagQueryValidator().Validate(new GetSpecialFlagQuery("ITEM001", ChargeScene: "OUTPATIENT", BusinessChargeTime: DateTime.Now)).IsValid);
     }
 
     [Fact]
@@ -458,7 +470,11 @@ public sealed class CoreBusinessCoverageTests
     {
         using var cache = new MemoryCache(new MemoryCacheOptions());
         SpecialFlagCacheKeys.Clear(cache);
-        var key = SpecialFlagCacheKeys.Register(" item001 ");
+        _ = SpecialFlagCacheKeys.Register(" item001 ");
+        var key = SpecialFlagCacheKeys.Register(new GetSpecialFlagQuery("ITEM001"));
+        var outpatientKey = SpecialFlagCacheKeys.Register(new GetSpecialFlagQuery(" item001 ", ChargeScene: "OUTPATIENT"));
+        var inpatientKey = SpecialFlagCacheKeys.Register(new GetSpecialFlagQuery(" item001 ", ChargeScene: "INPATIENT"));
+        Assert.NotEqual(outpatientKey, inpatientKey);
         cache.Set(key, new SpecialFlagResponse
         {
             ItemCode = "ITEM001",

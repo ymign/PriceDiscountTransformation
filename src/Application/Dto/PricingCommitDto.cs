@@ -23,6 +23,21 @@ public sealed class PricingCommitRequest
     public string? ChargeNo { get; init; }
 
     /// <summary>
+    /// HIS 提交流水号。建议由 HIS 生成稳定值，用于审计一次 commit 回调。
+    /// </summary>
+    public string? CommitNo { get; init; }
+
+    /// <summary>
+    /// 执行落账提交的操作人、工作站账号或系统账号。
+    /// </summary>
+    public string? CommittedBy { get; init; }
+
+    /// <summary>
+    /// HIS 实际落账成功的业务时间。为空时计价中心仅记录收到 commit 的技术时间。
+    /// </summary>
+    public DateTime? CommittedAt { get; init; }
+
+    /// <summary>
     /// HIS 实际落账明细。commit 时必须按收费明细号、项目编码、片段序号回传实际落账数量和金额。
     /// 规则中心会与 confirm 阶段保存的折价明细逐项比对，防止 HIS 侧落账金额与计价结果不一致。
     /// </summary>
@@ -80,4 +95,24 @@ public sealed class PricingCancelRequest
     /// </summary>
     [Required(ErrorMessage = "请求ID不能为空")]
     public long RequestId { get; init; }
+
+    /// <summary>
+    /// HIS 取消流水号。建议由 HIS 生成稳定值，用于审计一次 cancel 回调。
+    /// </summary>
+    public string? CancelNo { get; init; }
+
+    /// <summary>
+    /// 执行取消的操作人、工作站账号或系统账号。
+    /// </summary>
+    public string? CancelledBy { get; init; }
+
+    /// <summary>
+    /// 取消原因，例如用户放弃收费、支付失败、HIS 落账失败。
+    /// </summary>
+    public string? CancelReason { get; init; }
+
+    /// <summary>
+    /// HIS 侧确认取消的业务时间。为空时计价中心仅记录收到 cancel 的技术时间。
+    /// </summary>
+    public DateTime? CancelledAt { get; init; }
 }

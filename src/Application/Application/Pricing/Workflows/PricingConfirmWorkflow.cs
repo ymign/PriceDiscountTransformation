@@ -189,8 +189,10 @@ public sealed class PricingConfirmWorkflow
 
             var response = PricingResponseBuilder.Build(
                 requestLog.RequestId,
+                requestLog.TraceId,
                 calculations,
                 _clock.Now,
+                runtimeTrace,
                 requestLog.RequestAt.AddMinutes(_options.ConfirmExpireMinutes));
             await _requestLogWriter.SaveResponseJsonAsync(requestLog, response);
 

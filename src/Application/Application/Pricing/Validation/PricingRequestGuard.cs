@@ -74,6 +74,11 @@ internal static class PricingRequestGuard
             throw new ArgumentException("实际落账总金额不能小于0", nameof(request.ActualTotalAmount));
         }
 
+        if (request.CommittedAt.HasValue && request.CommittedAt.Value == default)
+        {
+            throw new ArgumentException("HIS落账业务时间不能为空", nameof(request.CommittedAt));
+        }
+
         if (request.ActualItems is null)
         {
             return;
@@ -109,6 +114,11 @@ internal static class PricingRequestGuard
         {
             throw new ArgumentException("RequestId必须大于0", nameof(request.RequestId));
         }
+
+        if (request.CancelledAt.HasValue && request.CancelledAt.Value == default)
+        {
+            throw new ArgumentException("HIS取消业务时间不能为空", nameof(request.CancelledAt));
+        }
     }
 
     public static void EnsureReverseRequest(PricingReverseRequest request)
@@ -133,6 +143,11 @@ internal static class PricingRequestGuard
         if (request.ReverseAmt.HasValue && request.ReverseAmt.Value < 0)
         {
             throw new ArgumentException("退费金额不能小于0", nameof(request.ReverseAmt));
+        }
+
+        if (request.ReverseTime.HasValue && request.ReverseTime.Value == default)
+        {
+            throw new ArgumentException("退费业务时间不能为空", nameof(request.ReverseTime));
         }
     }
 

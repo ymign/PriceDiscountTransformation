@@ -84,7 +84,8 @@ internal static class PricingRequestFingerprintBuilder
     {
         var payload = new
         {
-            sourceSystem = NormalizeString(originalLog.SourceSystem),
+            sourceSystem = NormalizeString(request.SourceSystem) ?? NormalizeString(originalLog.SourceSystem),
+            sourceTerminal = NormalizeString(request.SourceTerminal) ?? NormalizeString(originalLog.SourceTerminal),
             callType = PricingCallTypeCodes.Reverse,
             originalRequestId = request.OriginalRequestId,
             reverseNo = NormalizeString(request.ReverseNo),

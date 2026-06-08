@@ -132,7 +132,12 @@ public abstract class PricingUseCaseBase
         _logger = logger;
         _idempotentResponseReader = new PricingIdempotentResponseReader(NullLogger<PricingIdempotentResponseReader>.Instance);
         _transactionExecutor = new PricingTransactionExecutor(unitOfWork, NullLogger<PricingTransactionExecutor>.Instance);
-        _specialFlagResolver = new PricingSpecialFlagResolver(calculationDependencies.HeaderRepository, clock);
+        _specialFlagResolver = new PricingSpecialFlagResolver(
+            calculationDependencies.HeaderRepository,
+            clock,
+            runtimePackageTraceResolver,
+            calculationDependencies.ConditionEvaluatorFactory,
+            logger);
         _reverseHistoryReader = new PricingReverseHistoryReader(repositories.ReverseLogRepository);
         _simulateWorkflow = new PricingSimulateWorkflow(
             _engine,
@@ -295,6 +300,16 @@ public abstract class PricingUseCaseBase
     protected async Task<SpecialFlagResponse> ExecuteGetSpecialFlagAsync(string itemCode)
     {
         return await _specialFlagResolver.ResolveAsync(itemCode);
+    }
+
+    /// <summary>
+    /// 查询项目是否属于必须调用统一计价中心的特殊项目。
+    /// </summary>
+    /// <param name="request">特殊项目查询请求。</param>
+    /// <returns>返回特殊项目标识和已发布规则数量。</returns>
+    protected async Task<SpecialFlagResponse> ExecuteGetSpecialFlagAsync(SpecialFlagRequest request)
+    {
+        return await _specialFlagResolver.ResolveAsync(request);
     }
 
 }

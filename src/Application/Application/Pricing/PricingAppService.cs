@@ -98,6 +98,16 @@ public sealed class PricingAppService
         return _specialFlagUseCase.ExecuteAsync(itemCode);
     }
 
+    /// <summary>
+    /// 查询项目是否属于必须调用统一计价中心的特殊项目。
+    /// </summary>
+    /// <param name="request">特殊项目查询请求。</param>
+    /// <returns>特殊项目标识响应。</returns>
+    public Task<SpecialFlagResponse> GetSpecialFlagAsync(SpecialFlagRequest request)
+    {
+        return _specialFlagUseCase.ExecuteAsync(request);
+    }
+
     internal static string BuildRequestLockKey(long requestId)
     {
         return PricingLockKeyBuilder.BuildRequestLockKey(requestId);

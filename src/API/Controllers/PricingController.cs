@@ -308,6 +308,10 @@ public sealed class PricingController : ControllerBase
     /// <param name="itemCode">
     /// HIS 收费项目编码（路径参数），例如 <c>"FW001"</c>。
     /// </param>
+    /// <param name="query">
+    /// 可选查询维度：chargeScene、businessChargeTime、visitType、bodyPartCode、chargeDeptCode。
+    /// 传入后服务端会尽量按当前激活运行时包评估条件，减少只按 itemCode 粗判导致的误弹窗。
+    /// </param>
     /// <returns>
     /// 特殊项目标识响应（<see cref="SpecialFlagResponse"/>），包含：
     /// <list type="bullet">
@@ -316,9 +320,18 @@ public sealed class PricingController : ControllerBase
     /// </list>
     /// </returns>
     [HttpGet("items/{itemCode}/special-flag")]
-    public async Task<ApiResult<SpecialFlagResponse>> GetSpecialFlagAsync(string itemCode)
+    public async Task<ApiResult<SpecialFlagResponse>> GetSpecialFlagAsync(
+        string itemCode,
+        [FromQuery] SpecialFlagQueryRequest? query)
     {
-        var result = await _mediator.Send(new GetSpecialFlagQuery(itemCode));
+        var request = SpecialFlagRequest.From(itemCode, query);
+        var result = await _mediator.Send(new GetSpecialFlagQuery(
+            request.ItemCode,
+            request.ChargeScene,
+            request.BusinessChargeTime,
+            request.VisitType,
+            request.BodyPartCode,
+            request.ChargeDeptCode));
         return ApiResult<SpecialFlagResponse>.Ok(result);
     }
 }

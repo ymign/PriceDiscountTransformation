@@ -81,8 +81,8 @@ public sealed class PricingReverseLogWriter
             TraceId = originalLog.TraceId,
             CallType = PricingCallTypeCodes.Reverse,
             BusinessStatus = BusinessStatusCodes.Reversed,
-            SourceSystem = NormalizeString(originalLog.SourceSystem) ?? "UNKNOWN",
-            SourceTerminal = originalLog.SourceTerminal,
+            SourceSystem = NormalizeString(request.SourceSystem) ?? NormalizeString(originalLog.SourceSystem) ?? "UNKNOWN",
+            SourceTerminal = NormalizeString(request.SourceTerminal) ?? originalLog.SourceTerminal,
             PatientId = originalLog.PatientId,
             VisitId = originalLog.VisitId,
             ChargeScene = originalLog.ChargeScene,
@@ -101,6 +101,8 @@ public sealed class PricingReverseLogWriter
             {
                 request.OriginalRequestId,
                 request.ReverseNo,
+                request.SourceSystem,
+                request.SourceTerminal,
                 ReverseQty = input.ReverseQty,
                 ReverseAmt = input.ReverseAmt
             }),

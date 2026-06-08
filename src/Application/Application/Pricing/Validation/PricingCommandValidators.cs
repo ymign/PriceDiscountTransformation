@@ -83,6 +83,10 @@ public sealed class CommitPricingCommandValidator : AbstractValidator<CommitPric
                     .GreaterThanOrEqualTo(0)
                     .WithMessage("实际落账总金额不能小于0")
                     .When(x => x.Request.ActualTotalAmount.HasValue);
+                RuleFor(x => x.Request.CommittedAt)
+                    .Must(value => !value.HasValue || value.Value != default)
+                    .WithMessage("HIS落账业务时间不能为空")
+                    .When(x => x.Request.CommittedAt.HasValue);
                 RuleForEach(x => x.Request.ActualItems)
                     .NotNull()
                     .WithMessage("实际落账明细不能为空")
@@ -106,6 +110,10 @@ public sealed class CancelPricingCommandValidator : AbstractValidator<CancelPric
             .DependentRules(() =>
             {
                 RuleFor(x => x.Request.RequestId).GreaterThan(0).WithMessage("RequestId 必须大于0");
+                RuleFor(x => x.Request.CancelledAt)
+                    .Must(value => !value.HasValue || value.Value != default)
+                    .WithMessage("HIS取消业务时间不能为空")
+                    .When(x => x.Request.CancelledAt.HasValue);
             });
     }
 }
@@ -129,6 +137,10 @@ public sealed class ReversePricingCommandValidator : AbstractValidator<ReversePr
                     .GreaterThanOrEqualTo(0)
                     .WithMessage("退费金额不能小于0")
                     .When(x => x.Request.ReverseAmt.HasValue);
+                RuleFor(x => x.Request.ReverseTime)
+                    .Must(value => !value.HasValue || value.Value != default)
+                    .WithMessage("退费业务时间不能为空")
+                    .When(x => x.Request.ReverseTime.HasValue);
             });
     }
 }
@@ -140,5 +152,9 @@ public sealed class GetSpecialFlagQueryValidator : AbstractValidator<GetSpecialF
     public GetSpecialFlagQueryValidator()
     {
         RuleFor(x => x.ItemCode).NotEmpty().WithMessage("项目编码不能为空");
+        RuleFor(x => x.BusinessChargeTime)
+            .Must(value => !value.HasValue || value.Value != default)
+            .WithMessage("业务收费发生时间不能为空")
+            .When(x => x.BusinessChargeTime.HasValue);
     }
 }

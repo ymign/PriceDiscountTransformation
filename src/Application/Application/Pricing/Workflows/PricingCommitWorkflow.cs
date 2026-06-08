@@ -58,8 +58,8 @@ public sealed class PricingCommitWorkflow
         PricingRequestGuard.EnsureCommitRequest(request);
 
         _logger.LogInformation(
-            "COMMIT 开始 RequestId={RequestId}, ChargeNo={ChargeNo}",
-            request.RequestId, request.ChargeNo);
+            "COMMIT 开始 RequestId={RequestId}, ChargeNo={ChargeNo}, CommitNo={CommitNo}, CommittedBy={CommittedBy}, CommittedAt={CommittedAt}",
+            request.RequestId, request.ChargeNo, request.CommitNo, request.CommittedBy, request.CommittedAt);
 
         await _transactionExecutor.ExecuteAsync(async () =>
         {
@@ -119,8 +119,9 @@ public sealed class PricingCommitWorkflow
             await _limitRepository.UpdateStatusByRequestIdAsync(request.RequestId, BusinessStatusCodes.Confirmed);
 
             _logger.LogInformation(
-                "COMMIT 成功 RequestId={RequestId}, SourceSystem={SourceSystem}, ItemCode={ItemCode}, ChargeNo={ChargeNo}",
-                request.RequestId, log.SourceSystem, log.ItemCode, log.ChargeNo);
+                "COMMIT 成功 RequestId={RequestId}, SourceSystem={SourceSystem}, ItemCode={ItemCode}, ChargeNo={ChargeNo}, CommitNo={CommitNo}, CommittedBy={CommittedBy}, CommittedAt={CommittedAt}",
+                request.RequestId, log.SourceSystem, log.ItemCode, log.ChargeNo,
+                request.CommitNo, request.CommittedBy, request.CommittedAt);
         });
     }
 }

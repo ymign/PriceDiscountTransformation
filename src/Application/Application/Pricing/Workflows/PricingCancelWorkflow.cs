@@ -53,8 +53,8 @@ public sealed class PricingCancelWorkflow
         PricingRequestGuard.EnsureCancelRequest(request);
 
         _logger.LogInformation(
-            "CANCEL 开始 RequestId={RequestId}",
-            request.RequestId);
+            "CANCEL 开始 RequestId={RequestId}, CancelNo={CancelNo}, CancelledBy={CancelledBy}, CancelledAt={CancelledAt}, CancelReason={CancelReason}",
+            request.RequestId, request.CancelNo, request.CancelledBy, request.CancelledAt, request.CancelReason);
 
         await _transactionExecutor.ExecuteAsync(async () =>
         {
@@ -93,8 +93,9 @@ public sealed class PricingCancelWorkflow
             await _limitRepository.UpdateStatusByRequestIdAsync(request.RequestId, BusinessStatusCodes.Cancelled);
 
             _logger.LogInformation(
-                "CANCEL 成功 RequestId={RequestId}, SourceSystem={SourceSystem}, ItemCode={ItemCode}, 限额已释放",
-                request.RequestId, log.SourceSystem, log.ItemCode);
+                "CANCEL 成功 RequestId={RequestId}, SourceSystem={SourceSystem}, ItemCode={ItemCode}, CancelNo={CancelNo}, CancelledBy={CancelledBy}, CancelledAt={CancelledAt}, 限额已释放",
+                request.RequestId, log.SourceSystem, log.ItemCode,
+                request.CancelNo, request.CancelledBy, request.CancelledAt);
         });
     }
 }

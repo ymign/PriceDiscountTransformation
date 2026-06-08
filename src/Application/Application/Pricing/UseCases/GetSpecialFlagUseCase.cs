@@ -57,4 +57,12 @@ public sealed class GetSpecialFlagUseCase : PricingUseCaseBase
     {
         return ExecuteGetSpecialFlagAsync(itemCode);
     }
+
+    /// <summary>
+    /// 执行特殊项目标识查询。
+    /// </summary>
+    public Task<SpecialFlagResponse> ExecuteAsync(SpecialFlagRequest request)
+    {
+        return ExecuteGetSpecialFlagAsync(request);
+    }
 }

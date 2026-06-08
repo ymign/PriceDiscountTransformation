@@ -24,6 +24,14 @@ public sealed class PricingReverseRequest
     [Required(ErrorMessage = "冲正流水号不能为空")]
     public string? ReverseNo { get; init; }
     /// <summary>
+    /// 发起冲正的来源系统。为空时沿用原收费请求的来源系统。
+    /// </summary>
+    public string? SourceSystem { get; init; }
+    /// <summary>
+    /// 发起冲正的来源终端或工作站。为空时沿用原收费请求的来源终端。
+    /// </summary>
+    public string? SourceTerminal { get; init; }
+    /// <summary>
     /// 被退费的原收费明细号。多费用明细请求执行部分退费时必须提供。
     /// </summary>
     public string? ChargeDetailNo { get; init; }

@@ -9,6 +9,8 @@ using Pricing.RuleCenter.Application.Pricing.Persistence;
 using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Application.Pricing.UseCases;
 using Pricing.RuleCenter.Core.Constants;
+using Pricing.RuleCenter.Core.Engine;
+using Pricing.RuleCenter.Core.Engine.Evaluators;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Runtime;
 using Pricing.RuleCenter.Core.Aggregates.Runtime;
@@ -302,6 +304,96 @@ public sealed class PricingApiServiceTests
 
         Assert.True(result.IsSpecial);
         Assert.Equal("STOP_CHARGE", result.RollbackMode);
+    }
+
+    [Fact]
+    public async Task GetSpecialFlagAsync_UsesActiveRuntimePackageAndQueryDimensions()
+    {
+        var runtimeRule = new RuntimeRule
+        {
+            RuntimeRuleId = 901,
+            PackageId = 88,
+            SourcePolicyVersionId = 7008,
+            SourceTemplateVersionId = 8008,
+            TargetItemCode = "ITEM001",
+            CapabilityFamily = "FORMULA_PRICING",
+            MergeMode = "SINGLE_WINNER",
+            ScopeLevel = "SCENE",
+            PriorityKey = "001|001|998|005|0010|000001|000000000001",
+            EffectiveFrom = new DateTime(2026, 5, 1),
+            EffectiveTo = new DateTime(2026, 5, 31, 23, 59, 59),
+            MatchKey = "FORMULA_PRICING|ITEM:ITEM001|SCENE"
+        };
+        var conditions = new[]
+        {
+            new RuntimeCondition
+            {
+                RuntimeConditionId = 1,
+                RuntimeRuleId = 901,
+                ConditionGroup = "DEFAULT",
+                ConditionType = RuleConditionTypeCodes.ChargeScene,
+                RightValue = "OUTPATIENT",
+                SortNo = 10
+            }
+        };
+        var service = CreatePricingApiService(
+            new CapturingPricingEngine(),
+            new SpecialFlagRuleHeaderRepository(new[]
+            {
+                new RuleHeader
+                {
+                    RuleId = 1,
+                    RuleCode = "LEGACY-SHOULD-NOT-BE-USED",
+                    RuleName = "旧规则不应参与运行时包判断",
+                    ItemCode = "ITEM001",
+                    Status = "PUBLISHED",
+                    IsEnabled = "Y",
+                    CreatedAt = DateTime.Now,
+                    UpdatedAt = DateTime.Now
+                }
+            }),
+            new InMemoryChargeRequestLogRepository(),
+            new EmptyChargeDiscountDetailRepository(),
+            new EmptyChargeTraceStepRepository(),
+            new EmptyLimitOccupyRepository(),
+            new EmptyChargeReverseLogRepository(),
+            new EmptyPriceMasterRepository(),
+            new NoopUnitOfWork(),
+            Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
+            NullLogger<PricingApiService>.Instance,
+            new FixedRuntimePackageStateRepository(new RuntimePackageState
+            {
+                StateCode = RuntimePackageStateCodes.Active,
+                ActivePackageId = 88,
+                ActivePackageVersion = 6
+            }),
+            new FixedRuntimeRuleReadRepository(runtimeRule, conditions),
+            new ConditionEvaluatorFactory(new IRuleConditionEvaluator[]
+            {
+                new ChargeSceneMatchEvaluator()
+            }));
+
+        var matched = await service.GetSpecialFlagAsync(new SpecialFlagRequest
+        {
+            ItemCode = "ITEM001",
+            ChargeScene = "OUTPATIENT",
+            BusinessChargeTime = new DateTime(2026, 5, 10, 9, 30, 0)
+        });
+        var notMatched = await service.GetSpecialFlagAsync(new SpecialFlagRequest
+        {
+            ItemCode = "ITEM001",
+            ChargeScene = "INPATIENT",
+            BusinessChargeTime = new DateTime(2026, 5, 10, 9, 30, 0)
+        });
+
+        Assert.True(matched.IsSpecial);
+        Assert.Equal(88, matched.RuntimePackageId);
+        Assert.Equal(6, matched.RuntimePackageVersion);
+        Assert.Equal(new[] { 901L }, matched.MatchedRuntimeRuleIds);
+        Assert.Equal(new[] { 7008L }, matched.MatchedPolicyVersionIds);
+        Assert.False(notMatched.IsSpecial);
+        Assert.Equal(0, notMatched.RuleCount);
+        Assert.Equal(88, notMatched.RuntimePackageId);
     }
 
     [Fact]
@@ -734,7 +826,7 @@ public sealed class PricingApiServiceTests
                 MatchKey = "FORMULA_PRICING|ITEM:ITEM_TRACE|SCENE"
             }));
 
-        await service.ConfirmAsync(new PricingCalculateRequest
+        var response = await service.ConfirmAsync(new PricingCalculateRequest
         {
             RequestNo = "REQ-RUNTIME-TRACE",
             BusinessRequestNo = "BR-RUNTIME-TRACE",
@@ -754,6 +846,19 @@ public sealed class PricingApiServiceTests
                 }
             }
         });
+
+        Assert.Equal(99, response.RuntimePackageId);
+        Assert.Equal(3, response.RuntimePackageVersion);
+        Assert.Equal(new[] { 501L }, response.MatchedRuntimeRuleIds);
+        Assert.Equal(new[] { 7001L }, response.MatchedPolicyVersionIds);
+        Assert.Equal(new[] { 8001L }, response.MatchedTemplateVersionIds);
+        Assert.Equal(10m, response.TotalOriginalAmount);
+        Assert.Equal(response.FinalAmount, response.TotalFinalAmount);
+        Assert.Equal(response.DiscountAmount, response.TotalDiscountAmount);
+        Assert.Equal(99, response.Items[0].RuntimePackageId);
+        Assert.Equal(new[] { 501L }, response.Items[0].MatchedRuntimeRuleIds);
+        Assert.Equal(501, response.Items[0].TraceSteps[0].RuntimeRuleId);
+        Assert.Equal(7001, response.Items[0].TraceSteps[0].SourcePolicyVersionId);
 
         var requestLog = Assert.Single(requestRepository.Inserted);
         Assert.Equal(99, requestLog.RuntimePackageId);
@@ -1190,12 +1295,14 @@ public sealed class PricingApiServiceTests
         IOptions<PricingOptions> options,
         ILogger<PricingApiService> logger,
         IRuntimePackageStateRepository? runtimePackageStateRepository = null,
-        IRuntimeRuleReadRepository? runtimeRuleReadRepository = null)
+        IRuntimeRuleReadRepository? runtimeRuleReadRepository = null,
+        ConditionEvaluatorFactory? conditionEvaluatorFactory = null)
     {
         var calculationDependencies = new PricingApiCalculationDependencies(
             engine,
             headerRepository,
-            priceMasterRepository);
+            priceMasterRepository,
+            conditionEvaluatorFactory);
         var repositories = new PricingApiPersistenceRepositories(
             requestLogRepository,
             discountRepository,
@@ -1365,26 +1472,57 @@ public sealed class PricingApiServiceTests
 
     private sealed class FixedRuntimeRuleReadRepository : IRuntimeRuleReadRepository
     {
-        private readonly RuntimeRule _rule;
+        private readonly IReadOnlyList<RuntimeRule> _rules;
+        private readonly IReadOnlyDictionary<long, IReadOnlyList<RuntimeCondition>> _conditionsByRuleId;
+        private readonly IReadOnlyDictionary<long, IReadOnlyList<RuntimeAction>> _actionsByRuleId;
 
-        public FixedRuntimeRuleReadRepository(RuntimeRule rule)
+        public FixedRuntimeRuleReadRepository(
+            RuntimeRule rule,
+            IReadOnlyList<RuntimeCondition>? conditions = null,
+            IReadOnlyList<RuntimeAction>? actions = null)
+            : this(new[] { rule }, conditions, actions)
         {
-            _rule = rule;
+        }
+
+        public FixedRuntimeRuleReadRepository(
+            IReadOnlyList<RuntimeRule> rules,
+            IReadOnlyList<RuntimeCondition>? conditions = null,
+            IReadOnlyList<RuntimeAction>? actions = null)
+        {
+            _rules = rules;
+            _conditionsByRuleId = (conditions ?? Array.Empty<RuntimeCondition>())
+                .GroupBy(condition => condition.RuntimeRuleId)
+                .ToDictionary(
+                    group => group.Key,
+                    group => (IReadOnlyList<RuntimeCondition>)group.ToList());
+            _actionsByRuleId = (actions ?? Array.Empty<RuntimeAction>())
+                .GroupBy(action => action.RuntimeRuleId)
+                .ToDictionary(
+                    group => group.Key,
+                    group => (IReadOnlyList<RuntimeAction>)group.ToList());
         }
 
         public Task<IReadOnlyList<RuntimeRule>> GetRulesByItemCodeAsync(long packageId, string itemCode) =>
-            Task.FromResult((IReadOnlyList<RuntimeRule>)new[] { _rule });
+            Task.FromResult((IReadOnlyList<RuntimeRule>)_rules
+                .Where(rule =>
+                    rule.PackageId == packageId &&
+                    string.Equals(rule.TargetItemCode, itemCode, StringComparison.OrdinalIgnoreCase))
+                .ToList());
 
         public Task<IReadOnlyList<RuntimeRule>> GetRulesByIdsAsync(IReadOnlyCollection<long> runtimeRuleIds) =>
-            Task.FromResult((IReadOnlyList<RuntimeRule>)(runtimeRuleIds.Contains(_rule.RuntimeRuleId)
-                ? new[] { _rule }
-                : Array.Empty<RuntimeRule>()));
+            Task.FromResult((IReadOnlyList<RuntimeRule>)_rules
+                .Where(rule => runtimeRuleIds.Contains(rule.RuntimeRuleId))
+                .ToList());
 
         public Task<IReadOnlyDictionary<long, IReadOnlyList<RuntimeCondition>>> GetConditionsByRuleIdsAsync(IReadOnlyCollection<long> runtimeRuleIds) =>
-            Task.FromResult((IReadOnlyDictionary<long, IReadOnlyList<RuntimeCondition>>)new Dictionary<long, IReadOnlyList<RuntimeCondition>>());
+            Task.FromResult((IReadOnlyDictionary<long, IReadOnlyList<RuntimeCondition>>)_conditionsByRuleId
+                .Where(pair => runtimeRuleIds.Contains(pair.Key))
+                .ToDictionary(pair => pair.Key, pair => pair.Value));
 
         public Task<IReadOnlyDictionary<long, IReadOnlyList<RuntimeAction>>> GetActionsByRuleIdsAsync(IReadOnlyCollection<long> runtimeRuleIds) =>
-            Task.FromResult((IReadOnlyDictionary<long, IReadOnlyList<RuntimeAction>>)new Dictionary<long, IReadOnlyList<RuntimeAction>>());
+            Task.FromResult((IReadOnlyDictionary<long, IReadOnlyList<RuntimeAction>>)_actionsByRuleId
+                .Where(pair => runtimeRuleIds.Contains(pair.Key))
+                .ToDictionary(pair => pair.Key, pair => pair.Value));
     }
 
     private static PricingCalculateRequest CreateValidCalculateRequest(

@@ -1,4 +1,5 @@
 using Pricing.RuleCenter.Application.Dto;
+using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Core.Models;
 using Pricing.RuleCenter.Core.Services;
 
@@ -12,32 +13,45 @@ internal static class PricingResponseBuilder
 {
     public static PricingCalculateResponse Build(
         long requestId,
+        string? traceId,
         IReadOnlyList<ItemPricingCalculation> calculations,
         DateTime now,
+        RuntimePackageTraceResolution? runtimeTrace = null,
         DateTime? expireAt = null)
     {
         var itemResponses = calculations
-            .Select(c => BuildItemResponse(requestId, c.Item, c.Result))
+            .Select(c => BuildItemResponse(requestId, traceId, c.Item, c.Result, runtimeTrace))
             .ToList();
         var first = itemResponses.FirstOrDefault();
         var expireSeconds = expireAt.HasValue
             ? Math.Max(0, (int)Math.Ceiling((expireAt.Value - now).TotalSeconds))
             : (int?)null;
+        var finalAmount = itemResponses.Sum(i => i.FinalAmount);
+        var discountAmount = itemResponses.Sum(i => i.DiscountAmount);
 
         return new PricingCalculateResponse
         {
             RequestId = requestId,
+            TraceId = NormalizeString(traceId),
+            RuntimePackageId = runtimeTrace?.RuntimePackageId,
+            RuntimePackageVersion = runtimeTrace?.RuntimePackageVersion,
             Items = itemResponses,
             IsSpecialItem = itemResponses.Any(i => i.IsSpecialItem),
             InputQty = itemResponses.Sum(i => i.InputQty),
             FinalQty = itemResponses.Sum(i => i.FinalQty),
             UnitPrice = itemResponses.Count == 1 ? first?.UnitPrice ?? 0 : 0,
-            FinalAmount = itemResponses.Sum(i => i.FinalAmount),
-            DiscountAmount = itemResponses.Sum(i => i.DiscountAmount),
+            TotalOriginalAmount = itemResponses.Sum(i => i.OriginalAmount),
+            TotalFinalAmount = finalAmount,
+            TotalDiscountAmount = discountAmount,
+            FinalAmount = finalAmount,
+            DiscountAmount = discountAmount,
             ExpireAt = expireAt,
             ExpireSeconds = expireSeconds,
             TraceSteps = itemResponses.Count == 1 ? first?.TraceSteps ?? Array.Empty<PricingTraceStepResponse>() : Array.Empty<PricingTraceStepResponse>(),
-            MatchedRuleIds = itemResponses.SelectMany(i => i.MatchedRuleIds).Distinct().ToList()
+            MatchedRuleIds = itemResponses.SelectMany(i => i.MatchedRuleIds).Distinct().ToList(),
+            MatchedRuntimeRuleIds = itemResponses.SelectMany(i => i.MatchedRuntimeRuleIds).Distinct().ToList(),
+            MatchedPolicyVersionIds = itemResponses.SelectMany(i => i.MatchedPolicyVersionIds).Distinct().ToList(),
+            MatchedTemplateVersionIds = itemResponses.SelectMany(i => i.MatchedTemplateVersionIds).Distinct().ToList()
         };
     }
 
@@ -70,14 +84,39 @@ internal static class PricingResponseBuilder
 
     private static PricingCalculateItemResponse BuildItemResponse(
         long requestId,
+        string? traceId,
         PricingCalculateItemRequest item,
-        PricingResult result)
+        PricingResult result,
+        RuntimePackageTraceResolution? runtimeTrace)
     {
+        var matchedRuleIds = result.MatchedRuleIds
+            .Where(ruleId => ruleId > 0)
+            .Distinct()
+            .ToList();
+        var matchedRuntimeRuleIds = runtimeTrace is not null && runtimeTrace.RuntimePackageId.HasValue
+            ? matchedRuleIds
+            : new List<long>();
+        var matchedPolicyVersionIds = matchedRuleIds
+            .Select(ruleId => runtimeTrace?.FindRule(ruleId)?.SourcePolicyVersionId)
+            .Where(id => id.HasValue && id.Value > 0)
+            .Select(id => id.GetValueOrDefault())
+            .Distinct()
+            .ToList();
+        var matchedTemplateVersionIds = matchedRuleIds
+            .Select(ruleId => runtimeTrace?.FindRule(ruleId)?.SourceTemplateVersionId)
+            .Where(id => id.HasValue && id.Value > 0)
+            .Select(id => id.GetValueOrDefault())
+            .Distinct()
+            .ToList();
+
         return new PricingCalculateItemResponse
         {
             ItemRequestNo = NormalizeString(item.ItemRequestNo),
             ChargeDetailNo = NormalizeString(item.ChargeDetailNo),
+            TraceId = NormalizeString(traceId),
             RequestId = requestId,
+            RuntimePackageId = runtimeTrace?.RuntimePackageId,
+            RuntimePackageVersion = runtimeTrace?.RuntimePackageVersion,
             ItemCode = item.ItemCode.Trim(),
             ItemName = NormalizeString(item.ItemName),
             IsSpecialItem = result.IsSpecialItem,
@@ -85,6 +124,7 @@ internal static class PricingResponseBuilder
             FinalQty = result.FinalQty,
             ConvertedQty = result.ConvertedQty,
             UnitPrice = result.UnitPrice,
+            OriginalAmount = PricingAmountRounder.RoundFinal(item.UnitPrice * item.InputQty),
             FinalAmount = PricingAmountRounder.RoundFinal(
                 result.FinalAmount + result.ChildPricingResults.Sum(c => c.Amount)),
             DiscountAmount = PricingAmountRounder.RoundFinal(
@@ -115,9 +155,15 @@ internal static class PricingResponseBuilder
                 StepType = s.StepType,
                 StepDesc = s.StepDesc,
                 InputValue = s.InputValue,
-                OutputValue = s.OutputValue
+                OutputValue = s.OutputValue,
+                RuntimeRuleId = s.RuntimeRuleId,
+                SourcePolicyVersionId = runtimeTrace?.FindRule(s.RuntimeRuleId)?.SourcePolicyVersionId,
+                SourceTemplateVersionId = runtimeTrace?.FindRule(s.RuntimeRuleId)?.SourceTemplateVersionId
             }).ToList(),
-            MatchedRuleIds = result.MatchedRuleIds
+            MatchedRuleIds = matchedRuleIds,
+            MatchedRuntimeRuleIds = matchedRuntimeRuleIds,
+            MatchedPolicyVersionIds = matchedPolicyVersionIds,
+            MatchedTemplateVersionIds = matchedTemplateVersionIds
         };
     }
 
