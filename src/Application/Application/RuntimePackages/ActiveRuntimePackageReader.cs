@@ -7,13 +7,16 @@ public sealed class ActiveRuntimePackageReader
 {
     private readonly IRuntimePackageStateRepository _packageStateRepository;
     private readonly IRuntimeRuleReadRepository _runtimeRuleReadRepository;
+    private readonly RuntimePackageTraceContextAccessor? _traceContextAccessor;
 
     public ActiveRuntimePackageReader(
         IRuntimePackageStateRepository packageStateRepository,
-        IRuntimeRuleReadRepository runtimeRuleReadRepository)
+        IRuntimeRuleReadRepository runtimeRuleReadRepository,
+        RuntimePackageTraceContextAccessor? traceContextAccessor = null)
     {
         _packageStateRepository = packageStateRepository;
         _runtimeRuleReadRepository = runtimeRuleReadRepository;
+        _traceContextAccessor = traceContextAccessor;
     }
 
     public async Task<IReadOnlyList<RuntimeRuleSnapshot>> LoadByItemCodeAsync(string itemCode)
@@ -24,13 +27,20 @@ public sealed class ActiveRuntimePackageReader
             return Array.Empty<RuntimeRuleSnapshot>();
         }
 
-        var activeState = await _packageStateRepository.GetActiveAsync();
-        if (activeState is null || activeState.ActivePackageId <= 0)
+        var activeContext = _traceContextAccessor?.Current;
+        var packageId = activeContext?.ActivePackageId;
+        if (activeContext is null)
+        {
+            var activeState = await _packageStateRepository.GetActiveAsync();
+            packageId = activeState?.ActivePackageId > 0 ? activeState.ActivePackageId : null;
+        }
+
+        if (!packageId.HasValue || packageId.Value <= 0)
         {
             return Array.Empty<RuntimeRuleSnapshot>();
         }
 
-        var rules = await _runtimeRuleReadRepository.GetRulesByItemCodeAsync(activeState.ActivePackageId, normalizedItemCode);
+        var rules = await _runtimeRuleReadRepository.GetRulesByItemCodeAsync(packageId.Value, normalizedItemCode);
         if (rules.Count == 0)
         {
             return Array.Empty<RuntimeRuleSnapshot>();

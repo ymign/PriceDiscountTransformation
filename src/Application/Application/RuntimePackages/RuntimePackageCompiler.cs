@@ -65,8 +65,17 @@ public sealed class RuntimePackageCompiler
             var stepDefs = await _templateRepository.GetStepDefsAsync(version.TemplateVersionId);
             var scopeDefs = await _templateRepository.GetScopeDefsAsync(version.TemplateVersionId);
 
-            _validationService.ValidateForCompile(policy, version, templateVersion, paramDefs, stepDefs, scopeDefs, bindings, scopes, parameters);
-
+            _validationService.ValidateForCompile(
+                policy,
+                version,
+                templateVersion,
+                paramDefs,
+                stepDefs,
+                scopeDefs,
+                bindings,
+                scopes,
+                parameters,
+                context.RequirePublishReadyStatus);
             packagePolicies.Add(new RuntimePackagePolicy
             {
                 PolicyVersionId = version.PolicyVersionId,
@@ -119,23 +128,28 @@ public sealed class RuntimePackageCompiler
 
     private async Task<IReadOnlyList<PolicyVersion>> LoadCandidateVersionsAsync(IReadOnlyCollection<long>? policyVersionIds)
     {
-        var publishReadyVersions = await _policyRepository.GetPublishReadyVersionsAsync();
         if (policyVersionIds is null || policyVersionIds.Count == 0)
         {
-            return publishReadyVersions;
+            return await _policyRepository.GetPublishReadyVersionsAsync();
         }
 
         var requested = policyVersionIds.ToHashSet();
-        var filtered = publishReadyVersions
-            .Where(version => requested.Contains(version.PolicyVersionId))
-            .ToList();
+        var filtered = new List<PolicyVersion>(requested.Count);
+        foreach (var policyVersionId in requested)
+        {
+            var version = await _policyRepository.GetVersionAsync(policyVersionId);
+            if (version is not null)
+            {
+                filtered.Add(version);
+            }
+        }
 
         if (filtered.Count != requested.Count)
         {
             throw new BizException(
-                BizErrorCode.PolicyStatusNotAllowed,
-                409,
-                "存在未处于 PUBLISH_READY 状态的策略版本，不能参与候选包构建。");
+                BizErrorCode.PolicyNotFound,
+                404,
+                "存在不存在的策略版本，不能参与候选包构建。");
         }
 
         return filtered;

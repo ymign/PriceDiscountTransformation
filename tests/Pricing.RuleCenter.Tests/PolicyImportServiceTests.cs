@@ -1,3 +1,4 @@
+using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Policies;
 using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Core.Aggregates.Policies;
@@ -96,6 +97,82 @@ public sealed class PolicyImportServiceTests
         var parameter = Assert.Single(policyRepository.Params[versionId]);
         Assert.Equal(RuntimeRuleProjectionFactory.LegacyActionParamsJsonParamCode, parameter.ParamCode);
         Assert.Equal("{\"rate\":0.8}", parameter.ValueText);
+    }
+
+    [Fact]
+    public async Task ImportAsync_RejectsSupportedAction_WhenLegacyConditionIsUnsupported()
+    {
+        var headerRepository = new InMemoryRuleHeaderRepository();
+        var conditionRepository = new InMemoryRuleConditionRepository();
+        var actionRepository = new InMemoryRuleActionRepository();
+        var policyRepository = new InMemoryPolicyRepository();
+        var templateRepository = new InMemoryTemplateRepository();
+
+        headerRepository.Headers[1] = new RuleHeader
+        {
+            RuleId = 1,
+            RuleCode = "RULE_OLD_UNSUPPORTED",
+            RuleName = "旧规则不支持条件",
+            ItemCode = "ITEM001",
+            CurrentVersion = 1,
+            Priority = 10
+        };
+        conditionRepository.Conditions[(1, 1)] = new[]
+        {
+            new RuleCondition
+            {
+                RuleId = 1,
+                VersionNo = 1,
+                ConditionType = "PATIENT_AGE_RANGE",
+                OperatorType = "BETWEEN",
+                RightValue = "0,6",
+                IsEnabled = "Y",
+                SortNo = 1
+            }
+        };
+        actionRepository.Actions[(1, 1)] = new[]
+        {
+            new RuleAction
+            {
+                RuleId = 1,
+                VersionNo = 1,
+                ActionType = "FORMULA_CALC",
+                ExecutorCode = "INCREMENT_PERCENT",
+                ParamsJson = "{\"rate\":0.8}",
+                IsEnabled = "Y"
+            }
+        };
+        templateRepository.Templates["TPL_INCREMENT_PERCENT"] = new TemplateAggregate
+        {
+            TemplateId = 10,
+            TemplateCode = "TPL_INCREMENT_PERCENT",
+            TemplateName = "比例递增"
+        };
+        templateRepository.TemplateVersions[10] = new[]
+        {
+            new TemplateVersion
+            {
+                TemplateVersionId = 1001,
+                TemplateId = 10,
+                VersionNo = 1,
+                CapabilityFamily = "FORMULA_PRICING",
+                MergeMode = "SINGLE_WINNER"
+            }
+        };
+
+        var service = new PolicyImportService(
+            headerRepository,
+            conditionRepository,
+            actionRepository,
+            policyRepository,
+            templateRepository,
+            new NoopUnitOfWork(),
+            new FixedClock(new DateTime(2026, 6, 8, 10, 0, 0)));
+
+        var ex = await Assert.ThrowsAsync<BizException>(() => service.ImportAsync(new[] { 1L }, "importer"));
+
+        Assert.Equal(BizErrorCode.PolicyScopeUnsupported, ex.Code);
+        Assert.Empty(policyRepository.Policies);
     }
 
     private sealed class InMemoryRuleHeaderRepository : IRuleHeaderRepository

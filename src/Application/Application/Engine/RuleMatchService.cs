@@ -93,7 +93,8 @@ public sealed class RuleMatchService : IRuleRuntimeCacheInvalidator
     {
         return new EffectiveRuleSnapshotCache(
             new MemoryCache(new MemoryCacheOptions()),
-            new EffectiveRuleSnapshotLoader(repositories));
+            new EffectiveRuleSnapshotLoader(repositories),
+            repositories.RuntimePackageTraceContextAccessor);
     }
 
     /// <summary>

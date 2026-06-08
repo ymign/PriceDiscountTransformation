@@ -75,6 +75,56 @@ public sealed class PolicyAppServiceTests
         Assert.Single(detail.Versions);
     }
 
+    [Fact]
+    public async Task SaveDraftAsync_RejectsPolicyVersionFromAnotherPolicy()
+    {
+        var policyRepository = new InMemoryPolicyRepository();
+        var templateRepository = new InMemoryTemplateRepository();
+        var clock = new FixedClock(new DateTime(2026, 6, 8, 9, 0, 0));
+        var policyAppService = new PolicyAppService(policyRepository, clock);
+        var versionAppService = new PolicyVersionAppService(
+            policyRepository,
+            templateRepository,
+            new PolicyExpressionGuard(),
+            new PolicyValidationService(new FormulaExpressionValidator(new FormulaExpressionEvaluator(new FormulaFunctionRegistry()))),
+            new NoopUnitOfWork(),
+            clock);
+
+        var firstPolicyId = await policyAppService.CreateAsync(new PolicyCreateRequest
+        {
+            PolicyCode = "POL_A",
+            PolicyName = "策略A",
+            TemplateId = 1,
+            OwnerType = "PRICE_DEPT",
+            PublishProfile = "DIRECT"
+        });
+        var secondPolicyId = await policyAppService.CreateAsync(new PolicyCreateRequest
+        {
+            PolicyCode = "POL_B",
+            PolicyName = "策略B",
+            TemplateId = 1,
+            OwnerType = "PRICE_DEPT",
+            PublishProfile = "DIRECT"
+        });
+        var firstVersionId = await versionAppService.SaveDraftAsync(firstPolicyId, new PolicyVersionSaveRequest
+        {
+            TemplateVersionId = 1001,
+            BindingType = "ITEM",
+            ScopeLevel = "SCENE"
+        });
+
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
+            versionAppService.SaveDraftAsync(secondPolicyId, new PolicyVersionSaveRequest
+            {
+                PolicyVersionId = firstVersionId,
+                TemplateVersionId = 1001,
+                BindingType = "ITEM",
+                ScopeLevel = "SCENE"
+            }));
+
+        Assert.Equal(BizErrorCode.PolicyNotFound, ex.Code);
+    }
+
     private sealed class InMemoryPolicyRepository : IPolicyRepository
     {
         private long _nextPolicyId = 1;

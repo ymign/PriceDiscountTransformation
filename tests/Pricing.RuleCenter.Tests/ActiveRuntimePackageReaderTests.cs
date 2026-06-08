@@ -184,6 +184,64 @@ public sealed class ActiveRuntimePackageReaderTests
         Assert.Equal("FORMULA_CALC", matchedAction.ActionType);
     }
 
+    [Fact]
+    public async Task RuntimePackageTraceScope_KeepsReaderAndResolverOnCapturedPackage()
+    {
+        var accessor = new RuntimePackageTraceContextAccessor();
+        var stateRepository = new MutableRuntimePackageStateRepository(new RuntimePackageState
+        {
+            StateCode = "ACTIVE",
+            ActivePackageId = 77,
+            ActivePackageVersion = 5
+        });
+        var ruleRepository = new FixedRuntimeRuleReadRepository(
+            new[]
+            {
+                new RuntimeRule
+                {
+                    RuntimeRuleId = 501,
+                    PackageId = 77,
+                    TargetItemCode = "ITEM001",
+                    CapabilityFamily = "FORMULA_PRICING",
+                    PriorityKey = "10|ITEM",
+                    SourcePolicyVersionId = 7001,
+                    SourceTemplateVersionId = 8001
+                },
+                new RuntimeRule
+                {
+                    RuntimeRuleId = 601,
+                    PackageId = 88,
+                    TargetItemCode = "ITEM001",
+                    CapabilityFamily = "FORMULA_PRICING",
+                    PriorityKey = "10|ITEM",
+                    SourcePolicyVersionId = 7002,
+                    SourceTemplateVersionId = 8002
+                }
+            },
+            Array.Empty<RuntimeCondition>(),
+            Array.Empty<RuntimeAction>());
+        var resolver = new RuntimePackageTraceResolver(stateRepository, ruleRepository, accessor);
+
+        var runtimePackageContext = await resolver.CaptureContextAsync();
+        using var scope = resolver.BeginScope(runtimePackageContext);
+        stateRepository.State = new RuntimePackageState
+        {
+            StateCode = "ACTIVE",
+            ActivePackageId = 88,
+            ActivePackageVersion = 6
+        };
+
+        var reader = new ActiveRuntimePackageReader(stateRepository, ruleRepository, accessor);
+        var snapshots = await reader.LoadByItemCodeAsync("ITEM001");
+        var resolution = await resolver.ResolveAsync(new[] { 501L });
+
+        var snapshot = Assert.Single(snapshots);
+        Assert.Equal(501, snapshot.Rule.RuntimeRuleId);
+        Assert.Equal(77, resolution.RuntimePackageId);
+        Assert.Equal(5, resolution.RuntimePackageVersion);
+        Assert.Equal(7001, Assert.Single(resolution.RuntimeRulesById.Values).SourcePolicyVersionId);
+    }
+
     private sealed class FixedRuntimePackageStateRepository : IRuntimePackageStateRepository
     {
         private readonly RuntimePackageState? _state;
@@ -198,6 +256,26 @@ public sealed class ActiveRuntimePackageReaderTests
         public Task<RuntimePackageState?> GetActiveForUpdateAsync() => Task.FromResult(_state);
 
         public Task UpsertAsync(RuntimePackageState entity) => Task.CompletedTask;
+    }
+
+    private sealed class MutableRuntimePackageStateRepository : IRuntimePackageStateRepository
+    {
+        public RuntimePackageState? State { get; set; }
+
+        public MutableRuntimePackageStateRepository(RuntimePackageState? state)
+        {
+            State = state;
+        }
+
+        public Task<RuntimePackageState?> GetActiveAsync() => Task.FromResult(State);
+
+        public Task<RuntimePackageState?> GetActiveForUpdateAsync() => Task.FromResult(State);
+
+        public Task UpsertAsync(RuntimePackageState entity)
+        {
+            State = entity;
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FixedRuntimeRuleReadRepository : IRuntimeRuleReadRepository

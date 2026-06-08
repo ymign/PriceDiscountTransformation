@@ -2,6 +2,7 @@ using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
 using Pricing.RuleCenter.Core.Interfaces.Catalog;
 using Pricing.RuleCenter.Core.Interfaces.Runtime;
+using Pricing.RuleCenter.Application.RuntimePackages;
 
 namespace Pricing.RuleCenter.Core.Engine;
 
@@ -33,6 +34,7 @@ public sealed class RuleMatchRepositories
             actionRepository,
             dictRepository,
             null,
+            null,
             null)
     {
     }
@@ -46,7 +48,8 @@ public sealed class RuleMatchRepositories
         IRuleActionRepository actionRepository,
         IDictRepository dictRepository,
         IRuntimePackageStateRepository? runtimePackageStateRepository,
-        IRuntimeRuleReadRepository? runtimeRuleReadRepository)
+        IRuntimeRuleReadRepository? runtimeRuleReadRepository,
+        RuntimePackageTraceContextAccessor? runtimePackageTraceContextAccessor = null)
     {
         HeaderRepository = headerRepository;
         ConditionRepository = conditionRepository;
@@ -54,6 +57,7 @@ public sealed class RuleMatchRepositories
         DictRepository = dictRepository;
         RuntimePackageStateRepository = runtimePackageStateRepository;
         RuntimeRuleReadRepository = runtimeRuleReadRepository;
+        RuntimePackageTraceContextAccessor = runtimePackageTraceContextAccessor;
     }
 
     /// <summary>
@@ -85,4 +89,9 @@ public sealed class RuleMatchRepositories
     /// 运行时规则读仓储。存在时优先走新运行时读模型。
     /// </summary>
     public IRuntimeRuleReadRepository? RuntimeRuleReadRepository { get; }
+
+    /// <summary>
+    /// 单次计价请求捕获的运行时包指针访问器。存在时按请求快照读取规则，避免发布竞态。
+    /// </summary>
+    public RuntimePackageTraceContextAccessor? RuntimePackageTraceContextAccessor { get; }
 }

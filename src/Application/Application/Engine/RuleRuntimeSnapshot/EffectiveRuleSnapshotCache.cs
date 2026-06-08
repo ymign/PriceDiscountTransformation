@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Caching.Memory;
+using Pricing.RuleCenter.Application.RuntimePackages;
 
 namespace Pricing.RuleCenter.Core.Engine.RuleRuntimeSnapshot;
 
@@ -13,16 +14,19 @@ public sealed class EffectiveRuleSnapshotCache
 
     private readonly IMemoryCache _cache;
     private readonly EffectiveRuleSnapshotLoader _loader;
+    private readonly RuntimePackageTraceContextAccessor? _traceContextAccessor;
 
     /// <summary>
     /// 初始化运行期生效规则快照缓存。
     /// </summary>
     public EffectiveRuleSnapshotCache(
         IMemoryCache cache,
-        EffectiveRuleSnapshotLoader loader)
+        EffectiveRuleSnapshotLoader loader,
+        RuntimePackageTraceContextAccessor? traceContextAccessor = null)
     {
         _cache = cache;
         _loader = loader;
+        _traceContextAccessor = traceContextAccessor;
     }
 
     /// <summary>
@@ -30,7 +34,7 @@ public sealed class EffectiveRuleSnapshotCache
     /// </summary>
     public async Task<IReadOnlyList<EffectiveRuleSnapshot>> GetByItemCodeAsync(string itemCode)
     {
-        var key = BuildKey(itemCode);
+        var key = BuildKeyForCurrentPackage(itemCode);
         if (_cache.TryGetValue(key, out IReadOnlyList<EffectiveRuleSnapshot>? snapshots) &&
             snapshots is not null)
         {
@@ -70,5 +74,22 @@ public sealed class EffectiveRuleSnapshotCache
     private static string BuildKey(string itemCode)
     {
         return CacheKeyPrefix + itemCode.Trim().ToUpperInvariant();
+    }
+
+    private string BuildKeyForCurrentPackage(string itemCode)
+    {
+        var context = _traceContextAccessor?.Current;
+        if (context is null)
+        {
+            return BuildKey(itemCode);
+        }
+
+        return CacheKeyPrefix
+            + "pkg:"
+            + (context.ActivePackageId?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none")
+            + ":"
+            + (context.ActivePackageVersion?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none")
+            + ":"
+            + itemCode.Trim().ToUpperInvariant();
     }
 }

@@ -32,9 +32,11 @@ public sealed class PolicyValidationService
         IReadOnlyList<TemplateScopeDef> scopeDefs,
         IReadOnlyList<PolicyBinding> bindings,
         IReadOnlyList<PolicyScope> scopes,
-        IReadOnlyList<PolicyParam> parameters)
+        IReadOnlyList<PolicyParam> parameters,
+        bool requirePublishReadyStatus = true)
     {
-        if (!string.Equals(version.PolicyStatus, PolicyLifecycleCodes.PublishReady, StringComparison.OrdinalIgnoreCase))
+        if (requirePublishReadyStatus &&
+            !string.Equals(version.PolicyStatus, PolicyLifecycleCodes.PublishReady, StringComparison.OrdinalIgnoreCase))
         {
             throw new BizException(
                 BizErrorCode.PolicyStatusNotAllowed,

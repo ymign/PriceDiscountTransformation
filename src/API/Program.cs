@@ -100,6 +100,7 @@ builder.Services.AddScoped<PolicyReviewAppService>();
 builder.Services.AddScoped<PolicyPackageDiffService>();
 builder.Services.AddScoped<RuntimeRuleProjectionFactory>();
 builder.Services.AddScoped<RuntimePackageCompiler>();
+builder.Services.AddScoped<RuntimePackageTraceContextAccessor>();
 builder.Services.AddScoped<RuntimePackageTraceResolver>();
 builder.Services.AddScoped<RuntimePackageQueryAppService>();
 builder.Services.AddScoped<RuntimePackageActivationService>();
@@ -225,7 +226,8 @@ builder.Services.AddScoped(provider => new RuleMatchRepositories(
     provider.GetRequiredService<IRuleActionRepository>(),
     provider.GetRequiredService<IDictRepository>(),
     provider.GetService<IRuntimePackageStateRepository>(),
-    provider.GetService<IRuntimeRuleReadRepository>()));
+    provider.GetService<IRuntimeRuleReadRepository>(),
+    provider.GetRequiredService<RuntimePackageTraceContextAccessor>()));
 builder.Services.AddScoped<EffectiveRuleSnapshotLoader>();
 builder.Services.AddScoped<EffectiveRuleSnapshotCache>();
 builder.Services.AddScoped<RuleMatchService>();

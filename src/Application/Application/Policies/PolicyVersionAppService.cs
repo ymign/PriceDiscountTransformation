@@ -61,6 +61,13 @@ public sealed class PolicyVersionAppService
                 PolicyId = policyId,
                 VersionNo = request.VersionNo ?? ((versions.Count == 0 ? 0 : versions.Max(item => item.VersionNo)) + 1)
             };
+        if (version.PolicyId != policyId)
+        {
+            throw new BizException(
+                BizErrorCode.PolicyNotFound,
+                404,
+                $"策略版本 {version.PolicyVersionId} 不属于策略 {policyId}。");
+        }
 
         version.TemplateVersionId = request.TemplateVersionId;
         version.BindingType = request.BindingType.Trim();

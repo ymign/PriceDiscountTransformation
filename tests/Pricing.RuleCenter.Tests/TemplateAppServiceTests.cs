@@ -56,6 +56,47 @@ public sealed class TemplateAppServiceTests
         Assert.Single(version.ScopeDefs);
     }
 
+    [Fact]
+    public async Task SaveAsync_RejectsTemplateVersionFromAnotherTemplate()
+    {
+        var repository = new InMemoryTemplateRepository();
+        var clock = new FixedClock(new DateTime(2026, 6, 8, 9, 10, 0));
+        var templateAppService = new TemplateAppService(repository, clock);
+        var versionAppService = new TemplateVersionAppService(repository, new NoopUnitOfWork(), clock);
+
+        var firstTemplateId = await templateAppService.CreateAsync(new TemplateCreateRequest
+        {
+            TemplateCode = "TPL_A",
+            TemplateName = "模板A",
+            Category = "FORMULA",
+            RiskLevel = "LOW",
+            ExpressionMode = "WEAK"
+        });
+        var secondTemplateId = await templateAppService.CreateAsync(new TemplateCreateRequest
+        {
+            TemplateCode = "TPL_B",
+            TemplateName = "模板B",
+            Category = "FORMULA",
+            RiskLevel = "LOW",
+            ExpressionMode = "WEAK"
+        });
+        var firstVersionId = await versionAppService.SaveAsync(firstTemplateId, new TemplateVersionSaveRequest
+        {
+            CapabilityFamily = "FORMULA_PRICING",
+            MergeMode = "SINGLE_WINNER"
+        });
+
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
+            versionAppService.SaveAsync(secondTemplateId, new TemplateVersionSaveRequest
+            {
+                TemplateVersionId = firstVersionId,
+                CapabilityFamily = "FORMULA_PRICING",
+                MergeMode = "SINGLE_WINNER"
+            }));
+
+        Assert.Equal(BizErrorCode.TemplateVersionNotFound, ex.Code);
+    }
+
     private sealed class InMemoryTemplateRepository : ITemplateRepository
     {
         private long _nextTemplateId = 1;

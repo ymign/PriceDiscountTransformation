@@ -20,14 +20,10 @@ public sealed class PolicyPublishEligibilityService
 
     public async Task EnsureEligibleAsync(PolicyAggregate policy, PolicyVersion version)
     {
-        if (string.Equals(version.PolicyStatus, PolicyLifecycleCodes.PublishReady, StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
         if (_publishProfileResolver.RequiresReview(policy))
         {
-            if (!string.Equals(version.PolicyStatus, PolicyLifecycleCodes.Approved, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(version.PolicyStatus, PolicyLifecycleCodes.Approved, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(version.PolicyStatus, PolicyLifecycleCodes.PublishReady, StringComparison.OrdinalIgnoreCase))
             {
                 throw new BizException(
                     BizErrorCode.PolicyStatusNotAllowed,
@@ -71,7 +67,8 @@ public sealed class PolicyPublishEligibilityService
             return;
         }
 
-        if (!string.Equals(version.PolicyStatus, PolicyLifecycleCodes.Validated, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(version.PolicyStatus, PolicyLifecycleCodes.Validated, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(version.PolicyStatus, PolicyLifecycleCodes.PublishReady, StringComparison.OrdinalIgnoreCase))
         {
             throw new BizException(
                 BizErrorCode.PolicyStatusNotAllowed,

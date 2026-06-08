@@ -153,6 +153,21 @@ public sealed class RuntimePackagePublishServiceTests
         Assert.Equal(result.Package.PackageId, fixture.PolicyRepository.Versions[201].LastBuiltPackageId);
     }
 
+    [Fact]
+    public async Task PublishAsync_DoesNotMoveStatusToPublishReady_WhenCompileFails()
+    {
+        var fixture = PublishFixture.CreateDirect();
+        fixture.PolicyRepository.Parameters[101] = Array.Empty<PolicyParam>();
+
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
+            fixture.Service.PublishAsync(new[] { 101L }, "publisher", new DateTime(2026, 6, 7, 12, 30, 0, DateTimeKind.Utc)));
+
+        Assert.Equal(BizErrorCode.PolicyParamMissing, ex.Code);
+        Assert.Equal(PolicyLifecycleCodes.Validated, fixture.PolicyRepository.Versions[101].PolicyStatus);
+        Assert.Null(fixture.PolicyRepository.Versions[101].LastBuiltPackageId);
+        Assert.Equal(0, fixture.StateRepository.State.ActivePackageId);
+    }
+
     private sealed class PublishFixture
     {
         public RuntimePackagePublishService Service { get; init; } = null!;

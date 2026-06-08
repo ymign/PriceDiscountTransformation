@@ -23,7 +23,8 @@ public sealed class EffectiveRuleSnapshotLoader
         {
             _runtimePackageReader = new ActiveRuntimePackageReader(
                 repositories.RuntimePackageStateRepository,
-                repositories.RuntimeRuleReadRepository);
+                repositories.RuntimeRuleReadRepository,
+                repositories.RuntimePackageTraceContextAccessor);
         }
     }
 

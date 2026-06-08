@@ -55,6 +55,7 @@ public sealed class PolicyImportService
 
             var conditions = await _ruleConditionRepository.GetByRuleAndVersionAsync(ruleId, header.CurrentVersion);
             var actions = await _ruleActionRepository.GetByRuleAndVersionAsync(ruleId, header.CurrentVersion);
+            var unsupportedConditions = GetUnsupportedEnabledConditions(conditions);
 
             foreach (var action in actions.Where(item => item.IsEnabled == EnableFlag.Yes))
             {
@@ -63,6 +64,8 @@ public sealed class PolicyImportService
                 {
                     continue;
                 }
+
+                EnsureNoUnsupportedConditions(header, unsupportedConditions);
 
                 var template = await _templateRepository.GetByCodeAsync(templateCode)
                     ?? throw new BizException(BizErrorCode.TemplateNotFound, 404, $"导入模板不存在: {templateCode}");
@@ -247,6 +250,49 @@ public sealed class PolicyImportService
             RuleConditionTypeCodes.TimeRange => "TIME_RANGE",
             _ => null
         };
+    }
+
+    private static IReadOnlyList<RuleCondition> GetUnsupportedEnabledConditions(IReadOnlyList<RuleCondition> conditions)
+    {
+        return conditions
+            .Where(condition => condition.IsEnabled == EnableFlag.Yes)
+            .Where(condition => !IsRepresentedByBinding(condition.ConditionType))
+            .Where(condition => ResolveScopeDimension(condition.ConditionType) is null)
+            .ToList();
+    }
+
+    private static bool IsRepresentedByBinding(string? conditionType)
+    {
+        if (string.IsNullOrWhiteSpace(conditionType))
+        {
+            return false;
+        }
+
+        return RuleConditionTypeCodes.GetAliases(RuleConditionTypeCodes.ItemMatch)
+                   .Contains(conditionType, StringComparer.OrdinalIgnoreCase) ||
+               string.Equals(conditionType, RuleConditionTypeCodes.GroupMatch, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void EnsureNoUnsupportedConditions(
+        RuleAggregate header,
+        IReadOnlyList<RuleCondition> unsupportedConditions)
+    {
+        if (unsupportedConditions.Count == 0)
+        {
+            return;
+        }
+
+        var unsupportedSummary = string.Join(
+            ", ",
+            unsupportedConditions
+                .Select(condition => string.IsNullOrWhiteSpace(condition.ConditionType)
+                    ? "<EMPTY>"
+                    : condition.ConditionType.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase));
+        throw new BizException(
+            BizErrorCode.PolicyScopeUnsupported,
+            400,
+            $"旧规则 {header.RuleCode} 包含当前策略平台暂不支持的条件类型: {unsupportedSummary}，已阻断导入以避免条件静默丢失。");
     }
 
     private static IReadOnlyList<PolicyParam> BuildParams(RuleAction action, PolicyVersion version)

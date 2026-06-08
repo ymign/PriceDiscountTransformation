@@ -59,6 +59,9 @@ public sealed class PricingSimulateWorkflow
 
         await _authorityPriceChecker.CheckAsync(items);
 
+        var runtimePackageContext = await _runtimePackageTraceResolver.CaptureContextAsync();
+        using var runtimePackageScope = _runtimePackageTraceResolver.BeginScope(runtimePackageContext);
+
         var inRequestOccupiedQtyByLimitDimension = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
         var inRequestLimitOccupies = new List<LimitOccupy>();
         var batchContext = items.Count > 1 ? new BatchPricingContext() : null;

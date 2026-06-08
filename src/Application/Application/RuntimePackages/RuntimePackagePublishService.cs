@@ -1,6 +1,5 @@
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Policies;
-using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces.Policies;
 
 namespace Pricing.RuleCenter.Application.RuntimePackages;
@@ -29,7 +28,19 @@ public sealed class RuntimePackagePublishService
         string publishedBy,
         DateTime? buildAt = null)
     {
-        foreach (var policyVersionId in policyVersionIds.Distinct())
+        var requestedPolicyVersionIds = policyVersionIds
+            .Where(policyVersionId => policyVersionId > 0)
+            .Distinct()
+            .ToArray();
+        if (requestedPolicyVersionIds.Length == 0)
+        {
+            throw new BizException(
+                BizErrorCode.PolicyStatusNotAllowed,
+                400,
+                "发布策略版本不能为空。");
+        }
+
+        foreach (var policyVersionId in requestedPolicyVersionIds)
         {
             var version = await _policyRepository.GetVersionAsync(policyVersionId)
                 ?? throw new BizException(BizErrorCode.PolicyNotFound, 404, $"策略版本不存在: {policyVersionId}");
@@ -37,21 +48,17 @@ public sealed class RuntimePackagePublishService
                 ?? throw new BizException(BizErrorCode.PolicyNotFound, 404, $"策略不存在: {version.PolicyId}");
 
             await _eligibilityService.EnsureEligibleAsync(policy, version);
-            if (!string.Equals(version.PolicyStatus, PolicyLifecycleCodes.PublishReady, StringComparison.OrdinalIgnoreCase))
-            {
-                version.PolicyStatus = PolicyLifecycleCodes.PublishReady;
-                await _policyRepository.UpdateVersionAsync(version);
-            }
         }
 
         var result = await _compiler.CompileAsync(new RuntimePackageBuildContext
         {
             BuiltBy = publishedBy.Trim(),
             BuildAt = buildAt,
-            PolicyVersionIds = policyVersionIds
+            PolicyVersionIds = requestedPolicyVersionIds,
+            RequirePublishReadyStatus = false
         });
 
-        foreach (var policyVersionId in policyVersionIds.Distinct())
+        foreach (var policyVersionId in requestedPolicyVersionIds)
         {
             var version = await _policyRepository.GetVersionAsync(policyVersionId)
                 ?? throw new BizException(BizErrorCode.PolicyNotFound, 404, $"策略版本不存在: {policyVersionId}");

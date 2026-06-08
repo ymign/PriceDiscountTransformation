@@ -48,6 +48,13 @@ public sealed class TemplateVersionAppService
                 VersionNo = request.VersionNo ?? ((versions.Count == 0 ? 0 : versions.Max(item => item.VersionNo)) + 1),
                 VersionStatus = TemplateLifecycleCodes.Draft
             };
+        if (version.TemplateId != templateId)
+        {
+            throw new BizException(
+                BizErrorCode.TemplateVersionNotFound,
+                404,
+                $"模板版本 {version.TemplateVersionId} 不属于模板 {templateId}。");
+        }
 
         version.CapabilityFamily = request.CapabilityFamily.Trim();
         version.MergeMode = request.MergeMode.Trim();
