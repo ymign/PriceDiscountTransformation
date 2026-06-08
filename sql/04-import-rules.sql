@@ -552,6 +552,8 @@ DECLARE
   v_top_text     VARCHAR2(50);
   v_rate         NUMBER;
   v_topprice     NUMBER;
+  v_rate_json    VARCHAR2(50);
+  v_top_json     VARCHAR2(50);
   v_rule_id      NUMBER;
   v_ver_id       NUMBER;
   v_cond_id      NUMBER;
@@ -607,6 +609,8 @@ BEGIN
             ELSE
               v_topprice := TO_NUMBER(TRIM(v_top_text));
             END IF;
+            v_rate_json := fmt_num(v_rate);
+            v_top_json := fmt_num(v_topprice);
 
             SELECT COUNT(*) INTO v_exists
             FROM PR_RULE_HEADER
@@ -662,7 +666,7 @@ BEGIN
               ) VALUES (
                 v_act_id, v_rule_id, 1,
                 'FORMULA_CALC', 'INCREMENT_PERCENT',
-                '{"Rate":' || fmt_num(v_rate) || '}',
+                '{"Rate":' || v_rate_json || '}',
                 10, 'STOP', 'Y'
               );
 
@@ -675,7 +679,7 @@ BEGIN
                 ) VALUES (
                   v_act_id, v_rule_id, 1,
                   'APPLY_MAX_AMOUNT', 'AmountCeilingExecutor',
-                  '{"MaxAmount":' || fmt_num(v_topprice) || '}',
+                  '{"MaxAmount":' || v_top_json || '}',
                   20, 'STOP', 'Y'
                 );
               END IF;
