@@ -10,7 +10,7 @@ namespace Pricing.RuleCenter.Core.Engine.RuleRuntimeSnapshot;
 /// 规则匹配是计价接口的高频路径。该缓存按项目编码和当前运行包版本缓存候选规则快照，
 /// 既减少数据库读取，也避免同一请求在运行包切换时混读不同版本。
 /// </remarks>
-public sealed class EffectiveRuleSnapshotCache
+public sealed class EffectiveRuleSnapshotCache : IEffectiveRuleSnapshotCache
 {
     /// <summary>
     /// 缓存键前缀。

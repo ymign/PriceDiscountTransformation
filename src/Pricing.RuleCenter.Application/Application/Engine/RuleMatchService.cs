@@ -1,10 +1,8 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Caching.Memory;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
-using Pricing.RuleCenter.Core.Interfaces;
-using Pricing.RuleCenter.Core.Interfaces.Catalog;
-using Pricing.RuleCenter.Core.Interfaces.Rules;
 using Pricing.RuleCenter.Core.Engine.RuleRuntimeSnapshot;
+using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 
 namespace Pricing.RuleCenter.Core.Engine;
@@ -44,9 +42,9 @@ namespace Pricing.RuleCenter.Core.Engine;
 /// </remarks>
 public sealed class RuleMatchService : IRuleRuntimeCacheInvalidator
 {
-    private readonly EffectiveRuleSnapshotCache _snapshotCache;
-    private readonly RuleConditionGroupMatcher _conditionMatcher;
-    private readonly RuleActionPlanBuilder _actionPlanBuilder;
+    private readonly IEffectiveRuleSnapshotCache _snapshotCache;
+    private readonly IRuleConditionGroupMatcher _conditionMatcher;
+    private readonly IRuleActionPlanBuilder _actionPlanBuilder;
 
     /// <summary>
     /// 匹配日志，用于记录未知评估器、命中数量等运行期诊断信息。
@@ -56,45 +54,20 @@ public sealed class RuleMatchService : IRuleRuntimeCacheInvalidator
     /// <summary>
     /// 初始化规则匹配服务。
     /// </summary>
-    /// <param name="repositories">规则匹配只读仓储集合。</param>
-    /// <param name="evaluatorFactory">条件评估器工厂。</param>
+    /// <param name="snapshotCache">运行期候选规则快照缓存。</param>
+    /// <param name="conditionMatcher">条件组匹配器。</param>
+    /// <param name="actionPlanBuilder">动作执行计划构建器。</param>
     /// <param name="logger">日志对象。</param>
     public RuleMatchService(
-        RuleMatchRepositories repositories,
-        ConditionEvaluatorFactory evaluatorFactory,
-        ILogger<RuleMatchService> logger)
-        : this(repositories, CreateDefaultSnapshotCache(repositories), evaluatorFactory, logger)
-    {
-    }
-
-    /// <summary>
-    /// 初始化规则匹配服务。
-    /// </summary>
-    /// <param name="repositories">规则匹配只读仓储集合。</param>
-    /// <param name="snapshotCache">运行期生效规则快照缓存。</param>
-    /// <param name="evaluatorFactory">条件评估器工厂。</param>
-    /// <param name="logger">日志对象。</param>
-    public RuleMatchService(
-        RuleMatchRepositories repositories,
-        EffectiveRuleSnapshotCache snapshotCache,
-        ConditionEvaluatorFactory evaluatorFactory,
+        IEffectiveRuleSnapshotCache snapshotCache,
+        IRuleConditionGroupMatcher conditionMatcher,
+        IRuleActionPlanBuilder actionPlanBuilder,
         ILogger<RuleMatchService> logger)
     {
         _snapshotCache = snapshotCache;
+        _conditionMatcher = conditionMatcher;
+        _actionPlanBuilder = actionPlanBuilder;
         _logger = logger;
-        _conditionMatcher = new RuleConditionGroupMatcher(evaluatorFactory, logger);
-        _actionPlanBuilder = new RuleActionPlanBuilder(repositories.DictRepository, logger);
-    }
-
-    /// <summary>
-    /// 为直接构造规则匹配服务的测试创建默认快照缓存。
-    /// </summary>
-    public static EffectiveRuleSnapshotCache CreateDefaultSnapshotCache(RuleMatchRepositories repositories)
-    {
-        return new EffectiveRuleSnapshotCache(
-            new MemoryCache(new MemoryCacheOptions()),
-            new EffectiveRuleSnapshotLoader(repositories),
-            repositories.RuntimePackageTraceContextAccessor);
     }
 
     /// <summary>

@@ -1,8 +1,11 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Caching.Memory;
 using Pricing.RuleCenter.Core.Aggregates.Quota;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Engine;
 using Pricing.RuleCenter.Core.Engine.Executors;
+using Pricing.RuleCenter.Core.Engine.RuleRuntimeSnapshot;
+using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 using Pricing.RuleCenter.Infrastructure;
 using Xunit;
@@ -31,15 +34,15 @@ public sealed class SameGroupMutexPersistenceTests
             CreateSameGroupAction(4, "CP01"),
             CreateExceedToZeroAction(4));
 
+        var repositories = new RuleMatchRepositories(
+            headerRepository,
+            new StubRuleConditionRepository(),
+            actionRepository,
+            new StubDictRepository());
         var engine = new PricingEngine(
-            new RuleMatchService(
-                new RuleMatchRepositories(
-                    headerRepository,
-                    new StubRuleConditionRepository(),
-                    actionRepository,
-                    new StubDictRepository()),
-                new ConditionEvaluatorFactory(Array.Empty<Pricing.RuleCenter.Core.Interfaces.IRuleConditionEvaluator>()),
-                NullLogger<RuleMatchService>.Instance),
+            CreateRuleMatchService(
+                repositories,
+                new ConditionEvaluatorFactory(Array.Empty<Pricing.RuleCenter.Core.Interfaces.IRuleConditionEvaluator>())),
             new ActionExecutionPipeline(
                 new ActionExecutorFactory(new Pricing.RuleCenter.Core.Interfaces.IRuleActionExecutor[]
                 {
@@ -48,6 +51,7 @@ public sealed class SameGroupMutexPersistenceTests
                     new ExceedToZeroExecutor()
                 }),
                 NullLogger<ActionExecutionPipeline>.Instance),
+            CreateLimitOccupyValueFinalizers(),
             new SystemClock(),
             NullLogger<PricingEngine>.Instance);
 
@@ -82,15 +86,15 @@ public sealed class SameGroupMutexPersistenceTests
             CreateExceedToZeroAction(1),
             CreateExceedToZeroAction(2));
 
+        var repositories = new RuleMatchRepositories(
+            headerRepository,
+            new StubRuleConditionRepository(),
+            actionRepository,
+            new StubDictRepository());
         var engine = new PricingEngine(
-            new RuleMatchService(
-                new RuleMatchRepositories(
-                    headerRepository,
-                    new StubRuleConditionRepository(),
-                    actionRepository,
-                    new StubDictRepository()),
-                new ConditionEvaluatorFactory(Array.Empty<Pricing.RuleCenter.Core.Interfaces.IRuleConditionEvaluator>()),
-                NullLogger<RuleMatchService>.Instance),
+            CreateRuleMatchService(
+                repositories,
+                new ConditionEvaluatorFactory(Array.Empty<Pricing.RuleCenter.Core.Interfaces.IRuleConditionEvaluator>())),
             new ActionExecutionPipeline(
                 new ActionExecutorFactory(new Pricing.RuleCenter.Core.Interfaces.IRuleActionExecutor[]
                 {
@@ -98,6 +102,7 @@ public sealed class SameGroupMutexPersistenceTests
                     new ExceedToZeroExecutor()
                 }),
                 NullLogger<ActionExecutionPipeline>.Instance),
+            CreateLimitOccupyValueFinalizers(),
             new SystemClock(),
             NullLogger<PricingEngine>.Instance);
 
@@ -128,15 +133,15 @@ public sealed class SameGroupMutexPersistenceTests
             CreateExceedToZeroAction(1),
             CreateExceedToZeroAction(2));
 
+        var repositories = new RuleMatchRepositories(
+            headerRepository,
+            new StubRuleConditionRepository(),
+            actionRepository,
+            new StubDictRepository());
         var engine = new PricingEngine(
-            new RuleMatchService(
-                new RuleMatchRepositories(
-                    headerRepository,
-                    new StubRuleConditionRepository(),
-                    actionRepository,
-                    new StubDictRepository()),
-                new ConditionEvaluatorFactory(Array.Empty<Pricing.RuleCenter.Core.Interfaces.IRuleConditionEvaluator>()),
-                NullLogger<RuleMatchService>.Instance),
+            CreateRuleMatchService(
+                repositories,
+                new ConditionEvaluatorFactory(Array.Empty<Pricing.RuleCenter.Core.Interfaces.IRuleConditionEvaluator>())),
             new ActionExecutionPipeline(
                 new ActionExecutorFactory(new Pricing.RuleCenter.Core.Interfaces.IRuleActionExecutor[]
                 {
@@ -144,6 +149,7 @@ public sealed class SameGroupMutexPersistenceTests
                     new ExceedToZeroExecutor()
                 }),
                 NullLogger<ActionExecutionPipeline>.Instance),
+            CreateLimitOccupyValueFinalizers(),
             new SystemClock(),
             NullLogger<PricingEngine>.Instance);
 
@@ -167,6 +173,37 @@ public sealed class SameGroupMutexPersistenceTests
             SourceSystem = "HIS",
             BusinessRequestNo = $"REQ_{itemCode}",
             BusinessChargeTime = businessChargeTime ?? new DateTime(2026, 5, 14, 9, 0, 0)
+        };
+    }
+
+    private static RuleMatchService CreateRuleMatchService(
+        RuleMatchRepositories repositories,
+        ConditionEvaluatorFactory evaluatorFactory)
+    {
+        var snapshotCache = new EffectiveRuleSnapshotCache(
+            new MemoryCache(new MemoryCacheOptions()),
+            new EffectiveRuleSnapshotLoader(repositories),
+            repositories.RuntimePackageTraceContextAccessor);
+        var matcher = new RuleConditionGroupMatcher(
+            evaluatorFactory,
+            NullLogger<RuleConditionGroupMatcher>.Instance);
+        var actionPlanBuilder = new RuleActionPlanBuilder(
+            repositories.DictRepository,
+            NullLogger<RuleActionPlanBuilder>.Instance);
+        return new RuleMatchService(
+            snapshotCache,
+            matcher,
+            actionPlanBuilder,
+            NullLogger<RuleMatchService>.Instance);
+    }
+
+    private static ILimitOccupyValueFinalizer[] CreateLimitOccupyValueFinalizers()
+    {
+        return new ILimitOccupyValueFinalizer[]
+        {
+            new SameGroupLimitOccupyValueFinalizer(),
+            new SameOperationLimitOccupyValueFinalizer(),
+            new DefaultLimitOccupyValueFinalizer()
         };
     }
 

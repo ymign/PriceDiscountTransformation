@@ -1321,16 +1321,21 @@ public sealed class PricingApiServiceTests
         var idempotentResponseReader = new PricingIdempotentResponseReader(
             NullLogger<PricingIdempotentResponseReader>.Instance);
         var reverseHistoryReader = new PricingReverseHistoryReader(reverseLogRepository);
+        IRuleConditionGroupMatcher? conditionMatcher = conditionEvaluatorFactory is null
+            ? null
+            : new RuleConditionGroupMatcher(
+                conditionEvaluatorFactory,
+                NullLogger<RuleConditionGroupMatcher>.Instance);
         var specialFlagResolver = new PricingSpecialFlagResolver(
             headerRepository,
             clock,
             runtimeTraceResolver,
-            conditionEvaluatorFactory,
-            NullLogger<PricingSpecialFlagResolver>.Instance);
+            conditionMatcher);
+        var calculationRunner = new PricingItemCalculationRunner(engine);
 
         return new PricingApiService(
             new PricingSimulateWorkflow(
-                engine,
+                calculationRunner,
                 authorityPriceChecker,
                 requestLogWriter,
                 traceStepWriter,
@@ -1338,7 +1343,7 @@ public sealed class PricingApiServiceTests
                 clock,
                 NullLogger<PricingSimulateWorkflow>.Instance),
             new PricingConfirmWorkflow(
-                engine,
+                calculationRunner,
                 requestLogRepository,
                 authorityPriceChecker,
                 idempotencyService,

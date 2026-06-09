@@ -1,7 +1,9 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Caching.Memory;
 using Pricing.RuleCenter.Core.Aggregates.Catalog;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Engine;
+using Pricing.RuleCenter.Core.Engine.RuleRuntimeSnapshot;
 using Pricing.RuleCenter.Core.Interfaces.Catalog;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
 using Pricing.RuleCenter.Core.Models;
@@ -20,13 +22,22 @@ public sealed class RuleMatchServiceGroupScopeTests
         await using var fixture = await SqlSugarFixture.CreateAsync();
         await fixture.SeedGroupScopedRuleAsync();
 
+        var repositories = new RuleMatchRepositories(
+            new RuleHeaderRepository(fixture.Db, new SystemClock()),
+            new StubRuleConditionRepository(),
+            new StubRuleActionRepository(),
+            new StubDictRepository());
         var service = new RuleMatchService(
-            new RuleMatchRepositories(
-                new RuleHeaderRepository(fixture.Db, new SystemClock()),
-                new StubRuleConditionRepository(),
-                new StubRuleActionRepository(),
-                new StubDictRepository()),
-            new ConditionEvaluatorFactory(Array.Empty<Pricing.RuleCenter.Core.Interfaces.IRuleConditionEvaluator>()),
+            new EffectiveRuleSnapshotCache(
+                new MemoryCache(new MemoryCacheOptions()),
+                new EffectiveRuleSnapshotLoader(repositories),
+                repositories.RuntimePackageTraceContextAccessor),
+            new RuleConditionGroupMatcher(
+                new ConditionEvaluatorFactory(Array.Empty<Pricing.RuleCenter.Core.Interfaces.IRuleConditionEvaluator>()),
+                NullLogger<RuleConditionGroupMatcher>.Instance),
+            new RuleActionPlanBuilder(
+                repositories.DictRepository,
+                NullLogger<RuleActionPlanBuilder>.Instance),
             NullLogger<RuleMatchService>.Instance);
 
         var context = new PricingContext

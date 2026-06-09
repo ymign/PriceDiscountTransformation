@@ -23,6 +23,7 @@ public sealed class PricingEngine : IPricingEngine
     /// 动作执行管线，负责按顺序执行已经排序好的动作。
     /// </summary>
     private readonly ActionExecutionPipeline _pipeline;
+    private readonly IReadOnlyList<ILimitOccupyValueFinalizer> _limitOccupyValueFinalizers;
     /// <summary>
     /// 引擎日志，用于记录计价完成的关键金额。
     /// </summary>
@@ -34,16 +35,19 @@ public sealed class PricingEngine : IPricingEngine
     /// </summary>
     /// <param name="ruleMatchService">规则匹配服务。</param>
     /// <param name="pipeline">动作执行管线。</param>
+    /// <param name="limitOccupyValueFinalizers">限额占额草稿结算策略集合。</param>
     /// <param name="clock">技术时间提供者。</param>
     /// <param name="logger">日志对象。</param>
     public PricingEngine(
         RuleMatchService ruleMatchService,
         ActionExecutionPipeline pipeline,
+        IEnumerable<ILimitOccupyValueFinalizer> limitOccupyValueFinalizers,
         IClock clock,
         ILogger<PricingEngine> logger)
     {
         _ruleMatchService = ruleMatchService;
         _pipeline = pipeline;
+        _limitOccupyValueFinalizers = limitOccupyValueFinalizers.ToList();
         _clock = clock;
         _logger = logger;
     }
@@ -252,24 +256,26 @@ public sealed class PricingEngine : IPricingEngine
     /// </list>
     /// 因此不能把所有占额都简单写成 FinalQty/FinalAmount。
     /// </remarks>
-    private static void ApplyFinalOccupyValues(LimitOccupy occupy, PricingContext context)
+    private void ApplyFinalOccupyValues(LimitOccupy occupy, PricingContext context)
     {
-        switch (occupy.LimitType.ToUpperInvariant())
+        var matchedFinalizers = _limitOccupyValueFinalizers
+            .Where(finalizer => finalizer.CanHandle(occupy))
+            .ToArray();
+        var selectedFinalizers = matchedFinalizers
+            .Where(finalizer => !finalizer.IsFallback)
+            .ToArray();
+
+        if (selectedFinalizers.Length == 0)
         {
-            case "SAME_GROUP":
-                occupy.OccupyQty = context.FinalQty > 0 ? 1m : 0m;
-                occupy.OccupyAmt = 0m;
-                break;
-
-            case "SAME_OPERATION":
-                occupy.OccupyQty = 0m;
-                occupy.OccupyAmt = context.FinalAmount;
-                break;
-
-            default:
-                occupy.OccupyQty = context.FinalQty;
-                occupy.OccupyAmt = context.FinalAmount;
-                break;
+            selectedFinalizers = matchedFinalizers;
         }
+
+        if (selectedFinalizers.Length != 1)
+        {
+            throw new InvalidOperationException(
+                $"未找到唯一的限额占额结算器: LimitType={occupy.LimitType}, Count={selectedFinalizers.Length}");
+        }
+
+        selectedFinalizers[0].Apply(occupy, context);
     }
 }

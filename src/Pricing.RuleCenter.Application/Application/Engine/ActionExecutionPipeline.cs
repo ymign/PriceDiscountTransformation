@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
+using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Models;
 
 namespace Pricing.RuleCenter.Core.Engine;
@@ -151,7 +152,9 @@ public sealed class ActionExecutionPipeline
                     // 执行器内部也可能写入更细的业务追溯步骤，所以这里不能使用进入管线时缓存的序号。
                     // 每次追加前都基于当前集合长度取下一个号，避免出现重复 StepNo。
                     StepNo = context.TraceSteps.Count + 1,
-                    StepType = GetStepType(action.ActionType),
+                    StepType = RuleActionTraceStepTypes.EnsureAllowed(
+                        executors[0].TraceStepType,
+                        action.ActionType),
                     StepDesc = $"执行 {action.ActionType}",
                     InputValue = inputValue,
                     OutputValue = context.FinalAmount,
@@ -195,47 +198,6 @@ public sealed class ActionExecutionPipeline
                 // OnError == "SKIP" 时：仅日志记录，不写追溯步骤，不中断。
             }
         }
-    }
-
-    /// <summary>
-    /// 将动作类型映射为追踪步骤类型。映射关系遵循数据库 STEP_TYPE 列的 CHECK 约束。
-    /// </summary>
-    /// <param name="actionType">规则动作类型编码。</param>
-    /// <returns>
-    /// 数据库步骤表允许的步骤类型，取值范围：
-    /// CONVERT（换算）、FORMULA（公式）、LIMIT（限额）、DISCOUNT（折价）、VALIDATE（兜底）。
-    /// </returns>
-    /// <remarks>
-    /// 映射原则：同一业务大类的动作共享步骤类型。好处：
-    /// <list type="bullet">
-    ///   <item><description>新增 ActionType 时无需改 DDL 的 CHECK 约束</description></item>
-    ///   <item><description>追溯查询可以按大类过滤和聚合</description></item>
-    ///   <item><description>前端展示时按大类分组，避免枚举膨胀</description></item>
-    /// </list>
-    /// </remarks>
-    private static string GetStepType(string actionType)
-    {
-        // 数据库步骤表的 STEP_TYPE 是受控枚举。将具体动作映射到受控步骤类型，
-        // 能避免新增动作时频繁改 DDL，也让追溯查询按大类展示。
-        return actionType switch
-        {
-            // 换算类：双单位换算
-            "CONVERT_QTY" => "CONVERT",
-
-            // 公式类：各种计价公式计算
-            "FORMULA_CALC" => "FORMULA",
-
-            // 限额类：金额上下限、日限额、时间窗限额、单次限额、同组互斥
-            "APPLY_MIN_AMOUNT" or "APPLY_MAX_AMOUNT" or "APPLY_DAY_LIMIT_QTY"
-                or "APPLY_TIME_WINDOW_LIMIT" or "APPLY_ONCE_LIMIT_QTY"
-                or "SAME_GROUP_MUTEX" or "SAME_OPERATION_CEILING" => "LIMIT",
-
-            // 折价类：超额归零、子项加收
-            "DISCOUNT_EXCEED_TO_ZERO" or "ADD_CHILD_ITEM" => "DISCOUNT",
-
-            // 兜底：未知动作类型映射为 VALIDATE，便于追溯时识别未分类动作
-            _ => "VALIDATE"
-        };
     }
 
     /// <summary>

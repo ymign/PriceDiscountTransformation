@@ -1,4 +1,5 @@
 using Pricing.RuleCenter.Core.Aggregates.Rules;
+using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 
 namespace Pricing.RuleCenter.Core.Engine;
@@ -16,7 +17,7 @@ namespace Pricing.RuleCenter.Core.Engine;
 /// 未找到条件评估器时按不命中处理，避免未知条件类型导致规则误命中。
 /// </para>
 /// </remarks>
-public sealed class RuleConditionGroupMatcher
+public sealed class RuleConditionGroupMatcher : IRuleConditionGroupMatcher
 {
     /// <summary>
     /// 条件评估器工厂，用于按 ConditionType 找到具体评估器。
@@ -25,7 +26,7 @@ public sealed class RuleConditionGroupMatcher
     /// <summary>
     /// 运行期诊断日志。
     /// </summary>
-    private readonly ILogger _logger;
+    private readonly ILogger<RuleConditionGroupMatcher> _logger;
 
     /// <summary>
     /// 初始化规则条件组匹配器。
@@ -34,7 +35,7 @@ public sealed class RuleConditionGroupMatcher
     /// <param name="logger">日志组件。</param>
     public RuleConditionGroupMatcher(
         ConditionEvaluatorFactory evaluatorFactory,
-        ILogger logger)
+        ILogger<RuleConditionGroupMatcher> logger)
     {
         _evaluatorFactory = evaluatorFactory;
         _logger = logger;

@@ -34,10 +34,7 @@ namespace Pricing.RuleCenter.Application.Pricing;
 /// </remarks>
 public sealed class PricingSimulateWorkflow
 {
-    /// <summary>
-    /// 计价核心引擎，负责规则匹配、动作执行、金额计算和步骤生成。
-    /// </summary>
-    private readonly IPricingEngine _engine;
+    private readonly PricingItemCalculationRunner _calculationRunner;
 
     /// <summary>
     /// 权威价格诊断器，用于在开关允许时记录明细单价与 HIS 物价主数据的差异。
@@ -80,7 +77,7 @@ public sealed class PricingSimulateWorkflow
     /// <param name="clock">统一时钟。</param>
     /// <param name="logger">试算工作流日志对象。</param>
     public PricingSimulateWorkflow(
-        IPricingEngine engine,
+        PricingItemCalculationRunner calculationRunner,
         AuthorityPriceChecker authorityPriceChecker,
         PricingRequestLogWriter requestLogWriter,
         PricingTraceStepWriter traceStepWriter,
@@ -88,7 +85,7 @@ public sealed class PricingSimulateWorkflow
         IClock clock,
         ILogger<PricingSimulateWorkflow> logger)
     {
-        _engine = engine;
+        _calculationRunner = calculationRunner;
         _authorityPriceChecker = authorityPriceChecker;
         _requestLogWriter = requestLogWriter;
         _traceStepWriter = traceStepWriter;
@@ -130,25 +127,7 @@ public sealed class PricingSimulateWorkflow
         // ========== 第三阶段：逐条明细计价 ==========
         // 试算不锁数据库额度，但仍维护“本请求内已占数量”，保证批量明细之间的同组互斥/窗口限制口径一致。
         // 这里的请求内占用只存在于内存中，不会污染正式额度；后续 confirm 会重新读取真实历史占用并加锁确认。
-        var inRequestOccupiedQtyByLimitDimension = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
-        var inRequestLimitOccupies = new List<LimitOccupy>();
-        var batchContext = items.Count > 1 ? new BatchPricingContext() : null;
-        var calculations = new List<ItemPricingCalculation>(items.Count);
-        foreach (var item in items)
-        {
-            var context = PricingContextFactory.Create(new PricingContextBuildInput
-            {
-                Request = request,
-                Item = item,
-                CallType = "SIMULATE",
-                ShouldLockLimits = false,
-                InRequestOccupiedQtyByLimitDimension = inRequestOccupiedQtyByLimitDimension,
-                InRequestLimitOccupies = inRequestLimitOccupies
-            });
-            var result = await _engine.CalculateAsync(context, batchContext);
-            AccumulateInRequestLimits(inRequestOccupiedQtyByLimitDimension, inRequestLimitOccupies, result);
-            calculations.Add(new ItemPricingCalculation(item, result));
-        }
+        var calculations = await _calculationRunner.RunAsync(request, items, "SIMULATE", shouldLockLimits: false);
 
         // ========== 第四阶段：保存追踪日志并构建响应 ==========
         // 试算日志状态使用 SIMULATED，后续不会进入 commit/cancel 状态流转。
@@ -175,35 +154,4 @@ public sealed class PricingSimulateWorkflow
         return response;
     }
 
-    /// <summary>
-    /// 将当前明细产生的限额占用累加到本次请求内存上下文。
-    /// </summary>
-    /// <param name="inRequestOccupiedQtyByLimitDimension">
-    /// 本次请求内按限额类型和限额维度汇总的虚拟占用数量，用于后续明细判断同批累计。
-    /// </param>
-    /// <param name="inRequestLimitOccupies">
-    /// 本次请求内已经产生的虚拟占用明细，供需要读取完整占用记录的执行器使用。
-    /// </param>
-    /// <param name="result">当前费用明细的计价结果。</param>
-    /// <remarks>
-    /// 该方法只服务试算请求内的批量口径。它不写数据库，因此不会影响正式限额；它的价值在于让
-    /// “同一批录入多条项目”在页面预览时就能看到互斥、封顶和超限效果，避免 confirm 时才突然变价。
-    /// </remarks>
-    private static void AccumulateInRequestLimits(
-        Dictionary<string, decimal> inRequestOccupiedQtyByLimitDimension,
-        List<LimitOccupy> inRequestLimitOccupies,
-        PricingResult result)
-    {
-        // 批量试算时，前一条明细的虚拟占用要参与后一条明细的规则判断。
-        // 这里不写数据库，只在当前请求内累计，防止试算污染正式额度。
-        foreach (var occupy in result.LimitOccupies.Where(o =>
-                     !string.IsNullOrWhiteSpace(o.LimitType) &&
-                     !string.IsNullOrWhiteSpace(o.LimitDimensionCode)))
-        {
-            var key = $"{occupy.LimitType.Trim().ToUpperInvariant()}:{occupy.LimitDimensionCode?.Trim().ToUpperInvariant()}";
-            inRequestOccupiedQtyByLimitDimension.TryGetValue(key, out var existingQty);
-            inRequestOccupiedQtyByLimitDimension[key] = existingQty + occupy.OccupyQty;
-            inRequestLimitOccupies.Add(occupy);
-        }
-    }
 }

@@ -1,7 +1,9 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Caching.Memory;
 using Newtonsoft.Json;
 using Pricing.RuleCenter.Core.Engine;
 using Pricing.RuleCenter.Core.Engine.Executors;
+using Pricing.RuleCenter.Core.Engine.RuleRuntimeSnapshot;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 using Pricing.RuleCenter.Infrastructure;
@@ -148,6 +150,7 @@ public sealed class ExceedToZeroExecutorTests
         var engine = new PricingEngine(
             ruleMatchService,
             pipeline,
+            CreateLimitOccupyValueFinalizers(),
             new SystemClock(),
             NullLogger<PricingEngine>.Instance);
 
@@ -217,6 +220,7 @@ public sealed class ExceedToZeroExecutorTests
         var engine = new PricingEngine(
             ruleMatchService,
             pipeline,
+            CreateLimitOccupyValueFinalizers(),
             new SystemClock(),
             NullLogger<PricingEngine>.Instance);
 
@@ -243,13 +247,32 @@ public sealed class ExceedToZeroExecutorTests
         IDictRepository dictRepository,
         Microsoft.Extensions.Logging.ILogger<RuleMatchService> logger) =>
         new(
-            new RuleMatchRepositories(
-                headerRepository,
-                conditionRepository,
-                actionRepository,
-                dictRepository),
-            evaluatorFactory,
+            new EffectiveRuleSnapshotCache(
+                new MemoryCache(new MemoryCacheOptions()),
+                new EffectiveRuleSnapshotLoader(
+                    new RuleMatchRepositories(
+                        headerRepository,
+                        conditionRepository,
+                        actionRepository,
+                        dictRepository)),
+                null),
+            new RuleConditionGroupMatcher(
+                evaluatorFactory,
+                NullLogger<RuleConditionGroupMatcher>.Instance),
+            new RuleActionPlanBuilder(
+                dictRepository,
+                NullLogger<RuleActionPlanBuilder>.Instance),
             logger);
+
+    private static ILimitOccupyValueFinalizer[] CreateLimitOccupyValueFinalizers()
+    {
+        return new ILimitOccupyValueFinalizer[]
+        {
+            new SameGroupLimitOccupyValueFinalizer(),
+            new SameOperationLimitOccupyValueFinalizer(),
+            new DefaultLimitOccupyValueFinalizer()
+        };
+    }
 
     private sealed class FullLimitExecutor : IRuleActionExecutor
     {

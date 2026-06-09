@@ -149,6 +149,7 @@ internal static class RuleCenterApiServiceCollectionExtensions
         services.AddScoped<PricingIdempotentResponseReader>();
         services.AddScoped<PricingReverseHistoryReader>();
         services.AddScoped<PricingSpecialFlagResolver>();
+        services.AddScoped<PricingItemCalculationRunner>();
         services.AddScoped<PricingSimulateWorkflow>();
         services.AddScoped<PricingConfirmWorkflow>();
         services.AddScoped<PricingCommitWorkflow>();
@@ -291,6 +292,8 @@ internal static class RuleCenterApiServiceCollectionExtensions
 
         services.AddScoped<ConditionEvaluatorFactory>();
         services.AddScoped<ActionExecutorFactory>();
+        services.AddScoped<IRuleConditionGroupMatcher, RuleConditionGroupMatcher>();
+        services.AddScoped<IRuleActionPlanBuilder, RuleActionPlanBuilder>();
         services.AddScoped(provider => new RuleMatchRepositories(
             provider.GetRequiredService<IRuleHeaderRepository>(),
             provider.GetRequiredService<IRuleConditionRepository>(),
@@ -300,7 +303,10 @@ internal static class RuleCenterApiServiceCollectionExtensions
             provider.GetService<IRuntimeRuleReadRepository>(),
             provider.GetRequiredService<RuntimePackageTraceContextAccessor>()));
         services.AddScoped<EffectiveRuleSnapshotLoader>();
-        services.AddScoped<EffectiveRuleSnapshotCache>();
+        services.AddScoped<IEffectiveRuleSnapshotCache, EffectiveRuleSnapshotCache>();
+        services.AddScoped<ILimitOccupyValueFinalizer, SameGroupLimitOccupyValueFinalizer>();
+        services.AddScoped<ILimitOccupyValueFinalizer, SameOperationLimitOccupyValueFinalizer>();
+        services.AddScoped<ILimitOccupyValueFinalizer, DefaultLimitOccupyValueFinalizer>();
         services.AddScoped<RuleMatchService>();
         services.AddScoped<IRuleRuntimeCacheInvalidator>(provider =>
             provider.GetRequiredService<RuleMatchService>());

@@ -807,13 +807,12 @@ public sealed class PricingReverseTests
         var specialFlagResolver = new PricingSpecialFlagResolver(
             headerRepository,
             clock,
-            runtimeTraceResolver,
-            null,
-            NullLogger<PricingSpecialFlagResolver>.Instance);
+            runtimeTraceResolver);
+        var calculationRunner = new PricingItemCalculationRunner(engine);
 
         return new PricingApiService(
             new PricingSimulateWorkflow(
-                engine,
+                calculationRunner,
                 authorityPriceChecker,
                 requestLogWriter,
                 traceStepWriter,
@@ -821,7 +820,7 @@ public sealed class PricingReverseTests
                 clock,
                 NullLogger<PricingSimulateWorkflow>.Instance),
             new PricingConfirmWorkflow(
-                engine,
+                calculationRunner,
                 requestRepository,
                 authorityPriceChecker,
                 idempotencyService,

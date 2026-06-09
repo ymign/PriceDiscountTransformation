@@ -1,4 +1,5 @@
 using Pricing.RuleCenter.Core.Aggregates.Rules;
+using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Models;
 
 namespace Pricing.RuleCenter.Core.Interfaces;
@@ -54,6 +55,11 @@ public interface IRuleActionExecutor
     /// 例如："FORMULA_CALC"、"APPLY_MAX_AMOUNT"、"APPLY_DAY_LIMIT_QTY"。
     /// </summary>
     string ActionType { get; }
+
+    /// <summary>
+    /// 当前动作默认归属的追溯步骤大类。
+    /// </summary>
+    string TraceStepType => RuleActionTraceStepTypes.Resolve(ActionType);
 
     /// <summary>
     /// 判断当前执行器是否真正处理该规则动作。

@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Caching.Memory;
 using Pricing.RuleCenter.Core.Engine;
+using Pricing.RuleCenter.Core.Engine.RuleRuntimeSnapshot;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 using Xunit;
@@ -394,12 +396,21 @@ public sealed class RuleMatchServiceTests
         IDictRepository dictRepository,
         ILogger<RuleMatchService> logger) =>
         new(
-            new RuleMatchRepositories(
-                headerRepository,
-                conditionRepository,
-                actionRepository,
-                dictRepository),
-            evaluatorFactory,
+            new EffectiveRuleSnapshotCache(
+                new MemoryCache(new MemoryCacheOptions()),
+                new EffectiveRuleSnapshotLoader(
+                    new RuleMatchRepositories(
+                        headerRepository,
+                        conditionRepository,
+                        actionRepository,
+                        dictRepository)),
+                null),
+            new RuleConditionGroupMatcher(
+                evaluatorFactory,
+                NullLogger<RuleConditionGroupMatcher>.Instance),
+            new RuleActionPlanBuilder(
+                dictRepository,
+                NullLogger<RuleActionPlanBuilder>.Instance),
             logger);
 
     private sealed class FixedRuleHeaderRepository : IRuleHeaderRepository

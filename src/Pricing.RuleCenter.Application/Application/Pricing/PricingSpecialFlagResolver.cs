@@ -39,7 +39,7 @@ public sealed class PricingSpecialFlagResolver
     /// <summary>
     /// 条件组匹配器，用于 special-flag 查询时提前按场景、部位、就诊类型等条件预判命中。
     /// </summary>
-    private readonly RuleConditionGroupMatcher? _conditionMatcher;
+    private readonly IRuleConditionGroupMatcher? _conditionMatcher;
 
     /// <summary>
     /// 初始化特殊项目标识解析器。
@@ -47,23 +47,17 @@ public sealed class PricingSpecialFlagResolver
     /// <param name="headerRepository">规则头仓储，用于读取项目关联规则。</param>
     /// <param name="clock">技术时间提供者，用于按当前时间过滤有效规则。</param>
     /// <param name="runtimePackageTraceResolver">运行时包追溯解析器，用于优先读取激活运行时包。</param>
-    /// <param name="conditionEvaluatorFactory">条件评估器工厂，用于按查询维度预判规则命中。</param>
-    /// <param name="logger">日志组件。</param>
+    /// <param name="conditionMatcher">条件组匹配器，用于按查询维度预判规则命中。</param>
     public PricingSpecialFlagResolver(
         IRuleHeaderRepository headerRepository,
         IClock clock,
         RuntimePackageTraceResolver? runtimePackageTraceResolver = null,
-        ConditionEvaluatorFactory? conditionEvaluatorFactory = null,
-        ILogger<PricingSpecialFlagResolver>? logger = null)
+        IRuleConditionGroupMatcher? conditionMatcher = null)
     {
         _headerRepository = headerRepository;
         _clock = clock;
         _runtimePackageTraceResolver = runtimePackageTraceResolver;
-        _conditionMatcher = conditionEvaluatorFactory is null
-            ? null
-            : new RuleConditionGroupMatcher(
-                conditionEvaluatorFactory,
-                logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<PricingSpecialFlagResolver>.Instance);
+        _conditionMatcher = conditionMatcher;
     }
 
     /// <summary>

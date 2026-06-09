@@ -74,6 +74,31 @@ public sealed class ActionExecutionPipelineTests
         Assert.Equal(22m, context.FinalAmount);
     }
 
+    [Fact]
+    public async Task ExecuteAsync_RejectsExecutorProvidedInvalidTraceStepType()
+    {
+        var pipeline = new ActionExecutionPipeline(
+            new ActionExecutorFactory(new IRuleActionExecutor[]
+            {
+                new InvalidTraceStepExecutor()
+            }),
+            NullLogger<ActionExecutionPipeline>.Instance);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            pipeline.ExecuteAsync(new[]
+            {
+                new RuleAction
+                {
+                    ActionType = "FORMULA_CALC",
+                    ExecutorCode = "INVALID_TRACE",
+                    IsEnabled = "Y",
+                    OnError = "STOP"
+                }
+            }, new PricingContext { FinalAmount = 100m }));
+
+        Assert.Contains("非法追溯步骤类型", ex.Message);
+    }
+
     private sealed class NoOpExecutor : IRuleActionExecutor
     {
         public NoOpExecutor(string actionType)
@@ -115,6 +140,24 @@ public sealed class ActionExecutionPipelineTests
 
             WasExecuted = true;
             context.FinalAmount = _amount;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class InvalidTraceStepExecutor : IRuleActionExecutor
+    {
+        public string ActionType => "FORMULA_CALC";
+
+        public string TraceStepType => "CUSTOM";
+
+        public bool CanHandle(RuleAction action)
+        {
+            return string.Equals(action.ExecutorCode, "INVALID_TRACE", StringComparison.OrdinalIgnoreCase);
+        }
+
+        public Task ExecuteAsync(RuleAction action, PricingContext context)
+        {
+            context.FinalAmount = 123m;
             return Task.CompletedTask;
         }
     }

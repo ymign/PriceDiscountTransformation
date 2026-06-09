@@ -2,6 +2,7 @@ using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Core.Engine;
 using Pricing.RuleCenter.Core.Engine.RuleRuntimeSnapshot;
 using Pricing.RuleCenter.Core.Interfaces;
+using Microsoft.Extensions.Caching.Memory;
 using Pricing.RuleCenter.Core.Models;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -166,10 +167,9 @@ public sealed class ActiveRuntimePackageReaderTests
                         OnError = "STOP"
                     }
                 }));
-        var service = new RuleMatchService(
+        var service = CreateRuleMatchService(
             repositories,
-            new ConditionEvaluatorFactory(Array.Empty<IRuleConditionEvaluator>()),
-            NullLogger<RuleMatchService>.Instance);
+            new ConditionEvaluatorFactory(Array.Empty<IRuleConditionEvaluator>()));
 
         var (rules, actions) = await service.MatchAsync(new PricingContext
         {
@@ -182,6 +182,27 @@ public sealed class ActiveRuntimePackageReaderTests
         var matchedAction = Assert.Single(actions);
         Assert.Equal(1201, matchedAction.RuleId);
         Assert.Equal("FORMULA_CALC", matchedAction.ActionType);
+    }
+
+    private static RuleMatchService CreateRuleMatchService(
+        RuleMatchRepositories repositories,
+        ConditionEvaluatorFactory evaluatorFactory)
+    {
+        var matcher = new RuleConditionGroupMatcher(
+            evaluatorFactory,
+            NullLogger<RuleConditionGroupMatcher>.Instance);
+        var actionPlanBuilder = new RuleActionPlanBuilder(
+            repositories.DictRepository,
+            NullLogger<RuleActionPlanBuilder>.Instance);
+        var snapshotCache = new EffectiveRuleSnapshotCache(
+            new MemoryCache(new MemoryCacheOptions()),
+            new EffectiveRuleSnapshotLoader(repositories),
+            repositories.RuntimePackageTraceContextAccessor);
+        return new RuleMatchService(
+            snapshotCache,
+            matcher,
+            actionPlanBuilder,
+            NullLogger<RuleMatchService>.Instance);
     }
 
     [Fact]

@@ -1,4 +1,5 @@
 using Pricing.RuleCenter.Core.Aggregates.Rules;
+using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Catalog;
 using Pricing.RuleCenter.Core.Models;
 
@@ -17,7 +18,7 @@ namespace Pricing.RuleCenter.Core.Engine;
 /// 例如必须先执行换算和数量限制，再执行公式折价，最后金额封顶和超限归零。
 /// </para>
 /// </remarks>
-public sealed class RuleActionPlanBuilder
+public sealed class RuleActionPlanBuilder : IRuleActionPlanBuilder
 {
     /// <summary>
     /// 动作类型顺序字典类型。
@@ -65,7 +66,7 @@ public sealed class RuleActionPlanBuilder
     /// <summary>
     /// 运行期诊断日志。
     /// </summary>
-    private readonly ILogger _logger;
+    private readonly ILogger<RuleActionPlanBuilder> _logger;
 
     /// <summary>
     /// 初始化规则动作执行计划构建器。
@@ -74,7 +75,7 @@ public sealed class RuleActionPlanBuilder
     /// <param name="logger">日志组件。</param>
     public RuleActionPlanBuilder(
         IDictRepository dictRepository,
-        ILogger logger)
+        ILogger<RuleActionPlanBuilder> logger)
     {
         _dictRepository = dictRepository;
         _logger = logger;
