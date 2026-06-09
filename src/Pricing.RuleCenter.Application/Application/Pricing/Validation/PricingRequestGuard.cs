@@ -7,8 +7,23 @@ namespace Pricing.RuleCenter.Application.Pricing.Validation;
 /// </summary>
 internal static class PricingRequestGuard
 {
+    /// <summary>
+    /// 单次计价请求最多允许的费用明细数。
+    /// </summary>
+    /// <remarks>
+    /// 该限制保护 batch-simulate/confirm 不被超大请求拖垮，同时与接口设计中批量最多 50 项保持一致。
+    /// </remarks>
     private const int MaxCalculateItemCount = 50;
 
+    /// <summary>
+    /// 校验试算/确认共享的计价请求结构，并返回非空费用明细集合。
+    /// </summary>
+    /// <param name="request">计价请求。</param>
+    /// <returns>已经过基础校验的费用明细集合。</returns>
+    /// <remarks>
+    /// 这里是 workflow 内部不可绕过的防线。虽然 MediatR 管道已经运行 FluentValidation，
+    /// 但部分测试或内部调用可能直接调用 workflow，因此资金相关入口仍需在 workflow 内再次校验关键字段。
+    /// </remarks>
     public static IReadOnlyList<PricingCalculateItemRequest> GetRequiredItems(
         PricingCalculateRequest request)
     {
@@ -50,6 +65,13 @@ internal static class PricingRequestGuard
         return request.Items;
     }
 
+    /// <summary>
+    /// 校验 confirm 请求必须携带稳定业务请求号。
+    /// </summary>
+    /// <param name="request">确认计价请求。</param>
+    /// <remarks>
+    /// BusinessRequestNo 是 confirm 幂等键的一部分。缺失时无法区分渠道重试和新的收费动作，存在重复占额风险。
+    /// </remarks>
     public static void EnsureConfirmRequest(PricingCalculateRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -60,6 +82,14 @@ internal static class PricingRequestGuard
         }
     }
 
+    /// <summary>
+    /// 校验 commit 请求结构。
+    /// </summary>
+    /// <param name="request">落账提交请求。</param>
+    /// <remarks>
+    /// commit 的核心定位字段是 RequestId；ActualItems 的数量和金额允许为 0，但不能为负数。
+    /// 真实明细是否覆盖 confirm 保存的全部结果，由 <see cref="PricingCommitActualValidator"/> 做业务对账。
+    /// </remarks>
     public static void EnsureCommitRequest(PricingCommitRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -106,6 +136,13 @@ internal static class PricingRequestGuard
         }
     }
 
+    /// <summary>
+    /// 校验 cancel 请求结构。
+    /// </summary>
+    /// <param name="request">取消确认请求。</param>
+    /// <remarks>
+    /// cancel 只能按 RequestId 定位待取消记录，不能只靠业务号释放额度，避免误释放其他收费动作。
+    /// </remarks>
     public static void EnsureCancelRequest(PricingCancelRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -121,6 +158,13 @@ internal static class PricingRequestGuard
         }
     }
 
+    /// <summary>
+    /// 校验 reverse 请求结构。
+    /// </summary>
+    /// <param name="request">退费冲正请求。</param>
+    /// <remarks>
+    /// ReverseNo 是退费幂等键。数量和金额可以为空，表示由 workflow 按原明细推导；显式传入时必须为正/非负。
+    /// </remarks>
     public static void EnsureReverseRequest(PricingReverseRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -151,6 +195,11 @@ internal static class PricingRequestGuard
         }
     }
 
+    /// <summary>
+    /// 校验单条费用明细及多片段明细。
+    /// </summary>
+    /// <param name="item">费用明细。</param>
+    /// <param name="itemIndex">明细在请求中的索引，用于错误消息定位。</param>
     private static void EnsureCalculateItem(PricingCalculateItemRequest item, int itemIndex)
     {
         if (string.IsNullOrWhiteSpace(item.ItemCode))

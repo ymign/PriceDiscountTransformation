@@ -51,6 +51,8 @@ public sealed class OnceQtyLimitExecutor : IRuleActionExecutor
     /// <param name="context">计价上下文。</param>
     public async Task ExecuteAsync(RuleAction action, PricingContext context)
     {
+        // ========== 第一阶段：解析单次上限 ==========
+        // 支持 MaxOnceQty/LimitQty/MaxQty 多个历史参数名，避免旧规则迁移后因字段名不同直接跳过。
         var param = DeserializeParams(action.ParamsJson);
         var maxOnceQty = param?.GetMaxOnceQty();
         if (!maxOnceQty.HasValue)
@@ -58,14 +60,19 @@ public sealed class OnceQtyLimitExecutor : IRuleActionExecutor
             return;
         }
 
+        // ========== 第二阶段：构建单次收费动作维度 ==========
+        // 单次口径必须使用稳定业务请求号，不能用单条收费明细号。
         var dimensionCode = BuildDimensionCode(context);
         var limitKey = $"OQ:{dimensionCode}";
 
         if (context.ShouldLockLimits)
         {
+            // confirm 阶段锁定单次维度，防止同一业务号并发重复确认突破单次上限。
             await _limitRepository.EnsureAndLockAsync(new[] { limitKey });
         }
 
+        // ========== 第三阶段：汇总历史和本请求内占用 ==========
+        // PENDING + CONFIRMED 都要计入，批量请求中前序明细也要计入。
         var occupiedQty = 0m;
         foreach (var status in OccupyStatuses)
         {
@@ -78,6 +85,7 @@ public sealed class OnceQtyLimitExecutor : IRuleActionExecutor
             occupiedQty += inRequestQty;
         }
 
+        // ========== 第四阶段：按剩余额度截断数量和金额 ==========
         var remainingQty = maxOnceQty.Value - occupiedQty;
         if (remainingQty <= 0)
         {
@@ -96,6 +104,8 @@ public sealed class OnceQtyLimitExecutor : IRuleActionExecutor
                 : context.FinalAmount * context.FinalQty / beforeQty;
         }
 
+        // ========== 第五阶段：追加占额草稿 ==========
+        // 执行器只生成草稿，最终 RequestId、TraceId 和状态由应用层写入。
         AddOccupyDraft(context, limitKey, dimensionCode);
     }
 
@@ -114,6 +124,7 @@ public sealed class OnceQtyLimitExecutor : IRuleActionExecutor
 
     private static void AddOccupyDraft(PricingContext context, string limitKey, string dimensionCode)
     {
+        // 同一请求内相同单次维度只写一条占用，避免多条规则重复生成占额。
         if (context.PendingLimitOccupies.Any(o =>
                 o.LimitType == "ONCE_QTY" &&
                 o.LimitDimensionCode == dimensionCode))
@@ -135,6 +146,7 @@ public sealed class OnceQtyLimitExecutor : IRuleActionExecutor
 
     private static OnceQtyParams? DeserializeParams(string? json)
     {
+        // 空参数表示规则配置不完整。运行期不抛出，由发布校验负责阻断新脏配置。
         if (string.IsNullOrWhiteSpace(json))
         {
             return null;

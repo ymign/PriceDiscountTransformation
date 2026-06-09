@@ -8,6 +8,15 @@ namespace Pricing.RuleCenter.Application.Pricing.Validation;
 /// <summary>计价请求共享验证规则。</summary>
 internal static class PricingValidationRules
 {
+    /// <summary>
+    /// 绑定试算和确认共享的 FluentValidation 规则。
+    /// </summary>
+    /// <typeparam name="T">MediatR 命令类型。</typeparam>
+    /// <param name="rule">请求 DTO 的规则构建器。</param>
+    /// <remarks>
+    /// FluentValidation 负责 API 入口的早期失败和统一错误格式；workflow 内的 <see cref="PricingRequestGuard"/>
+    /// 负责内部调用兜底。两层校验口径保持一致，避免绕过 MediatR 时资金请求缺少关键字段。
+    /// </remarks>
     public static void ApplyCalculateRules<T>(IRuleBuilderInitial<T, PricingCalculateRequest> rule)
     {
         rule.NotNull().WithMessage("计价请求不能为空")

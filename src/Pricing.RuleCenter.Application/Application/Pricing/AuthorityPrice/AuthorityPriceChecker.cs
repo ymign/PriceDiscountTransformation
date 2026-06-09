@@ -13,6 +13,12 @@ namespace Pricing.RuleCenter.Application.Pricing.AuthorityPrice;
 /// </summary>
 public sealed class AuthorityPriceChecker
 {
+    /// <summary>
+    /// 可显式指定价格类型的扩展参数键名集合。
+    /// </summary>
+    /// <remarks>
+    /// 不同渠道或历史系统对价格类型命名不统一，这里集中兼容，避免各入口重复判断。
+    /// </remarks>
     private static readonly string[] PriceTypeKeys =
     [
         "price_type",
@@ -22,6 +28,9 @@ public sealed class AuthorityPriceChecker
         "patient_type"
     ];
 
+    /// <summary>
+    /// 可表示围产价格的扩展参数键名集合。
+    /// </summary>
     private static readonly string[] PerinatalFlagKeys =
     [
         "is_perinatal",
@@ -32,8 +41,17 @@ public sealed class AuthorityPriceChecker
         "wei_chan_flag"
     ];
 
+    /// <summary>
+    /// 权威物价主数据仓储。
+    /// </summary>
     private readonly IPriceMasterRepository _priceMasterRepository;
+    /// <summary>
+    /// 计价配置，控制是否启用权威价格诊断和儿童价格年龄阈值。
+    /// </summary>
     private readonly PricingOptions _options;
+    /// <summary>
+    /// 诊断日志组件。
+    /// </summary>
     private readonly ILogger<AuthorityPriceChecker> _logger;
 
     /// <summary>
@@ -104,6 +122,8 @@ public sealed class AuthorityPriceChecker
 
     private AuthorityPriceKind ResolvePriceKind(PricingCalculateRequest request, PricingCalculateItemRequest item)
     {
+        // 明细级参数优先于请求级参数。一次收费动作中不同项目可能适用不同价格类型，
+        // 例如同单既有儿童价项目，也有普通三甲价项目。
         if (TryResolveExplicitPriceKind(item.ExtraParams, out var itemPriceKind))
         {
             return itemPriceKind;
@@ -127,6 +147,7 @@ public sealed class AuthorityPriceChecker
         var childPriceAgeExclusive = _options.ChildPriceAgeExclusive <= 0
             ? 6
             : _options.ChildPriceAgeExclusive;
+        // 未显式传价格类型时按年龄推导儿童价。阈值可配置，默认 6 岁以下。
         if (request.PatientAge is >= 0 && request.PatientAge < childPriceAgeExclusive)
         {
             return AuthorityPriceKind.Child;
@@ -176,6 +197,7 @@ public sealed class AuthorityPriceChecker
 
         switch (normalized)
         {
+            // 同时兼容数字枚举、英文编码和中文显示值，降低 HIS 历史字段差异导致的诊断误判。
             case "5":
             case "PERINATAL":
             case "WEICHAN":
@@ -251,6 +273,8 @@ public sealed class AuthorityPriceChecker
     private static string? ReadString(object? value) =>
         value switch
         {
+            // ExtraParams 可能来自 System.Text.Json，也可能来自 Newtonsoft.Json。
+            // 统一读成字符串后再做兼容判断。
             null => null,
             string text => text,
             bool flag => flag ? "true" : "false",
@@ -315,8 +339,11 @@ public sealed class AuthorityPriceChecker
 
     private enum AuthorityPriceKind
     {
+        /// <summary>普通三甲价。</summary>
         Normal,
+        /// <summary>儿童价。</summary>
         Child,
+        /// <summary>围产中心价。</summary>
         Perinatal
     }
 }

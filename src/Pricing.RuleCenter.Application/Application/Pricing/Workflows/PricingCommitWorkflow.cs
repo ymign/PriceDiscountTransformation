@@ -20,6 +20,11 @@ namespace Pricing.RuleCenter.Application.Pricing;
 /// <para>
 /// 当前允许 <c>CONFIRM_PENDING -> CONFIRMED</c>，重复提交已确认记录按幂等成功处理。
 /// </para>
+/// <para>
+/// commit 的核心不是“通知成功”这么简单，而是把 confirm 阶段的保护结果转成正式事实。
+/// 因此它必须使用 confirm 保存的折价明细和 HIS 回传的 <c>ActualItems</c> 做对账，不能重新执行规则引擎。
+/// 重新计价可能因为规则发布、历史限额变化或业务时间差异，得到与 HIS 实际落账不一致的结果。
+/// </para>
 /// </remarks>
 public sealed class PricingCommitWorkflow
 {
@@ -90,10 +95,15 @@ public sealed class PricingCommitWorkflow
     /// 执行落账提交。
     /// </summary>
     /// <param name="request">提交请求。</param>
+    /// <remarks>
+    /// 该方法对应 <c>/api/pricing/calculate/commit</c>。调用方应在 HIS 收费明细全部写库成功后调用，
+    /// 并回传真实落账明细；主项目、替换子项和加收子项都应被覆盖，避免计价中心只确认了一部分账务事实。
+    /// </remarks>
     public async Task ExecuteAsync(PricingCommitRequest request)
     {
         // ========== 第一阶段：请求结构校验 ==========
         // commit 必须引用 confirm 返回的 requestId，否则无法保证与已占用额度一一对应。
+        // 只靠收费单号或业务号可能命中多条明细，无法安全推进某一次 confirm 的状态。
         PricingRequestGuard.EnsureCommitRequest(request);
 
         _logger.LogInformation(
@@ -104,6 +114,7 @@ public sealed class PricingCommitWorkflow
         {
             // ========== 第二阶段：锁定请求维度 ==========
             // commit/cancel/reverse 都以 requestId 为并发边界，避免同一确认记录被不同操作同时推进状态。
+            // 例如 HIS 写库成功后 commit 与前端超时触发 cancel 并发时，只允许一个状态分支获胜。
             await _limitRepository.EnsureAndLockAsync(new[] { PricingLockKeyBuilder.BuildRequestLockKey(request.RequestId) });
 
             var log = await _requestLogRepository.GetByIdAsync(request.RequestId)
@@ -115,6 +126,7 @@ public sealed class PricingCommitWorkflow
             if (log.BusinessStatus == BusinessStatusCodes.Confirmed || log.BusinessStatus == BusinessStatusCodes.Committed)
             {
                 // 重复 commit 允许幂等返回；如果渠道补传实际落账明细，仍做一次轻量对账校验。
+                // 这样 HIS 超时重试不会制造错误，同时也能发现重复回调中携带的落账事实与首次结果不一致。
                 if ((request.ActualItems?.Count ?? 0) > 0 || request.ActualTotalAmount.HasValue)
                 {
                     var confirmedDetails = await _discountRepository.GetByRequestIdAsync(request.RequestId);
@@ -129,6 +141,7 @@ public sealed class PricingCommitWorkflow
 
             // ========== 第三阶段：状态和过期校验 ==========
             // 只有 confirm 保护期内的 CONFIRM_PENDING 才能转为正式确认；过期后必须重新 confirm。
+            // 保护期存在的原因是额度占用不能无限挂起，否则会影响后续患者或项目的真实收费判断。
             if (log.BusinessStatus != BusinessStatusCodes.ConfirmPending)
             {
                 _logger.LogWarning(
@@ -152,10 +165,13 @@ public sealed class PricingCommitWorkflow
             }
 
             var details = await _discountRepository.GetByRequestIdAsync(request.RequestId);
+            // 对账必须发生在推进状态之前。普通明细通常按 chargeDetailNo + itemCode + partSeq 匹配；
+            // 替换子项和加收子项允许 HIS 生成新明细号，但仍需按项目、片段、数量和金额闭合。
             PricingCommitActualValidator.Validate(request, details, requireActualItems: true);
 
             // ========== 第四阶段：推进正式落账状态 ==========
             // 请求日志、折价明细、限额占用必须一起变更，避免审计和额度口径不一致。
+            // 一旦进入 CONFIRMED，后续释放额度只能通过 reverse，而不能再通过 cancel。
             log.BusinessStatus = BusinessStatusCodes.Confirmed;
             log.ChargeNo = request.ChargeNo ?? log.ChargeNo;
             log.ResponseAt = _clock.Now;

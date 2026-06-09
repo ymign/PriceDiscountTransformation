@@ -23,6 +23,14 @@ namespace Pricing.RuleCenter.Application.Pricing;
 /// 部分退费必须保证“本次退费 + 历史已退”不超过原有效收费，且主子项目同组结果需要按 resultGroupNo
 /// 做组内保护，避免只退主项或只退子项造成金额和额度口径不一致。
 /// </para>
+/// <para>
+/// reverse 与 cancel 的边界非常严格：cancel 处理未落账的保护占用；reverse 处理已落账的账务事实。
+/// reverse 释放额度时必须保留冲正流水和负向占用，不能简单把原占用删除，否则后续对账无法解释额度变化。
+/// </para>
+/// <para>
+/// 本 workflow 以 <c>OriginalRequestId + ReverseNo</c> 作为退费幂等边界。HIS 重试同一笔退费时返回成功；
+/// 如果同一个 ReverseNo 携带不同项目、数量、金额或片段条件，则视为幂等冲突。
+/// </para>
 /// </remarks>
 public sealed class PricingReverseWorkflow
 {
@@ -117,10 +125,15 @@ public sealed class PricingReverseWorkflow
     /// 执行退费冲正。
     /// </summary>
     /// <param name="request">冲正请求。</param>
+    /// <remarks>
+    /// 该方法对应 <c>/api/pricing/calculate/reverse</c>。调用方可指定收费明细、项目编码、partSeq 和退费数量；
+    /// 如果未指定数量，服务层按匹配到的原明细全退处理。部分退费场景必须依赖历史冲正累计防止超退。
+    /// </remarks>
     public async Task ExecuteAsync(PricingReverseRequest request)
     {
         // ========== 第一阶段：请求结构校验 ==========
         // ReverseNo 是退费幂等键，缺失时无法区分“重试同一次退费”和“新的退费动作”。
+        // OriginalRequestId 则把退费限定在某一次已确认计价结果内，避免跨收费单误退。
         PricingRequestGuard.EnsureReverseRequest(request);
         var reverseNo = request.ReverseNo!;
 
@@ -132,6 +145,7 @@ public sealed class PricingReverseWorkflow
         {
             // ========== 第二阶段：锁定原请求和退费流水 ==========
             // 原请求锁防止 commit/cancel/reverse 并发推进；退费流水锁防止相同 ReverseNo 并发重复写入。
+            // 两把锁都需要：原请求锁保护状态机，退费流水锁保护同一笔退费的幂等事实。
             await _limitRepository.EnsureAndLockAsync(new[]
             {
                 PricingLockKeyBuilder.BuildRequestLockKey(request.OriginalRequestId),
@@ -150,6 +164,7 @@ public sealed class PricingReverseWorkflow
             if (sameReverseNo is not null)
             {
                 // 相同 ReverseNo 代表 HIS 重试同一笔退费；参数必须一致，否则按幂等冲突处理。
+                // 不能用“后到请求覆盖前一次退费”，否则会让历史已退数量和金额失去审计可信度。
                 if (!PricingReverseDetailSelector.IsSameReverseRequest(sameReverseNo, request))
                 {
                     throw new BizException(
@@ -166,6 +181,7 @@ public sealed class PricingReverseWorkflow
 
             // ========== 第三阶段：状态和可退明细校验 ==========
             // 只有已落账记录才允许 reverse；未 commit 的请求应通过 cancel 或过期清理释放额度。
+            // 这条边界保证规则中心的额度释放与 HIS 账务事实一致。
             if (!IsCommittedBusinessStatus(log.BusinessStatus))
             {
                 _logger.LogWarning(
@@ -178,6 +194,8 @@ public sealed class PricingReverseWorkflow
             }
 
             var details = await _discountRepository.GetByRequestIdAsync(request.OriginalRequestId);
+            // 允许 HIS 按收费明细、项目编码或 partSeq 定位部分退费；没有筛选条件时视为对匹配范围做全退。
+            // 过滤结果必须来自原 confirm/commit 保存的折价明细，不能根据当前规则重新推导可退项目。
             var matchedDetails = PricingReverseDetailSelector.FilterReverseDetails(details, request);
             if (matchedDetails.Count == 0)
             {
@@ -189,6 +207,7 @@ public sealed class PricingReverseWorkflow
 
             // ========== 第四阶段：计算本次可退数量和金额 ==========
             // 默认退费数量为匹配明细全退；显式传 ReverseQty 时按原金额比例折算退费金额。
+            // 退费金额最终仍按统一金额规则保留 2 位小数，避免 HIS 和规则中心出现分位差。
             var allOriginalQty = details
                 .Where(d => d.Status == BusinessStatusCodes.Confirmed || d.Status == BusinessStatusCodes.Committed)
                 .Sum(d => d.FinalQty ?? 0);
@@ -205,6 +224,7 @@ public sealed class PricingReverseWorkflow
 
             var historicalReversedQty = await _reverseHistoryReader.GetHistoricalReversedQtyAsync(request);
             var allHistoricalReversedQty = await _reverseHistoryReader.GetHistoricalReversedQtyAsync(request.OriginalRequestId);
+            // 部分退费必须累计历史已退数量。只校验本次退费小于原数量是不够的，多次部分退费会突破原有效收费。
             if (historicalReversedQty + reverseQty > originalQty)
             {
                 throw new BizException(
@@ -217,6 +237,7 @@ public sealed class PricingReverseWorkflow
                 (originalQty == 0 ? 0 : originalAmt * reverseQty / originalQty);
             reverseAmt = PricingAmountRounder.RoundFinal(reverseAmt);
             var historicalReversedAmt = await _reverseHistoryReader.GetHistoricalReversedAmtAsync(request);
+            // 金额也要做历史累计校验，避免按数量比例四舍五入后多次退费超过原有效金额。
             if (historicalReversedAmt + reverseAmt > originalAmt)
             {
                 throw new BizException(
@@ -232,6 +253,7 @@ public sealed class PricingReverseWorkflow
 
             // ========== 第五阶段：主子项目结果组保护 ==========
             // 同一 resultGroupNo 通常代表主项目和子项加收的原子结果，退费分摊不能突破组内原数量/金额。
+            // 这能防止只退主项目但保留子项，或只退子项导致主子项目组金额不闭合。
             var groupedDetails = matchedDetails
                 .Where(d => !string.IsNullOrWhiteSpace(d.ResultGroupNo))
                 .GroupBy(d => d.ResultGroupNo)
@@ -257,6 +279,7 @@ public sealed class PricingReverseWorkflow
                 if (group.Key == groupedDetails.Last().Key)
                 {
                     // 最后一组承接前面比例分摊后的差额，避免 decimal 除法造成总退费数量/金额不闭合。
+                    // 这样所有组的退费数量/金额加总仍等于本次请求的 reverseQty/reverseAmt。
                     var allocatedQty = groupedDetails.Where(g => g.Key != group.Key)
                         .Sum(g => originalQty == 0 ? 0 : reverseQty * g.Sum(d => d.FinalQty ?? 0) / originalQty);
                     var allocatedAmt = groupedDetails.Where(g => g.Key != group.Key)
@@ -290,6 +313,7 @@ public sealed class PricingReverseWorkflow
 
             // ========== 第六阶段：推进原请求状态或写负向占用 ==========
             // 全退直接把原请求及占用标记为 REVERSED；部分退费通过负向占用抵扣额度，保留原请求有效状态。
+            // 保留原记录再插入负向占用，比直接修改原占用更利于追溯净占用是如何变化的。
             if (isFullReverse)
             {
                 log.BusinessStatus = BusinessStatusCodes.Reversed;
@@ -301,6 +325,7 @@ public sealed class PricingReverseWorkflow
             }
 
             var reverseTime = request.ReverseTime ?? _clock.Now;
+            // 冲正请求日志先落库，后续负向占用和冲正明细都引用该 reverseRequestId，形成完整审计链。
             var reverseRequestId = await _reverseLogWriter.SaveRequestLogAsync(new ReverseRequestLogSaveInput
             {
                 Request = request,
@@ -326,6 +351,7 @@ public sealed class PricingReverseWorkflow
 
             // ========== 第七阶段：落冲正明细日志 ==========
             // 冲正日志是后续幂等、累计已退数量/金额和审计追溯的事实来源。
+            // 后续再收到同一 ReverseNo 或新的部分退费时，都以这里保存的明细作为历史事实。
             await _reverseLogWriter.SaveReverseLogAsync(new ReverseLogSaveInput
             {
                 Request = request,
@@ -344,6 +370,15 @@ public sealed class PricingReverseWorkflow
         });
     }
 
+    /// <summary>
+    /// 判断原请求状态是否已经代表 HIS 落账成功。
+    /// </summary>
+    /// <param name="businessStatus">请求日志中的业务状态。</param>
+    /// <returns>状态为 CONFIRMED 或兼容旧值 COMMITTED 时返回 true。</returns>
+    /// <remarks>
+    /// 退费只允许针对已落账事实执行。这里保留 <c>COMMITTED</c> 兼容，是为了历史数据或旧版本状态命名
+    /// 不阻断正常退费；新增状态仍应统一使用 <c>CONFIRMED</c>。
+    /// </remarks>
     private static bool IsCommittedBusinessStatus(string? businessStatus)
     {
         // 兼容旧命名 COMMITTED 和当前 CONFIRMED，避免历史数据状态差异阻断正常退费。

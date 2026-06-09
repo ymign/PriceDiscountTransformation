@@ -12,8 +12,15 @@ using Pricing.RuleCenter.Core.Services;
 
 namespace Pricing.RuleCenter.Application.Pricing.Persistence;
 
+/// <summary>
+/// 保存 reverse 负向占用所需输入。
+/// </summary>
+/// <remarks>
+/// 部分退费不直接修改原占用，而是插入负向占用，保证额度变化可追溯、可对账。
+/// </remarks>
 internal sealed record NegativeLimitOccupyInput
 {
+    /// <summary>退费请求。</summary>
     public PricingReverseRequest Request { get; init; } = null!;
 
     public IReadOnlyList<ChargeDiscountDetail> MatchedDetails { get; init; } =
@@ -35,9 +42,21 @@ internal sealed record NegativeLimitOccupyInput
 /// </summary>
 public sealed class PricingLimitOccupyWriter
 {
+    /// <summary>
+    /// 限额占用仓储。
+    /// </summary>
     private readonly ILimitOccupyRepository _limitRepository;
+    /// <summary>
+    /// 计价配置，主要使用 confirm 保护占用过期时间。
+    /// </summary>
     private readonly PricingOptions _options;
+    /// <summary>
+    /// 限额占用日志。
+    /// </summary>
     private readonly ILogger<PricingLimitOccupyWriter> _logger;
+    /// <summary>
+    /// 统一时钟。
+    /// </summary>
     private readonly IClock _clock;
 
     /// <summary>
@@ -65,11 +84,14 @@ public sealed class PricingLimitOccupyWriter
         PricingCalculateItemRequest item,
         PricingResult result)
     {
+        // 正向占用只在 confirm 阶段写入，状态为 PENDING。
+        // commit 后推进为 CONFIRMED，cancel/expire 后释放为 CANCELLED/EXPIRED。
         var now = _clock.Now;
         var expireAt = now.AddMinutes(_options.ConfirmExpireMinutes);
         var resultGroupNo = PricingResultGroupNoGenerator.Resolve(requestId, item, result);
         foreach (var occupy in result.LimitOccupies)
         {
+            // 执行器只生成占用草稿，RequestId、TraceId、过期时间和状态需要在应用层统一补齐。
             occupy.RequestId = requestId;
             occupy.TraceId = traceId;
             occupy.ChargeDetailNo = NormalizeString(item.ChargeDetailNo);
@@ -87,6 +109,7 @@ public sealed class PricingLimitOccupyWriter
 
     internal async Task InsertNegativeAsync(NegativeLimitOccupyInput input)
     {
+        // 负向占用只用于部分退费。全额退费会直接把原占用状态推进为 REVERSED。
         var request = input.Request;
         var originalOccupies = await _limitRepository.GetByRequestIdAsync(request.OriginalRequestId);
         var matchedChargeDetailNos = input.MatchedDetails
@@ -104,6 +127,7 @@ public sealed class PricingLimitOccupyWriter
             .Where(itemCode => itemCode is not null)
             .Select(itemCode => itemCode!)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // 候选原占用必须与本次退费命中的明细或结果组相关，且仅当日退费释放当日额度。
         var candidates = originalOccupies
             .Where(o => o.Status == BusinessStatusCodes.Confirmed)
             .Where(o => o.OccupyType == "CHARGE")
@@ -124,6 +148,7 @@ public sealed class PricingLimitOccupyWriter
 
         foreach (var occupy in candidates)
         {
+            // 按原占用数量比例分摊本次退费数量和金额，避免多限额维度下释放总量不闭合。
             var now = _clock.Now;
             var ratio = Math.Abs(occupy.OccupyQty) / totalOriginalQty;
             var releaseQty = input.ReverseQty * ratio;
@@ -160,6 +185,7 @@ public sealed class PricingLimitOccupyWriter
 
     private static bool IsSameBusinessDay(DateTime? originalBusinessTime, DateTime reverseTime)
     {
+        // 当前业务口径：当日退费释放额度；隔日退费重收后按重收当天重新校验。
         return originalBusinessTime.HasValue &&
                originalBusinessTime.Value.Date == reverseTime.Date;
     }
@@ -170,6 +196,7 @@ public sealed class PricingLimitOccupyWriter
         IReadOnlySet<string> matchedResultGroupNos,
         IReadOnlySet<string> matchedItemCodes)
     {
+        // 优先按 resultGroupNo 匹配主子项目组；没有组号时退化到 chargeDetailNo；再没有时按 itemCode 匹配。
         var occupyChargeDetailNo = NormalizeString(occupy.ChargeDetailNo);
         var occupyResultGroupNo = NormalizeString(occupy.ResultGroupNo);
         var occupyItemCode = NormalizeString(occupy.ItemCode);

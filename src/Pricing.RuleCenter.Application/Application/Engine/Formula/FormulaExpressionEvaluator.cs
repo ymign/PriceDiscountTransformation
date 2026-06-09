@@ -5,13 +5,27 @@ namespace Pricing.RuleCenter.Core.Engine.Formula;
 /// <summary>
 /// 受控表达式公式求值器。
 /// </summary>
+/// <remarks>
+/// <para>
+/// 该求值器只支持 decimal 四则运算、括号、白名单变量和白名单函数，不执行脚本、不反射、不访问外部对象。
+/// 它服务于 FORMULA_CALC / EXPRESSION_FORMULA 动作，目的是让少量公式可配置，同时保持资金计算可控。
+/// </para>
+/// <para>
+/// 解析器采用递归下降实现，语法优先级为：括号/变量/函数/数字 → 乘除 → 加减。
+/// 所有数值使用 decimal，避免 double/float 带来的金额精度问题。
+/// </para>
+/// </remarks>
 public sealed class FormulaExpressionEvaluator
 {
+    /// <summary>
+    /// 白名单公式函数注册表。
+    /// </summary>
     private readonly FormulaFunctionRegistry _functions;
 
     /// <summary>
     /// 初始化表达式公式求值器。
     /// </summary>
+    /// <param name="functions">白名单公式函数注册表。</param>
     public FormulaExpressionEvaluator(FormulaFunctionRegistry functions)
     {
         _functions = functions;
@@ -20,6 +34,9 @@ public sealed class FormulaExpressionEvaluator
     /// <summary>
     /// 对表达式执行求值。
     /// </summary>
+    /// <param name="expression">表达式文本。</param>
+    /// <param name="context">公式求值上下文，只暴露允许参与计算的数值变量。</param>
+    /// <returns>表达式计算结果。</returns>
     public decimal Evaluate(string expression, FormulaEvaluationContext context)
     {
         if (string.IsNullOrWhiteSpace(expression))
@@ -31,11 +48,21 @@ public sealed class FormulaExpressionEvaluator
         return parser.Parse();
     }
 
+    /// <summary>
+    /// 递归下降表达式解析器。
+    /// </summary>
+    /// <remarks>
+    /// Parser 是单次求值对象，内部维护当前位置，不跨请求复用，因此不需要线程同步。
+    /// </remarks>
     private sealed class Parser
     {
+        /// <summary>待解析表达式文本。</summary>
         private readonly string _text;
+        /// <summary>公式变量上下文。</summary>
         private readonly FormulaEvaluationContext _context;
+        /// <summary>白名单函数注册表。</summary>
         private readonly FormulaFunctionRegistry _functions;
+        /// <summary>当前解析位置。</summary>
         private int _position;
 
         public Parser(
@@ -50,6 +77,7 @@ public sealed class FormulaExpressionEvaluator
 
         public decimal Parse()
         {
+            // 顶层必须消耗完整表达式。若解析出一个合法前缀后仍有字符，视为非法配置。
             var value = ParseExpression();
             SkipWhiteSpace();
             if (!IsAtEnd)
@@ -62,6 +90,7 @@ public sealed class FormulaExpressionEvaluator
 
         private decimal ParseExpression()
         {
+            // 表达式层处理加减，优先级低于乘除。
             var value = ParseTerm();
             while (true)
             {
@@ -84,6 +113,7 @@ public sealed class FormulaExpressionEvaluator
 
         private decimal ParseTerm()
         {
+            // 项层处理乘除。除数为 0 是资金计算错误，必须抛出并由动作管线按 STOP 回滚。
             var value = ParseFactor();
             while (true)
             {
@@ -112,6 +142,7 @@ public sealed class FormulaExpressionEvaluator
 
         private decimal ParseFactor()
         {
+            // 因子层处理正负号、括号、变量/函数和数字。
             SkipWhiteSpace();
             if (Match('+'))
             {
@@ -145,6 +176,7 @@ public sealed class FormulaExpressionEvaluator
 
         private decimal ParseIdentifier()
         {
+            // 标识符后跟 "(" 表示函数调用；否则按变量名解析。
             var start = _position;
             Advance();
             while (IsIdentifierPart(Current))
@@ -164,11 +196,13 @@ public sealed class FormulaExpressionEvaluator
                 return value;
             }
 
+            // 未知变量不允许按 0 处理，否则配置拼写错误会静默改变金额。
             throw Error($"不支持的公式变量: {identifier}");
         }
 
         private decimal ParseFunctionCall(string name)
         {
+            // 函数必须在注册表中声明，避免表达式调用任意方法。
             if (!_functions.IsSupported(name))
             {
                 throw Error($"不支持的公式函数: {name}");
@@ -198,6 +232,7 @@ public sealed class FormulaExpressionEvaluator
 
         private decimal ParseNumber()
         {
+            // 数字使用 InvariantCulture 解析，配置表达式统一使用 "." 作为小数点。
             var start = _position;
             var hasDot = false;
             while (char.IsDigit(Current) || Current == '.')

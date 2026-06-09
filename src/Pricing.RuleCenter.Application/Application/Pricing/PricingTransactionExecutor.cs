@@ -5,9 +5,19 @@ namespace Pricing.RuleCenter.Application.Pricing;
 /// <summary>
 /// 计价事务执行器。
 /// </summary>
+/// <remarks>
+/// confirm、commit、cancel、reverse 都需要同时更新请求日志、折价明细、限额占用或冲正日志。
+/// 该类型把事务边界集中在应用层，避免各 workflow 手写 begin/commit/rollback 导致行为不一致。
+/// </remarks>
 public sealed class PricingTransactionExecutor
 {
+    /// <summary>
+    /// 工作单元，封装底层 Oracle/SqlSugar 事务。
+    /// </summary>
     private readonly IUnitOfWork _unitOfWork;
+    /// <summary>
+    /// 事务日志，用于记录回滚原因。
+    /// </summary>
     private readonly ILogger<PricingTransactionExecutor> _logger;
 
     /// <summary>
@@ -33,6 +43,7 @@ public sealed class PricingTransactionExecutor
     {
         try
         {
+            // 所有计价资金状态都必须在同一个事务内推进。Begin 后到 Commit 前发生异常时统一回滚。
             await _unitOfWork.BeginAsync();
             var result = await action();
             await _unitOfWork.CommitAsync();
@@ -41,6 +52,7 @@ public sealed class PricingTransactionExecutor
         catch (Exception ex)
         {
             _logger.LogError(ex, "事务执行异常，已回滚");
+            // 回滚失败时由底层实现决定异常行为；这里仍优先执行回滚，防止半提交。
             await _unitOfWork.RollbackAsync();
             throw;
         }

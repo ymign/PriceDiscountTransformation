@@ -9,13 +9,35 @@ using Pricing.RuleCenter.Core.Services;
 
 namespace Pricing.RuleCenter.Application.Pricing;
 
+/// <summary>
+/// 计价请求指纹构建器，用于把业务请求规范化后生成不可逆哈希。
+/// </summary>
+/// <remarks>
+/// <para>
+/// 指纹用于 confirm/reverse 幂等冲突判断。相同业务号再次请求时，如果指纹一致，说明是同一次业务动作重试；
+/// 如果指纹不同，说明调用方复用了业务号但修改了患者、项目、数量、部位、扩展参数或多片段明细，必须拒绝。
+/// </para>
+/// <para>
+/// 这里做的是“规范化 JSON + SHA256”，不是直接序列化原始请求。规范化的目标是排除无意义差异
+/// （空白、键顺序、decimal 表示法），同时保留会影响计价结果的业务差异。
+/// </para>
+/// </remarks>
 internal static class PricingRequestFingerprintBuilder
 {
+    /// <summary>
+    /// 构建 confirm 请求指纹。
+    /// </summary>
+    /// <param name="request">确认计价请求。</param>
+    /// <param name="items">已校验的费用明细集合。</param>
+    /// <param name="callType">调用类型，confirm 固定为 CONFIRM。</param>
+    /// <returns>SHA256 十六进制指纹。</returns>
     public static string BuildConfirmFingerprint(
         PricingCalculateRequest request,
         IReadOnlyList<PricingCalculateItemRequest> items,
         string callType)
     {
+        // 指纹至少覆盖会影响规则匹配、金额计算、限额维度和追溯事实的字段。
+        // requestNo 不纳入指纹：它是技术请求流水，HIS 超时重试时可以变化。
         var payload = new
         {
             sourceSystem = NormalizeString(request.SourceSystem),
@@ -34,6 +56,7 @@ internal static class PricingRequestFingerprintBuilder
             mainChargeDetailNo = GetExtraParam(request.ExtraParams, "mainChargeDetailNo"),
             extraParams = NormalizeExtraParams(request.ExtraParams),
             items = items
+                // 多明细请求按稳定键排序，避免调用方 JSON 数组顺序变化造成误判冲突。
                 .OrderBy(i => i.ChargeDetailNo)
                 .ThenBy(i => i.ItemRequestNo)
                 .ThenBy(i => i.ItemCode)
@@ -54,6 +77,7 @@ internal static class PricingRequestFingerprintBuilder
                     mainChargeDetailNo = GetExtraParam(i.ExtraParams, "mainChargeDetailNo"),
                     extraParams = NormalizeExtraParams(i.ExtraParams),
                     pricingParts = i.PricingParts?
+                        // 多 part 明细按 partSeq 排序，保证同一业务事实生成同一指纹。
                         .OrderBy(p => p.PartSeq ?? int.MaxValue)
                         .ThenBy(p => p.PartCode)
                         .Select(p => new
@@ -77,6 +101,13 @@ internal static class PricingRequestFingerprintBuilder
         return HashPayload(payload);
     }
 
+    /// <summary>
+    /// 构建 reverse 请求指纹。
+    /// </summary>
+    /// <param name="request">退费冲正请求。</param>
+    /// <param name="originalLog">原始已落账请求日志。</param>
+    /// <param name="reverseTime">最终采用的退费业务时间。</param>
+    /// <returns>SHA256 十六进制指纹。</returns>
     public static string BuildReverseFingerprint(
         PricingReverseRequest request,
         ChargeRequest originalLog,
@@ -103,6 +134,15 @@ internal static class PricingRequestFingerprintBuilder
         return HashPayload(payload);
     }
 
+    /// <summary>
+    /// 规范化 ExtraParams 中的值。
+    /// </summary>
+    /// <param name="value">原始扩展参数值，可能来自 System.Text.Json 或 Newtonsoft.Json。</param>
+    /// <returns>规范化后的值。</returns>
+    /// <remarks>
+    /// ExtraParams 同时进入规则上下文和幂等指纹。这里统一处理字符串、decimal、浮点和 JToken，
+    /// 避免同一业务值因为 JSON 反序列化类型不同导致指纹不一致。
+    /// </remarks>
     public static object? NormalizeExtraValue(object? value)
     {
         return value switch
@@ -122,6 +162,7 @@ internal static class PricingRequestFingerprintBuilder
 
     private static string HashPayload(object payload)
     {
+        // 使用无格式 JSON 保证哈希输入稳定；SHA256 足够用于冲突检测，不需要可逆加密。
         var json = JsonConvert.SerializeObject(payload, Formatting.None);
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(json));
         return Convert.ToHexString(hash);
@@ -130,6 +171,7 @@ internal static class PricingRequestFingerprintBuilder
     private static IReadOnlyDictionary<string, object?>? NormalizeExtraParams(
         IReadOnlyDictionary<string, object?>? extraParams)
     {
+        // 字典键按序排序，排除调用方 JSON 键顺序变化导致的误判。
         return extraParams?
             .OrderBy(k => k.Key, StringComparer.Ordinal)
             .ToDictionary(k => k.Key.Trim(), k => NormalizeExtraValue(k.Value));
@@ -148,6 +190,7 @@ internal static class PricingRequestFingerprintBuilder
 
     private static string? NormalizeString(string? value)
     {
+        // 空白字符串按 null 处理，与请求上下文构建器保持一致：null 表示不参与匹配。
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 }

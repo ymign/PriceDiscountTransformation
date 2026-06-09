@@ -9,6 +9,9 @@ namespace Pricing.RuleCenter.Application.Pricing.Idempotency;
 /// </summary>
 public sealed class PricingIdempotencyService
 {
+    /// <summary>
+    /// 请求日志仓储，用于按业务键查询首次 confirm 记录。
+    /// </summary>
     private readonly IChargeRequestLogRepository _requestLogRepository;
 
     /// <summary>
@@ -20,6 +23,17 @@ public sealed class PricingIdempotencyService
         _requestLogRepository = requestLogRepository;
     }
 
+    /// <summary>
+    /// 检查 confirm 幂等状态并生成本次请求指纹。
+    /// </summary>
+    /// <param name="request">确认计价请求。</param>
+    /// <param name="items">已校验费用明细集合。</param>
+    /// <param name="callType">调用类型。</param>
+    /// <returns>包含已有请求和本次指纹的幂等检查结果。</returns>
+    /// <remarks>
+    /// 该方法只做事务外快路径检查。并发请求仍可能同时查不到已有记录，因此 confirm workflow
+    /// 必须在幂等锁内做事务内二次检查。
+    /// </remarks>
     internal async Task<PricingIdempotencyResult> CheckConfirmAsync(
         PricingCalculateRequest request,
         IReadOnlyList<PricingCalculateItemRequest> items,
@@ -50,9 +64,11 @@ public sealed class PricingIdempotencyService
     {
         if (string.Equals(existing.RequestFingerprint, fingerprint, StringComparison.Ordinal))
         {
+            // 指纹一致说明是同一业务动作重试，可以复用首次响应快照，不重复占额。
             return;
         }
 
+        // 指纹不一致说明同一 BusinessRequestNo 被用于不同业务事实，必须拒绝，不能覆盖首次结果。
         throw new BizException(
             BizErrorCode.IdempotencyConflict,
             409,

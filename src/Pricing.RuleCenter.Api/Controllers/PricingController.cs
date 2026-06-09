@@ -51,6 +51,10 @@ namespace Pricing.RuleCenter.Api.Controllers;
 ///         业务时间窗口覆盖的全部小时桶。</item>
 ///   <item>计价服务不可用时，渠道不得回退为普通计价，必须转人工或暂停。</item>
 /// </list>
+/// 本控制器只表达 HTTP 契约和外部调用顺序。真正的业务状态机分别落在
+/// <see cref="SimulatePricingCommand"/>、<see cref="ConfirmPricingCommand"/>、
+/// <see cref="CommitPricingCommand"/>、<see cref="CancelPricingCommand"/> 和
+/// <see cref="ReversePricingCommand"/> 对应的应用层工作流中，避免控制器绕过事务、幂等和额度锁。
 /// </remarks>
 [ApiController]
 [Authorize(Policy = "PricingService")]
@@ -123,6 +127,8 @@ public sealed class PricingController : ControllerBase
     public async Task<ApiResult<PricingCalculateResponse>> SimulateAsync(
         [FromBody] PricingCalculateRequest request)
     {
+        // 控制器不直接调用规则引擎，统一通过 MediatR 进入应用层 workflow。
+        // 这样校验、日志、运行包快照和追溯写入都走同一条链路，避免不同入口算出不同结果。
         var result = await _mediator.Send(new SimulatePricingCommand(request));
         return ApiResult<PricingCalculateResponse>.Ok(result);
     }
@@ -130,10 +136,30 @@ public sealed class PricingController : ControllerBase
     /// <summary>
     /// 【批量试算接口】— 与 simulate 使用同一请求结构，要求多条 Items 共享批量上下文。
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// batch-simulate 不单独创建新的 Command 类型，而是复用 <see cref="SimulatePricingCommand"/>。
+    /// 应用层会根据 <c>request.Items.Count</c> 构造批量上下文，使同一请求内的多条费用可以参与
+    /// 同组互斥、同手术封顶、同项目多行累计和窗口额度的请求内虚拟占用。
+    /// </para>
+    /// <para>
+    /// 该接口仍然是试算：不写正式折价明细，不写正式限额占用，不能被 HIS 直接拿来落账。
+    /// HIS 若要收费，必须使用 confirm 重新确认并获得正式 RequestId。
+    /// </para>
+    /// </remarks>
+    /// <param name="request">
+    /// 批量试算请求。关键字段仍是 <c>Items</c> 集合；每条明细通过 <c>ItemRequestNo</c> 或
+    /// <c>ChargeDetailNo</c> 与响应行关联。
+    /// </param>
+    /// <returns>
+    /// 批量试算响应。根层金额是本次请求合计，<c>Items</c> 中保留每条费用独立结果和追溯步骤。
+    /// </returns>
     [HttpPost("calculate/batch-simulate")]
     public async Task<ApiResult<PricingCalculateResponse>> BatchSimulateAsync(
         [FromBody] PricingCalculateRequest request)
     {
+        // 批量入口复用试算工作流，关键差异在工作流内部是否创建 BatchPricingContext。
+        // 控制器不按条拆分请求，否则同批互斥和同批累计会被破坏。
         var result = await _mediator.Send(new SimulatePricingCommand(request));
         return ApiResult<PricingCalculateResponse>.Ok(result);
     }
@@ -180,6 +206,8 @@ public sealed class PricingController : ControllerBase
     public async Task<ApiResult<PricingCalculateResponse>> ConfirmAsync(
         [FromBody] PricingCalculateRequest request)
     {
+        // confirm 是唯一会产生待确认额度占用的计价入口。
+        // 这里保持简单派发，确保幂等锁、限额锁、事务和响应快照都由应用层统一处理。
         var result = await _mediator.Send(new ConfirmPricingCommand(request));
         return ApiResult<PricingCalculateResponse>.Ok(result);
     }
@@ -213,6 +241,8 @@ public sealed class PricingController : ControllerBase
     [HttpPost("calculate/commit")]
     public async Task<ApiResult> CommitAsync([FromBody] PricingCommitRequest request)
     {
+        // commit 只推进状态和对账，不重新计价。
+        // 重新计算会引入规则版本变化风险，因此必须以 confirm 保存的结果作为落账事实基准。
         await _mediator.Send(new CommitPricingCommand(request));
         return ApiResult.Ok();
     }
@@ -247,6 +277,8 @@ public sealed class PricingController : ControllerBase
     [HttpPost("calculate/cancel")]
     public async Task<ApiResult> CancelAsync([FromBody] PricingCancelRequest request)
     {
+        // cancel 只释放未落账的 CONFIRM_PENDING 占用。
+        // 已经 commit 的收费必须走 reverse，不能通过取消接口绕过退费校验。
         await _mediator.Send(new CancelPricingCommand(request));
         return ApiResult.Ok();
     }
@@ -285,6 +317,8 @@ public sealed class PricingController : ControllerBase
     [HttpPost("calculate/reverse")]
     public async Task<ApiResult> ReverseAsync([FromBody] PricingReverseRequest request)
     {
+        // reverse 是已落账记录的退费/冲销入口，业务边界不同于 cancel。
+        // 应用层会基于原始折价明细、历史退费记录和 ReverseNo 幂等锁计算可退数量和金额。
         await _mediator.Send(new ReversePricingCommand(request));
         return ApiResult.Ok();
     }
@@ -322,6 +356,8 @@ public sealed class PricingController : ControllerBase
         string itemCode,
         [FromQuery] SpecialFlagQueryRequest? query)
     {
+        // 路径参数是项目主键，Query 参数用于提前模拟部分规则条件。
+        // 控制器先合并成完整请求，避免下游查询对象散落处理路径参数和查询参数。
         var request = SpecialFlagRequest.From(itemCode, query);
         var result = await _mediator.Send(new GetSpecialFlagQuery(
             request.ItemCode,

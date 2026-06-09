@@ -18,6 +18,10 @@ namespace Pricing.RuleCenter.Application.Pricing;
 /// <para>
 /// 重复 cancel 或后台已过期清理的请求按幂等成功处理。
 /// </para>
+/// <para>
+/// cancel 的业务含义是“确认计价未被 HIS 采用”。常见来源包括用户取消收费、HIS 写收费明细失败、
+/// 支付失败或渠道超时放弃。它释放的是 confirm 阶段的保护占用，不会产生退费流水。
+/// </para>
 /// </remarks>
 public sealed class PricingCancelWorkflow
 {
@@ -80,10 +84,15 @@ public sealed class PricingCancelWorkflow
     /// 执行取消确认计价。
     /// </summary>
     /// <param name="request">取消请求。</param>
+    /// <remarks>
+    /// 该方法对应 <c>/api/pricing/calculate/cancel</c>。调用方应只在 HIS 未成功落账时调用。
+    /// 如果 HIS 已经写入收费明细，即使后续要撤销，也必须走 reverse，以便保留退费审计和额度返还依据。
+    /// </remarks>
     public async Task ExecuteAsync(PricingCancelRequest request)
     {
         // ========== 第一阶段：请求结构校验 ==========
         // cancel 必须携带 requestId，不能仅凭业务号取消，避免误释放其他收费动作的额度。
+        // RequestId 来自 confirm 响应，是请求日志、折价明细和限额占用之间最稳定的串联键。
         PricingRequestGuard.EnsureCancelRequest(request);
 
         _logger.LogInformation(
@@ -94,6 +103,7 @@ public sealed class PricingCancelWorkflow
         {
             // ========== 第二阶段：锁定请求维度 ==========
             // 与 commit 使用相同 requestId 锁，防止 HIS 成功落账和取消操作并发竞争。
+            // 如果不加同一把锁，可能出现 HIS 已落账但规则中心又释放额度的资金口径错误。
             await _limitRepository.EnsureAndLockAsync(new[] { PricingLockKeyBuilder.BuildRequestLockKey(request.RequestId) });
 
             var log = await _requestLogRepository.GetByIdAsync(request.RequestId)
@@ -105,6 +115,7 @@ public sealed class PricingCancelWorkflow
             if (log.BusinessStatus == BusinessStatusCodes.Cancelled || log.BusinessStatus == BusinessStatusCodes.Expired)
             {
                 // 重复取消和后台过期清理后的取消都不会再次释放额度，直接按幂等成功返回。
+                // 对渠道来说，重试 cancel 的目标是确认保护占用不再有效，而不是重复写释放记录。
                 _logger.LogInformation(
                     "取消确认幂等命中 请求ID={RequestId}, 当前状态={Status}",
                     request.RequestId, log.BusinessStatus);
@@ -113,6 +124,7 @@ public sealed class PricingCancelWorkflow
 
             // ========== 第三阶段：状态校验 ==========
             // 已确认落账的记录必须 reverse，不能 cancel，否则会破坏 HIS 账务和规则中心额度一致性。
+            // 其他状态也不能取消：SIMULATED 没有正式占用，REVERSED 已经进入退费链路。
             if (log.BusinessStatus != BusinessStatusCodes.ConfirmPending)
             {
                 _logger.LogWarning(
@@ -126,6 +138,7 @@ public sealed class PricingCancelWorkflow
 
             // ========== 第四阶段：同步释放待确认占用 ==========
             // 三张表状态一起变更，保证追溯、折价明细和额度口径一致。
+            // 这里不是物理删除占用，而是推进业务状态，方便后续对账识别“曾经确认但未落账”的收费动作。
             log.BusinessStatus = BusinessStatusCodes.Cancelled;
             log.ResponseAt = _clock.Now;
             await _requestLogRepository.UpdateAsync(log);

@@ -7,8 +7,15 @@ using Pricing.RuleCenter.Core.Interfaces.Charging;
 
 namespace Pricing.RuleCenter.Application.Pricing.Persistence;
 
+/// <summary>
+/// 保存 reverse 请求日志所需输入。
+/// </summary>
+/// <remarks>
+/// reverse 也会写入 PR_CHARGE_REQUEST_LOG，形成独立请求事实，便于按退费流水追溯。
+/// </remarks>
 internal sealed record ReverseRequestLogSaveInput
 {
+    /// <summary>退费请求。</summary>
     public PricingReverseRequest Request { get; init; } = null!;
 
     public ChargeRequest OriginalLog { get; init; } = null!;
@@ -23,6 +30,9 @@ internal sealed record ReverseRequestLogSaveInput
     public DateTime ReverseTime { get; init; }
 }
 
+/// <summary>
+/// 保存冲正明细日志所需输入。
+/// </summary>
 internal sealed record ReverseLogSaveInput
 {
     public PricingReverseRequest Request { get; init; } = null!;
@@ -46,8 +56,17 @@ internal sealed record ReverseLogSaveInput
 /// </summary>
 public sealed class PricingReverseLogWriter
 {
+    /// <summary>
+    /// 请求日志仓储，用于保存 reverse 请求主记录。
+    /// </summary>
     private readonly IChargeRequestLogRepository _requestLogRepository;
+    /// <summary>
+    /// 冲正日志仓储，用于保存退费明细事实。
+    /// </summary>
     private readonly IChargeReverseLogRepository _reverseLogRepository;
+    /// <summary>
+    /// 统一时钟。
+    /// </summary>
     private readonly IClock _clock;
 
     /// <summary>
@@ -68,6 +87,7 @@ public sealed class PricingReverseLogWriter
 
     internal async Task<long> SaveRequestLogAsync(ReverseRequestLogSaveInput input)
     {
+        // reverse 请求日志复用原 TraceId，表示它属于原收费计价链路的一次冲正分支。
         var request = input.Request;
         var originalLog = input.OriginalLog;
         var matchedDetails = input.MatchedDetails;
@@ -77,6 +97,7 @@ public sealed class PricingReverseLogWriter
         {
             RequestNo = PricingLockKeyBuilder.BuildReverseRequestNo(request.OriginalRequestId, request.ReverseNo!),
             BusinessRequestNo = NormalizeString(request.ReverseNo),
+            // reverse 指纹覆盖退费范围、数量、金额、时间和原因，用于同 ReverseNo 重试一致性判断。
             RequestFingerprint = PricingRequestFingerprintBuilder.BuildReverseFingerprint(request, originalLog, input.ReverseTime),
             TraceId = originalLog.TraceId,
             CallType = PricingCallTypeCodes.Reverse,
@@ -116,6 +137,7 @@ public sealed class PricingReverseLogWriter
 
     internal Task SaveReverseLogAsync(ReverseLogSaveInput input)
     {
+        // 冲正日志是历史已退数量/金额累计和退费幂等判断的事实来源。
         return _reverseLogRepository.InsertAsync(new ChargeReverseLog
         {
             OriginalRequestId = input.Request.OriginalRequestId,

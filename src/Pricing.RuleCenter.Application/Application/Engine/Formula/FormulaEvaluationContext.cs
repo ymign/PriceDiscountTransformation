@@ -3,6 +3,10 @@ namespace Pricing.RuleCenter.Core.Engine.Formula;
 /// <summary>
 /// 表达式公式求值上下文。
 /// </summary>
+/// <remarks>
+/// 该上下文是表达式公式可访问变量的白名单。表达式不能直接访问完整 PricingContext，
+/// 只能读取这里公开的 decimal 字段，防止配置公式越权读取患者、项目或其他对象。
+/// </remarks>
 public sealed class FormulaEvaluationContext
 {
     /// <summary>原始录入数量。</summary>
@@ -32,8 +36,12 @@ public sealed class FormulaEvaluationContext
     /// <summary>
     /// 按白名单变量名读取表达式变量值。
     /// </summary>
+    /// <param name="name">变量名，大小写敏感，必须是白名单字段。</param>
+    /// <param name="value">变量值；未命中时为 0。</param>
+    /// <returns>变量存在时返回 true。</returns>
     public bool TryGetVariable(string name, out decimal value)
     {
+        // 变量名不做大小写兼容，目的是让公式配置保持稳定、可读，并在发布校验阶段暴露拼写错误。
         switch (name)
         {
             case "inputQty":

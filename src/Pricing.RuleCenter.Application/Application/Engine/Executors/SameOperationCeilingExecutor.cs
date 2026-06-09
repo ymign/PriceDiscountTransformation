@@ -47,7 +47,7 @@ public sealed class SameOperationCeilingExecutor : IRuleActionExecutor
     private readonly ILimitOccupyRepository _limitRepository;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="SameOperationCeilingExecutor"/> class.
+    /// 初始化同手术封顶执行器。
     /// </summary>
     /// <param name="limitRepository">限额占用仓储，用于查询同手术同组历史占用金额。</param>
     public SameOperationCeilingExecutor(ILimitOccupyRepository limitRepository)

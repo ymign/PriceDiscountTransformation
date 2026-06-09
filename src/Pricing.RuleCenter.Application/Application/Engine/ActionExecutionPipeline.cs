@@ -269,6 +269,8 @@ public sealed class ActionExecutionPipeline
 
     private static void StampRuntimeRuleId(IReadOnlyList<TraceStep> traceSteps, int startIndex, long runtimeRuleId)
     {
+        // 有些执行器会先写更细粒度的业务步骤，再由管线补通用步骤。
+        // 执行器内部步骤如果没有 RuntimeRuleId，这里统一回填当前动作所属运行时规则，保证追溯能反查来源规则。
         for (var index = startIndex; index < traceSteps.Count; index++)
         {
             if (!traceSteps[index].RuntimeRuleId.HasValue)
