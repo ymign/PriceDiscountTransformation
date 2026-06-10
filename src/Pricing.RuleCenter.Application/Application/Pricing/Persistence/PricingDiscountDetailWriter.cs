@@ -2,6 +2,7 @@ using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Pricing.Builders;
 using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Core.Aggregates.Charging;
+using Pricing.RuleCenter.Core.Aggregates.Runtime;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Charging;
 using Pricing.RuleCenter.Core.Models;
@@ -69,6 +70,23 @@ internal sealed record ChildDiscountDetailSaveInput
     public RuntimePackageTraceResolution? RuntimeTrace { get; init; }
 }
 
+internal sealed record MainDiscountDetailContext
+{
+    public long FirstRuleId { get; init; }
+
+    public DateTime OccurredAt { get; init; }
+
+    public string? ResultGroupNo { get; init; }
+
+    public decimal ReplacementAmount { get; init; }
+
+    public decimal MainFinalAmount { get; init; }
+
+    public decimal MainDiscountAmount { get; init; }
+
+    public RuntimeRule? FirstRuntimeRule { get; init; }
+}
+
 /// <summary>
 /// 计价折价明细写入器，负责主项目、替换子项和加收子项明细落库。
 /// </summary>
@@ -98,175 +116,197 @@ public sealed class PricingDiscountDetailWriter
 
     internal async Task SaveAsync(DiscountDetailSaveInput input)
     {
-        // 主项目、替换子项和加收子项使用同一个 resultGroupNo。
-        // commit/cancel/reverse 以该组号保护主子项目原子性。
-        var requestId = input.RequestId;
-        var request = input.Request;
-        var item = input.Item;
-        var result = input.Result;
-        var status = input.Status;
-        var firstRuleId = result.MatchedRuleIds.FirstOrDefault();
-        var now = _clock.Now;
-        var resultGroupNo = PricingResultGroupNoGenerator.Resolve(requestId, item, result);
-        var replacementAmt = result.ReplaceChildResult is null
+        var context = BuildMainContext(input);
+        var mainDetail = BuildMainDiscountDetail(input, context);
+        var mainDiscountId = await _discountRepository.InsertAsync(mainDetail);
+
+        await SaveReplacementDiscountDetailAsync(input, context, mainDiscountId);
+        await SaveChildDiscountDetailsAsync(BuildChildDiscountInput(input, context, mainDiscountId));
+    }
+
+    private MainDiscountDetailContext BuildMainContext(DiscountDetailSaveInput input)
+    {
+        var firstRuleId = input.Result.MatchedRuleIds.FirstOrDefault();
+        var replacementAmount = input.Result.ReplaceChildResult is null
             ? 0m
-            : PricingAmountRounder.RoundFinal(result.ReplaceChildResult.Amount);
-        var firstRuntimeRule = input.RuntimeTrace?.FindRule(firstRuleId == 0 ? null : firstRuleId);
-        var mainFinalAmt = result.ReplaceChildResult is null
-            ? result.FinalAmount
-            : Math.Max(result.FinalAmount - replacementAmt, 0m);
-        // 如果存在替换子项，主项目自身金额应扣除替换金额，替换部分另存一条子明细。
-        var mainDiscountAmt = PricingAmountRounder.RoundFinal(
-            item.UnitPrice * item.InputQty - mainFinalAmt);
+            : PricingAmountRounder.RoundFinal(input.Result.ReplaceChildResult.Amount);
+        var mainFinalAmount = input.Result.ReplaceChildResult is null
+            ? input.Result.FinalAmount
+            : Math.Max(input.Result.FinalAmount - replacementAmount, 0m);
 
-        var detail = new ChargeDiscountDetail
+        return new MainDiscountDetailContext
         {
-            RequestId = requestId,
-            TraceId = input.TraceId,
-            ChargeNo = NormalizeString(request.ChargeNo),
-            ChargeDetailNo = NormalizeString(item.ChargeDetailNo),
-            PatientId = request.PatientId,
-            VisitId = request.VisitId,
-            ItemCode = item.ItemCode,
-            ItemName = item.ItemName,
-            RuleId = firstRuleId == 0 ? null : firstRuleId,
-            RuntimePackageId = input.RuntimeTrace?.RuntimePackageId,
-            RuntimeRuleId = firstRuleId == 0 ? null : firstRuleId,
-            SourcePolicyVersionId = firstRuntimeRule?.SourcePolicyVersionId,
-            SourceTemplateVersionId = firstRuntimeRule?.SourceTemplateVersionId,
-            ResultGroupNo = resultGroupNo,
-            OriginalQty = item.InputQty,
-            ConvertedQty = result.ConvertedQty,
-            FinalQty = result.FinalQty,
-            UnitPrice = result.UnitPrice,
-            OriginalAmt = PricingAmountRounder.RoundFinal(item.UnitPrice * item.InputQty),
-            CalculatedAmt = PricingAmountRounder.RoundFinal(mainFinalAmt),
-            FinalAmt = PricingAmountRounder.RoundFinal(mainFinalAmt),
-            DiscountAmt = mainDiscountAmt,
-            DiscountType = result.ReplaceChildResult is null ? null : "EXCESS_REPLACE",
-            ReasonCode = result.ReplaceChildResult is null ? null : "EXCESS_REPLACE",
-            ReasonDesc = result.ReplaceChildResult is null ? null : PricingResponseBuilder.BuildReasonDesc(result),
-            Status = status,
-            OccurredAt = now
+            FirstRuleId = firstRuleId,
+            OccurredAt = _clock.Now,
+            ResultGroupNo = PricingResultGroupNoGenerator.Resolve(input.RequestId, input.Item, input.Result),
+            ReplacementAmount = replacementAmount,
+            MainFinalAmount = mainFinalAmount,
+            MainDiscountAmount = PricingAmountRounder.RoundFinal(
+                input.Item.UnitPrice * input.Item.InputQty - mainFinalAmount),
+            FirstRuntimeRule = input.RuntimeTrace?.FindRule(firstRuleId == 0 ? null : firstRuleId)
         };
+    }
 
-        var mainDiscountId = await _discountRepository.InsertAsync(detail);
+    private ChargeDiscountDetail BuildMainDiscountDetail(
+        DiscountDetailSaveInput input,
+        MainDiscountDetailContext context)
+    {
+        long? firstRuleId = context.FirstRuleId == 0 ? null : context.FirstRuleId;
+        var hasReplacement = input.Result.ReplaceChildResult is not null;
 
-        if (result.ReplaceChildResult is null)
+        return new ChargeDiscountDetail
         {
-            // 无替换子项时，只需要额外写普通加收子项。
-            await SaveChildDiscountDetailsAsync(new ChildDiscountDetailSaveInput
-            {
-                RequestId = requestId,
-                TraceId = input.TraceId,
-                Request = request,
-                Item = item,
-                ChildPricingResults = result.ChildPricingResults,
-                ResultGroupNo = resultGroupNo,
-                MainDiscountId = mainDiscountId,
-                FirstRuleId = firstRuleId,
-                Status = status,
-                Now = now,
-                RuntimeTrace = input.RuntimeTrace
-            });
+            RequestId = input.RequestId,
+            TraceId = input.TraceId,
+            ChargeNo = NormalizeString(input.Request.ChargeNo),
+            ChargeDetailNo = NormalizeString(input.Item.ChargeDetailNo),
+            PatientId = input.Request.PatientId,
+            VisitId = input.Request.VisitId,
+            ItemCode = input.Item.ItemCode,
+            ItemName = input.Item.ItemName,
+            RuleId = firstRuleId,
+            RuntimePackageId = input.RuntimeTrace?.RuntimePackageId,
+            RuntimeRuleId = firstRuleId,
+            SourcePolicyVersionId = context.FirstRuntimeRule?.SourcePolicyVersionId,
+            SourceTemplateVersionId = context.FirstRuntimeRule?.SourceTemplateVersionId,
+            ResultGroupNo = context.ResultGroupNo,
+            OriginalQty = input.Item.InputQty,
+            ConvertedQty = input.Result.ConvertedQty,
+            FinalQty = input.Result.FinalQty,
+            UnitPrice = input.Result.UnitPrice,
+            OriginalAmt = PricingAmountRounder.RoundFinal(input.Item.UnitPrice * input.Item.InputQty),
+            CalculatedAmt = PricingAmountRounder.RoundFinal(context.MainFinalAmount),
+            FinalAmt = PricingAmountRounder.RoundFinal(context.MainFinalAmount),
+            DiscountAmt = context.MainDiscountAmount,
+            DiscountType = hasReplacement ? "EXCESS_REPLACE" : null,
+            ReasonCode = hasReplacement ? "EXCESS_REPLACE" : null,
+            ReasonDesc = hasReplacement ? PricingResponseBuilder.BuildReasonDesc(input.Result) : null,
+            Status = input.Status,
+            OccurredAt = context.OccurredAt
+        };
+    }
+
+    private async Task SaveReplacementDiscountDetailAsync(
+        DiscountDetailSaveInput input,
+        MainDiscountDetailContext context,
+        long mainDiscountId)
+    {
+        var replacement = input.Result.ReplaceChildResult;
+        if (replacement is null)
+        {
             return;
         }
 
-        var replacement = result.ReplaceChildResult;
-        // 替换子项是“超限部分换成另一个收费项目”的结果，ParentDiscountId 指向主项目明细。
-        // DiscountAmt 为负数，表示它增加了最终收费，而不是减少收费。
-        var replacementDetail = new ChargeDiscountDetail
+        await _discountRepository.InsertAsync(BuildReplacementDiscountDetail(input, context, mainDiscountId, replacement));
+    }
+
+    private ChargeDiscountDetail BuildReplacementDiscountDetail(
+        DiscountDetailSaveInput input,
+        MainDiscountDetailContext context,
+        long mainDiscountId,
+        ReplaceChildResult replacement)
+    {
+        long? firstRuleId = context.FirstRuleId == 0 ? null : context.FirstRuleId;
+
+        return new ChargeDiscountDetail
         {
-            RequestId = requestId,
+            RequestId = input.RequestId,
             TraceId = input.TraceId,
-            ChargeNo = NormalizeString(request.ChargeNo),
-            ChargeDetailNo = NormalizeString(item.ChargeDetailNo),
-            PatientId = request.PatientId,
-            VisitId = request.VisitId,
+            ChargeNo = NormalizeString(input.Request.ChargeNo),
+            ChargeDetailNo = NormalizeString(input.Item.ChargeDetailNo),
+            PatientId = input.Request.PatientId,
+            VisitId = input.Request.VisitId,
             ItemCode = replacement.ItemCode,
             ItemName = replacement.ItemName,
-            RuleId = firstRuleId == 0 ? null : firstRuleId,
+            RuleId = firstRuleId,
             RuntimePackageId = input.RuntimeTrace?.RuntimePackageId,
-            RuntimeRuleId = firstRuleId == 0 ? null : firstRuleId,
-            SourcePolicyVersionId = firstRuntimeRule?.SourcePolicyVersionId,
-            SourceTemplateVersionId = firstRuntimeRule?.SourceTemplateVersionId,
-            ResultGroupNo = resultGroupNo,
+            RuntimeRuleId = firstRuleId,
+            SourcePolicyVersionId = context.FirstRuntimeRule?.SourcePolicyVersionId,
+            SourceTemplateVersionId = context.FirstRuntimeRule?.SourceTemplateVersionId,
+            ResultGroupNo = context.ResultGroupNo,
             ParentDiscountId = mainDiscountId,
             ConvertedQty = replacement.Qty,
             FinalQty = replacement.Qty,
             UnitPrice = replacement.UnitPrice,
             OriginalAmt = 0m,
-            CalculatedAmt = replacementAmt,
-            FinalAmt = replacementAmt,
-            DiscountAmt = -replacementAmt,
+            CalculatedAmt = context.ReplacementAmount,
+            FinalAmt = context.ReplacementAmount,
+            DiscountAmt = -context.ReplacementAmount,
             DiscountType = "EXCESS_REPLACE",
             ReasonCode = "EXCESS_REPLACE",
-            ReasonDesc = PricingResponseBuilder.BuildReplacementReasonDesc(item, replacement),
-            Status = status,
-            OccurredAt = now
+            ReasonDesc = PricingResponseBuilder.BuildReplacementReasonDesc(input.Item, replacement),
+            Status = input.Status,
+            OccurredAt = context.OccurredAt
         };
+    }
 
-        await _discountRepository.InsertAsync(replacementDetail);
-
-        await SaveChildDiscountDetailsAsync(new ChildDiscountDetailSaveInput
+    private static ChildDiscountDetailSaveInput BuildChildDiscountInput(
+        DiscountDetailSaveInput input,
+        MainDiscountDetailContext context,
+        long mainDiscountId)
+    {
+        return new ChildDiscountDetailSaveInput
         {
-            RequestId = requestId,
+            RequestId = input.RequestId,
             TraceId = input.TraceId,
-            Request = request,
-            Item = item,
-            ChildPricingResults = result.ChildPricingResults,
-            ResultGroupNo = resultGroupNo,
+            Request = input.Request,
+            Item = input.Item,
+            ChildPricingResults = input.Result.ChildPricingResults,
+            ResultGroupNo = context.ResultGroupNo,
             MainDiscountId = mainDiscountId,
-            FirstRuleId = firstRuleId,
-            Status = status,
-            Now = now,
+            FirstRuleId = context.FirstRuleId,
+            Status = input.Status,
+            Now = context.OccurredAt,
             RuntimeTrace = input.RuntimeTrace
-        });
+        };
     }
 
     private async Task SaveChildDiscountDetailsAsync(ChildDiscountDetailSaveInput input)
     {
-        // 子项明细与主项目共享 ResultGroupNo，并通过 ParentDiscountId 指向主明细。
-        // HIS commit 可以给子项生成新 chargeDetailNo，但必须按 itemCode + partSeq + 数量金额完成对账。
-        var request = input.Request;
-        var item = input.Item;
         foreach (var child in input.ChildPricingResults)
         {
-            var childAmount = PricingAmountRounder.RoundFinal(child.Amount);
-            var runtimeRule = input.RuntimeTrace?.FindRule(input.FirstRuleId == 0 ? null : input.FirstRuleId);
-            var childDetail = new ChargeDiscountDetail
-            {
-                RequestId = input.RequestId,
-                TraceId = input.TraceId,
-                ChargeNo = NormalizeString(request.ChargeNo),
-                ChargeDetailNo = NormalizeString(item.ChargeDetailNo),
-                PatientId = request.PatientId,
-                VisitId = request.VisitId,
-                ItemCode = child.ItemCode,
-                ItemName = child.ItemName,
-                RuleId = input.FirstRuleId == 0 ? null : input.FirstRuleId,
-                RuntimePackageId = input.RuntimeTrace?.RuntimePackageId,
-                RuntimeRuleId = input.FirstRuleId == 0 ? null : input.FirstRuleId,
-                SourcePolicyVersionId = runtimeRule?.SourcePolicyVersionId,
-                SourceTemplateVersionId = runtimeRule?.SourceTemplateVersionId,
-                ResultGroupNo = input.ResultGroupNo,
-                ParentDiscountId = input.MainDiscountId,
-                ConvertedQty = child.Qty,
-                FinalQty = child.Qty,
-                UnitPrice = child.UnitPrice,
-                OriginalAmt = 0m,
-                CalculatedAmt = childAmount,
-                FinalAmt = childAmount,
-                DiscountAmt = -childAmount,
-                DiscountType = "ADD_CHILD_ITEM",
-                ReasonCode = "ADD_CHILD_ITEM",
-                ReasonDesc = PricingResponseBuilder.BuildChildReasonDesc(item, child),
-                Status = input.Status,
-                OccurredAt = input.Now
-            };
-
-            await _discountRepository.InsertAsync(childDetail);
+            await _discountRepository.InsertAsync(BuildChildDiscountDetail(input, child));
         }
+    }
+
+    private static ChargeDiscountDetail BuildChildDiscountDetail(
+        ChildDiscountDetailSaveInput input,
+        ChildPricingResult child)
+    {
+        var childAmount = PricingAmountRounder.RoundFinal(child.Amount);
+        long? firstRuleId = input.FirstRuleId == 0 ? null : input.FirstRuleId;
+        var runtimeRule = input.RuntimeTrace?.FindRule(firstRuleId);
+
+        return new ChargeDiscountDetail
+        {
+            RequestId = input.RequestId,
+            TraceId = input.TraceId,
+            ChargeNo = NormalizeString(input.Request.ChargeNo),
+            ChargeDetailNo = NormalizeString(input.Item.ChargeDetailNo),
+            PatientId = input.Request.PatientId,
+            VisitId = input.Request.VisitId,
+            ItemCode = child.ItemCode,
+            ItemName = child.ItemName,
+            RuleId = firstRuleId,
+            RuntimePackageId = input.RuntimeTrace?.RuntimePackageId,
+            RuntimeRuleId = firstRuleId,
+            SourcePolicyVersionId = runtimeRule?.SourcePolicyVersionId,
+            SourceTemplateVersionId = runtimeRule?.SourceTemplateVersionId,
+            ResultGroupNo = input.ResultGroupNo,
+            ParentDiscountId = input.MainDiscountId,
+            ConvertedQty = child.Qty,
+            FinalQty = child.Qty,
+            UnitPrice = child.UnitPrice,
+            OriginalAmt = 0m,
+            CalculatedAmt = childAmount,
+            FinalAmt = childAmount,
+            DiscountAmt = -childAmount,
+            DiscountType = "ADD_CHILD_ITEM",
+            ReasonCode = "ADD_CHILD_ITEM",
+            ReasonDesc = PricingResponseBuilder.BuildChildReasonDesc(input.Item, child),
+            Status = input.Status,
+            OccurredAt = input.Now
+        };
     }
 
     private static string? NormalizeString(string? value)
