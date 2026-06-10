@@ -176,7 +176,7 @@ public sealed class SameOperationCeilingExecutor : IRuleActionExecutor
             context,
             LimitType,
             dimensionCode,
-            $"OP_CEILING:{dimensionCode}".ToUpperInvariant());
+            RequestSharedStateKeys.BuildOperationCeilingKey(operationId, groupCode));
 
         var remainingAmount = ceilingPerOperation.Value - historicalAmount;
 

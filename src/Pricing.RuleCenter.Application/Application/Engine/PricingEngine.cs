@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Pricing.RuleCenter.Core.Interfaces;
+using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Services;
 using Pricing.RuleCenter.Core.Aggregates.Quota;
 using Pricing.RuleCenter.Core.Models;
@@ -59,29 +60,31 @@ public sealed class PricingEngine : IPricingEngine
     /// <returns>包含最终数量、金额、折价、命中规则、追溯步骤和占额草稿的计价结果。</returns>
     public async Task<PricingResult> CalculateAsync(PricingContext context)
     {
-        // ========== 第一阶段：初始化默认计价状态 ==========
-        // 默认结果是"普通计价"：数量不变，金额为单价乘数量。
-        // 后续规则动作会在这个基础上做换算、数量限制/互斥、公式折价和封顶。
-        context.ConvertedQty = context.InputQty;
-        context.FinalQty = context.InputQty;
-        context.FinalAmount = context.UnitPrice * context.InputQty;
-        context.FormulaAmount = 0;
-        context.LimitedAmount = 0;
-        context.DiscountAmount = 0;
+        context.InitializeForCalculation();
 
-        // ========== 第二阶段：匹配当前业务时间下可用的已发布规则 ==========
-        // 规则匹配返回两部分：命中的规则头，以及已经按全局动作顺序排序的动作链。
         var (matchedRules, orderedActions) = await _ruleMatchService.MatchAsync(context);
-
         if (matchedRules.Count == 0)
         {
-            // 未命中特殊规则时直接返回普通计价结果。应用服务会保存请求日志，
-            // 但不会写折价明细或限额占用。
             return BuildResult(context, false);
         }
 
-        // ========== 第三阶段：记录匹配结果并写追溯步骤 ==========
-        // MATCH 步骤是追溯链的起点，便于后续解释"为什么这个项目被当作特殊项目处理"。
+        ApplyMatchResult(context, matchedRules, orderedActions);
+        await _pipeline.ExecuteAsync(orderedActions, context);
+
+        var originalAmount = FinalizeResult(context);
+        var result = BuildResult(context, true);
+        _logger.LogInformation(
+            "计价完成 项目编码={ItemCode}, 原金额={OriginalAmount}, 最终金额={FinalAmount}, 折扣金额={DiscountAmount}",
+            context.ItemCode, originalAmount, context.FinalAmount, context.DiscountAmount);
+
+        return result;
+    }
+
+    private static void ApplyMatchResult(
+        PricingContext context,
+        IReadOnlyList<RuleAggregate> matchedRules,
+        IReadOnlyList<RuleAction> orderedActions)
+    {
         context.MatchedRules = matchedRules;
         context.OrderedActions = orderedActions;
         context.TraceSteps.Add(new TraceStep
@@ -93,19 +96,13 @@ public sealed class PricingEngine : IPricingEngine
             OutputValue = orderedActions.Count,
             RuntimeRuleId = matchedRules.Count == 1 ? matchedRules[0].RuleId : null
         });
+    }
 
-        // ========== 第四阶段：执行规则动作链 ==========
-        // 动作链内部按旧 HIS 正式环境口径执行：
-        //   换算 -> 数量限制/互斥 -> 比例折价 -> TOPPRICE 封顶 -> 超限归零兜底。
-        // 特别是 FIN_DISCOUNT_FEE 与 Restrictingfee 同时命中时，必须先限制数量，
-        // 再让 IncrementPercentExecutor 使用限制后的 FinalQty 计算比例折价金额。
-        await _pipeline.ExecuteAsync(orderedActions, context);
-
-        // ========== 第五阶段：计算折价金额并补齐占额草稿 ==========
-        // 占额草稿在执行器中只记录维度，最终占用数量和金额要等动作链全部执行完成后才能确定。
-        // 注意：FinalAmount 的取整只在 BuildResult 中统一执行，此处不重复取整。
-        var originalAmount = context.UnitPrice * context.InputQty;
+    private decimal FinalizeResult(PricingContext context)
+    {
+        var originalAmount = context.GetOriginalAmount();
         context.DiscountAmount = originalAmount - context.FinalAmount;
+
         foreach (var occupy in context.PendingLimitOccupies)
         {
             ApplyFinalOccupyValues(occupy, context);
@@ -113,15 +110,7 @@ public sealed class PricingEngine : IPricingEngine
             occupy.OccupiedAt = _clock.Now;
         }
 
-        var result = BuildResult(context, true);
-
-        // ========== 第七阶段：输出计价完成日志 ==========
-        // 日志记录关键金额，不记录完整请求，完整快照由请求日志保存。
-        _logger.LogInformation(
-            "计价完成 项目编码={ItemCode}, 原金额={OriginalAmount}, 最终金额={FinalAmount}, 折扣金额={DiscountAmount}",
-            context.ItemCode, originalAmount, context.FinalAmount, context.DiscountAmount);
-
-        return result;
+        return originalAmount;
     }
 
     /// <summary>

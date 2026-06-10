@@ -18,7 +18,7 @@ namespace Pricing.RuleCenter.Core.Engine.Executors;
 /// </para>
 /// <para>
 /// 【批量依赖】本执行器需要在批量请求中找到父项目的最终金额。
-/// 通过 context.RequestSharedState.AccumulatedValues["ITEM_AMT:{parentItemCode}"] 获取，
+/// 通过 context.RequestSharedState.TryGetParentItemAmount(parentItemCode, out amount) 获取，
 /// 该值由请求共享状态在父项目计算完成后写入。
 /// <strong>父项目必须在批量请求中先于子项目处理，此为调用方责任。</strong>
 /// </para>
@@ -95,10 +95,9 @@ public sealed class ChildItemPercentExecutor : IRuleActionExecutor, IFormulaExec
         }
 
         // ========== 第四阶段：查找父项目最终金额 ==========
-        // 父项目金额由请求共享状态以 "ITEM_AMT:{itemCode}" 为键累计。
+        // 父项目金额由请求共享状态通过 SetParentItemAmount 记录。
         // 父项不在同一批次时查不到，静默跳过（此场景应改用 AddChildItemExecutor）。
-        var parentAmtKey = $"ITEM_AMT:{param.ParentItemCode.Trim().ToUpperInvariant()}";
-        if (!context.RequestSharedState.AccumulatedValues.TryGetValue(parentAmtKey, out var parentFinalAmount))
+        if (!context.RequestSharedState.TryGetParentItemAmount(param.ParentItemCode, out var parentFinalAmount))
         {
             context.TraceSteps.Add(new TraceStep
             {

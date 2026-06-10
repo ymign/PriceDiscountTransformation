@@ -528,10 +528,10 @@ public sealed class PricingApiServiceTests
         var secondContext = engine.Contexts[1];
         Assert.Equal(
             2m,
-            secondContext.RequestSharedState.AccumulatedValues["DAY_QTY:P001:ITEM001:20260510"]);
+            secondContext.RequestSharedState.GetLimitQty("DAY_QTY", "P001:ITEM001:20260510"));
         Assert.Equal(
             2m,
-            secondContext.RequestSharedState.AccumulatedValues["TIME_WINDOW:P001:ITEM001"]);
+            secondContext.RequestSharedState.GetLimitQty("TIME_WINDOW", "P001:ITEM001"));
     }
 
     [Fact]

@@ -30,18 +30,14 @@ public sealed class ChildItemPercentExecutorTests
 
     private static PricingContext ContextWithParentAmount(decimal parentFinalAmount)
     {
+        var sharedState = new RequestSharedPricingState();
+        sharedState.SetParentItemAmount("PARENT001", parentFinalAmount);
         return new PricingContext
         {
             UnitPrice = 0m,
             FinalAmount = 0m,
             FinalQty = 1,
-            RequestSharedState = new RequestSharedPricingState
-            {
-                AccumulatedValues = new Dictionary<string, decimal>
-                {
-                    ["ITEM_AMT:PARENT001"] = parentFinalAmount
-                }
-            }
+            RequestSharedState = sharedState
         };
     }
 

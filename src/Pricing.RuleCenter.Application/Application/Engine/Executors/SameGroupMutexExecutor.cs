@@ -139,7 +139,7 @@ public sealed class SameGroupMutexExecutor : IRuleActionExecutor
             dimensionCode,
             windowStart,
             windowEnd,
-            $"MUTEX:{currentGroupKey}".ToUpperInvariant());
+            RequestSharedStateKeys.BuildMutexKey(currentGroupKey));
 
         // ========== 第五阶段：超出配额时归零数量 ==========
         // 当同组内已处理的项目数 >= maxCountPerGroup 时，当前项目数量归零。

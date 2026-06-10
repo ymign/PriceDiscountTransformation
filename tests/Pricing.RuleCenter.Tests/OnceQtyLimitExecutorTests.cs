@@ -8,6 +8,13 @@ namespace Pricing.RuleCenter.Tests;
 
 public sealed class OnceQtyLimitExecutorTests
 {
+    private static RequestSharedPricingState CreateState(Action<RequestSharedPricingState> configure)
+    {
+        var state = new RequestSharedPricingState();
+        configure(state);
+        return state;
+    }
+
     [Fact]
     public async Task ExecuteAsync_UsesChargingActionDimensionAndInRequestOccupiedQty()
     {
@@ -32,13 +39,7 @@ public sealed class OnceQtyLimitExecutorTests
             FinalAmount = 40m,
             BusinessChargeTime = new DateTime(2026, 5, 10, 10, 0, 0),
             ShouldLockLimits = true,
-            RequestSharedState = new RequestSharedPricingState
-            {
-                AccumulatedValues = new Dictionary<string, decimal>
-                {
-                    ["ONCE_QTY:HIS:BIZ-001:ITEM001"] = 1m
-                }
-            }
+            RequestSharedState = CreateState(state => state.AddLimitQty("ONCE_QTY", "HIS:BIZ-001:ITEM001", 1m))
         };
         var action = new RuleAction
         {

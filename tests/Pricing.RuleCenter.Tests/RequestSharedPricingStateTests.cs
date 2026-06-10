@@ -42,11 +42,12 @@ public sealed class RequestSharedPricingStateTests
 
         state.Accumulate(result, context);
 
-        Assert.Equal(2m, state.AccumulatedValues["DAY_QTY:PATIENT:ITEM:20260510"]);
-        Assert.Equal(0m, state.AccumulatedValues["TIME_WINDOW:PATIENT:ITEM:WINDOW"]);
-        Assert.Equal(1m, state.AccumulatedValues["MUTEX:GROUP_A"]);
-        Assert.Equal(88m, state.AccumulatedValues["OP_CEILING:OP001:GROUP_A"]);
-        Assert.Equal(88m, state.AccumulatedValues["ITEM_AMT:ITEM001"]);
+        Assert.Equal(2m, state.GetLimitQty("DAY_QTY", "PATIENT:ITEM:20260510"));
+        Assert.Equal(0m, state.GetLimitQty("TIME_WINDOW", "PATIENT:ITEM:WINDOW"));
+        Assert.Equal(1m, state.GetMutexCount("GROUP_A"));
+        Assert.Equal(88m, state.GetOperationAmount("OP001", "GROUP_A"));
+        Assert.True(state.TryGetParentItemAmount("ITEM001", out var parentAmount));
+        Assert.Equal(88m, parentAmount);
         Assert.Equal(2, state.LimitOccupies.Count);
     }
 
@@ -68,6 +69,6 @@ public sealed class RequestSharedPricingStateTests
 
         state.Accumulate(result, context);
 
-        Assert.False(state.AccumulatedValues.ContainsKey("MUTEX:GROUP_A"));
+        Assert.Equal(0m, state.GetMutexCount("GROUP_A"));
     }
 }

@@ -22,6 +22,13 @@ public sealed class ChildItemPercentExecutorTests
             })
         };
 
+    private static RequestSharedPricingState CreateSharedState(decimal parentFinalAmount)
+    {
+        var state = new RequestSharedPricingState();
+        state.SetParentItemAmount("PARENT001", parentFinalAmount);
+        return state;
+    }
+
     [Fact]
     public async Task 父项金额存在_ChildRate计算子项金额()
     {
@@ -30,13 +37,7 @@ public sealed class ChildItemPercentExecutorTests
             UnitPrice = 0m,
             FinalAmount = 0m,
             FinalQty = 1,
-            RequestSharedState = new RequestSharedPricingState
-            {
-                AccumulatedValues = new Dictionary<string, decimal>
-                {
-                    ["ITEM_AMT:PARENT001"] = 1000m
-                }
-            }
+            RequestSharedState = CreateSharedState(1000m)
         };
 
         await _executor.ExecuteAsync(Action("PARENT001", childRate: 0.30m), ctx);
@@ -53,13 +54,7 @@ public sealed class ChildItemPercentExecutorTests
             UnitPrice = 0m,
             FinalAmount = 0m,
             FinalQty = 1,
-            RequestSharedState = new RequestSharedPricingState
-            {
-                AccumulatedValues = new Dictionary<string, decimal>
-                {
-                    ["ITEM_AMT:PARENT001"] = 1000m
-                }
-            }
+            RequestSharedState = CreateSharedState(1000m)
         };
 
         await _executor.ExecuteAsync(Action("PARENT001", childRate: 0m, childPercent: 30m), ctx);
@@ -76,13 +71,7 @@ public sealed class ChildItemPercentExecutorTests
             UnitPrice = 0m,
             FinalAmount = 0m,
             FinalQty = 1,
-            RequestSharedState = new RequestSharedPricingState
-            {
-                AccumulatedValues = new Dictionary<string, decimal>
-                {
-                    ["ITEM_AMT:PARENT001"] = 1000m
-                }
-            }
+            RequestSharedState = CreateSharedState(1000m)
         };
 
         await _executor.ExecuteAsync(Action("PARENT001", childRate: 0.20m, childPercent: 30m), ctx);
@@ -116,13 +105,7 @@ public sealed class ChildItemPercentExecutorTests
             UnitPrice = 0m,
             FinalAmount = 0m,
             FinalQty = 1,
-            RequestSharedState = new RequestSharedPricingState
-            {
-                AccumulatedValues = new Dictionary<string, decimal>
-                {
-                    ["ITEM_AMT:PARENT001"] = 500m
-                }
-            }
+            RequestSharedState = CreateSharedState(500m)
         };
 
         await _executor.ExecuteAsync(Action("parent001", childRate: 0.30m), ctx);
@@ -170,13 +153,7 @@ public sealed class ChildItemPercentExecutorTests
             UnitPrice = 0m,
             FinalAmount = 100m,
             FinalQty = 1,
-            RequestSharedState = new RequestSharedPricingState
-            {
-                AccumulatedValues = new Dictionary<string, decimal>
-                {
-                    ["ITEM_AMT:PARENT001"] = 0m
-                }
-            }
+            RequestSharedState = CreateSharedState(0m)
         };
 
         await _executor.ExecuteAsync(Action("PARENT001", childRate: 0.30m), ctx);
@@ -192,13 +169,7 @@ public sealed class ChildItemPercentExecutorTests
             UnitPrice = 0m,
             FinalAmount = 0m,
             FinalQty = 1,
-            RequestSharedState = new RequestSharedPricingState
-            {
-                AccumulatedValues = new Dictionary<string, decimal>
-                {
-                    ["ITEM_AMT:PARENT001"] = 1000m
-                }
-            }
+            RequestSharedState = CreateSharedState(1000m)
         };
 
         await _executor.ExecuteAsync(Action("PARENT001", childRate: 0.30m), ctx);

@@ -51,16 +51,104 @@ public sealed class RequestSharedPricingState
     }
 
     /// <summary>
+    /// 记录请求内占额草稿。
+    /// </summary>
+    public void AddLimitOccupy(LimitOccupy occupy)
+    {
+        if (occupy.OccupyQty != 0 || occupy.OccupyAmt != 0)
+        {
+            LimitOccupies.Add(occupy);
+        }
+    }
+
+    /// <summary>
+    /// 增加指定限额维度的请求内累计数量。
+    /// </summary>
+    public void AddLimitQty(string limitType, string dimensionCode, decimal qty)
+    {
+        var key = RequestSharedStateKeys.BuildLimitDimensionKey(limitType, dimensionCode);
+        AccumulatedValues.TryGetValue(key, out var existingQty);
+        AccumulatedValues[key] = existingQty + qty;
+    }
+
+    /// <summary>
+    /// 增加同组互斥已通过项目数。
+    /// </summary>
+    public void IncrementMutexCount(string groupCode, decimal increment = 1m)
+    {
+        var key = RequestSharedStateKeys.BuildMutexKey(groupCode);
+        AccumulatedValues.TryGetValue(key, out var existingCount);
+        AccumulatedValues[key] = existingCount + increment;
+    }
+
+    /// <summary>
+    /// 增加同手术封顶请求内累计金额。
+    /// </summary>
+    public void AddOperationAmount(string operationNo, string groupCode, decimal amount)
+    {
+        var key = RequestSharedStateKeys.BuildOperationCeilingKey(operationNo, groupCode);
+        AccumulatedValues.TryGetValue(key, out var existingAmount);
+        AccumulatedValues[key] = existingAmount + amount;
+    }
+
+    /// <summary>
+    /// 设置父项目最终金额。
+    /// </summary>
+    public void SetParentItemAmount(string itemCode, decimal amount)
+    {
+        AccumulatedValues[RequestSharedStateKeys.BuildParentItemAmountKey(itemCode)] = amount;
+    }
+
+    /// <summary>
+    /// 尝试读取父项目最终金额。
+    /// </summary>
+    public bool TryGetParentItemAmount(string itemCode, out decimal amount)
+    {
+        return AccumulatedValues.TryGetValue(
+            RequestSharedStateKeys.BuildParentItemAmountKey(itemCode),
+            out amount);
+    }
+
+    /// <summary>
+    /// 获取同组互斥已通过项目数。
+    /// </summary>
+    public decimal GetMutexCount(string groupCode)
+    {
+        return GetAccumulatedValue(RequestSharedStateKeys.BuildMutexKey(groupCode));
+    }
+
+    /// <summary>
+    /// 获取同手术封顶请求内累计金额。
+    /// </summary>
+    public decimal GetOperationAmount(string operationNo, string groupCode)
+    {
+        return GetAccumulatedValue(RequestSharedStateKeys.BuildOperationCeilingKey(operationNo, groupCode));
+    }
+
+    /// <summary>
+    /// 获取指定限额维度的请求内累计数量。
+    /// </summary>
+    public decimal GetLimitQty(string limitType, string dimensionCode)
+    {
+        return GetAccumulatedValue(RequestSharedStateKeys.BuildLimitDimensionKey(limitType, dimensionCode));
+    }
+
+    /// <summary>
+    /// 尝试读取任意共享状态键的累计值。
+    /// </summary>
+    public bool TryGetAccumulatedValue(string key, out decimal value)
+    {
+        return AccumulatedValues.TryGetValue(key, out value);
+    }
+
+    /// <summary>
     /// 将当前明细的计价结果累积到请求共享状态，供后续明细使用。
     /// </summary>
     public void Accumulate(PricingResult result, PricingContext context)
     {
         foreach (var occupy in result.LimitOccupies)
         {
-            if (occupy.OccupyQty != 0 || occupy.OccupyAmt != 0)
-            {
-                LimitOccupies.Add(occupy);
-            }
+            AddLimitOccupy(occupy);
 
             if (string.IsNullOrWhiteSpace(occupy.LimitType) ||
                 string.IsNullOrWhiteSpace(occupy.LimitDimensionCode))
@@ -68,38 +156,35 @@ public sealed class RequestSharedPricingState
                 continue;
             }
 
-            var dimensionKey = BuildLimitDimensionKey(occupy.LimitType, occupy.LimitDimensionCode);
-            AccumulatedValues.TryGetValue(dimensionKey, out var existingQty);
-            AccumulatedValues[dimensionKey] = existingQty + occupy.OccupyQty;
+            AddLimitQty(occupy.LimitType, occupy.LimitDimensionCode, occupy.OccupyQty);
         }
 
         if (result.FinalQty > 0 && !string.IsNullOrWhiteSpace(context.ItemGroupCode))
         {
-            var mutexKey = $"MUTEX:{context.ItemGroupCode.Trim().ToUpperInvariant()}";
-            AccumulatedValues.TryGetValue(mutexKey, out var existingCount);
-            AccumulatedValues[mutexKey] = existingCount + 1m;
+            IncrementMutexCount(context.ItemGroupCode);
         }
 
         var operationNo = GetExtraParam(context.ExtraParams, "operationNo")
             ?? GetExtraParam(context.ExtraParams, "operationId");
         if (!string.IsNullOrWhiteSpace(operationNo) && !string.IsNullOrWhiteSpace(context.ItemGroupCode))
         {
-            var opCeilingKey =
-                $"OP_CEILING:{operationNo.Trim().ToUpperInvariant()}:{context.ItemGroupCode.Trim().ToUpperInvariant()}";
-            AccumulatedValues.TryGetValue(opCeilingKey, out var existingAmount);
-            AccumulatedValues[opCeilingKey] = existingAmount + result.FinalAmount;
+            AddOperationAmount(operationNo, context.ItemGroupCode, result.FinalAmount);
         }
 
         if (!string.IsNullOrWhiteSpace(context.ItemCode))
         {
-            var parentAmountKey = $"ITEM_AMT:{context.ItemCode.Trim().ToUpperInvariant()}";
-            AccumulatedValues[parentAmountKey] = result.FinalAmount;
+            SetParentItemAmount(context.ItemCode, result.FinalAmount);
         }
     }
 
     public static string BuildLimitDimensionKey(string limitType, string dimensionCode)
     {
-        return $"{limitType.Trim().ToUpperInvariant()}:{dimensionCode.Trim().ToUpperInvariant()}";
+        return RequestSharedStateKeys.BuildLimitDimensionKey(limitType, dimensionCode);
+    }
+
+    private decimal GetAccumulatedValue(string key)
+    {
+        return AccumulatedValues.TryGetValue(key, out var value) ? value : 0m;
     }
 
     private static string? GetExtraParam(IReadOnlyDictionary<string, string>? extraParams, string key)

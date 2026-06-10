@@ -207,6 +207,27 @@ public sealed class PricingContext
     /// 确保新系统上线初期与旧系统数据之间无间隙。新旧数据对齐后置 0 即可，引擎行为不变。
     /// </summary>
     public decimal LegacyOccupiedQty { get; set; }
+
+    /// <summary>
+    /// 按普通计价口径初始化本次计算的基础数量和金额。
+    /// </summary>
+    public void InitializeForCalculation()
+    {
+        ConvertedQty = InputQty;
+        FinalQty = InputQty;
+        FinalAmount = GetOriginalAmount();
+        FormulaAmount = 0;
+        LimitedAmount = 0;
+        DiscountAmount = 0;
+    }
+
+    /// <summary>
+    /// 计算原始金额。
+    /// </summary>
+    public decimal GetOriginalAmount()
+    {
+        return UnitPrice * InputQty;
+    }
 }
 
 /// <summary>

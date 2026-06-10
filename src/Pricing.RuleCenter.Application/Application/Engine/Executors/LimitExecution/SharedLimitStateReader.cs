@@ -80,13 +80,13 @@ internal static class SharedLimitStateReader
     {
         var keys = new List<string>(fallbackKeys.Count + 1)
         {
-            RequestSharedPricingState.BuildLimitDimensionKey(limitType, dimensionCode)
+            RequestSharedStateKeys.BuildLimitDimensionKey(limitType, dimensionCode)
         };
         keys.AddRange(fallbackKeys);
 
         foreach (var key in keys)
         {
-            if (context.RequestSharedState.AccumulatedValues.TryGetValue(key, out var value))
+            if (context.RequestSharedState.TryGetAccumulatedValue(key, out var value))
             {
                 return value;
             }

@@ -8,6 +8,13 @@ namespace Pricing.RuleCenter.Tests;
 
 public sealed class DailyAndTimeWindowLimitExecutorTests
 {
+    private static RequestSharedPricingState CreateState(Action<RequestSharedPricingState> configure)
+    {
+        var state = new RequestSharedPricingState();
+        configure(state);
+        return state;
+    }
+
     [Fact]
     public async Task DailyQtyLimitExecutor_UsesInRequestOccupiedQty()
     {
@@ -22,13 +29,7 @@ public sealed class DailyAndTimeWindowLimitExecutorTests
             UnitPrice = 10m,
             FinalAmount = 40m,
             BusinessChargeTime = new DateTime(2026, 5, 10, 10, 0, 0),
-            RequestSharedState = new RequestSharedPricingState
-            {
-                AccumulatedValues = new Dictionary<string, decimal>
-                {
-                    ["DAY_QTY:P001:ITEM001:20260510"] = 2m
-                }
-            }
+            RequestSharedState = CreateState(state => state.AddLimitQty("DAY_QTY", "P001:ITEM001:20260510", 2m))
         };
 
         await executor.ExecuteAsync(new RuleAction
@@ -55,13 +56,7 @@ public sealed class DailyAndTimeWindowLimitExecutorTests
             UnitPrice = 10m,
             FinalAmount = 40m,
             BusinessChargeTime = new DateTime(2026, 5, 10, 10, 0, 0),
-            RequestSharedState = new RequestSharedPricingState
-            {
-                AccumulatedValues = new Dictionary<string, decimal>
-                {
-                    ["TIME_WINDOW:P001:ITEM001"] = 2m
-                }
-            }
+            RequestSharedState = CreateState(state => state.AddLimitQty("TIME_WINDOW", "P001:ITEM001", 2m))
         };
 
         await executor.ExecuteAsync(new RuleAction
@@ -90,13 +85,7 @@ public sealed class DailyAndTimeWindowLimitExecutorTests
             FinalAmount = 40m,
             LegacyOccupiedQty = 2m,
             BusinessChargeTime = new DateTime(2026, 5, 10, 10, 0, 0),
-            RequestSharedState = new RequestSharedPricingState
-            {
-                AccumulatedValues = new Dictionary<string, decimal>
-                {
-                    ["TIME_WINDOW:P001:ITEM001"] = 1m
-                }
-            }
+            RequestSharedState = CreateState(state => state.AddLimitQty("TIME_WINDOW", "P001:ITEM001", 1m))
         };
 
         await executor.ExecuteAsync(new RuleAction
@@ -125,13 +114,7 @@ public sealed class DailyAndTimeWindowLimitExecutorTests
             FinalAmount = 40m,
             LegacyOccupiedQty = 0m,
             BusinessChargeTime = new DateTime(2026, 5, 10, 10, 0, 0),
-            RequestSharedState = new RequestSharedPricingState
-            {
-                AccumulatedValues = new Dictionary<string, decimal>
-                {
-                    ["TIME_WINDOW:P001:ITEM001"] = 2m
-                }
-            }
+            RequestSharedState = CreateState(state => state.AddLimitQty("TIME_WINDOW", "P001:ITEM001", 2m))
         };
 
         await executor.ExecuteAsync(new RuleAction
@@ -143,7 +126,6 @@ public sealed class DailyAndTimeWindowLimitExecutorTests
         // 已占用 = 1(DB) + 2(InRequest) + 0(Legacy) = 3，剩余 = 2，本次4个截断为2
         Assert.Equal(2m, context.FinalQty);
     }
-
     private sealed class InMemoryLimitOccupyRepository : ILimitOccupyRepository
     {
         public decimal OccupiedQty { get; init; }
