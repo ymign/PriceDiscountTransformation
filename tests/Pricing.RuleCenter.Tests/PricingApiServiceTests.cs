@@ -528,10 +528,10 @@ public sealed class PricingApiServiceTests
         var secondContext = engine.Contexts[1];
         Assert.Equal(
             2m,
-            secondContext.InRequestOccupiedQtyByLimitDimension["DAY_QTY:P001:ITEM001:20260510"]);
+            secondContext.RequestSharedState.AccumulatedValues["DAY_QTY:P001:ITEM001:20260510"]);
         Assert.Equal(
             2m,
-            secondContext.InRequestOccupiedQtyByLimitDimension["TIME_WINDOW:P001:ITEM001"]);
+            secondContext.RequestSharedState.AccumulatedValues["TIME_WINDOW:P001:ITEM001"]);
     }
 
     [Fact]
@@ -1542,7 +1542,7 @@ public sealed class PricingApiServiceTests
     {
         public List<PricingContext> Contexts { get; } = new();
 
-        public Task<PricingResult> CalculateAsync(PricingContext context, BatchPricingContext? batchContext = null)
+        public Task<PricingResult> CalculateAsync(PricingContext context)
         {
             Contexts.Add(context);
             return Task.FromResult(new PricingResult
@@ -1561,7 +1561,7 @@ public sealed class PricingApiServiceTests
     {
         public List<PricingContext> Contexts { get; } = new();
 
-        public Task<PricingResult> CalculateAsync(PricingContext context, BatchPricingContext? batchContext = null)
+        public Task<PricingResult> CalculateAsync(PricingContext context)
         {
             Contexts.Add(context);
             var dayDimensionCode = $"{context.PatientId}:{context.ItemCode}:{context.BusinessChargeTime:yyyyMMdd}".ToUpperInvariant();
@@ -1595,7 +1595,7 @@ public sealed class PricingApiServiceTests
 
     private sealed class ReplacementPricingEngine : IPricingEngine
     {
-        public Task<PricingResult> CalculateAsync(PricingContext context, BatchPricingContext? batchContext = null)
+        public Task<PricingResult> CalculateAsync(PricingContext context)
         {
             return Task.FromResult(new PricingResult
             {
@@ -1622,7 +1622,7 @@ public sealed class PricingApiServiceTests
 
     private sealed class ChildItemPricingEngine : IPricingEngine
     {
-        public Task<PricingResult> CalculateAsync(PricingContext context, BatchPricingContext? batchContext = null)
+        public Task<PricingResult> CalculateAsync(PricingContext context)
         {
             return Task.FromResult(new PricingResult
             {
@@ -1653,7 +1653,7 @@ public sealed class PricingApiServiceTests
 
     private sealed class MixedSpecialPricingEngine : IPricingEngine
     {
-        public Task<PricingResult> CalculateAsync(PricingContext context, BatchPricingContext? batchContext = null)
+        public Task<PricingResult> CalculateAsync(PricingContext context)
         {
             var amount = context.InputQty * context.UnitPrice;
             var isSpecial = string.Equals(context.ItemCode, "ITEM_SPECIAL", StringComparison.OrdinalIgnoreCase);
@@ -1689,7 +1689,7 @@ public sealed class PricingApiServiceTests
 
     private sealed class TraceableSpecialPricingEngine : IPricingEngine
     {
-        public Task<PricingResult> CalculateAsync(PricingContext context, BatchPricingContext? batchContext = null)
+        public Task<PricingResult> CalculateAsync(PricingContext context)
         {
             return Task.FromResult(new PricingResult
             {
@@ -1733,7 +1733,7 @@ public sealed class PricingApiServiceTests
 
     private sealed class RuntimeAwareTracePricingEngine : IPricingEngine
     {
-        public Task<PricingResult> CalculateAsync(PricingContext context, BatchPricingContext? batchContext = null)
+        public Task<PricingResult> CalculateAsync(PricingContext context)
         {
             return Task.FromResult(new PricingResult
             {

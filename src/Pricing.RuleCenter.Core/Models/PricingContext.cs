@@ -193,23 +193,13 @@ public sealed class PricingContext
     public List<ChildPricingResult> ChildPricingResults { get; set; } = new();
 
     /// <summary>
-    /// 同一次收费动作内已经被前序费用明细占用的数量缓存。
+    /// 当前请求内全部费用明细共享的运行态状态。
     /// </summary>
     /// <remarks>
-    /// 一次结算请求可以携带多条收费明细。单次限额的业务口径是"单次收费动作"，不是单条收费明细，
-    /// 因此应用服务在循环计算 items[] 时需要把前面明细已经占用的单次额度传给后续明细。
+    /// 单次请求如果携带多条 Items，后续明细需要看到前序明细已经产生的请求内占额、
+    /// 同组互斥计数、同手术累计金额和父项最终金额。该对象承载这份共享工作区。
     /// </remarks>
-    public IReadOnlyDictionary<string, decimal> InRequestOccupiedQtyByLimitDimension { get; set; } =
-        new Dictionary<string, decimal>();
-
-    /// <summary>
-    /// 同一次收费动作内前序费用明细已经生成的限额占用草稿。
-    /// </summary>
-    /// <remarks>
-    /// TIME_WINDOW 需要按业务收费时间判断前序明细是否落入当前滑动窗口，单纯按维度累计会把窗口外明细也算进去。
-    /// 因此这里保留占额草稿本身，供时间窗执行器按 BusinessChargeTime 做精确过滤。
-    /// </remarks>
-    public IReadOnlyList<LimitOccupy> InRequestLimitOccupies { get; set; } = Array.Empty<LimitOccupy>();
+    public RequestSharedPricingState RequestSharedState { get; set; } = new();
 
     /// <summary>
     /// HIS 旧系统在当前时间窗口内已收费的数量（方案B兜底查询）。

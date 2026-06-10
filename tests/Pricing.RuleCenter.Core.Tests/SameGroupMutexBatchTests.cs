@@ -51,17 +51,19 @@ public sealed class SameGroupMutexBatchTests
             new SystemClock(),
             NullLogger<PricingEngine>.Instance);
 
-        var batchContext = new BatchPricingContext();
+        var sharedState = new RequestSharedPricingState();
+        var firstContext = CreateContext("ITEM_A", sharedState);
+        var first = await engine.CalculateAsync(firstContext);
+        sharedState.Accumulate(first, firstContext);
 
-        var first = await engine.CalculateAsync(CreateContext("ITEM_A"), batchContext);
-        var second = await engine.CalculateAsync(CreateContext("ITEM_B"), batchContext);
+        var second = await engine.CalculateAsync(CreateContext("ITEM_B", sharedState));
 
         Assert.Equal(1m, first.FinalQty);
         Assert.Equal(0m, second.FinalQty);
         Assert.Equal(0m, second.FinalAmount);
     }
 
-    private static PricingContext CreateContext(string itemCode)
+    private static PricingContext CreateContext(string itemCode, RequestSharedPricingState sharedState)
     {
         return new PricingContext
         {
@@ -71,7 +73,8 @@ public sealed class SameGroupMutexBatchTests
             UnitPrice = 100,
             SourceSystem = "HIS",
             BusinessRequestNo = $"REQ_{itemCode}",
-            BusinessChargeTime = new DateTime(2026, 5, 14, 9, 0, 0)
+            BusinessChargeTime = new DateTime(2026, 5, 14, 9, 0, 0),
+            RequestSharedState = sharedState
         };
     }
 

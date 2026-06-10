@@ -186,7 +186,7 @@ public sealed class TimeWindowLimitExecutor : IRuleActionExecutor
         DateTime windowStart,
         DateTime windowEnd)
     {
-        var candidates = context.InRequestLimitOccupies
+        var candidates = context.RequestSharedState.LimitOccupies
             .Where(o => string.Equals(o.LimitType, "TIME_WINDOW", StringComparison.OrdinalIgnoreCase))
             .Where(o => string.Equals(o.LimitDimensionCode, dimensionCode, StringComparison.OrdinalIgnoreCase))
             .ToList();
@@ -198,8 +198,8 @@ public sealed class TimeWindowLimitExecutor : IRuleActionExecutor
                 .Sum(o => o.OccupyQty);
         }
 
-        var inRequestKey = $"TIME_WINDOW:{dimensionCode}";
-        return context.InRequestOccupiedQtyByLimitDimension.TryGetValue(inRequestKey, out var cachedQty)
+        var inRequestKey = RequestSharedPricingState.BuildLimitDimensionKey("TIME_WINDOW", dimensionCode);
+        return context.RequestSharedState.AccumulatedValues.TryGetValue(inRequestKey, out var cachedQty)
             ? cachedQty
             : 0m;
     }

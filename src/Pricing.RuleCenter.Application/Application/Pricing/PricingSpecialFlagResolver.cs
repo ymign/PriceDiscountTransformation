@@ -3,6 +3,7 @@ using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Engine;
+using Pricing.RuleCenter.Core.Engine.RuleRuntimeSnapshot;
 using Pricing.RuleCenter.Core.Models;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
@@ -37,6 +38,10 @@ public sealed class PricingSpecialFlagResolver
     /// </summary>
     private readonly RuntimePackageTraceResolver? _runtimePackageTraceResolver;
     /// <summary>
+    /// 当前请求可见规则快照统一入口。存在时优先使用该入口，统一封装运行包和旧规则回退逻辑。
+    /// </summary>
+    private readonly EffectiveRuleSnapshotLoader? _effectiveRuleSnapshotLoader;
+    /// <summary>
     /// 条件组匹配器，用于 special-flag 查询时提前按场景、部位、就诊类型等条件预判命中。
     /// </summary>
     private readonly IRuleConditionGroupMatcher? _conditionMatcher;
@@ -52,12 +57,14 @@ public sealed class PricingSpecialFlagResolver
         IRuleHeaderRepository headerRepository,
         IClock clock,
         RuntimePackageTraceResolver? runtimePackageTraceResolver = null,
-        IRuleConditionGroupMatcher? conditionMatcher = null)
+        IRuleConditionGroupMatcher? conditionMatcher = null,
+        EffectiveRuleSnapshotLoader? effectiveRuleSnapshotLoader = null)
     {
         _headerRepository = headerRepository;
         _clock = clock;
         _runtimePackageTraceResolver = runtimePackageTraceResolver;
         _conditionMatcher = conditionMatcher;
+        _effectiveRuleSnapshotLoader = effectiveRuleSnapshotLoader;
     }
 
     /// <summary>
@@ -82,6 +89,11 @@ public sealed class PricingSpecialFlagResolver
         var normalizedItemCode = NormalizeString(request.ItemCode)
             ?? throw new ArgumentException("项目编码不能为空", nameof(request.ItemCode));
         var businessTime = request.BusinessChargeTime ?? _clock.Now;
+
+        if (_effectiveRuleSnapshotLoader is not null)
+        {
+            return await ResolveFromSnapshotLoaderAsync(normalizedItemCode, request, businessTime);
+        }
 
         // 优先使用激活运行包。运行包是发布后的稳定快照，能避免查询过程中规则主表被编辑造成判断不一致。
         if (_runtimePackageTraceResolver is not null)
@@ -112,6 +124,88 @@ public sealed class PricingSpecialFlagResolver
             RuleCount = published.Count,
             RollbackMode = ResolveRollbackMode(published),
             MatchedRuleIds = published.Select(r => r.RuleId).Distinct().ToList()
+        };
+    }
+
+    private async Task<SpecialFlagResponse> ResolveFromSnapshotLoaderAsync(
+        string normalizedItemCode,
+        SpecialFlagRequest request,
+        DateTime businessTime)
+    {
+        var ruleSet = await _effectiveRuleSnapshotLoader!.LoadCurrentAsync(normalizedItemCode);
+        if (ruleSet.HasRuntimePackage)
+        {
+            return await ResolveFromRuntimeSnapshotSetAsync(
+                normalizedItemCode,
+                request,
+                businessTime,
+                ruleSet);
+        }
+
+        var publishedRules = ruleSet.Snapshots
+            .Select(snapshot => snapshot.Header)
+            .Where(rule => rule.Status == RuleStatusCodes.Published && rule.IsEnabled == EnableFlag.Yes)
+            .Where(rule => rule.IsEffectiveAt(businessTime))
+            .ToList();
+
+        return new SpecialFlagResponse
+        {
+            ItemCode = normalizedItemCode,
+            IsSpecial = publishedRules.Count > 0,
+            RuleCount = publishedRules.Count,
+            RollbackMode = ResolveRollbackMode(publishedRules),
+            MatchedRuleIds = publishedRules.Select(rule => rule.RuleId).Distinct().ToList()
+        };
+    }
+
+    private async Task<SpecialFlagResponse> ResolveFromRuntimeSnapshotSetAsync(
+        string normalizedItemCode,
+        SpecialFlagRequest request,
+        DateTime businessTime,
+        EffectiveRuleSnapshotLoadResult ruleSet)
+    {
+        var context = BuildPricingContext(normalizedItemCode, request, businessTime);
+        var matchedSnapshots = new List<EffectiveRuleSnapshot>();
+
+        foreach (var snapshot in ruleSet.Snapshots)
+        {
+            if (!snapshot.Header.IsEffectiveAt(businessTime))
+            {
+                continue;
+            }
+
+            if (_conditionMatcher is not null &&
+                !await _conditionMatcher.EvaluateAsync(snapshot.Conditions, context))
+            {
+                continue;
+            }
+
+            matchedSnapshots.Add(snapshot);
+        }
+
+        var runtimeRuleIds = matchedSnapshots
+            .Select(snapshot => snapshot.Header.RuleId)
+            .Where(id => id > 0)
+            .Distinct()
+            .ToList();
+        var policyVersionIds = runtimeRuleIds
+            .Where(ruleSet.RuntimeRulesById.ContainsKey)
+            .Select(ruleId => ruleSet.RuntimeRulesById[ruleId].SourcePolicyVersionId)
+            .Where(id => id > 0)
+            .Distinct()
+            .ToList();
+
+        return new SpecialFlagResponse
+        {
+            ItemCode = normalizedItemCode,
+            IsSpecial = runtimeRuleIds.Count > 0,
+            RuleCount = runtimeRuleIds.Count,
+            RollbackMode = "STOP_CHARGE",
+            RuntimePackageId = ruleSet.RuntimePackageId,
+            RuntimePackageVersion = ruleSet.RuntimePackageVersion,
+            MatchedRuleIds = runtimeRuleIds,
+            MatchedRuntimeRuleIds = runtimeRuleIds,
+            MatchedPolicyVersionIds = policyVersionIds
         };
     }
 

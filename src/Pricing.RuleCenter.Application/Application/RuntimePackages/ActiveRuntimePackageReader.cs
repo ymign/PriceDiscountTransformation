@@ -52,32 +52,42 @@ public sealed class ActiveRuntimePackageReader
     /// <returns>运行期规则快照集合；无激活包或无匹配项目时返回空集合。</returns>
     public async Task<IReadOnlyList<RuntimeRuleSnapshot>> LoadByItemCodeAsync(string itemCode)
     {
+        return (await LoadCurrentPackageAsync(itemCode)).Snapshots;
+    }
+
+    /// <summary>
+    /// 读取当前激活运行包下指定项目的运行期规则及包元数据。
+    /// </summary>
+    public async Task<ActiveRuntimePackageReadResult> LoadCurrentPackageAsync(string itemCode)
+    {
         var normalizedItemCode = itemCode.Trim();
         if (normalizedItemCode.Length == 0)
         {
-            return Array.Empty<RuntimeRuleSnapshot>();
+            return ActiveRuntimePackageReadResult.Empty(null, null);
         }
 
         var activeContext = _traceContextAccessor?.Current;
         var packageId = activeContext?.ActivePackageId;
+        var packageVersion = activeContext?.ActivePackageVersion;
         if (activeContext is null)
         {
             // 没有请求级追踪上下文时，直接读取数据库中的当前激活包。
             // 这种路径主要用于单次查询或旧调用方式；计价工作流会提前捕获上下文。
             var activeState = await _packageStateRepository.GetActiveAsync();
             packageId = activeState?.ActivePackageId > 0 ? activeState.ActivePackageId : null;
+            packageVersion = activeState?.ActivePackageVersion > 0 ? activeState.ActivePackageVersion : null;
         }
 
         if (!packageId.HasValue || packageId.Value <= 0)
         {
-            return Array.Empty<RuntimeRuleSnapshot>();
+            return ActiveRuntimePackageReadResult.Empty(null, null);
         }
 
         // 先按项目读取规则，再按规则 ID 批量读取条件和动作，减少数据库往返次数。
         var rules = await _runtimeRuleReadRepository.GetRulesByItemCodeAsync(packageId.Value, normalizedItemCode);
         if (rules.Count == 0)
         {
-            return Array.Empty<RuntimeRuleSnapshot>();
+            return ActiveRuntimePackageReadResult.Empty(packageId, packageVersion);
         }
 
         var ruleIds = rules.Select(rule => rule.RuntimeRuleId).ToArray();
@@ -100,6 +110,29 @@ public sealed class ActiveRuntimePackageReader
             });
         }
 
-        return snapshots;
+        return new ActiveRuntimePackageReadResult
+        {
+            RuntimePackageId = packageId,
+            RuntimePackageVersion = packageVersion,
+            Snapshots = snapshots
+        };
+    }
+}
+
+public sealed class ActiveRuntimePackageReadResult
+{
+    public long? RuntimePackageId { get; init; }
+
+    public long? RuntimePackageVersion { get; init; }
+
+    public IReadOnlyList<RuntimeRuleSnapshot> Snapshots { get; init; } = Array.Empty<RuntimeRuleSnapshot>();
+
+    public static ActiveRuntimePackageReadResult Empty(long? runtimePackageId, long? runtimePackageVersion)
+    {
+        return new ActiveRuntimePackageReadResult
+        {
+            RuntimePackageId = runtimePackageId,
+            RuntimePackageVersion = runtimePackageVersion
+        };
     }
 }

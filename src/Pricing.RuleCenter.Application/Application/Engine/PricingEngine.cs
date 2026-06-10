@@ -56,22 +56,9 @@ public sealed class PricingEngine : IPricingEngine
     /// 执行一次计价计算。
     /// </summary>
     /// <param name="context">已经从接口 DTO 标准化出来的计价上下文。</param>
-    /// <param name="batchContext">
-    /// 批量计价共享上下文，可选。传入时引擎会在计算前从批量上下文注入同批已占用的限额数据，
-    /// 计算完成后将本项目结果回写到批量上下文，确保后续项目能正确看到本项目的占用。
-    /// </param>
     /// <returns>包含最终数量、金额、折价、命中规则、追溯步骤和占额草稿的计价结果。</returns>
-    public async Task<PricingResult> CalculateAsync(PricingContext context, BatchPricingContext? batchContext = null)
+    public async Task<PricingResult> CalculateAsync(PricingContext context)
     {
-        // ========== 第零阶段：从批量上下文注入同批已占用数据 ==========
-        // 如果传入了批量上下文，说明本项目是批量请求中的一个。前面的项目可能已经产生了
-        // 限额占用，需要把这些占用注入到当前上下文，让限额执行器能正确判断"同批内已占用多少"。
-        // 注入时机在引擎计算之前，确保动作链执行时能读到完整的同批累计数据。
-        if (batchContext is not null)
-        {
-            InjectBatchContext(context, batchContext);
-        }
-
         // ========== 第一阶段：初始化默认计价状态 ==========
         // 默认结果是"普通计价"：数量不变，金额为单价乘数量。
         // 后续规则动作会在这个基础上做换算、数量限制/互斥、公式折价和封顶。
@@ -126,14 +113,7 @@ public sealed class PricingEngine : IPricingEngine
             occupy.OccupiedAt = _clock.Now;
         }
 
-        // ========== 第六阶段：将本项目结果回写到批量上下文 ==========
-        // 回写后，后续项目在进入引擎计算时能读到本项目的限额占用、同组互斥和同手术封顶数据。
         var result = BuildResult(context, true);
-
-        if (batchContext is not null)
-        {
-            batchContext.AccumulateToBatch(result, context);
-        }
 
         // ========== 第七阶段：输出计价完成日志 ==========
         // 日志记录关键金额，不记录完整请求，完整快照由请求日志保存。
@@ -145,78 +125,8 @@ public sealed class PricingEngine : IPricingEngine
     }
 
     /// <summary>
-    /// 将批量上下文中的同批已占用数据注入到当前项目的计价上下文。
-    /// </summary>
-    /// <param name="context">当前项目的计价上下文，注入后限额执行器可读到同批已占用数据。</param>
-    /// <param name="batchContext">批量共享上下文，包含前面项目已经产生的限额占用和互斥计数。</param>
-    /// <remarks>
-    /// <para>
-    /// 注入内容包括两部分：
-    /// 1. InRequestOccupiedQtyByLimitDimension — 同批内按限额维度累计的数量，供限额执行器快速判断。
-    /// 2. InRequestLimitOccupies — 同批内占额草稿列表，供时间窗执行器按 BusinessChargeTime 精确过滤。
-    /// </para>
-    /// <para>
-    /// 注入方式为"追加而非覆盖"，因为 PricingContext 上可能已经有应用服务注入的
-    /// InRequest 级别数据（同一请求内前序项目的累计），批量上下文的数据应叠加而非替换。
-    /// </para>
-    /// </remarks>
-    private static void InjectBatchContext(PricingContext context, BatchPricingContext batchContext)
-    {
-        // ========== 阶段一：合并限额维度累计数量 ==========
-        // 将批量上下文中前面项目已经占用的数量合并到上下文的 InRequest 字典。
-        // 如果同一维度在两处都有值（理论上不应出现），取较大值以确保安全。
-        var mergedQtyDict = new Dictionary<string, decimal>(
-            context.InRequestOccupiedQtyByLimitDimension,
-            StringComparer.OrdinalIgnoreCase);
-
-        foreach (var kvp in batchContext.InBatchOccupiedQtyByDimension)
-        {
-            mergedQtyDict.TryGetValue(kvp.Key, out var existing);
-            if (kvp.Value > existing)
-            {
-                mergedQtyDict[kvp.Key] = kvp.Value;
-            }
-        }
-
-        foreach (var kvp in batchContext.InBatchItemCountByGroup)
-        {
-            var mutexKey = $"MUTEX:{kvp.Key}".ToUpperInvariant();
-            mergedQtyDict.TryGetValue(mutexKey, out var existing);
-            if (kvp.Value > existing)
-            {
-                mergedQtyDict[mutexKey] = kvp.Value;
-            }
-        }
-
-        foreach (var kvp in batchContext.InBatchOccupiedAmtByOperation)
-        {
-            var opCeilingKey = $"OP_CEILING:{kvp.Key}".ToUpperInvariant();
-            mergedQtyDict.TryGetValue(opCeilingKey, out var existing);
-            if (kvp.Value > existing)
-            {
-                mergedQtyDict[opCeilingKey] = kvp.Value;
-            }
-        }
-
-        context.InRequestOccupiedQtyByLimitDimension = mergedQtyDict;
-
-        // ========== 阶段二：合并占额草稿列表 ==========
-        // 时间窗执行器需要完整的占额草稿来做时间过滤，不能只看累计数量。
-        // 将批量上下文的占额草稿追加到上下文的 InRequest 列表。
-        var mergedOccupies = new List<LimitOccupy>(context.InRequestLimitOccupies);
-        foreach (var occupy in batchContext.InBatchLimitOccupies)
-        {
-            if (!mergedOccupies.Contains(occupy))
-            {
-                mergedOccupies.Add(occupy);
-            }
-        }
-        context.InRequestLimitOccupies = mergedOccupies;
-    }
-
-    /// <summary>
-    /// 根据计价上下文组装引擎输出结果。
-    /// </summary>
+     /// 根据计价上下文组装引擎输出结果。
+     /// </summary>
     /// <param name="context">计价上下文。</param>
     /// <param name="isSpecial">是否命中特殊计价规则。</param>
     /// <returns>计价结果。</returns>

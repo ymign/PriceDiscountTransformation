@@ -145,7 +145,7 @@ public sealed class DailyQtyLimitExecutor : IRuleActionExecutor
         DateTime dayStart,
         DateTime dayEnd)
     {
-        var candidates = context.InRequestLimitOccupies
+        var candidates = context.RequestSharedState.LimitOccupies
             .Where(o => string.Equals(o.LimitType, "DAY_QTY", StringComparison.OrdinalIgnoreCase))
             .Where(o => string.Equals(o.LimitDimensionCode, dimensionCode, StringComparison.OrdinalIgnoreCase))
             .ToList();
@@ -157,8 +157,8 @@ public sealed class DailyQtyLimitExecutor : IRuleActionExecutor
                 .Sum(o => o.OccupyQty);
         }
 
-        var inRequestKey = $"DAY_QTY:{dimensionCode}";
-        return context.InRequestOccupiedQtyByLimitDimension.TryGetValue(inRequestKey, out var cachedQty)
+        var inRequestKey = RequestSharedPricingState.BuildLimitDimensionKey("DAY_QTY", dimensionCode);
+        return context.RequestSharedState.AccumulatedValues.TryGetValue(inRequestKey, out var cachedQty)
             ? cachedQty
             : 0m;
     }

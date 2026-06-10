@@ -32,9 +32,12 @@ public sealed class OnceQtyLimitExecutorTests
             FinalAmount = 40m,
             BusinessChargeTime = new DateTime(2026, 5, 10, 10, 0, 0),
             ShouldLockLimits = true,
-            InRequestOccupiedQtyByLimitDimension = new Dictionary<string, decimal>
+            RequestSharedState = new RequestSharedPricingState
             {
-                ["ONCE_QTY:HIS:BIZ-001:ITEM001"] = 1m
+                AccumulatedValues = new Dictionary<string, decimal>
+                {
+                    ["ONCE_QTY:HIS:BIZ-001:ITEM001"] = 1m
+                }
             }
         };
         var action = new RuleAction

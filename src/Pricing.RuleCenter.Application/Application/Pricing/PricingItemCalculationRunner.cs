@@ -1,6 +1,5 @@
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Pricing.Builders;
-using Pricing.RuleCenter.Core.Aggregates.Quota;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 
@@ -40,9 +39,7 @@ public sealed class PricingItemCalculationRunner
         string callType,
         bool shouldLockLimits)
     {
-        var inRequestOccupiedQtyByLimitDimension = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
-        var inRequestLimitOccupies = new List<LimitOccupy>();
-        var batchContext = items.Count > 1 ? new BatchPricingContext() : null;
+        var requestSharedState = new RequestSharedPricingState();
         var calculations = new List<ItemPricingCalculation>(items.Count);
 
         foreach (var item in items)
@@ -53,14 +50,10 @@ public sealed class PricingItemCalculationRunner
                 Item = item,
                 CallType = callType,
                 ShouldLockLimits = shouldLockLimits,
-                InRequestOccupiedQtyByLimitDimension = inRequestOccupiedQtyByLimitDimension,
-                InRequestLimitOccupies = inRequestLimitOccupies
+                RequestSharedState = requestSharedState
             });
-            var result = await _engine.CalculateAsync(context, batchContext);
-            PricingInRequestLimitAccumulator.Accumulate(
-                inRequestOccupiedQtyByLimitDimension,
-                inRequestLimitOccupies,
-                result);
+            var result = await _engine.CalculateAsync(context);
+            requestSharedState.Accumulate(result, context);
             calculations.Add(new ItemPricingCalculation(item, result));
         }
 

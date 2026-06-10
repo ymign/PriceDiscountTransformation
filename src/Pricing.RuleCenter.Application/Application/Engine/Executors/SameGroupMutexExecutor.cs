@@ -203,7 +203,7 @@ public sealed class SameGroupMutexExecutor : IRuleActionExecutor
         DateTime windowStart,
         DateTime windowEnd)
     {
-        var candidates = context.InRequestLimitOccupies
+        var candidates = context.RequestSharedState.LimitOccupies
             .Where(o => string.Equals(o.LimitType, LimitType, StringComparison.OrdinalIgnoreCase))
             .Where(o => string.Equals(o.LimitDimensionCode, dimensionCode, StringComparison.OrdinalIgnoreCase))
             .ToList();
@@ -216,14 +216,14 @@ public sealed class SameGroupMutexExecutor : IRuleActionExecutor
         }
 
         var sameGroupKey = $"{LimitType}:{dimensionCode}".ToUpperInvariant();
-        if (context.InRequestOccupiedQtyByLimitDimension.TryGetValue(sameGroupKey, out var cachedCount))
+        if (context.RequestSharedState.AccumulatedValues.TryGetValue(sameGroupKey, out var cachedCount))
         {
             return cachedCount;
         }
 
         // 兼容旧版批量上下文注入方式：此前同组互斥只看 MUTEX:{groupKey} 这个请求内缓存键。
         var legacyMutexKey = $"MUTEX:{groupKey}".ToUpperInvariant();
-        return context.InRequestOccupiedQtyByLimitDimension.TryGetValue(legacyMutexKey, out cachedCount)
+        return context.RequestSharedState.AccumulatedValues.TryGetValue(legacyMutexKey, out cachedCount)
             ? cachedCount
             : 0m;
     }

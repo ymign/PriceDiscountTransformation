@@ -33,13 +33,16 @@ public sealed class SameOperationCeilingExecutorTests
             {
                 ["operationNo"] = "OP001"
             },
-            InRequestLimitOccupies = new[]
+            RequestSharedState = new RequestSharedPricingState
             {
-                new LimitOccupy
+                LimitOccupies = new List<LimitOccupy>
                 {
-                    LimitType = "SAME_OPERATION",
-                    LimitDimensionCode = "P001:OP001:GRP001",
-                    OccupyAmt = 10m
+                    new LimitOccupy
+                    {
+                        LimitType = "SAME_OPERATION",
+                        LimitDimensionCode = "P001:OP001:GRP001",
+                        OccupyAmt = 10m
+                    }
                 }
             }
         };

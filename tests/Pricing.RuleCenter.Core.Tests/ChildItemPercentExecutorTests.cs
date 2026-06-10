@@ -35,9 +35,12 @@ public sealed class ChildItemPercentExecutorTests
             UnitPrice = 0m,
             FinalAmount = 0m,
             FinalQty = 1,
-            InRequestOccupiedQtyByLimitDimension = new Dictionary<string, decimal>
+            RequestSharedState = new RequestSharedPricingState
             {
-                ["ITEM_AMT:PARENT001"] = parentFinalAmount
+                AccumulatedValues = new Dictionary<string, decimal>
+                {
+                    ["ITEM_AMT:PARENT001"] = parentFinalAmount
+                }
             }
         };
     }
@@ -92,7 +95,7 @@ public sealed class ChildItemPercentExecutorTests
             UnitPrice = 50m,
             FinalAmount = 50m,
             FinalQty = 1,
-            InRequestOccupiedQtyByLimitDimension = new Dictionary<string, decimal>()
+            RequestSharedState = new RequestSharedPricingState()
         };
 
         await _executor.ExecuteAsync(Action("PARENT001", childRate: 0.30m), context);

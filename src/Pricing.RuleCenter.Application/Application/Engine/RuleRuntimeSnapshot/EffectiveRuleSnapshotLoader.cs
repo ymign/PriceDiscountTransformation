@@ -1,4 +1,5 @@
 using Pricing.RuleCenter.Core.Aggregates.Rules;
+using Pricing.RuleCenter.Core.Aggregates.Runtime;
 using Pricing.RuleCenter.Application.RuntimePackages;
 
 namespace Pricing.RuleCenter.Core.Engine.RuleRuntimeSnapshot;
@@ -54,19 +55,35 @@ public sealed class EffectiveRuleSnapshotLoader
     /// <returns>当前运行期可参与匹配的规则快照集合。</returns>
     public async Task<IReadOnlyList<EffectiveRuleSnapshot>> LoadByItemCodeAsync(string itemCode)
     {
+        return (await LoadCurrentAsync(itemCode)).Snapshots;
+    }
+
+    /// <summary>
+    /// 按项目编码加载当前请求可见的规则快照及其来源元数据。
+    /// </summary>
+    public async Task<EffectiveRuleSnapshotLoadResult> LoadCurrentAsync(string itemCode)
+    {
         if (_runtimePackageReader is not null)
         {
             // 新策略平台路径：只读取当前激活运行包。
             // 这样规则发布瞬间不会混读旧版本和新版本，也方便追踪每次计价命中的运行包版本。
-            var runtimeSnapshots = await _runtimePackageReader.LoadByItemCodeAsync(itemCode);
-            return runtimeSnapshots.Select(_runtimeProjectionAdapter.Adapt).ToList();
+            var runtimeReadResult = await _runtimePackageReader.LoadCurrentPackageAsync(itemCode);
+            return new EffectiveRuleSnapshotLoadResult
+            {
+                RuntimePackageId = runtimeReadResult.RuntimePackageId,
+                RuntimePackageVersion = runtimeReadResult.RuntimePackageVersion,
+                Snapshots = runtimeReadResult.Snapshots.Select(_runtimeProjectionAdapter.Adapt).ToList(),
+                RuntimeRulesById = runtimeReadResult.Snapshots
+                    .Select(snapshot => snapshot.Rule)
+                    .ToDictionary(rule => rule.RuntimeRuleId)
+            };
         }
 
         // 旧规则表回退路径：用于尚未启用策略平台/运行包表的环境。
         var headers = await _repositories.HeaderRepository.GetByItemCodeAsync(itemCode);
         if (headers.Count == 0)
         {
-            return Array.Empty<EffectiveRuleSnapshot>();
+            return new EffectiveRuleSnapshotLoadResult();
         }
 
         var ruleVersions = headers
@@ -96,6 +113,23 @@ public sealed class EffectiveRuleSnapshotLoader
             });
         }
 
-        return snapshots;
+        return new EffectiveRuleSnapshotLoadResult
+        {
+            Snapshots = snapshots
+        };
     }
+}
+
+public sealed class EffectiveRuleSnapshotLoadResult
+{
+    public long? RuntimePackageId { get; init; }
+
+    public long? RuntimePackageVersion { get; init; }
+
+    public bool HasRuntimePackage => RuntimePackageId.HasValue && RuntimePackageId.Value > 0;
+
+    public IReadOnlyList<EffectiveRuleSnapshot> Snapshots { get; init; } = Array.Empty<EffectiveRuleSnapshot>();
+
+    public IReadOnlyDictionary<long, RuntimeRule> RuntimeRulesById { get; init; } =
+        new Dictionary<long, RuntimeRule>();
 }

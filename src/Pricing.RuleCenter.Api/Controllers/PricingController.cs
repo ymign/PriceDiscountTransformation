@@ -158,8 +158,8 @@ public sealed class PricingController : ControllerBase
     public async Task<ApiResult<PricingCalculateResponse>> BatchSimulateAsync(
         [FromBody] PricingCalculateRequest request)
     {
-        // 批量入口复用试算工作流，关键差异在工作流内部是否创建 BatchPricingContext。
-        // 控制器不按条拆分请求，否则同批互斥和同批累计会被破坏。
+        // 批量入口复用试算工作流，关键差异在工作流内部是否共享同一次请求的运行态状态。
+        // 控制器不按条拆分请求，否则请求内互斥和请求内累计会被破坏。
         var result = await _mediator.Send(new SimulatePricingCommand(request));
         return ApiResult<PricingCalculateResponse>.Ok(result);
     }

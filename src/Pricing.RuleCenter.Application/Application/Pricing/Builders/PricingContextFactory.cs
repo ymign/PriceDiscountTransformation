@@ -1,5 +1,4 @@
 using Pricing.RuleCenter.Application.Dto;
-using Pricing.RuleCenter.Core.Aggregates.Quota;
 using Pricing.RuleCenter.Core.Models;
 
 namespace Pricing.RuleCenter.Application.Pricing.Builders;
@@ -34,14 +33,9 @@ internal sealed record PricingContextBuildInput
     public bool ShouldLockLimits { get; init; }
 
     /// <summary>
-    /// 同一请求内已经产生的限额维度占用，用于批量明细之间共享窗口/互斥口径。
+    /// 本次请求共享的计价运行态状态。
     /// </summary>
-    public IReadOnlyDictionary<string, decimal>? InRequestOccupiedQtyByLimitDimension { get; init; }
-
-    /// <summary>
-    /// 同一请求内已经产生的占用明细，用于后续规则执行器判断批量上下文。
-    /// </summary>
-    public IReadOnlyList<LimitOccupy>? InRequestLimitOccupies { get; init; }
+    public RequestSharedPricingState? RequestSharedState { get; init; }
 }
 
 /// <summary>
@@ -93,14 +87,7 @@ internal static class PricingContextFactory
             ChargeDeptCode = NormalizeString(request.ChargeDeptCode),
             LegacyOccupiedQty = item.LegacyOccupiedQty ?? 0m,
             ExtraParams = MergeExtraParams(request.ExtraParams, item.ExtraParams),
-            InRequestOccupiedQtyByLimitDimension =
-                input.InRequestOccupiedQtyByLimitDimension?.ToDictionary(
-                    item => item.Key,
-                    item => item.Value,
-                    StringComparer.OrdinalIgnoreCase) ?? new Dictionary<string, decimal>(),
-            InRequestLimitOccupies = input.InRequestLimitOccupies is null
-                ? Array.Empty<LimitOccupy>()
-                : input.InRequestLimitOccupies.ToList(),
+            RequestSharedState = input.RequestSharedState?.CreateSnapshot() ?? new RequestSharedPricingState(),
             PricingParts = item.PricingParts?.Select(p => new PricingPartItem
             {
                 PartSeq = p.PartSeq,

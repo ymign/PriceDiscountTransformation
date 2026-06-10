@@ -22,9 +22,12 @@ public sealed class DailyAndTimeWindowLimitExecutorTests
             UnitPrice = 10m,
             FinalAmount = 40m,
             BusinessChargeTime = new DateTime(2026, 5, 10, 10, 0, 0),
-            InRequestOccupiedQtyByLimitDimension = new Dictionary<string, decimal>
+            RequestSharedState = new RequestSharedPricingState
             {
-                ["DAY_QTY:P001:ITEM001:20260510"] = 2m
+                AccumulatedValues = new Dictionary<string, decimal>
+                {
+                    ["DAY_QTY:P001:ITEM001:20260510"] = 2m
+                }
             }
         };
 
@@ -52,9 +55,12 @@ public sealed class DailyAndTimeWindowLimitExecutorTests
             UnitPrice = 10m,
             FinalAmount = 40m,
             BusinessChargeTime = new DateTime(2026, 5, 10, 10, 0, 0),
-            InRequestOccupiedQtyByLimitDimension = new Dictionary<string, decimal>
+            RequestSharedState = new RequestSharedPricingState
             {
-                ["TIME_WINDOW:P001:ITEM001"] = 2m
+                AccumulatedValues = new Dictionary<string, decimal>
+                {
+                    ["TIME_WINDOW:P001:ITEM001"] = 2m
+                }
             }
         };
 
@@ -84,9 +90,12 @@ public sealed class DailyAndTimeWindowLimitExecutorTests
             FinalAmount = 40m,
             LegacyOccupiedQty = 2m,
             BusinessChargeTime = new DateTime(2026, 5, 10, 10, 0, 0),
-            InRequestOccupiedQtyByLimitDimension = new Dictionary<string, decimal>
+            RequestSharedState = new RequestSharedPricingState
             {
-                ["TIME_WINDOW:P001:ITEM001"] = 1m
+                AccumulatedValues = new Dictionary<string, decimal>
+                {
+                    ["TIME_WINDOW:P001:ITEM001"] = 1m
+                }
             }
         };
 
@@ -116,9 +125,12 @@ public sealed class DailyAndTimeWindowLimitExecutorTests
             FinalAmount = 40m,
             LegacyOccupiedQty = 0m,
             BusinessChargeTime = new DateTime(2026, 5, 10, 10, 0, 0),
-            InRequestOccupiedQtyByLimitDimension = new Dictionary<string, decimal>
+            RequestSharedState = new RequestSharedPricingState
             {
-                ["TIME_WINDOW:P001:ITEM001"] = 2m
+                AccumulatedValues = new Dictionary<string, decimal>
+                {
+                    ["TIME_WINDOW:P001:ITEM001"] = 2m
+                }
             }
         };
 

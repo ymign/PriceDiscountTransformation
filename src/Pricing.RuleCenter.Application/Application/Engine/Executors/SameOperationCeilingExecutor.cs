@@ -224,7 +224,7 @@ public sealed class SameOperationCeilingExecutor : IRuleActionExecutor
 
     private static decimal GetInRequestOccupiedAmount(PricingContext context, string dimensionCode)
     {
-        var candidates = context.InRequestLimitOccupies
+        var candidates = context.RequestSharedState.LimitOccupies
             .Where(o => string.Equals(o.LimitType, LimitType, StringComparison.OrdinalIgnoreCase))
             .Where(o => string.Equals(o.LimitDimensionCode, dimensionCode, StringComparison.OrdinalIgnoreCase))
             .ToList();
@@ -235,7 +235,7 @@ public sealed class SameOperationCeilingExecutor : IRuleActionExecutor
         }
 
         var opCeilingKey = $"OP_CEILING:{dimensionCode}".ToUpperInvariant();
-        return context.InRequestOccupiedQtyByLimitDimension.TryGetValue(opCeilingKey, out var cachedAmount)
+        return context.RequestSharedState.AccumulatedValues.TryGetValue(opCeilingKey, out var cachedAmount)
             ? cachedAmount
             : 0m;
     }

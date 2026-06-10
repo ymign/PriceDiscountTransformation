@@ -80,7 +80,7 @@ public sealed class OnceQtyLimitExecutor : IRuleActionExecutor
         }
 
         var inRequestKey = $"ONCE_QTY:{dimensionCode}";
-        if (context.InRequestOccupiedQtyByLimitDimension.TryGetValue(inRequestKey, out var inRequestQty))
+        if (context.RequestSharedState.AccumulatedValues.TryGetValue(inRequestKey, out var inRequestQty))
         {
             occupiedQty += inRequestQty;
         }

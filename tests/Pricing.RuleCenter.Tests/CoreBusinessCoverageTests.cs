@@ -381,9 +381,9 @@ public sealed class CoreBusinessCoverageTests
     }
 
     [Fact]
-    public void BatchPricingContext_AccumulatesLimitGroupOperationAndParentAmountState()
+    public void RequestSharedPricingState_AccumulatesLimitGroupOperationAndParentAmountState()
     {
-        var batch = new BatchPricingContext();
+        var state = new RequestSharedPricingState();
         var result = new PricingResult
         {
             FinalQty = 2m,
@@ -414,17 +414,16 @@ public sealed class CoreBusinessCoverageTests
             ExtraParams = new Dictionary<string, string> { ["operationNo"] = " OP-1 " }
         };
 
-        batch.AccumulateToBatch(result, context);
+        state.Accumulate(result, context);
 
-        Assert.Equal(2, batch.InBatchLimitOccupies.Count);
-        Assert.Equal(2m, batch.InBatchOccupiedQtyByDimension["DAY_QTY:PATIENT:ITEM:20260510"]);
-        Assert.Equal(88m, batch.InBatchOccupiedAmtByDimension["DAY_QTY:PATIENT:ITEM:20260510"]);
-        Assert.Equal(1, batch.InBatchItemCountByGroup["GROUP-A"]);
-        Assert.Equal(88m, batch.InBatchOccupiedAmtByOperation["OP-1:GROUP-A"]);
-        Assert.Equal(88m, batch.InBatchOccupiedQtyByDimension["ITEM_AMT:ITEM001"]);
-        Assert.Same(result, Assert.Single(batch.ProcessedResults));
+        Assert.Equal(2, state.LimitOccupies.Count);
+        Assert.Equal(2m, state.AccumulatedValues["DAY_QTY:PATIENT:ITEM:20260510"]);
+        Assert.Equal(0m, state.AccumulatedValues["TIME_WINDOW:PATIENT:ITEM:WINDOW"]);
+        Assert.Equal(1m, state.AccumulatedValues["MUTEX:GROUP-A"]);
+        Assert.Equal(88m, state.AccumulatedValues["OP_CEILING:OP-1:GROUP-A"]);
+        Assert.Equal(88m, state.AccumulatedValues["ITEM_AMT:ITEM001"]);
 
-        batch.AccumulateToBatch(
+        state.Accumulate(
             new PricingResult { FinalQty = 0m, FinalAmount = 10m, LimitOccupies = Array.Empty<LimitOccupy>() },
             new PricingContext
             {
@@ -432,7 +431,7 @@ public sealed class CoreBusinessCoverageTests
                 ItemGroupCode = "GROUP-B",
                 ExtraParams = new Dictionary<string, string> { ["operationId"] = " " }
             });
-        Assert.False(batch.InBatchItemCountByGroup.ContainsKey("GROUP-B"));
+        Assert.False(state.AccumulatedValues.ContainsKey("MUTEX:GROUP-B"));
     }
 
     [Fact]

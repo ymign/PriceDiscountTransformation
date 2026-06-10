@@ -23,9 +23,9 @@ namespace Pricing.RuleCenter.Application.Pricing;
 /// 仍然写请求日志和步骤日志，是为了让前端、运维和收费人员能够解释“当时为什么算出这个价格”。
 /// </para>
 /// <para>
-/// 单条试算和批量试算都进入本 workflow。差异不在 HTTP 控制器，而在本类根据费用明细数量构造
-/// <see cref="BatchPricingContext"/>：多条费用共享同一批上下文，才能正确表达同批内同组互斥、
-/// 同手术封顶、同项目多行累计以及请求内虚拟占用。
+/// 单条试算和批量试算都进入本 workflow。差异不在 HTTP 控制器，而在计价运行器是否让多条费用
+/// 共享同一个 <see cref="RequestSharedPricingState"/>：这样后续明细才能看到前序明细已经形成的
+/// 同组互斥、同手术封顶、同项目多行累计以及请求内虚拟占用。
 /// </para>
 /// <para>
 /// 本 workflow 的边界：可以落请求日志和步骤日志；不写 <c>PR_CHARGE_DISCOUNT_DETAIL</c> 的正式结果，

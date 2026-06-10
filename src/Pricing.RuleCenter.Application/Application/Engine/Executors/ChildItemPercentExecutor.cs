@@ -18,8 +18,8 @@ namespace Pricing.RuleCenter.Core.Engine.Executors;
 /// </para>
 /// <para>
 /// 【批量依赖】本执行器需要在批量请求中找到父项目的最终金额。
-/// 通过 context.InRequestOccupiedQtyByLimitDimension["ITEM_AMT:{parentItemCode}"] 获取，
-/// 该值由 BatchPricingContext.AccumulateToBatch 在父项目计算完成后写入。
+/// 通过 context.RequestSharedState.AccumulatedValues["ITEM_AMT:{parentItemCode}"] 获取，
+/// 该值由请求共享状态在父项目计算完成后写入。
 /// <strong>父项目必须在批量请求中先于子项目处理，此为调用方责任。</strong>
 /// </para>
 /// <para>
@@ -68,7 +68,7 @@ public sealed class ChildItemPercentExecutor : IRuleActionExecutor, IFormulaExec
     /// </list>
     /// </param>
     /// <param name="context">
-    /// 计价上下文，从 InRequestOccupiedQtyByLimitDimension 获取父项目金额，
+    /// 计价上下文，从 RequestSharedState 获取父项目金额，
     /// 写入 FormulaAmount 和 FinalAmount。
     /// </param>
     /// <returns>已完成的异步任务（计算为纯内存操作，无 IO）。</returns>
@@ -95,17 +95,16 @@ public sealed class ChildItemPercentExecutor : IRuleActionExecutor, IFormulaExec
         }
 
         // ========== 第四阶段：查找父项目最终金额 ==========
-        // 父项目金额由 BatchPricingContext.AccumulateToBatch 以 "ITEM_AMT:{itemCode}" 为键写入
-        // InBatchOccupiedQtyByDimension，再由 PricingEngine.InjectBatchContext 注入到当前上下文。
+        // 父项目金额由请求共享状态以 "ITEM_AMT:{itemCode}" 为键累计。
         // 父项不在同一批次时查不到，静默跳过（此场景应改用 AddChildItemExecutor）。
         var parentAmtKey = $"ITEM_AMT:{param.ParentItemCode.Trim().ToUpperInvariant()}";
-        if (!context.InRequestOccupiedQtyByLimitDimension.TryGetValue(parentAmtKey, out var parentFinalAmount))
+        if (!context.RequestSharedState.AccumulatedValues.TryGetValue(parentAmtKey, out var parentFinalAmount))
         {
             context.TraceSteps.Add(new TraceStep
             {
                 StepNo = context.TraceSteps.Count + 1,
                 StepType = "FORMULA",
-                StepDesc = $"子项金额百分比：未找到父项目 {param.ParentItemCode} 的最终金额（父项不在同一批次，跳过）",
+                StepDesc = $"子项金额百分比：未找到父项目 {param.ParentItemCode} 的最终金额（父项不在同一请求顺序中，跳过）",
                 InputValue = 0,
                 OutputValue = context.FinalAmount,
                 ParamsJson = action.ParamsJson

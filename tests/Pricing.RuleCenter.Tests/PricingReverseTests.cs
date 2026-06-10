@@ -1005,7 +1005,7 @@ public sealed class PricingReverseTests
 
     private sealed class EmptyPricingEngine : IPricingEngine
     {
-        public Task<PricingResult> CalculateAsync(PricingContext context, BatchPricingContext? batchContext = null) => Task.FromResult(new PricingResult());
+        public Task<PricingResult> CalculateAsync(PricingContext context) => Task.FromResult(new PricingResult());
     }
 
     private sealed class EmptyRuleHeaderRepository : IRuleHeaderRepository
