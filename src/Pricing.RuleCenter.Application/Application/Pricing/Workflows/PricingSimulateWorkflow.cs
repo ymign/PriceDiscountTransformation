@@ -21,7 +21,7 @@ namespace Pricing.RuleCenter.Application.Pricing;
 /// </para>
 /// <para>
 /// 单条试算和批量试算都进入本 workflow。差异不在 HTTP 控制器，而在计价运行器是否让多条费用
-/// 共享同一个 <see cref="RequestSharedPricingState"/>：这样后续明细才能看到前序明细已经形成的
+/// 共享同一个 <c>RequestSharedPricingState</c>：这样后续明细才能看到前序明细已经形成的
 /// 同组互斥、同手术封顶、同项目多行累计以及请求内虚拟占用。
 /// </para>
 /// <para>
@@ -61,10 +61,9 @@ public sealed class PricingSimulateWorkflow
     /// <summary>
     /// 初始化试算计价工作流。
     /// </summary>
-    /// <param name="engine">计价核心引擎。</param>
+    /// <param name="calculationRunner">费用明细计价运行器。</param>
     /// <param name="authorityPriceChecker">权威价格诊断器。</param>
-    /// <param name="requestLogWriter">请求日志写入器。</param>
-    /// <param name="traceStepWriter">计算步骤写入器。</param>
+    /// <param name="persistenceService">试算结果持久化服务。</param>
     /// <param name="runtimePackageTraceResolver">运行包追踪解析器。</param>
     /// <param name="clock">统一时钟。</param>
     /// <param name="logger">试算工作流日志对象。</param>

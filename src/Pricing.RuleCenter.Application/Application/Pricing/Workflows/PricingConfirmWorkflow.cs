@@ -98,14 +98,11 @@ public sealed class PricingConfirmWorkflow
     /// <summary>
     /// 初始化确认计价工作流。
     /// </summary>
-    /// <param name="engine">计价核心引擎。</param>
+    /// <param name="calculationRunner">费用明细计价运行器。</param>
     /// <param name="requestLogRepository">请求日志仓储。</param>
     /// <param name="authorityPriceChecker">权威价格诊断器。</param>
     /// <param name="idempotencyService">幂等服务。</param>
-    /// <param name="requestLogWriter">请求日志写入器。</param>
-    /// <param name="traceStepWriter">计算步骤写入器。</param>
-    /// <param name="discountDetailWriter">折价明细写入器。</param>
-    /// <param name="limitOccupyWriter">限额占用写入器。</param>
+    /// <param name="persistenceService">confirm 结果持久化服务。</param>
     /// <param name="runtimePackageTraceResolver">运行包追踪解析器。</param>
     /// <param name="transactionExecutor">计价事务执行器。</param>
     /// <param name="idempotentResponseReader">幂等响应读取器。</param>

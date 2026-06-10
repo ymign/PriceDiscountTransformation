@@ -43,6 +43,15 @@ public sealed class PricingConfirmationPersistenceService
     private readonly PricingOptions _options;
     private readonly IClock _clock;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="PricingConfirmationPersistenceService"/> class.
+    /// </summary>
+    /// <param name="requestLogWriter">A request log writer.</param>
+    /// <param name="traceStepWriter">A trace step writer.</param>
+    /// <param name="discountDetailWriter">A discount detail writer.</param>
+    /// <param name="limitOccupyWriter">A limit occupy writer.</param>
+    /// <param name="options">A pricing options accessor.</param>
+    /// <param name="clock">A system clock.</param>
     public PricingConfirmationPersistenceService(
         PricingRequestLogWriter requestLogWriter,
         PricingTraceStepWriter traceStepWriter,

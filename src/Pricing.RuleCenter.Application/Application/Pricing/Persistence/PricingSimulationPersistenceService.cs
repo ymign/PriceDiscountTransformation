@@ -36,6 +36,12 @@ public sealed class PricingSimulationPersistenceService
     private readonly PricingTraceStepWriter _traceStepWriter;
     private readonly IClock _clock;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="PricingSimulationPersistenceService"/> class.
+    /// </summary>
+    /// <param name="requestLogWriter">A request log writer.</param>
+    /// <param name="traceStepWriter">A trace step writer.</param>
+    /// <param name="clock">A system clock.</param>
     public PricingSimulationPersistenceService(
         PricingRequestLogWriter requestLogWriter,
         PricingTraceStepWriter traceStepWriter,

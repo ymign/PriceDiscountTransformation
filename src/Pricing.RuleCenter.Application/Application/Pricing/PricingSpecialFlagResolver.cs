@@ -53,6 +53,7 @@ public sealed class PricingSpecialFlagResolver
     /// <param name="clock">技术时间提供者，用于按当前时间过滤有效规则。</param>
     /// <param name="runtimePackageTraceResolver">运行时包追溯解析器，用于优先读取激活运行时包。</param>
     /// <param name="conditionMatcher">条件组匹配器，用于按查询维度预判规则命中。</param>
+    /// <param name="effectiveRuleSnapshotLoader">统一规则快照加载入口，用于优先复用运行包和旧规则回退逻辑。</param>
     public PricingSpecialFlagResolver(
         IRuleHeaderRepository headerRepository,
         IClock clock,

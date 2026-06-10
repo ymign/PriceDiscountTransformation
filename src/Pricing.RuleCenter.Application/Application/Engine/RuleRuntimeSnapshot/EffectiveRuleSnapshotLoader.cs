@@ -120,16 +120,34 @@ public sealed class EffectiveRuleSnapshotLoader
     }
 }
 
+/// <summary>
+/// 当前请求可见规则快照加载结果。
+/// </summary>
 public sealed class EffectiveRuleSnapshotLoadResult
 {
+    /// <summary>
+    /// Gets the active runtime package identifier.
+    /// </summary>
     public long? RuntimePackageId { get; init; }
 
+    /// <summary>
+    /// Gets the active runtime package version.
+    /// </summary>
     public long? RuntimePackageVersion { get; init; }
 
+    /// <summary>
+    /// Gets a value that indicates whether the current result comes from an active runtime package.
+    /// </summary>
     public bool HasRuntimePackage => RuntimePackageId.HasValue && RuntimePackageId.Value > 0;
 
+    /// <summary>
+    /// Gets the effective rule snapshots visible to the current request.
+    /// </summary>
     public IReadOnlyList<EffectiveRuleSnapshot> Snapshots { get; init; } = Array.Empty<EffectiveRuleSnapshot>();
 
+    /// <summary>
+    /// Gets the runtime rules keyed by runtime rule identifier.
+    /// </summary>
     public IReadOnlyDictionary<long, RuntimeRule> RuntimeRulesById { get; init; } =
         new Dictionary<long, RuntimeRule>();
 }

@@ -119,14 +119,32 @@ public sealed class ActiveRuntimePackageReader
     }
 }
 
+/// <summary>
+/// 当前激活运行包读取结果。
+/// </summary>
 public sealed class ActiveRuntimePackageReadResult
 {
+    /// <summary>
+    /// Gets the active runtime package identifier.
+    /// </summary>
     public long? RuntimePackageId { get; init; }
 
+    /// <summary>
+    /// Gets the active runtime package version.
+    /// </summary>
     public long? RuntimePackageVersion { get; init; }
 
+    /// <summary>
+    /// Gets the runtime rule snapshots visible to the current request.
+    /// </summary>
     public IReadOnlyList<RuntimeRuleSnapshot> Snapshots { get; init; } = Array.Empty<RuntimeRuleSnapshot>();
 
+    /// <summary>
+    /// Creates an empty active runtime package read result.
+    /// </summary>
+    /// <param name="runtimePackageId">A runtime package identifier.</param>
+    /// <param name="runtimePackageVersion">A runtime package version.</param>
+    /// <returns>An empty read result.</returns>
     public static ActiveRuntimePackageReadResult Empty(long? runtimePackageId, long? runtimePackageVersion)
     {
         return new ActiveRuntimePackageReadResult
