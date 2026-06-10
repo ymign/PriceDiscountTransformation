@@ -4,10 +4,7 @@ using Pricing.RuleCenter.Application.Pricing.Builders;
 using Pricing.RuleCenter.Application.Pricing.Persistence;
 using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Application.Pricing.Validation;
-using Pricing.RuleCenter.Core.Aggregates.Quota;
-using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
-using Pricing.RuleCenter.Core.Models;
 
 namespace Pricing.RuleCenter.Application.Pricing;
 
@@ -42,14 +39,9 @@ public sealed class PricingSimulateWorkflow
     private readonly AuthorityPriceChecker _authorityPriceChecker;
 
     /// <summary>
-    /// 请求日志写入器，负责保存试算请求和最终响应 JSON。
+    /// 试算结果持久化服务，负责写请求日志、步骤日志和响应快照。
     /// </summary>
-    private readonly PricingRequestLogWriter _requestLogWriter;
-
-    /// <summary>
-    /// 计算步骤写入器，负责保存每条规则匹配和动作执行过程。
-    /// </summary>
-    private readonly PricingTraceStepWriter _traceStepWriter;
+    private readonly PricingSimulationPersistenceService _persistenceService;
 
     /// <summary>
     /// 运行包追踪解析器，用于把本次试算关联到当前激活运行包和运行时规则。
@@ -79,16 +71,14 @@ public sealed class PricingSimulateWorkflow
     public PricingSimulateWorkflow(
         PricingItemCalculationRunner calculationRunner,
         AuthorityPriceChecker authorityPriceChecker,
-        PricingRequestLogWriter requestLogWriter,
-        PricingTraceStepWriter traceStepWriter,
+        PricingSimulationPersistenceService persistenceService,
         RuntimePackageTraceResolver runtimePackageTraceResolver,
         IClock clock,
         ILogger<PricingSimulateWorkflow> logger)
     {
         _calculationRunner = calculationRunner;
         _authorityPriceChecker = authorityPriceChecker;
-        _requestLogWriter = requestLogWriter;
-        _traceStepWriter = traceStepWriter;
+        _persistenceService = persistenceService;
         _runtimePackageTraceResolver = runtimePackageTraceResolver;
         _clock = clock;
         _logger = logger;
@@ -106,52 +96,34 @@ public sealed class PricingSimulateWorkflow
     /// </remarks>
     public async Task<PricingCalculateResponse> ExecuteAsync(PricingCalculateRequest request)
     {
-        // ========== 第一阶段：基础校验和价格诊断 ==========
-        // 试算不占额，但仍必须校验最基本的请求结构，否则后续追溯日志会缺少患者、项目或数量等关键维度。
-        // 当前权威单价只做诊断日志：目的是在联调期发现渠道传价差异，但不让展示型试算直接阻断收费入口。
-        var items = PricingRequestGuard.GetRequiredItems(request);
-
+        var items = await ValidateRequestAsync(request);
         var firstItem = items[0];
         _logger.LogInformation(
             "试算开始 来源系统={SourceSystem}, 患者ID={PatientId}, 项目编码={ItemCode}, 输入数量={InputQty}",
             request.SourceSystem, request.PatientId, firstItem.ItemCode, firstItem.InputQty);
 
-        await _authorityPriceChecker.CheckAsync(request, items);
-
-        // ========== 第二阶段：捕获运行包上下文 ==========
-        // 同一次请求内的多条费用必须使用同一个激活运行包，避免规则发布瞬间造成同单明细版本不一致。
-        // 例如批量试算第 1 条使用旧规则、第 2 条使用新规则，会让同组互斥和封顶口径无法解释。
         var runtimePackageContext = await _runtimePackageTraceResolver.CaptureContextAsync();
         using var runtimePackageScope = _runtimePackageTraceResolver.BeginScope(runtimePackageContext);
 
-        // ========== 第三阶段：逐条明细计价 ==========
-        // 试算不锁数据库额度，但仍维护“本请求内已占数量”，保证批量明细之间的同组互斥/窗口限制口径一致。
-        // 这里的请求内占用只存在于内存中，不会污染正式额度；后续 confirm 会重新读取真实历史占用并加锁确认。
         var calculations = await _calculationRunner.RunAsync(request, items, "SIMULATE", shouldLockLimits: false);
-
-        // ========== 第四阶段：保存追踪日志并构建响应 ==========
-        // 试算日志状态使用 SIMULATED，后续不会进入 commit/cancel 状态流转。
-        // 仍保存响应 JSON，是为了追溯查询能还原当时页面展示的金额、数量和命中规则。
         var runtimeTrace = await _runtimePackageTraceResolver.ResolveAsync(calculations);
-        var requestLog = await _requestLogWriter.SaveAsync(new RequestLogSaveInput
+
+        return await _persistenceService.PersistAsync(new PricingSimulationPersistenceInput
         {
             Request = request,
             Items = items,
             Calculations = calculations,
-            CallType = "SIMULATE",
-            BusinessStatus = BusinessStatusCodes.Simulated,
             RuntimeTrace = runtimeTrace
         });
-        await _traceStepWriter.SaveAsync(requestLog.RequestId, requestLog.TraceId, calculations, runtimeTrace);
-
-        var response = PricingResponseBuilder.Build(
-            requestLog.RequestId,
-            requestLog.TraceId,
-            calculations,
-            _clock.Now,
-            runtimeTrace);
-        await _requestLogWriter.SaveResponseJsonAsync(requestLog, response);
-        return response;
     }
 
+    private async Task<IReadOnlyList<PricingCalculateItemRequest>> ValidateRequestAsync(
+        PricingCalculateRequest request)
+    {
+        // 试算不占额，但仍必须校验最基本的请求结构，否则后续追溯日志会缺少患者、项目或数量等关键维度。
+        // 当前权威单价只做诊断日志：目的是在联调期发现渠道传价差异，但不让展示型试算直接阻断收费入口。
+        var items = PricingRequestGuard.GetRequiredItems(request);
+        await _authorityPriceChecker.CheckAsync(request, items);
+        return items;
+    }
 }

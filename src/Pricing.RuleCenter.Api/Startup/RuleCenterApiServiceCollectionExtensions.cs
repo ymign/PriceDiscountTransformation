@@ -144,6 +144,8 @@ internal static class RuleCenterApiServiceCollectionExtensions
         services.AddScoped<PricingTraceStepWriter>();
         services.AddScoped<PricingDiscountDetailWriter>();
         services.AddScoped<PricingLimitOccupyWriter>();
+        services.AddScoped<PricingSimulationPersistenceService>();
+        services.AddScoped<PricingConfirmationPersistenceService>();
         services.AddScoped<PricingReverseLogWriter>();
         services.AddScoped<PricingTransactionExecutor>();
         services.AddScoped<PricingIdempotentResponseReader>();

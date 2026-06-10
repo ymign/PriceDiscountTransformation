@@ -797,6 +797,17 @@ public sealed class PricingReverseTests
             options,
             NullLogger<PricingLimitOccupyWriter>.Instance,
             clock);
+        var simulationPersistenceService = new PricingSimulationPersistenceService(
+            requestLogWriter,
+            traceStepWriter,
+            clock);
+        var confirmationPersistenceService = new PricingConfirmationPersistenceService(
+            requestLogWriter,
+            traceStepWriter,
+            discountDetailWriter,
+            limitOccupyWriter,
+            options,
+            clock);
         var reverseLogWriter = new PricingReverseLogWriter(requestRepository, reverseRepository, clock);
         var transactionExecutor = new PricingTransactionExecutor(
             unitOfWork,
@@ -814,8 +825,7 @@ public sealed class PricingReverseTests
             new PricingSimulateWorkflow(
                 calculationRunner,
                 authorityPriceChecker,
-                requestLogWriter,
-                traceStepWriter,
+                simulationPersistenceService,
                 runtimeTraceResolver,
                 clock,
                 NullLogger<PricingSimulateWorkflow>.Instance),
@@ -824,10 +834,7 @@ public sealed class PricingReverseTests
                 requestRepository,
                 authorityPriceChecker,
                 idempotencyService,
-                requestLogWriter,
-                traceStepWriter,
-                discountDetailWriter,
-                limitOccupyWriter,
+                confirmationPersistenceService,
                 runtimeTraceResolver,
                 transactionExecutor,
                 idempotentResponseReader,
