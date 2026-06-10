@@ -16,6 +16,7 @@ namespace Pricing.RuleCenter.Core.Engine.Executors;
 /// </remarks>
 public sealed class OnceQtyLimitExecutor : IRuleActionExecutor
 {
+    private const string LimitType = "ONCE_QTY";
     /// <summary>
     /// 单次限额累计时计入的占用状态。
     /// </summary>
@@ -51,8 +52,6 @@ public sealed class OnceQtyLimitExecutor : IRuleActionExecutor
     /// <param name="context">计价上下文。</param>
     public async Task ExecuteAsync(RuleAction action, PricingContext context)
     {
-        // ========== 第一阶段：解析单次上限 ==========
-        // 支持 MaxOnceQty/LimitQty/MaxQty 多个历史参数名，避免旧规则迁移后因字段名不同直接跳过。
         var param = DeserializeParams(action.ParamsJson);
         var maxOnceQty = param?.GetMaxOnceQty();
         if (!maxOnceQty.HasValue)
@@ -60,53 +59,16 @@ public sealed class OnceQtyLimitExecutor : IRuleActionExecutor
             return;
         }
 
-        // ========== 第二阶段：构建单次收费动作维度 ==========
-        // 单次口径必须使用稳定业务请求号，不能用单条收费明细号。
         var dimensionCode = BuildDimensionCode(context);
         var limitKey = $"OQ:{dimensionCode}";
-
         if (context.ShouldLockLimits)
         {
-            // confirm 阶段锁定单次维度，防止同一业务号并发重复确认突破单次上限。
             await _limitRepository.EnsureAndLockAsync(new[] { limitKey });
         }
 
-        // ========== 第三阶段：汇总历史和本请求内占用 ==========
-        // PENDING + CONFIRMED 都要计入，批量请求中前序明细也要计入。
-        var occupiedQty = 0m;
-        foreach (var status in OccupyStatuses)
-        {
-            occupiedQty += await _limitRepository.GetOccupiedQtyAsync(limitKey, status);
-        }
-
-        var inRequestKey = $"ONCE_QTY:{dimensionCode}";
-        if (context.RequestSharedState.AccumulatedValues.TryGetValue(inRequestKey, out var inRequestQty))
-        {
-            occupiedQty += inRequestQty;
-        }
-
-        // ========== 第四阶段：按剩余额度截断数量和金额 ==========
-        var remainingQty = maxOnceQty.Value - occupiedQty;
-        if (remainingQty <= 0)
-        {
-            context.FinalQty = 0;
-            context.FinalAmount = 0;
-            AddOccupyDraft(context, limitKey, dimensionCode);
-            return;
-        }
-
-        if (context.FinalQty > remainingQty)
-        {
-            var beforeQty = context.FinalQty;
-            context.FinalQty = remainingQty;
-            context.FinalAmount = beforeQty == 0
-                ? 0
-                : context.FinalAmount * context.FinalQty / beforeQty;
-        }
-
-        // ========== 第五阶段：追加占额草稿 ==========
-        // 执行器只生成草稿，最终 RequestId、TraceId 和状态由应用层写入。
-        AddOccupyDraft(context, limitKey, dimensionCode);
+        var occupiedQty = await GetOccupiedQtyAsync(context, limitKey, dimensionCode);
+        LimitExecutionSupport.ApplyRemainingQty(context, maxOnceQty.Value - occupiedQty);
+        LimitOccupyDraftAppender.AddDraft(context, LimitType, limitKey, dimensionCode);
     }
 
     /// <summary>
@@ -122,26 +84,18 @@ public sealed class OnceQtyLimitExecutor : IRuleActionExecutor
         return $"{context.SourceSystem}:{businessRequestNo}:{context.ItemCode}".ToUpperInvariant();
     }
 
-    private static void AddOccupyDraft(PricingContext context, string limitKey, string dimensionCode)
+    private async Task<decimal> GetOccupiedQtyAsync(
+        PricingContext context,
+        string limitKey,
+        string dimensionCode)
     {
-        // 同一请求内相同单次维度只写一条占用，避免多条规则重复生成占额。
-        if (context.PendingLimitOccupies.Any(o =>
-                o.LimitType == "ONCE_QTY" &&
-                o.LimitDimensionCode == dimensionCode))
+        var occupiedQty = 0m;
+        foreach (var status in OccupyStatuses)
         {
-            return;
+            occupiedQty += await _limitRepository.GetOccupiedQtyAsync(limitKey, status);
         }
 
-        context.PendingLimitOccupies.Add(new LimitOccupy
-        {
-            PatientId = context.PatientId,
-            ItemCode = context.ItemCode,
-            LimitType = "ONCE_QTY",
-            LimitKey = limitKey,
-            LimitDimensionCode = dimensionCode,
-            BusinessChargeTime = context.BusinessChargeTime,
-            OccupyType = "CHARGE"
-        });
+        return occupiedQty + SharedLimitStateReader.GetOccupiedQty(context, LimitType, dimensionCode);
     }
 
     private static OnceQtyParams? DeserializeParams(string? json)

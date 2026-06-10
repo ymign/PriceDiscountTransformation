@@ -133,7 +133,13 @@ public sealed class SameGroupMutexExecutor : IRuleActionExecutor
             EndTime = windowEnd,
             Statuses = OccupyStatuses
         });
-        processedCount += GetInRequestOccupiedCount(context, dimensionCode, currentGroupKey, windowStart, windowEnd);
+        processedCount += SharedLimitStateReader.GetOccupiedQty(
+            context,
+            LimitType,
+            dimensionCode,
+            windowStart,
+            windowEnd,
+            $"MUTEX:{currentGroupKey}".ToUpperInvariant());
 
         // ========== 第五阶段：超出配额时归零数量 ==========
         // 当同组内已处理的项目数 >= maxCountPerGroup 时，当前项目数量归零。
@@ -172,7 +178,12 @@ public sealed class SameGroupMutexExecutor : IRuleActionExecutor
             ParamsJson = action.ParamsJson
         });
 
-        AddOccupyDraft(context, lockKeys[0], dimensionCode);
+        LimitOccupyDraftAppender.AddDraft(
+            context,
+            LimitType,
+            lockKeys[0],
+            dimensionCode,
+            requirePositiveFinalQty: true);
     }
 
     /// <summary>
@@ -196,38 +207,6 @@ public sealed class SameGroupMutexExecutor : IRuleActionExecutor
         };
     }
 
-    private static decimal GetInRequestOccupiedCount(
-        PricingContext context,
-        string dimensionCode,
-        string groupKey,
-        DateTime windowStart,
-        DateTime windowEnd)
-    {
-        var candidates = context.RequestSharedState.LimitOccupies
-            .Where(o => string.Equals(o.LimitType, LimitType, StringComparison.OrdinalIgnoreCase))
-            .Where(o => string.Equals(o.LimitDimensionCode, dimensionCode, StringComparison.OrdinalIgnoreCase))
-            .ToList();
-
-        if (candidates.Count > 0)
-        {
-            return candidates
-                .Where(o => o.BusinessChargeTime >= windowStart && o.BusinessChargeTime <= windowEnd)
-                .Sum(o => o.OccupyQty);
-        }
-
-        var sameGroupKey = $"{LimitType}:{dimensionCode}".ToUpperInvariant();
-        if (context.RequestSharedState.AccumulatedValues.TryGetValue(sameGroupKey, out var cachedCount))
-        {
-            return cachedCount;
-        }
-
-        // 兼容旧版批量上下文注入方式：此前同组互斥只看 MUTEX:{groupKey} 这个请求内缓存键。
-        var legacyMutexKey = $"MUTEX:{groupKey}".ToUpperInvariant();
-        return context.RequestSharedState.AccumulatedValues.TryGetValue(legacyMutexKey, out cachedCount)
-            ? cachedCount
-            : 0m;
-    }
-
     /// <summary>
     /// 枚举同组互斥窗口覆盖到的全部小时桶锁键。
     /// </summary>
@@ -249,35 +228,6 @@ public sealed class SameGroupMutexExecutor : IRuleActionExecutor
         }
 
         return keys;
-    }
-
-    private static void AddOccupyDraft(
-        PricingContext context,
-        string limitKey,
-        string dimensionCode)
-    {
-        if (context.FinalQty <= 0)
-        {
-            return;
-        }
-
-        if (context.PendingLimitOccupies.Any(o =>
-                string.Equals(o.LimitType, LimitType, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(o.LimitDimensionCode, dimensionCode, StringComparison.OrdinalIgnoreCase)))
-        {
-            return;
-        }
-
-        context.PendingLimitOccupies.Add(new Pricing.RuleCenter.Core.Aggregates.Quota.LimitOccupy
-        {
-            PatientId = context.PatientId,
-            ItemCode = context.ItemCode,
-            LimitType = LimitType,
-            LimitKey = limitKey,
-            LimitDimensionCode = dimensionCode,
-            BusinessChargeTime = context.BusinessChargeTime,
-            OccupyType = "CHARGE"
-        });
     }
 
     /// <summary>

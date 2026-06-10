@@ -172,7 +172,11 @@ public sealed class SameOperationCeilingExecutor : IRuleActionExecutor
             historicalAmount += await _limitRepository.GetOccupiedAmtByDimensionAsync(dimensionCode, status);
         }
 
-        historicalAmount += GetInRequestOccupiedAmount(context, dimensionCode);
+        historicalAmount += SharedLimitStateReader.GetOccupiedAmt(
+            context,
+            LimitType,
+            dimensionCode,
+            $"OP_CEILING:{dimensionCode}".ToUpperInvariant());
 
         var remainingAmount = ceilingPerOperation.Value - historicalAmount;
 
@@ -197,7 +201,7 @@ public sealed class SameOperationCeilingExecutor : IRuleActionExecutor
                 ParamsJson = action.ParamsJson
             });
 
-            AddOccupyDraft(context, limitKey, dimensionCode);
+            LimitOccupyDraftAppender.AddDraft(context, LimitType, limitKey, dimensionCode);
             return;
         }
 
@@ -219,46 +223,7 @@ public sealed class SameOperationCeilingExecutor : IRuleActionExecutor
             });
         }
 
-        AddOccupyDraft(context, limitKey, dimensionCode);
-    }
-
-    private static decimal GetInRequestOccupiedAmount(PricingContext context, string dimensionCode)
-    {
-        var candidates = context.RequestSharedState.LimitOccupies
-            .Where(o => string.Equals(o.LimitType, LimitType, StringComparison.OrdinalIgnoreCase))
-            .Where(o => string.Equals(o.LimitDimensionCode, dimensionCode, StringComparison.OrdinalIgnoreCase))
-            .ToList();
-
-        if (candidates.Count > 0)
-        {
-            return candidates.Sum(o => o.OccupyAmt);
-        }
-
-        var opCeilingKey = $"OP_CEILING:{dimensionCode}".ToUpperInvariant();
-        return context.RequestSharedState.AccumulatedValues.TryGetValue(opCeilingKey, out var cachedAmount)
-            ? cachedAmount
-            : 0m;
-    }
-
-    private static void AddOccupyDraft(PricingContext context, string limitKey, string dimensionCode)
-    {
-        if (context.PendingLimitOccupies.Any(o =>
-                string.Equals(o.LimitType, LimitType, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(o.LimitDimensionCode, dimensionCode, StringComparison.OrdinalIgnoreCase)))
-        {
-            return;
-        }
-
-        context.PendingLimitOccupies.Add(new LimitOccupy
-        {
-            PatientId = context.PatientId,
-            ItemCode = context.ItemCode,
-            LimitType = LimitType,
-            LimitKey = limitKey,
-            LimitDimensionCode = dimensionCode,
-            BusinessChargeTime = context.BusinessChargeTime,
-            OccupyType = "CHARGE"
-        });
+        LimitOccupyDraftAppender.AddDraft(context, LimitType, limitKey, dimensionCode);
     }
 
     /// <summary>

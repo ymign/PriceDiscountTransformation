@@ -17,6 +17,7 @@ namespace Pricing.RuleCenter.Core.Engine.Executors;
 /// </remarks>
 public sealed class DailyQtyLimitExecutor : IRuleActionExecutor
 {
+    private const string LimitType = "DAY_QTY";
     /// <summary>
     /// 单日累计必须计入的占用状态。PENDING 是待提交保护占用，CONFIRMED 是已落账正式占用。
     /// </summary>
@@ -48,119 +49,57 @@ public sealed class DailyQtyLimitExecutor : IRuleActionExecutor
     /// <returns>异步任务。</returns>
     public async Task ExecuteAsync(RuleAction action, PricingContext context)
     {
-        // ========== 第一阶段：读取配置参数 ==========
-        // 参数缺失时直接跳过，避免运行期脏配置导致所有计价请求不可用。
-        // 正常情况下应由发布校验保证 MaxDailyQty 存在。
         var param = DeserializeParams(action.ParamsJson);
         if (param is null)
         {
             return;
         }
 
-        // ========== 第二阶段：构造自然日维度 ==========
-        // 这里使用 BusinessChargeTime 的日期，而不是服务器当前日期。补录历史收费时必须进入历史业务日累计。
-        var limitKey = LimitKeyGenerator.GenerateDailyKey(
-            context.PatientId, context.ItemCode, context.BusinessChargeTime);
-        var dimensionCode = $"{context.PatientId}:{context.ItemCode}:{context.BusinessChargeTime:yyyyMMdd}"
-            .ToUpperInvariant();
-        var dayStart = context.BusinessChargeTime.Date;
-        var dayEnd = dayStart.AddDays(1).AddTicks(-1);
-
-        // ========== 第三阶段：confirm 阶段锁定当天维度 ==========
-        // 试算不锁，confirm 锁。锁定后再查累计，防止并发 confirm 同时突破单日上限。
+        var (limitKey, dimensionCode, dayStart, dayEnd) = BuildDailyScope(context);
         if (context.ShouldLockLimits)
         {
             await _limitRepository.EnsureAndLockAsync(new[] { limitKey });
         }
 
-        // ========== 第四阶段：查询当天待确认和已确认占用 ==========
-        // PENDING 必须计入，因为它代表已经返回给渠道、正在等待 HIS 落账的占额。
-        var occupiedQty = await _limitRepository.GetOccupiedQtyAsync(new LimitOccupyRangeQuery
-        {
-            LimitType = "DAY_QTY",
-            LimitDimensionCode = dimensionCode,
-            StartTime = dayStart,
-            EndTime = dayEnd,
-            Statuses = OccupyStatuses
-        });
-        occupiedQty += GetInRequestOccupiedQty(context, dimensionCode, dayStart, dayEnd);
-
-        // ========== 第五阶段：截断数量和金额 ==========
-        // 金额按当前金额比例缩放，避免覆盖前置公式动作已经算出的金额。
-        var remainingQty = param.MaxDailyQty - occupiedQty;
-        if (remainingQty <= 0)
-        {
-            context.FinalQty = 0;
-            context.FinalAmount = 0;
-            AddOccupyDraft(context, limitKey, dimensionCode);
-            return;
-        }
-
-        if (context.FinalQty > remainingQty)
-        {
-            var beforeQty = context.FinalQty;
-            context.FinalQty = remainingQty;
-            context.FinalAmount = beforeQty == 0
-                ? 0
-                : context.FinalAmount * context.FinalQty / beforeQty;
-        }
-
-        // ========== 第六阶段：记录占额草稿 ==========
-        // 草稿稍后由 PricingApiService 统一写入数据库，确保 RequestId 已经生成。
-        AddOccupyDraft(context, limitKey, dimensionCode);
+        var occupiedQty = await GetOccupiedQtyAsync(context, dimensionCode, dayStart, dayEnd);
+        LimitExecutionSupport.ApplyRemainingQty(context, param.MaxDailyQty - occupiedQty);
+        LimitOccupyDraftAppender.AddDraft(context, LimitType, limitKey, dimensionCode);
     }
 
-    /// <summary>
-    /// 追加单日数量占额草稿。
-    /// </summary>
-    /// <param name="context">计价上下文。</param>
-    /// <param name="limitKey">限额键。</param>
-    /// <param name="dimensionCode">累计查询维度。</param>
-    private static void AddOccupyDraft(
-        PricingContext context, string limitKey, string dimensionCode)
+    private static (string LimitKey, string DimensionCode, DateTime DayStart, DateTime DayEnd) BuildDailyScope(
+        PricingContext context)
     {
-        // 同一动作链内相同维度只写一条占额，避免规则叠加导致重复占用。
-        if (context.PendingLimitOccupies.Any(o =>
-                o.LimitType == "DAY_QTY" &&
-                o.LimitDimensionCode == dimensionCode))
-        {
-            return;
-        }
-
-        context.PendingLimitOccupies.Add(new LimitOccupy
-        {
-            PatientId = context.PatientId,
-            ItemCode = context.ItemCode,
-            LimitType = "DAY_QTY",
-            LimitKey = limitKey,
-            LimitDimensionCode = dimensionCode,
-            BusinessChargeTime = context.BusinessChargeTime,
-            OccupyType = "CHARGE"
-        });
+        var limitKey = LimitKeyGenerator.GenerateDailyKey(
+            context.PatientId,
+            context.ItemCode,
+            context.BusinessChargeTime);
+        var dimensionCode = $"{context.PatientId}:{context.ItemCode}:{context.BusinessChargeTime:yyyyMMdd}"
+            .ToUpperInvariant();
+        var dayStart = context.BusinessChargeTime.Date;
+        var dayEnd = dayStart.AddDays(1).AddTicks(-1);
+        return (limitKey, dimensionCode, dayStart, dayEnd);
     }
 
-    private static decimal GetInRequestOccupiedQty(
+    private async Task<decimal> GetOccupiedQtyAsync(
         PricingContext context,
         string dimensionCode,
         DateTime dayStart,
         DateTime dayEnd)
     {
-        var candidates = context.RequestSharedState.LimitOccupies
-            .Where(o => string.Equals(o.LimitType, "DAY_QTY", StringComparison.OrdinalIgnoreCase))
-            .Where(o => string.Equals(o.LimitDimensionCode, dimensionCode, StringComparison.OrdinalIgnoreCase))
-            .ToList();
-
-        if (candidates.Count > 0)
+        var occupiedQty = await _limitRepository.GetOccupiedQtyAsync(new LimitOccupyRangeQuery
         {
-            return candidates
-                .Where(o => o.BusinessChargeTime >= dayStart && o.BusinessChargeTime <= dayEnd)
-                .Sum(o => o.OccupyQty);
-        }
-
-        var inRequestKey = RequestSharedPricingState.BuildLimitDimensionKey("DAY_QTY", dimensionCode);
-        return context.RequestSharedState.AccumulatedValues.TryGetValue(inRequestKey, out var cachedQty)
-            ? cachedQty
-            : 0m;
+            LimitType = LimitType,
+            LimitDimensionCode = dimensionCode,
+            StartTime = dayStart,
+            EndTime = dayEnd,
+            Statuses = OccupyStatuses
+        });
+        return occupiedQty + SharedLimitStateReader.GetOccupiedQty(
+            context,
+            LimitType,
+            dimensionCode,
+            dayStart,
+            dayEnd);
     }
 
     /// <summary>
