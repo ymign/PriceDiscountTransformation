@@ -3,7 +3,7 @@ using Microsoft.Extensions.Options;
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Pricing;
 using Pricing.RuleCenter.Application.Pricing.AuthorityPrice;
-using Pricing.RuleCenter.Application.Pricing.Idempotency;
+
 using Pricing.RuleCenter.Application.Pricing.Persistence;
 using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Core.Interfaces;
@@ -784,7 +784,6 @@ public sealed class PricingReverseTests
             priceMasterRepository,
             options,
             NullLogger<AuthorityPriceChecker>.Instance);
-        var idempotencyService = new PricingIdempotencyService(requestRepository);
         var clock = new FixedClock(new DateTime(2026, 5, 10, 10, 0, 0));
         var requestLogWriter = new PricingRequestLogWriter(requestRepository, clock);
         var traceStepWriter = new PricingTraceStepWriter(traceStepRepository, clock);
@@ -809,11 +808,6 @@ public sealed class PricingReverseTests
             options,
             clock);
         var reverseLogWriter = new PricingReverseLogWriter(requestRepository, reverseRepository, clock);
-        var transactionExecutor = new PricingTransactionExecutor(
-            unitOfWork,
-            NullLogger<PricingTransactionExecutor>.Instance);
-        var idempotentResponseReader = new PricingIdempotentResponseReader(
-            NullLogger<PricingIdempotentResponseReader>.Instance);
         var reverseHistoryReader = new PricingReverseHistoryReader(reverseRepository);
         var specialFlagResolver = new PricingSpecialFlagResolver(
             headerRepository,
@@ -833,12 +827,10 @@ public sealed class PricingReverseTests
                 calculationRunner,
                 requestRepository,
                 authorityPriceChecker,
-                idempotencyService,
                 confirmationPersistenceService,
                 runtimeTraceResolver,
-                transactionExecutor,
-                idempotentResponseReader,
                 limitRepository,
+                unitOfWork,
                 options,
                 clock,
                 NullLogger<PricingConfirmWorkflow>.Instance),
@@ -846,7 +838,7 @@ public sealed class PricingReverseTests
                 requestRepository,
                 discountRepository,
                 limitRepository,
-                transactionExecutor,
+                unitOfWork,
                 options,
                 clock,
                 NullLogger<PricingCommitWorkflow>.Instance),
@@ -854,7 +846,7 @@ public sealed class PricingReverseTests
                 requestRepository,
                 discountRepository,
                 limitRepository,
-                transactionExecutor,
+                unitOfWork,
                 clock,
                 NullLogger<PricingCancelWorkflow>.Instance),
             new PricingReverseWorkflow(
@@ -864,8 +856,8 @@ public sealed class PricingReverseTests
                 reverseRepository,
                 reverseLogWriter,
                 limitOccupyWriter,
-                transactionExecutor,
                 reverseHistoryReader,
+                unitOfWork,
                 clock,
                 NullLogger<PricingReverseWorkflow>.Instance),
             specialFlagResolver);

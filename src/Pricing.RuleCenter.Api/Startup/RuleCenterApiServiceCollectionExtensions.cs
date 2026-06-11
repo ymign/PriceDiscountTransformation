@@ -14,7 +14,7 @@ using Pricing.RuleCenter.Application.Common.Behaviors;
 using Pricing.RuleCenter.Application.Policies;
 using Pricing.RuleCenter.Application.Pricing;
 using Pricing.RuleCenter.Application.Pricing.AuthorityPrice;
-using Pricing.RuleCenter.Application.Pricing.Idempotency;
+
 using Pricing.RuleCenter.Application.Pricing.Persistence;
 using Pricing.RuleCenter.Application.Rules;
 using Pricing.RuleCenter.Application.Rules.Guards;
@@ -137,9 +137,7 @@ internal static class RuleCenterApiServiceCollectionExtensions
         services.AddScoped<LegacyRuleAuthoringGuardFilter>();
 
         // ========== 计价请求生命周期 ==========
-        // simulate 只试算和留痕；confirm 负责幂等、占额和折价明细；commit/cancel/reverse 推进资金状态。
         services.AddScoped<AuthorityPriceChecker>();
-        services.AddScoped<PricingIdempotencyService>();
         services.AddScoped<PricingRequestLogWriter>();
         services.AddScoped<PricingTraceStepWriter>();
         services.AddScoped<PricingDiscountDetailWriter>();
@@ -147,8 +145,6 @@ internal static class RuleCenterApiServiceCollectionExtensions
         services.AddScoped<PricingSimulationPersistenceService>();
         services.AddScoped<PricingConfirmationPersistenceService>();
         services.AddScoped<PricingReverseLogWriter>();
-        services.AddScoped<PricingTransactionExecutor>();
-        services.AddScoped<PricingIdempotentResponseReader>();
         services.AddScoped<PricingReverseHistoryReader>();
         services.AddScoped<PricingSpecialFlagResolver>();
         services.AddScoped<PricingItemCalculationRunner>();
