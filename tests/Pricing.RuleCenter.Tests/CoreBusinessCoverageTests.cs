@@ -1,12 +1,10 @@
 using System.Reflection;
-using FluentValidation;
 using Microsoft.Extensions.Caching.Memory;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Pricing.RuleCenter.Application.Dto;
-using Pricing.RuleCenter.Application.Pricing.Commands;
+using Pricing.RuleCenter.Application.Pricing;
 using Pricing.RuleCenter.Application.Pricing.Queries;
-using Pricing.RuleCenter.Application.Pricing.Validation;
 using Pricing.RuleCenter.Core.Aggregates.Catalog;
 using Pricing.RuleCenter.Core.Aggregates.Charging;
 using Pricing.RuleCenter.Core.Aggregates.Quota;
@@ -436,44 +434,14 @@ public sealed class CoreBusinessCoverageTests
     }
 
     [Fact]
-    public void PricingValidators_ReturnFieldLevelFailuresForEveryCommandAndQuery()
-    {
-        AssertInvalid(new SimulatePricingCommandValidator(), new SimulatePricingCommand(new PricingCalculateRequest()), "SourceSystem", "PatientId", "Items");
-        AssertInvalid(new ConfirmPricingCommandValidator(), new ConfirmPricingCommand(CreateCalculateRequest(businessRequestNo: "")), "BusinessRequestNo");
-        AssertInvalid(new CommitPricingCommandValidator(), new CommitPricingCommand(new PricingCommitRequest { RequestId = 0 }), "Request.RequestId");
-        AssertInvalid(new CancelPricingCommandValidator(), new CancelPricingCommand(new PricingCancelRequest { RequestId = 0 }), "Request.RequestId");
-        AssertInvalid(new ReversePricingCommandValidator(), new ReversePricingCommand(new PricingReverseRequest { OriginalRequestId = 0, ReverseNo = "" }), "Request.OriginalRequestId", "Request.ReverseNo");
-        AssertInvalid(new GetSpecialFlagQueryValidator(), new GetSpecialFlagQuery(" "), "ItemCode");
-        AssertInvalid(
-            new CommitPricingCommandValidator(),
-            new CommitPricingCommand(new PricingCommitRequest { RequestId = 1, CommittedAt = default(DateTime) }),
-            "Request.CommittedAt");
-        AssertInvalid(
-            new CancelPricingCommandValidator(),
-            new CancelPricingCommand(new PricingCancelRequest { RequestId = 1, CancelledAt = default(DateTime) }),
-            "Request.CancelledAt");
-        AssertInvalid(
-            new GetSpecialFlagQueryValidator(),
-            new GetSpecialFlagQuery("ITEM001", BusinessChargeTime: default(DateTime)),
-            "BusinessChargeTime");
-
-        Assert.True(new SimulatePricingCommandValidator().Validate(new SimulatePricingCommand(CreateCalculateRequest())).IsValid);
-        Assert.True(new ConfirmPricingCommandValidator().Validate(new ConfirmPricingCommand(CreateCalculateRequest())).IsValid);
-        Assert.True(new CommitPricingCommandValidator().Validate(new CommitPricingCommand(new PricingCommitRequest { RequestId = 1, CommitNo = "COMMIT-1", CommittedBy = "OP", CommittedAt = DateTime.Now })).IsValid);
-        Assert.True(new CancelPricingCommandValidator().Validate(new CancelPricingCommand(new PricingCancelRequest { RequestId = 1, CancelNo = "CANCEL-1", CancelledBy = "OP", CancelReason = "用户取消", CancelledAt = DateTime.Now })).IsValid);
-        Assert.True(new ReversePricingCommandValidator().Validate(new ReversePricingCommand(new PricingReverseRequest { OriginalRequestId = 1, ReverseNo = "REV-1", SourceSystem = "HIS" })).IsValid);
-        Assert.True(new GetSpecialFlagQueryValidator().Validate(new GetSpecialFlagQuery("ITEM001", ChargeScene: "OUTPATIENT", BusinessChargeTime: DateTime.Now)).IsValid);
-    }
-
-    [Fact]
-    public async Task SpecialFlagCacheKeysAndQueryHandler_ReturnCachedValueAndClearRegisteredKeys()
+    public void SpecialFlagCacheKeys_RegisterAndClear()
     {
         using var cache = new MemoryCache(new MemoryCacheOptions());
         SpecialFlagCacheKeys.Clear(cache);
         _ = SpecialFlagCacheKeys.Register(" item001 ");
-        var key = SpecialFlagCacheKeys.Register(new GetSpecialFlagQuery("ITEM001"));
-        var outpatientKey = SpecialFlagCacheKeys.Register(new GetSpecialFlagQuery(" item001 ", ChargeScene: "OUTPATIENT"));
-        var inpatientKey = SpecialFlagCacheKeys.Register(new GetSpecialFlagQuery(" item001 ", ChargeScene: "INPATIENT"));
+        var key = SpecialFlagCacheKeys.Register(new SpecialFlagRequest { ItemCode = "ITEM001" });
+        var outpatientKey = SpecialFlagCacheKeys.Register(new SpecialFlagRequest { ItemCode = " item001 ", ChargeScene = "OUTPATIENT" });
+        var inpatientKey = SpecialFlagCacheKeys.Register(new SpecialFlagRequest { ItemCode = " item001 ", ChargeScene = "INPATIENT" });
         Assert.NotEqual(outpatientKey, inpatientKey);
         cache.Set(key, new SpecialFlagResponse
         {
@@ -482,10 +450,9 @@ public sealed class CoreBusinessCoverageTests
             RuleCount = 2,
             RollbackMode = "STOP_CHARGE"
         });
-        var handler = new GetSpecialFlagQueryHandler(null!, cache);
 
-        var cached = await handler.Handle(new GetSpecialFlagQuery("ITEM001"), CancellationToken.None);
-
+        var cached = cache.Get<SpecialFlagResponse>(key);
+        Assert.NotNull(cached);
         Assert.True(cached.IsSpecial);
         Assert.Equal("ITEM001", cached.ItemCode);
         Assert.Equal(2, cached.RuleCount);
@@ -692,19 +659,6 @@ public sealed class CoreBusinessCoverageTests
                 }
             }
         };
-    }
-
-    private static void AssertInvalid<T>(IValidator<T> validator, T instance, params string[] propertyNames)
-    {
-        var result = validator.Validate(instance);
-
-        Assert.False(result.IsValid);
-        foreach (var propertyName in propertyNames)
-        {
-            Assert.Contains(result.Errors, error =>
-                string.Equals(error.PropertyName, propertyName, StringComparison.Ordinal) ||
-                error.PropertyName.EndsWith("." + propertyName, StringComparison.Ordinal));
-        }
     }
 
     private static string BuildConfirmFingerprint(

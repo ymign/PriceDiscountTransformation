@@ -1,6 +1,4 @@
 using System.Reflection;
-using FluentValidation;
-using MediatR;
 using Microsoft.OpenApi.Models;
 using Pricing.RuleCenter.Api.HealthChecks;
 using Pricing.RuleCenter.Api.ModelBinding;
@@ -9,8 +7,6 @@ using Pricing.RuleCenter.Api.Serialization;
 using Pricing.RuleCenter.Api.Swagger;
 using Pricing.RuleCenter.Application.Background;
 using Pricing.RuleCenter.Application.Catalog;
-using Pricing.RuleCenter.Application.Common;
-using Pricing.RuleCenter.Application.Common.Behaviors;
 using Pricing.RuleCenter.Application.Policies;
 using Pricing.RuleCenter.Application.Pricing;
 using Pricing.RuleCenter.Application.Pricing.AuthorityPrice;
@@ -147,7 +143,6 @@ internal static class RuleCenterApiServiceCollectionExtensions
         services.AddScoped<PricingReverseLogWriter>();
         services.AddScoped<PricingReverseHistoryReader>();
         services.AddScoped<PricingSpecialFlagResolver>();
-        services.AddScoped<PricingItemCalculationRunner>();
         services.AddScoped<PricingSimulateWorkflow>();
         services.AddScoped<PricingConfirmWorkflow>();
         services.AddScoped<PricingCommitWorkflow>();
@@ -156,10 +151,6 @@ internal static class RuleCenterApiServiceCollectionExtensions
         services.AddScoped<TraceQueryAppService>();
         services.AddSingleton<CacheVersionLocalState>();
         services.AddScoped<ICacheVersionSynchronizer, CacheVersionSynchronizer>();
-        services.AddMediatR(typeof(ApplicationAssemblyMarker));
-        services.AddValidatorsFromAssemblyContaining<ApplicationAssemblyMarker>();
-        services.AddTransient(typeof(IPipelineBehavior<,>), typeof(LoggingBehavior<,>));
-        services.AddTransient(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
 
         return services;
     }

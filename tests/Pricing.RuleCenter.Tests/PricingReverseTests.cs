@@ -813,18 +813,17 @@ public sealed class PricingReverseTests
             headerRepository,
             clock,
             runtimeTraceResolver);
-        var calculationRunner = new PricingItemCalculationRunner(engine);
 
         return new PricingApiService(
             new PricingSimulateWorkflow(
-                calculationRunner,
+                engine,
                 authorityPriceChecker,
                 simulationPersistenceService,
                 runtimeTraceResolver,
                 clock,
                 NullLogger<PricingSimulateWorkflow>.Instance),
             new PricingConfirmWorkflow(
-                calculationRunner,
+                engine,
                 requestRepository,
                 authorityPriceChecker,
                 confirmationPersistenceService,

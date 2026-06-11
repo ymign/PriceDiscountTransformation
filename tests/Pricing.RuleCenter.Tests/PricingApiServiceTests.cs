@@ -1336,18 +1336,17 @@ public sealed class PricingApiServiceTests
             clock,
             runtimeTraceResolver,
             conditionMatcher);
-        var calculationRunner = new PricingItemCalculationRunner(engine);
 
         return new PricingApiService(
             new PricingSimulateWorkflow(
-                calculationRunner,
+                engine,
                 authorityPriceChecker,
                 simulationPersistenceService,
                 runtimeTraceResolver,
                 clock,
                 NullLogger<PricingSimulateWorkflow>.Instance),
             new PricingConfirmWorkflow(
-                calculationRunner,
+                engine,
                 requestLogRepository,
                 authorityPriceChecker,
                 confirmationPersistenceService,

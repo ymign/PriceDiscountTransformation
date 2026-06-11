@@ -10,6 +10,7 @@ using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Charging;
 using Pricing.RuleCenter.Core.Interfaces.Quota;
+using Pricing.RuleCenter.Core.Models;
 using Pricing.RuleCenter.Core.Options;
 using Microsoft.Extensions.Options;
 
@@ -18,13 +19,9 @@ namespace Pricing.RuleCenter.Application.Pricing;
 /// <summary>
 /// 确认计价工作流：正式计价、幂等保护、额度占用和折价明细落库。
 /// </summary>
-/// <remarks>
-/// confirm 是收费链路中唯一会占用限额的入口。事务内完成规则计算、请求日志、追踪步骤、
-/// 折价明细和限额占用写入。幂等键为 sourceSystem + businessRequestNo + callType。
-/// </remarks>
 public sealed class PricingConfirmWorkflow
 {
-    private readonly PricingItemCalculationRunner _calculationRunner;
+    private readonly IPricingEngine _engine;
     private readonly IChargeRequestLogRepository _requestLogRepository;
     private readonly AuthorityPriceChecker _authorityPriceChecker;
     private readonly PricingConfirmationPersistenceService _persistenceService;
@@ -36,7 +33,7 @@ public sealed class PricingConfirmWorkflow
     private readonly ILogger<PricingConfirmWorkflow> _logger;
 
     public PricingConfirmWorkflow(
-        PricingItemCalculationRunner calculationRunner,
+        IPricingEngine engine,
         IChargeRequestLogRepository requestLogRepository,
         AuthorityPriceChecker authorityPriceChecker,
         PricingConfirmationPersistenceService persistenceService,
@@ -47,7 +44,7 @@ public sealed class PricingConfirmWorkflow
         IClock clock,
         ILogger<PricingConfirmWorkflow> logger)
     {
-        _calculationRunner = calculationRunner;
+        _engine = engine;
         _requestLogRepository = requestLogRepository;
         _authorityPriceChecker = authorityPriceChecker;
         _persistenceService = persistenceService;
@@ -60,7 +57,7 @@ public sealed class PricingConfirmWorkflow
     }
 
     /// <summary>
-    /// 执行确认计价：校验 → 幂等检查 → 事务内计价+持久化。
+    /// 执行确认计价：校验 → 幂等检查 → 事务内逐条计价+持久化。
     /// </summary>
     public async Task<PricingCalculateResponse> ExecuteAsync(PricingCalculateRequest request)
     {
@@ -70,7 +67,6 @@ public sealed class PricingConfirmWorkflow
             "确认计价开始 来源系统={SourceSystem}, 业务请求号={BusinessRequestNo}, 患者ID={PatientId}, 项目编码={ItemCode}, 输入数量={InputQty}",
             request.SourceSystem, request.BusinessRequestNo, request.PatientId, firstItem.ItemCode, firstItem.InputQty);
 
-        // 事务外快路径幂等检查
         var fingerprint = PricingRequestFingerprintBuilder.BuildConfirmFingerprint(request, items, "CONFIRM");
         var existing = await _requestLogRepository.GetByBusinessKeyAsync(
             request.SourceSystem, request.BusinessRequestNo!, "CONFIRM");
@@ -80,7 +76,6 @@ public sealed class PricingConfirmWorkflow
             return existingResponse;
         }
 
-        // 事务内：锁幂等 → 二次检查 → 计价 → 持久化
         return await ExecuteInTransactionAsync(async () =>
         {
             await LockIdempotencyAsync(request);
@@ -96,7 +91,24 @@ public sealed class PricingConfirmWorkflow
             var runtimePackageContext = await _runtimePackageTraceResolver.CaptureContextAsync();
             using var runtimePackageScope = _runtimePackageTraceResolver.BeginScope(runtimePackageContext);
 
-            var calculations = await _calculationRunner.RunAsync(request, items, "CONFIRM", shouldLockLimits: true);
+            // 逐条明细计价，共享请求内累计状态（同组互斥、同手术封顶等）。
+            var sharedState = new RequestSharedPricingState();
+            var calculations = new List<ItemPricingCalculation>(items.Count);
+            foreach (var item in items)
+            {
+                var context = PricingContextFactory.Create(new PricingContextBuildInput
+                {
+                    Request = request,
+                    Item = item,
+                    CallType = "CONFIRM",
+                    ShouldLockLimits = true,
+                    RequestSharedState = sharedState
+                });
+                var result = await _engine.CalculateAsync(context);
+                sharedState.Accumulate(result, context);
+                calculations.Add(new ItemPricingCalculation(item, result));
+            }
+
             var runtimeTrace = await _runtimePackageTraceResolver.ResolveAsync(calculations);
             var response = await _persistenceService.PersistAsync(new PricingConfirmationPersistenceInput
             {
@@ -129,9 +141,6 @@ public sealed class PricingConfirmWorkflow
         return items;
     }
 
-    /// <summary>
-    /// 事务外或事务内读取已有请求，校验指纹一致性后返回首次响应快照。
-    /// </summary>
     private PricingCalculateResponse? TryReadExistingResponse(
         PricingCalculateRequest request,
         string fingerprint,
@@ -143,7 +152,6 @@ public sealed class PricingConfirmWorkflow
             return null;
         }
 
-        // 指纹一致说明是同一业务动作重试；不一致说明复用了业务号但参数不同，必须拒绝。
         if (!string.Equals(existingRequest.RequestFingerprint, fingerprint, StringComparison.Ordinal))
         {
             throw new BizException(
@@ -156,7 +164,6 @@ public sealed class PricingConfirmWorkflow
             "确认计价幂等命中 来源系统={SourceSystem}, 业务请求号={BusinessRequestNo}, 请求ID={RequestId}, 项目编码={ItemCode}, 原状态={Status}",
             request.SourceSystem, request.BusinessRequestNo, existingRequest.RequestId, firstItem.ItemCode, existingRequest.BusinessStatus);
 
-        // 读取首次 confirm 保存的响应快照，不能重新计算（规则/限额可能已变化）。
         if (string.IsNullOrWhiteSpace(existingRequest.ResponseJson))
         {
             throw new BizException(
@@ -184,9 +191,6 @@ public sealed class PricingConfirmWorkflow
             $"RequestId={existingRequest.RequestId} 的幂等响应快照不可解析");
     }
 
-    /// <summary>
-    /// 在 Oracle 事务内执行操作，异常时自动回滚。
-    /// </summary>
     private async Task<T> ExecuteInTransactionAsync<T>(Func<Task<T>> action)
     {
         try

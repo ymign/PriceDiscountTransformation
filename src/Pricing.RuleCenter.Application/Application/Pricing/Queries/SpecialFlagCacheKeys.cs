@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Caching.Memory;
+using Pricing.RuleCenter.Application.Dto;
 using System.Globalization;
 
 namespace Pricing.RuleCenter.Application.Pricing.Queries;
@@ -35,18 +36,18 @@ public static class SpecialFlagCacheKeys
     /// <summary>
     /// 按特殊项目查询完整维度生成并登记缓存键。
     /// </summary>
-    /// <param name="query">特殊项目查询。</param>
+    /// <param name="request">特殊项目查询请求。</param>
     /// <returns>包含项目、场景、业务时间、就诊类型、部位和收费科室的缓存键。</returns>
-    public static string Register(GetSpecialFlagQuery query)
+    public static string Register(SpecialFlagRequest request)
     {
         var key = string.Join(
             "|",
-            Prefix + Normalize(query.ItemCode),
-            Normalize(query.ChargeScene),
-            query.BusinessChargeTime?.ToString("O", CultureInfo.InvariantCulture) ?? "-",
-            Normalize(query.VisitType),
-            Normalize(query.BodyPartCode),
-            Normalize(query.ChargeDeptCode));
+            Prefix + Normalize(request.ItemCode),
+            Normalize(request.ChargeScene),
+            request.BusinessChargeTime?.ToString("O", CultureInfo.InvariantCulture) ?? "-",
+            Normalize(request.VisitType),
+            Normalize(request.BodyPartCode),
+            Normalize(request.ChargeDeptCode));
         return RegisterKey(key);
     }
 

@@ -5,19 +5,16 @@ using Pricing.RuleCenter.Application.Pricing.Persistence;
 using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Application.Pricing.Validation;
 using Pricing.RuleCenter.Core.Interfaces;
+using Pricing.RuleCenter.Core.Models;
 
 namespace Pricing.RuleCenter.Application.Pricing;
 
 /// <summary>
 /// 试算计价工作流：不占用额度的模拟计价并写入可追溯日志。
 /// </summary>
-/// <remarks>
-/// 试算不写正式折价明细和限额占用，可重复调用。仍然写请求日志和步骤日志用于追溯。
-/// 单条和批量试算都进入本 workflow，差异在计价运行器是否共享 RequestSharedPricingState。
-/// </remarks>
 public sealed class PricingSimulateWorkflow
 {
-    private readonly PricingItemCalculationRunner _calculationRunner;
+    private readonly IPricingEngine _engine;
     private readonly AuthorityPriceChecker _authorityPriceChecker;
     private readonly PricingSimulationPersistenceService _persistenceService;
     private readonly RuntimePackageTraceResolver _runtimePackageTraceResolver;
@@ -25,14 +22,14 @@ public sealed class PricingSimulateWorkflow
     private readonly ILogger<PricingSimulateWorkflow> _logger;
 
     public PricingSimulateWorkflow(
-        PricingItemCalculationRunner calculationRunner,
+        IPricingEngine engine,
         AuthorityPriceChecker authorityPriceChecker,
         PricingSimulationPersistenceService persistenceService,
         RuntimePackageTraceResolver runtimePackageTraceResolver,
         IClock clock,
         ILogger<PricingSimulateWorkflow> logger)
     {
-        _calculationRunner = calculationRunner;
+        _engine = engine;
         _authorityPriceChecker = authorityPriceChecker;
         _persistenceService = persistenceService;
         _runtimePackageTraceResolver = runtimePackageTraceResolver;
@@ -41,7 +38,7 @@ public sealed class PricingSimulateWorkflow
     }
 
     /// <summary>
-    /// 执行试算计价：校验 → 运行包捕获 → 计价 → 持久化。
+    /// 执行试算计价：校验 → 运行包捕获 → 逐条计价 → 持久化。
     /// </summary>
     public async Task<PricingCalculateResponse> ExecuteAsync(PricingCalculateRequest request)
     {
@@ -51,11 +48,27 @@ public sealed class PricingSimulateWorkflow
             "试算开始 来源系统={SourceSystem}, 患者ID={PatientId}, 项目编码={ItemCode}, 输入数量={InputQty}",
             request.SourceSystem, request.PatientId, firstItem.ItemCode, firstItem.InputQty);
 
-        // 锁定当前激活的运行包版本，保证本请求内所有明细使用同一版本规则。
         var runtimePackageContext = await _runtimePackageTraceResolver.CaptureContextAsync();
         using var runtimePackageScope = _runtimePackageTraceResolver.BeginScope(runtimePackageContext);
 
-        var calculations = await _calculationRunner.RunAsync(request, items, "SIMULATE", shouldLockLimits: false);
+        // 逐条明细计价，共享请求内累计状态（同组互斥、同手术封顶等）。
+        var sharedState = new RequestSharedPricingState();
+        var calculations = new List<ItemPricingCalculation>(items.Count);
+        foreach (var item in items)
+        {
+            var context = PricingContextFactory.Create(new PricingContextBuildInput
+            {
+                Request = request,
+                Item = item,
+                CallType = "SIMULATE",
+                ShouldLockLimits = false,
+                RequestSharedState = sharedState
+            });
+            var result = await _engine.CalculateAsync(context);
+            sharedState.Accumulate(result, context);
+            calculations.Add(new ItemPricingCalculation(item, result));
+        }
+
         var runtimeTrace = await _runtimePackageTraceResolver.ResolveAsync(calculations);
 
         return await _persistenceService.PersistAsync(new PricingSimulationPersistenceInput
@@ -71,7 +84,6 @@ public sealed class PricingSimulateWorkflow
         PricingCalculateRequest request)
     {
         var items = PricingRequestGuard.GetRequiredItems(request);
-        // 试算保持 async 以保留 AuthorityPriceChecker 内部的异步 DB 查询能力。
         await _authorityPriceChecker.CheckAsync(request, items);
         return items;
     }

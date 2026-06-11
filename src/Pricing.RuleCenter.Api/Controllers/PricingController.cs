@@ -1,9 +1,7 @@
-using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Pricing.RuleCenter.Application.Dto;
-using Pricing.RuleCenter.Application.Pricing.Commands;
-using Pricing.RuleCenter.Application.Pricing.Queries;
+using Pricing.RuleCenter.Application.Pricing;
 
 namespace Pricing.RuleCenter.Api.Controllers;
 
@@ -15,11 +13,27 @@ namespace Pricing.RuleCenter.Api.Controllers;
 [Route("api/pricing")]
 public sealed class PricingController : ControllerBase
 {
-    private readonly IMediator _mediator;
+    private readonly PricingSimulateWorkflow _simulateWorkflow;
+    private readonly PricingConfirmWorkflow _confirmWorkflow;
+    private readonly PricingCommitWorkflow _commitWorkflow;
+    private readonly PricingCancelWorkflow _cancelWorkflow;
+    private readonly PricingReverseWorkflow _reverseWorkflow;
+    private readonly PricingSpecialFlagResolver _specialFlagResolver;
 
-    public PricingController(IMediator mediator)
+    public PricingController(
+        PricingSimulateWorkflow simulateWorkflow,
+        PricingConfirmWorkflow confirmWorkflow,
+        PricingCommitWorkflow commitWorkflow,
+        PricingCancelWorkflow cancelWorkflow,
+        PricingReverseWorkflow reverseWorkflow,
+        PricingSpecialFlagResolver specialFlagResolver)
     {
-        _mediator = mediator;
+        _simulateWorkflow = simulateWorkflow;
+        _confirmWorkflow = confirmWorkflow;
+        _commitWorkflow = commitWorkflow;
+        _cancelWorkflow = cancelWorkflow;
+        _reverseWorkflow = reverseWorkflow;
+        _specialFlagResolver = specialFlagResolver;
     }
 
     /// <summary>
@@ -32,7 +46,7 @@ public sealed class PricingController : ControllerBase
     public async Task<ApiResult<PricingCalculateResponse>> SimulateAsync(
         [FromBody] PricingCalculateRequest request)
     {
-        var result = await _mediator.Send(new SimulatePricingCommand(request));
+        var result = await _simulateWorkflow.ExecuteAsync(request);
         return ApiResult<PricingCalculateResponse>.Ok(result);
     }
 
@@ -46,7 +60,7 @@ public sealed class PricingController : ControllerBase
     public async Task<ApiResult<PricingCalculateResponse>> BatchSimulateAsync(
         [FromBody] PricingCalculateRequest request)
     {
-        var result = await _mediator.Send(new SimulatePricingCommand(request));
+        var result = await _simulateWorkflow.ExecuteAsync(request);
         return ApiResult<PricingCalculateResponse>.Ok(result);
     }
 
@@ -55,7 +69,7 @@ public sealed class PricingController : ControllerBase
     public async Task<ApiResult<PricingCalculateResponse>> ConfirmAsync(
         [FromBody] PricingCalculateRequest request)
     {
-        var result = await _mediator.Send(new ConfirmPricingCommand(request));
+        var result = await _confirmWorkflow.ExecuteAsync(request);
         return ApiResult<PricingCalculateResponse>.Ok(result);
     }
 
@@ -63,7 +77,7 @@ public sealed class PricingController : ControllerBase
     [HttpPost("calculate/commit")]
     public async Task<ApiResult> CommitAsync([FromBody] PricingCommitRequest request)
     {
-        await _mediator.Send(new CommitPricingCommand(request));
+        await _commitWorkflow.ExecuteAsync(request);
         return ApiResult.Ok();
     }
 
@@ -71,7 +85,7 @@ public sealed class PricingController : ControllerBase
     [HttpPost("calculate/cancel")]
     public async Task<ApiResult> CancelAsync([FromBody] PricingCancelRequest request)
     {
-        await _mediator.Send(new CancelPricingCommand(request));
+        await _cancelWorkflow.ExecuteAsync(request);
         return ApiResult.Ok();
     }
 
@@ -79,7 +93,7 @@ public sealed class PricingController : ControllerBase
     [HttpPost("calculate/reverse")]
     public async Task<ApiResult> ReverseAsync([FromBody] PricingReverseRequest request)
     {
-        await _mediator.Send(new ReversePricingCommand(request));
+        await _reverseWorkflow.ExecuteAsync(request);
         return ApiResult.Ok();
     }
 
@@ -91,13 +105,7 @@ public sealed class PricingController : ControllerBase
         [FromQuery] SpecialFlagQueryRequest? query)
     {
         var request = SpecialFlagRequest.From(itemCode, query);
-        var result = await _mediator.Send(new GetSpecialFlagQuery(
-            request.ItemCode,
-            request.ChargeScene,
-            request.BusinessChargeTime,
-            request.VisitType,
-            request.BodyPartCode,
-            request.ChargeDeptCode));
+        var result = await _specialFlagResolver.ResolveAsync(request);
         return ApiResult<SpecialFlagResponse>.Ok(result);
     }
 }
