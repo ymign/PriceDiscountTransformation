@@ -64,7 +64,7 @@ public sealed class PricingConfirmWorkflow
     /// </summary>
     public async Task<PricingCalculateResponse> ExecuteAsync(PricingCalculateRequest request)
     {
-        var items = ValidateRequestAsync(request);
+        var items = await ValidateRequestAsync(request);
         var firstItem = items[0];
         _logger.LogInformation(
             "确认计价开始 来源系统={SourceSystem}, 业务请求号={BusinessRequestNo}, 患者ID={PatientId}, 项目编码={ItemCode}, 输入数量={InputQty}",
@@ -116,7 +116,7 @@ public sealed class PricingConfirmWorkflow
         });
     }
 
-    private IReadOnlyList<PricingCalculateItemRequest> ValidateRequestAsync(PricingCalculateRequest request)
+    private async Task<IReadOnlyList<PricingCalculateItemRequest>> ValidateRequestAsync(PricingCalculateRequest request)
     {
         var items = PricingRequestGuard.GetRequiredItems(request);
         if (string.IsNullOrWhiteSpace(request.BusinessRequestNo))
@@ -125,8 +125,7 @@ public sealed class PricingConfirmWorkflow
             PricingRequestGuard.EnsureConfirmRequest(request);
         }
 
-        // 同步等待：AuthorityPriceChecker 只做诊断日志，不阻断流程，此处保持方法签名同步以简化调用链。
-        _authorityPriceChecker.CheckAsync(request, items).GetAwaiter().GetResult();
+        await _authorityPriceChecker.CheckAsync(request, items);
         return items;
     }
 
