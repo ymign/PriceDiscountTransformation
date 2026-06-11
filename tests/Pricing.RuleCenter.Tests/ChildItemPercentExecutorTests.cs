@@ -1,5 +1,5 @@
-using Newtonsoft.Json;
-using Pricing.RuleCenter.Core.Engine.Executors;
+﻿using System.Text.Json;
+using Pricing.RuleCenter.Application.Engine.Executors;
 using Pricing.RuleCenter.Core.Models;
 using Xunit;
 
@@ -14,7 +14,7 @@ public sealed class ChildItemPercentExecutorTests
         {
             ActionType = "FORMULA_CALC",
             ExecutorCode = "CHILD_ITEM_PERCENT",
-            ParamsJson = JsonConvert.SerializeObject(new
+            ParamsJson = JsonSerializer.Serialize(new
             {
                 ParentItemCode = parentItemCode,
                 ChildRate = childRate,
@@ -121,7 +121,7 @@ public sealed class ChildItemPercentExecutorTests
         {
             ActionType = "FORMULA_CALC",
             ExecutorCode = "CHILD_ITEM_PERCENT",
-            ParamsJson = JsonConvert.SerializeObject(new { ParentItemCode = "", ChildRate = 0.30m })
+            ParamsJson = JsonSerializer.Serialize(new { ParentItemCode = "", ChildRate = 0.30m })
         };
 
         await _executor.ExecuteAsync(action, ctx);
@@ -137,7 +137,7 @@ public sealed class ChildItemPercentExecutorTests
         {
             ActionType = "FORMULA_CALC",
             ExecutorCode = "OTHER_EXECUTOR",
-            ParamsJson = JsonConvert.SerializeObject(new { ParentItemCode = "P001", ChildRate = 0.30m })
+            ParamsJson = JsonSerializer.Serialize(new { ParentItemCode = "P001", ChildRate = 0.30m })
         };
 
         await _executor.ExecuteAsync(action, ctx);

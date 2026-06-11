@@ -1,7 +1,7 @@
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+﻿using System.Text.Json;
 using Pricing.RuleCenter.Application.Dto;
-using Pricing.RuleCenter.Core.Engine.Formula;
+using Pricing.RuleCenter.Application.Serialization;
+using Pricing.RuleCenter.Application.Engine.Formula;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Constants;
 
@@ -37,12 +37,13 @@ public sealed class RuleActionParameterValidator
 
     private static void Validate(RuleAction action, FormulaExpressionValidator expressionValidator)
     {
-        var json = ParseParams(action.ParamsJson);
+        using var json = ParseParams(action.ParamsJson);
+        var root = json?.RootElement;
         switch (action.ActionType?.Trim().ToUpperInvariant())
         {
             case RuleActionTypeCodes.ApplyTimeWindowLimit:
-                if (!HasPositiveNumber(json, "limitQty", "maxQty") ||
-                    !HasPositiveNumber(json, "windowMinutes", "windowHours"))
+                if (!HasPositiveNumber(root, "limitQty", "maxQty") ||
+                    !HasPositiveNumber(root, "windowMinutes", "windowHours"))
                 {
                     throw new BizException(
                         BizErrorCode.ActionParamMissing,
@@ -52,7 +53,7 @@ public sealed class RuleActionParameterValidator
                 break;
 
             case RuleActionTypeCodes.ApplyDayLimitQty:
-                if (!HasPositiveNumber(json, "maxDailyQty"))
+                if (!HasPositiveNumber(root, "maxDailyQty"))
                 {
                     throw new BizException(
                         BizErrorCode.ActionParamMissing,
@@ -62,7 +63,7 @@ public sealed class RuleActionParameterValidator
                 break;
 
             case RuleActionTypeCodes.ApplyOnceLimitQty:
-                if (!HasNonNegativeNumber(json, "maxOnceQty", "maxQty"))
+                if (!HasNonNegativeNumber(root, "maxOnceQty", "maxQty"))
                 {
                     throw new BizException(
                         BizErrorCode.ActionParamMissing,
@@ -72,7 +73,7 @@ public sealed class RuleActionParameterValidator
                 break;
 
             case RuleActionTypeCodes.ApplyMaxAmount:
-                if (!HasNonNegativeNumber(json, "maxAmount", "ceilingAmount"))
+                if (!HasNonNegativeNumber(root, "maxAmount", "ceilingAmount"))
                 {
                     throw new BizException(
                         BizErrorCode.ActionParamMissing,
@@ -82,7 +83,7 @@ public sealed class RuleActionParameterValidator
                 break;
 
             case RuleActionTypeCodes.ApplyMinAmount:
-                if (!HasNonNegativeNumber(json, "minAmount", "floorAmount"))
+                if (!HasNonNegativeNumber(root, "minAmount", "floorAmount"))
                 {
                     throw new BizException(
                         BizErrorCode.ActionParamMissing,
@@ -92,14 +93,14 @@ public sealed class RuleActionParameterValidator
                 break;
 
             case RuleActionTypeCodes.FormulaCalc:
-                ValidateFormulaAction(action, json, expressionValidator);
+                ValidateFormulaAction(action, root, expressionValidator);
                 break;
         }
     }
 
     private static void ValidateFormulaAction(
         RuleAction action,
-        JObject? json,
+        JsonElement? json,
         FormulaExpressionValidator expressionValidator)
     {
         if (!FormulaExecutorCodes.IsExpressionFormula(action.ExecutorCode))
@@ -129,7 +130,7 @@ public sealed class RuleActionParameterValidator
         }
     }
 
-    private static JObject? ParseParams(string? paramsJson)
+    private static JsonDocument? ParseParams(string? paramsJson)
     {
         if (string.IsNullOrWhiteSpace(paramsJson))
         {
@@ -138,9 +139,9 @@ public sealed class RuleActionParameterValidator
 
         try
         {
-            return JObject.Parse(paramsJson);
+            return RuleCenterJsonSerializer.ParseDocument(paramsJson);
         }
-        catch
+        catch (JsonException)
         {
             throw new BizException(
                 BizErrorCode.ActionParamInvalid,
@@ -149,17 +150,17 @@ public sealed class RuleActionParameterValidator
         }
     }
 
-    private static bool HasPositiveNumber(JObject? json, params string[] keys)
+    private static bool HasPositiveNumber(JsonElement? json, params string[] keys)
     {
         return TryGetNumber(json, keys, out var value) && value > 0m;
     }
 
-    private static bool HasNonNegativeNumber(JObject? json, params string[] keys)
+    private static bool HasNonNegativeNumber(JsonElement? json, params string[] keys)
     {
         return TryGetNumber(json, keys, out var value) && value >= 0m;
     }
 
-    private static bool TryGetNumber(JObject? json, string[] keys, out decimal value)
+    private static bool TryGetNumber(JsonElement? json, string[] keys, out decimal value)
     {
         value = 0m;
         if (json is null)
@@ -169,9 +170,9 @@ public sealed class RuleActionParameterValidator
 
         foreach (var key in keys)
         {
-            if (json.TryGetValue(key, StringComparison.OrdinalIgnoreCase, out var token) &&
-                token.Type != JTokenType.Null &&
-                decimal.TryParse(token.ToString(), out value))
+            if (json.Value.TryGetPropertyIgnoreCase(key, out var token) &&
+                !token.IsNullOrUndefined() &&
+                token.TryReadDecimal(out value))
             {
                 return true;
             }
@@ -180,16 +181,16 @@ public sealed class RuleActionParameterValidator
         return false;
     }
 
-    private static string? TryGetString(JObject? json, string key)
+    private static string? TryGetString(JsonElement? json, string key)
     {
         if (json is null)
         {
             return null;
         }
 
-        return json.TryGetValue(key, StringComparison.OrdinalIgnoreCase, out var token) &&
-            token.Type != JTokenType.Null
-                ? token.ToString()
-                : null;
+        return json.Value.TryGetPropertyIgnoreCase(key, out var token) &&
+               !token.IsNullOrUndefined()
+            ? token.ReadAsString()
+            : null;
     }
 }

@@ -91,9 +91,8 @@ public sealed class PricingCommitWorkflow
             PricingCommitActualValidator.Validate(request, details, requireActualItems: true);
 
             // 推进状态：请求日志 + 折价明细 + 限额占用一起变更
-            log.BusinessStatus = BusinessStatusCodes.Confirmed;
             log.ChargeNo = request.ChargeNo ?? log.ChargeNo;
-            log.ResponseAt = _clock.Now;
+            log.MarkCommitted(_clock.Now);
             await _requestLogRepository.UpdateAsync(log);
             await _discountRepository.UpdateStatusByRequestIdAsync(request.RequestId, BusinessStatusCodes.Confirmed);
             await _limitRepository.UpdateStatusByRequestIdAsync(request.RequestId, BusinessStatusCodes.Confirmed);

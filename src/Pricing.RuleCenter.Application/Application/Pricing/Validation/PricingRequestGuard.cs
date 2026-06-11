@@ -21,8 +21,8 @@ internal static class PricingRequestGuard
     /// <param name="request">计价请求。</param>
     /// <returns>已经过基础校验的费用明细集合。</returns>
     /// <remarks>
-    /// 这里是 workflow 内部不可绕过的防线。虽然 MediatR 管道已经运行 FluentValidation，
-    /// 但部分测试或内部调用可能直接调用 workflow，因此资金相关入口仍需在 workflow 内再次校验关键字段。
+    /// 这里是 workflow 内部不可绕过的防线。即使控制器入口已经做了模型绑定和 DTO 校验，
+    /// 资金相关 workflow 仍需在应用层再次保护关键字段，避免内部调用或测试夹具绕过边界。
     /// </remarks>
     public static IReadOnlyList<PricingCalculateItemRequest> GetRequiredItems(
         PricingCalculateRequest request)

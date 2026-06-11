@@ -7,7 +7,7 @@ namespace Pricing.RuleCenter.Application.Rules.Publishing;
 /// <summary>
 /// 规则回滚目标版本解析器。
 /// </summary>
-public sealed class RuleRollbackTargetResolver
+internal sealed class RuleRollbackTargetResolver
 {
     private readonly IRulePublishRepository _publishRepository;
     private readonly IRuleVersionRepository _versionRepository;

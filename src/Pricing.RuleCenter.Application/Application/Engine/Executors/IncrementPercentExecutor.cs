@@ -1,10 +1,10 @@
-using Newtonsoft.Json;
+﻿using Pricing.RuleCenter.Application.Serialization;
 using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Models;
 
-namespace Pricing.RuleCenter.Core.Engine.Executors;
+namespace Pricing.RuleCenter.Application.Engine.Executors;
 
 /// <summary>
 /// 按增量比例计算金额的公式动作执行器。
@@ -180,7 +180,7 @@ public sealed class IncrementPercentExecutor : IRuleActionExecutor, IFormulaExec
             return null;
         }
 
-        return JsonConvert.DeserializeObject<IncrementPercentParams>(json);
+        return RuleCenterJsonSerializer.Deserialize<IncrementPercentParams>(json);
     }
 
     /// <summary>

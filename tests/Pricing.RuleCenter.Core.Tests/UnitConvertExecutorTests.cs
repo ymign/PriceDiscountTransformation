@@ -1,6 +1,6 @@
-using Newtonsoft.Json;
+﻿using System.Text.Json;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
-using Pricing.RuleCenter.Core.Engine.Executors;
+using Pricing.RuleCenter.Application.Engine.Executors;
 using Pricing.RuleCenter.Core.Models;
 using Xunit;
 
@@ -23,7 +23,7 @@ public sealed class UnitConvertExecutorTests
         var action = new RuleAction
         {
             ActionType = "CONVERT_QTY",
-            ParamsJson = JsonConvert.SerializeObject(new
+            ParamsJson = JsonSerializer.Serialize(new
             {
                 DefaultDivisor = 4m,
                 DefaultRoundMode = "CEILING"

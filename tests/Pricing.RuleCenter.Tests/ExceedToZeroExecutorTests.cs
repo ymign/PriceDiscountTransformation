@@ -1,9 +1,9 @@
-using Microsoft.Extensions.Logging.Abstractions;
+﻿using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Caching.Memory;
-using Newtonsoft.Json;
-using Pricing.RuleCenter.Core.Engine;
-using Pricing.RuleCenter.Core.Engine.Executors;
-using Pricing.RuleCenter.Core.Engine.RuleRuntimeSnapshot;
+using System.Text.Json;
+using Pricing.RuleCenter.Application.Engine;
+using Pricing.RuleCenter.Application.Engine.Executors;
+using Pricing.RuleCenter.Application.Engine.RuleRuntimeSnapshot;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 using Pricing.RuleCenter.Infrastructure;
@@ -29,7 +29,7 @@ public sealed class ExceedToZeroExecutorTests
         await executor.ExecuteAsync(new RuleAction
         {
             ActionType = "DISCOUNT_EXCEED_TO_ZERO",
-            ParamsJson = JsonConvert.SerializeObject(new
+            ParamsJson = JsonSerializer.Serialize(new
             {
                 exceedAction = "REPLACE",
                 replaceItemCode = "CT_ADD",
@@ -62,7 +62,7 @@ public sealed class ExceedToZeroExecutorTests
         await executor.ExecuteAsync(new RuleAction
         {
             ActionType = "DISCOUNT_EXCEED_TO_ZERO",
-            ParamsJson = JsonConvert.SerializeObject(new
+            ParamsJson = JsonSerializer.Serialize(new
             {
                 exceedAction = "REPLACE",
                 replaceItemCode = "SKIN_ADD",
@@ -91,7 +91,7 @@ public sealed class ExceedToZeroExecutorTests
         await executor.ExecuteAsync(new RuleAction
         {
             ActionType = "DISCOUNT_EXCEED_TO_ZERO",
-            ParamsJson = JsonConvert.SerializeObject(new { exceedAction = "ZERO" })
+            ParamsJson = JsonSerializer.Serialize(new { exceedAction = "ZERO" })
         }, context);
 
         Assert.Equal(2m, context.ExceedQty);
@@ -124,7 +124,7 @@ public sealed class ExceedToZeroExecutorTests
                 VersionNo = 1,
                 ActionType = "DISCOUNT_EXCEED_TO_ZERO",
                 SortNo = 20,
-                ParamsJson = JsonConvert.SerializeObject(new
+                ParamsJson = JsonSerializer.Serialize(new
                 {
                     exceedAction = "REPLACE",
                     replaceItemCode = "ITEM_ADD",
@@ -188,7 +188,7 @@ public sealed class ExceedToZeroExecutorTests
                 VersionNo = 1,
                 ActionType = "ADD_CHILD_ITEM",
                 SortNo = 10,
-                ParamsJson = JsonConvert.SerializeObject(new
+                ParamsJson = JsonSerializer.Serialize(new
                 {
                     childItems = new[]
                     {

@@ -1,10 +1,10 @@
-using Pricing.RuleCenter.Core.Interfaces;
+﻿using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
 using Pricing.RuleCenter.Core.Interfaces.Catalog;
 using Pricing.RuleCenter.Core.Interfaces.Runtime;
 using Pricing.RuleCenter.Application.RuntimePackages;
 
-namespace Pricing.RuleCenter.Core.Engine;
+namespace Pricing.RuleCenter.Application.Engine;
 
 /// <summary>
 /// 规则匹配服务需要读取的规则配置仓储集合。

@@ -1,5 +1,5 @@
-using Newtonsoft.Json;
-using Pricing.RuleCenter.Core.Engine.Executors;
+﻿using System.Text.Json;
+using Pricing.RuleCenter.Application.Engine.Executors;
 using Pricing.RuleCenter.Core.Models;
 using Xunit;
 
@@ -18,7 +18,7 @@ public sealed class ConvertQtyByPartExecutorTests
         {
             ActionType = "FORMULA_CALC",
             ExecutorCode = "CONVERT_QTY_BY_PART",
-            ParamsJson = JsonConvert.SerializeObject(new
+            ParamsJson = JsonSerializer.Serialize(new
             {
                 DefaultBaseArea = defaultBaseArea,
                 MaxAmountPerLesion = maxAmountPerLesion,

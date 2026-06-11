@@ -9,7 +9,7 @@ namespace Pricing.RuleCenter.Application.Rules.Publishing;
 /// <summary>
 /// 停用规则事务主流程 workflow。
 /// </summary>
-public sealed class RuleDisableExecutionWorkflow
+internal sealed class RuleDisableExecutionWorkflow
 {
     private readonly IRuleHeaderRepository _headerRepository;
     private readonly IRuleVersionRepository _versionRepository;

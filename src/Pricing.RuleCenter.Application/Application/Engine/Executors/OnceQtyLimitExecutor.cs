@@ -1,11 +1,11 @@
-using Newtonsoft.Json;
+﻿using Pricing.RuleCenter.Application.Serialization;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Quota;
 using Pricing.RuleCenter.Core.Aggregates.Quota;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Models;
 
-namespace Pricing.RuleCenter.Core.Engine.Executors;
+namespace Pricing.RuleCenter.Application.Engine.Executors;
 
 /// <summary>
 /// 单次收费动作数量限制执行器。
@@ -106,7 +106,7 @@ public sealed class OnceQtyLimitExecutor : IRuleActionExecutor
             return null;
         }
 
-        return JsonConvert.DeserializeObject<OnceQtyParams>(json);
+        return RuleCenterJsonSerializer.Deserialize<OnceQtyParams>(json);
     }
 
     private sealed class OnceQtyParams

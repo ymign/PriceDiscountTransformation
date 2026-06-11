@@ -1,9 +1,9 @@
-using Newtonsoft.Json;
+﻿using Pricing.RuleCenter.Application.Serialization;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Models;
 
-namespace Pricing.RuleCenter.Core.Engine.Executors;
+namespace Pricing.RuleCenter.Application.Engine.Executors;
 
 /// <summary>
 /// 金额保底（下限）动作执行器。
@@ -83,7 +83,7 @@ public sealed class AmountFloorExecutor : IRuleActionExecutor
             return null;
         }
 
-        return JsonConvert.DeserializeObject<AmountFloorParams>(json);
+        return RuleCenterJsonSerializer.Deserialize<AmountFloorParams>(json);
     }
 
     /// <summary>

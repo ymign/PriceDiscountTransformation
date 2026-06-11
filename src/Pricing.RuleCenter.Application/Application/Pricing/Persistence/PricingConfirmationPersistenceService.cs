@@ -92,7 +92,7 @@ public sealed class PricingConfirmationPersistenceService
             Items = input.Items,
             Calculations = input.Calculations,
             CallType = PricingCallTypeCodes.Confirm,
-            BusinessStatus = BusinessStatusCodes.ConfirmPending,
+            LifecycleKind = RequestLogLifecycleKind.ConfirmPending,
             Fingerprint = input.Fingerprint,
             RuntimeTrace = input.RuntimeTrace
         });

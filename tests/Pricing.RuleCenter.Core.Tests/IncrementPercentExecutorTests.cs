@@ -1,6 +1,6 @@
-using Newtonsoft.Json;
+﻿using System.Text.Json;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
-using Pricing.RuleCenter.Core.Engine.Executors;
+using Pricing.RuleCenter.Application.Engine.Executors;
 using Pricing.RuleCenter.Core.Models;
 using Xunit;
 
@@ -24,7 +24,7 @@ public sealed class IncrementPercentExecutorTests
         {
             ActionType = "FORMULA_CALC",
             ExecutorCode = "INCREMENT_PERCENT",
-            ParamsJson = JsonConvert.SerializeObject(new { Rate = 0.5m })
+            ParamsJson = JsonSerializer.Serialize(new { Rate = 0.5m })
         };
 
         await _executor.ExecuteAsync(action, context);
@@ -47,7 +47,7 @@ public sealed class IncrementPercentExecutorTests
         {
             ActionType = "FORMULA_CALC",
             ExecutorCode = "INCREMENT_PERCENT",
-            ParamsJson = JsonConvert.SerializeObject(new { Rate = 0.5m })
+            ParamsJson = JsonSerializer.Serialize(new { Rate = 0.5m })
         };
 
         await _executor.ExecuteAsync(action, context);
@@ -70,7 +70,7 @@ public sealed class IncrementPercentExecutorTests
         {
             ActionType = "FORMULA_CALC",
             ExecutorCode = "INCREMENT_PERCENT",
-            ParamsJson = JsonConvert.SerializeObject(new { Rate = 0.5m })
+            ParamsJson = JsonSerializer.Serialize(new { Rate = 0.5m })
         };
 
         await _executor.ExecuteAsync(action, context);

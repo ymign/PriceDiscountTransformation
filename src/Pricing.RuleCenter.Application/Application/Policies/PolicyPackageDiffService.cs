@@ -3,11 +3,17 @@ using Pricing.RuleCenter.Core.Interfaces.Runtime;
 
 namespace Pricing.RuleCenter.Application.Policies;
 
+/// <summary>
+/// 运行时包策略差异分析服务。
+/// </summary>
 public sealed class PolicyPackageDiffService
 {
     private readonly IRuntimePackageStateRepository _runtimePackageStateRepository;
     private readonly IRuntimePackageRepository _runtimePackageRepository;
 
+    /// <summary>
+    /// 初始化运行时包策略差异分析服务。
+    /// </summary>
     public PolicyPackageDiffService(
         IRuntimePackageStateRepository runtimePackageStateRepository,
         IRuntimePackageRepository runtimePackageRepository)
@@ -16,6 +22,9 @@ public sealed class PolicyPackageDiffService
         _runtimePackageRepository = runtimePackageRepository;
     }
 
+    /// <summary>
+    /// 比较候选运行时包与当前激活包之间的策略版本差异。
+    /// </summary>
     public async Task<PolicyPackageDiffResult> DiffAgainstActiveAsync(long candidatePackageId)
     {
         var candidatePackage = await _runtimePackageRepository.GetByIdAsync(candidatePackageId)

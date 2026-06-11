@@ -1,10 +1,10 @@
-using Newtonsoft.Json;
+﻿using Pricing.RuleCenter.Application.Serialization;
 using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Models;
 
-namespace Pricing.RuleCenter.Core.Engine.Executors;
+namespace Pricing.RuleCenter.Application.Engine.Executors;
 
 /// <summary>
 /// 面积分段递增公式执行器（B-5 类规则）。
@@ -143,7 +143,7 @@ public sealed class AreaStepIncrementExecutor : IRuleActionExecutor, IFormulaExe
             return null;
         }
 
-        return JsonConvert.DeserializeObject<AreaStepIncrementParams>(json);
+        return RuleCenterJsonSerializer.Deserialize<AreaStepIncrementParams>(json);
     }
 
     /// <summary>

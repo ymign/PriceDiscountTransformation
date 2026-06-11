@@ -2,8 +2,15 @@ using Pricing.RuleCenter.Application.Dto;
 
 namespace Pricing.RuleCenter.Application.Policies;
 
-public sealed class PolicyExpressionGuard
+/// <summary>
+/// 策略参数表达式门禁。
+/// </summary>
+internal sealed class PolicyExpressionGuard : IPolicyExpressionGuard
 {
+    /// <summary>
+    /// 校验策略参数请求是否满足当前表达式级别约束。
+    /// </summary>
+    /// <param name="parameters">待校验的策略参数。</param>
     public void EnsureAllowed(IReadOnlyList<PolicyParamDto> parameters)
     {
         foreach (var parameter in parameters)

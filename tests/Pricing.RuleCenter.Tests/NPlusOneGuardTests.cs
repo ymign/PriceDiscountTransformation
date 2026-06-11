@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging.Abstractions;
+﻿using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Pricing.AuthorityPrice;
@@ -6,8 +6,8 @@ using Pricing.RuleCenter.Application.Rules.Guards;
 using Pricing.RuleCenter.Core.Aggregates.Catalog;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Constants;
-using Pricing.RuleCenter.Core.Engine;
-using Pricing.RuleCenter.Core.Engine.RuleRuntimeSnapshot;
+using Pricing.RuleCenter.Application.Engine;
+using Pricing.RuleCenter.Application.Engine.RuleRuntimeSnapshot;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Catalog;
 using Pricing.RuleCenter.Core.Interfaces.Rules;

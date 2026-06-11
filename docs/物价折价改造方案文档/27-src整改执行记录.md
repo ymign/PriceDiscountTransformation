@@ -247,3 +247,34 @@
 - `dotnet test src\Pricing.RuleCenter.slnx --no-restore --filter "RulePublishConflictTests|CoreBusinessCoverageTests|RuleMatchServiceTests|ActionExecutionPipelineTests"`：通过，Core.Tests 7 个、Tests 62 个。
 - `dotnet test src\Pricing.RuleCenter.slnx --no-restore`：通过，Core.Tests 38 个、Tests 262 个，共 300 个。
 - `git diff --check`：无格式错误；仅有 Git 提示 LF 将在下次触碰时替换为 CRLF。
+
+## 2026-06-11 P0 工程基线与 JSON 统一记录
+
+本轮先落 4 类工程化修正，不改计价业务口径：
+
+1. 修复构建基线：
+   - `global.json` 从不存在的 `10.0.300` 调整为本机已安装的 `10.0.101`
+   - 新增 `.editorconfig`
+   - 新增 `Directory.Build.props`
+
+2. 清理过时注释：
+   - `RuleCenterApiServiceCollectionExtensions` 移除已失效的 MediatR 描述
+   - `PricingRequestGuard` 改成“控制器校验 + workflow 强防线”的现状说明
+   - `GlobalExceptionFilter` 明确标注为 MVC 兼容过滤器，生产入口仍是 middleware
+
+3. `src` 生产代码 JSON 统一到 `System.Text.Json`：
+   - 新增 `RuleCenterJsonSerializer`
+   - 规则动作参数解析统一改走内部 helper
+   - 请求快照/响应快照/幂等响应重放改用 `System.Text.Json`
+   - `PricingConfirmWorkflow` 补了旧 PascalCase 响应快照到 snake_case 的兼容重放
+   - `PricingRequestFingerprintBuilder` 改为按 `JsonElement` 语义规范化扩展参数
+
+4. 测试与客户端联编代码同步：
+   - `tests/*` 中构造规则参数 JSON 的代码改用 `System.Text.Json`
+   - `his-client` 在 `NET35` 保留 Newtonsoft 兼容分支，在当前 `net8` 测试编译路径改用 `System.Text.Json`
+
+验证结果：
+
+- `dotnet build src\Pricing.RuleCenter.slnx --nologo -clp:ErrorsOnly`：通过，0 错误
+- `dotnet test src\Pricing.RuleCenter.slnx --nologo`：通过，Core.Tests 38 个、Tests 346 个，共 384 个
+- `git diff --check`：通过；仍有 Git 的 LF/CRLF 提示，但无 patch 格式错误

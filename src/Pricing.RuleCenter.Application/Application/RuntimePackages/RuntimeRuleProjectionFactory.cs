@@ -7,17 +7,37 @@ using Pricing.RuleCenter.Core.Constants;
 
 namespace Pricing.RuleCenter.Application.RuntimePackages;
 
+/// <summary>
+/// 运行期规则投影工厂，负责把策略版本和模板步骤映射为引擎直接消费的运行时快照。
+/// </summary>
 public sealed class RuntimeRuleProjectionFactory
 {
+    /// <summary>
+    /// 兼容旧规则动作参数 JSON 的特殊参数编码。
+    /// </summary>
     public const string LegacyActionParamsJsonParamCode = "LEGACY_ACTION_PARAMS_JSON";
 
-    private readonly PolicyPriorityKeyFactory _priorityKeyFactory;
+    private readonly IPolicyPriorityKeyFactory _priorityKeyFactory;
 
-    public RuntimeRuleProjectionFactory(PolicyPriorityKeyFactory priorityKeyFactory)
+    /// <summary>
+    /// 初始化运行期规则投影工厂。
+    /// </summary>
+    /// <param name="priorityKeyFactory">优先级键生成器。</param>
+    public RuntimeRuleProjectionFactory(IPolicyPriorityKeyFactory priorityKeyFactory)
     {
         _priorityKeyFactory = priorityKeyFactory;
     }
 
+    /// <summary>
+    /// 把策略版本、绑定、作用域和模板步骤投影为运行期规则快照。
+    /// </summary>
+    /// <param name="policyVersion">策略版本。</param>
+    /// <param name="templateVersion">模板版本。</param>
+    /// <param name="bindings">绑定对象集合。</param>
+    /// <param name="scopes">作用域集合。</param>
+    /// <param name="parameters">策略参数集合。</param>
+    /// <param name="stepDefs">模板步骤定义集合。</param>
+    /// <returns>可直接写入运行包的规则快照集合。</returns>
     public IReadOnlyList<RuntimeRuleSnapshot> Create(
         PolicyVersion policyVersion,
         TemplateVersion templateVersion,

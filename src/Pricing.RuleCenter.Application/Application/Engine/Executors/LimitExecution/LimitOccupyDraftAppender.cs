@@ -1,7 +1,7 @@
-using Pricing.RuleCenter.Core.Aggregates.Quota;
+﻿using Pricing.RuleCenter.Core.Aggregates.Quota;
 using Pricing.RuleCenter.Core.Models;
 
-namespace Pricing.RuleCenter.Core.Engine.Executors;
+namespace Pricing.RuleCenter.Application.Engine.Executors;
 
 /// <summary>
 /// 限额占额草稿追加器。

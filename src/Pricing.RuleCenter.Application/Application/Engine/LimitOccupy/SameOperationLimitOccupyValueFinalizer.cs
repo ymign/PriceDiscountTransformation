@@ -1,8 +1,8 @@
-using Pricing.RuleCenter.Core.Aggregates.Quota;
+﻿using Pricing.RuleCenter.Core.Aggregates.Quota;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 
-namespace Pricing.RuleCenter.Core.Engine;
+namespace Pricing.RuleCenter.Application.Engine;
 
 /// <summary>
 /// 同手术封顶占额草稿结算器。

@@ -4,7 +4,12 @@ using System.IO;
 using System.Net;
 using System.Text;
 using System.Threading;
+#if NET35
 using Newtonsoft.Json;
+#else
+using System.Text.Json;
+using System.Text.Json.Serialization;
+#endif
 
 namespace HIS.Pricing.Client
 {
@@ -22,6 +27,10 @@ namespace HIS.Pricing.Client
     /// </summary>
     public sealed class PricingApiClient
     {
+#if !NET35
+        private static readonly JsonSerializerOptions s_jsonOptions = CreateJsonOptions();
+#endif
+
         /// <summary>
         /// 计价服务基础 URL（不含尾部斜杠），如 "http://pricing-center:8080"。
         /// 构造时自动去除尾部斜杠，避免拼接路径时出现双斜杠。
@@ -499,7 +508,7 @@ namespace HIS.Pricing.Client
         public ApiResponse DeleteDict(long dictId)
         {
             string responseText = SendRequest("DELETE", PricingApiUrlBuilder.BuildDictById(dictId), null);
-            return JsonConvert.DeserializeObject<ApiResponse>(responseText);
+            return DeserializeJson<ApiResponse>(responseText);
         }
 
         // ================================================================
@@ -612,33 +621,63 @@ namespace HIS.Pricing.Client
         /// <summary>发送 POST 请求并反序列化为带数据的响应</summary>
         private ApiResponse<T> Post<T>(string path, object body)
         {
-            string json = JsonConvert.SerializeObject(body);
+            string json = SerializeJson(body);
             string responseText = SendRequest("POST", path, json);
-            return JsonConvert.DeserializeObject<ApiResponse<T>>(responseText);
+            return DeserializeJson<ApiResponse<T>>(responseText);
         }
 
         /// <summary>发送 POST 请求并反序列化为无数据的响应</summary>
         private ApiResponse PostNoData(string path, object body)
         {
-            string json = JsonConvert.SerializeObject(body);
+            string json = SerializeJson(body);
             string responseText = SendRequest("POST", path, json);
-            return JsonConvert.DeserializeObject<ApiResponse>(responseText);
+            return DeserializeJson<ApiResponse>(responseText);
         }
 
         /// <summary>发送 PUT 请求并反序列化为无数据的响应</summary>
         private ApiResponse PutNoData(string path, object body)
         {
-            string json = JsonConvert.SerializeObject(body);
+            string json = SerializeJson(body);
             string responseText = SendRequest("PUT", path, json);
-            return JsonConvert.DeserializeObject<ApiResponse>(responseText);
+            return DeserializeJson<ApiResponse>(responseText);
         }
 
         /// <summary>发送 GET 请求并反序列化为带数据的响应</summary>
         private ApiResponse<T> Get<T>(string path)
         {
             string responseText = SendRequest("GET", path, null);
-            return JsonConvert.DeserializeObject<ApiResponse<T>>(responseText);
+            return DeserializeJson<ApiResponse<T>>(responseText);
         }
+
+        private static string SerializeJson(object value)
+        {
+#if NET35
+            return JsonConvert.SerializeObject(value);
+#else
+            return JsonSerializer.Serialize(value, s_jsonOptions);
+#endif
+        }
+
+        private static T DeserializeJson<T>(string json)
+        {
+#if NET35
+            return JsonConvert.DeserializeObject<T>(json);
+#else
+            return JsonSerializer.Deserialize<T>(json, s_jsonOptions);
+#endif
+        }
+
+#if !NET35
+        private static JsonSerializerOptions CreateJsonOptions()
+        {
+            JsonSerializerOptions options = new JsonSerializerOptions();
+            options.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower;
+            options.PropertyNameCaseInsensitive = true;
+            options.NumberHandling = JsonNumberHandling.AllowReadingFromString;
+            options.DefaultIgnoreCondition = JsonIgnoreCondition.Never;
+            return options;
+        }
+#endif
 
         /// <summary>
         /// 底层 HTTP 请求发送方法。

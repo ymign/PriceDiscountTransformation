@@ -12,7 +12,7 @@ namespace Pricing.RuleCenter.Application.RuntimePackages;
 /// 计价请求通过它获得稳定的运行包视图，从而保证一次请求内规则版本可追溯、可回滚。
 /// </para>
 /// </remarks>
-public sealed class ActiveRuntimePackageReader
+internal sealed class ActiveRuntimePackageReader
 {
     /// <summary>
     /// 运行包状态仓储，用于读取当前激活包 ID。
@@ -58,6 +58,8 @@ public sealed class ActiveRuntimePackageReader
     /// <summary>
     /// 读取当前激活运行包下指定项目的运行期规则及包元数据。
     /// </summary>
+    /// <param name="itemCode">HIS 收费项目编码。</param>
+    /// <returns>当前请求可见的运行包及规则快照读取结果。</returns>
     public async Task<ActiveRuntimePackageReadResult> LoadCurrentPackageAsync(string itemCode)
     {
         var normalizedItemCode = itemCode.Trim();
@@ -122,29 +124,29 @@ public sealed class ActiveRuntimePackageReader
 /// <summary>
 /// 当前激活运行包读取结果。
 /// </summary>
-public sealed class ActiveRuntimePackageReadResult
+internal sealed class ActiveRuntimePackageReadResult
 {
     /// <summary>
-    /// Gets the active runtime package identifier.
+    /// 当前请求命中的运行包主键。
     /// </summary>
     public long? RuntimePackageId { get; init; }
 
     /// <summary>
-    /// Gets the active runtime package version.
+    /// 当前请求命中的运行包版本号。
     /// </summary>
     public long? RuntimePackageVersion { get; init; }
 
     /// <summary>
-    /// Gets the runtime rule snapshots visible to the current request.
+    /// 当前请求可见的运行时规则快照集合。
     /// </summary>
     public IReadOnlyList<RuntimeRuleSnapshot> Snapshots { get; init; } = Array.Empty<RuntimeRuleSnapshot>();
 
     /// <summary>
-    /// Creates an empty active runtime package read result.
+    /// 创建空的运行包读取结果。
     /// </summary>
-    /// <param name="runtimePackageId">A runtime package identifier.</param>
-    /// <param name="runtimePackageVersion">A runtime package version.</param>
-    /// <returns>An empty read result.</returns>
+    /// <param name="runtimePackageId">运行包主键。</param>
+    /// <param name="runtimePackageVersion">运行包版本号。</param>
+    /// <returns>不含规则快照的读取结果。</returns>
     public static ActiveRuntimePackageReadResult Empty(long? runtimePackageId, long? runtimePackageVersion)
     {
         return new ActiveRuntimePackageReadResult

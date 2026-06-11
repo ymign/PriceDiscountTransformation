@@ -1,6 +1,6 @@
-using Pricing.RuleCenter.Core.Interfaces;
+﻿using Pricing.RuleCenter.Core.Interfaces;
 
-namespace Pricing.RuleCenter.Core.Engine;
+namespace Pricing.RuleCenter.Application.Engine;
 
 /// <summary>
 /// 规则动作执行器工厂，负责根据动作类型编码（ActionType）定位对应执行器实例集合。

@@ -1,9 +1,9 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Models;
 
-namespace Pricing.RuleCenter.Core.Engine;
+namespace Pricing.RuleCenter.Application.Engine;
 
 /// <summary>
 /// 规则动作执行管线，负责把已按全局顺序排序的动作逐个派发给对应执行器执行。

@@ -1,5 +1,5 @@
-using Newtonsoft.Json;
-using Pricing.RuleCenter.Core.Engine.Executors;
+﻿using System.Text.Json;
+using Pricing.RuleCenter.Application.Engine.Executors;
 using Pricing.RuleCenter.Core.Models;
 using Xunit;
 
@@ -14,7 +14,7 @@ public sealed class AreaStepIncrementExecutorTests
         {
             ActionType = "FORMULA_CALC",
             ExecutorCode = "AREA_STEP_INCREMENT",
-            ParamsJson = JsonConvert.SerializeObject(new { BaseArea = baseArea, StepRate = stepRate })
+            ParamsJson = JsonSerializer.Serialize(new { BaseArea = baseArea, StepRate = stepRate })
         };
 
     private static PricingContext Context(decimal unitPrice, params decimal[] areas)
@@ -102,7 +102,7 @@ public sealed class AreaStepIncrementExecutorTests
         {
             ActionType = "FORMULA_CALC",
             ExecutorCode = "OTHER_EXECUTOR",
-            ParamsJson = JsonConvert.SerializeObject(new { BaseArea = 15m, StepRate = 0.15m })
+            ParamsJson = JsonSerializer.Serialize(new { BaseArea = 15m, StepRate = 0.15m })
         };
 
         await _executor.ExecuteAsync(action, ctx);

@@ -1,8 +1,8 @@
-using Pricing.RuleCenter.Core.Aggregates.Rules;
+﻿using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 
-namespace Pricing.RuleCenter.Core.Engine;
+namespace Pricing.RuleCenter.Application.Engine;
 
 /// <summary>
 /// 规则条件组匹配器。

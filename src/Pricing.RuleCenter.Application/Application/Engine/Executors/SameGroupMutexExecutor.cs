@@ -1,11 +1,12 @@
-using Newtonsoft.Json;
+﻿using Pricing.RuleCenter.Application.Serialization;
+using Pricing.RuleCenter.Core.Aggregates.Quota;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Quota;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Models;
 using Pricing.RuleCenter.Core.Services;
 
-namespace Pricing.RuleCenter.Core.Engine.Executors;
+namespace Pricing.RuleCenter.Application.Engine.Executors;
 
 /// <summary>
 /// 同组互斥动作执行器。
@@ -125,7 +126,7 @@ public sealed class SameGroupMutexExecutor : IRuleActionExecutor
         }
 
         // ========== 第四阶段：汇总历史 + 同请求内已占用的互斥计数 ==========
-        var processedCount = await _limitRepository.GetOccupiedQtyAsync(new Pricing.RuleCenter.Core.Aggregates.Quota.LimitOccupyRangeQuery
+        var processedCount = await _limitRepository.GetOccupiedQtyAsync(new LimitOccupyRangeQuery
         {
             LimitType = LimitType,
             LimitDimensionCode = dimensionCode,
@@ -242,7 +243,7 @@ public sealed class SameGroupMutexExecutor : IRuleActionExecutor
             return null;
         }
 
-        return JsonConvert.DeserializeObject<SameGroupMutexParams>(json);
+        return RuleCenterJsonSerializer.Deserialize<SameGroupMutexParams>(json);
     }
 
     /// <summary>
@@ -278,7 +279,7 @@ public sealed class SameGroupMutexExecutor : IRuleActionExecutor
             return Task.FromResult(0m);
         }
 
-        public Task<decimal> GetOccupiedQtyAsync(Pricing.RuleCenter.Core.Aggregates.Quota.LimitOccupyRangeQuery query)
+        public Task<decimal> GetOccupiedQtyAsync(LimitOccupyRangeQuery query)
         {
             return Task.FromResult(0m);
         }
@@ -293,10 +294,10 @@ public sealed class SameGroupMutexExecutor : IRuleActionExecutor
             return Task.FromResult(0m);
         }
 
-        public Task<IReadOnlyList<Pricing.RuleCenter.Core.Aggregates.Quota.LimitOccupy>> GetByRequestIdAsync(long requestId)
+        public Task<IReadOnlyList<LimitOccupy>> GetByRequestIdAsync(long requestId)
         {
-            return Task.FromResult<IReadOnlyList<Pricing.RuleCenter.Core.Aggregates.Quota.LimitOccupy>>(
-                Array.Empty<Pricing.RuleCenter.Core.Aggregates.Quota.LimitOccupy>());
+            return Task.FromResult<IReadOnlyList<LimitOccupy>>(
+                Array.Empty<LimitOccupy>());
         }
 
         public Task EnsureAndLockAsync(IReadOnlyCollection<string> lockKeys)
@@ -304,7 +305,7 @@ public sealed class SameGroupMutexExecutor : IRuleActionExecutor
             return Task.CompletedTask;
         }
 
-        public Task<long> InsertAsync(Pricing.RuleCenter.Core.Aggregates.Quota.LimitOccupy entity)
+        public Task<long> InsertAsync(LimitOccupy entity)
         {
             throw new NotSupportedException();
         }

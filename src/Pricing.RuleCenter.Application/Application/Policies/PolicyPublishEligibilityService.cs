@@ -5,11 +5,17 @@ using Pricing.RuleCenter.Core.Interfaces.Policies;
 
 namespace Pricing.RuleCenter.Application.Policies;
 
-public sealed class PolicyPublishEligibilityService
+/// <summary>
+/// 策略发布资格校验服务。
+/// </summary>
+internal sealed class PolicyPublishEligibilityService : IPolicyPublishEligibilityService
 {
     private readonly PolicyPublishProfileResolver _publishProfileResolver;
     private readonly IPolicyReviewRepository _policyReviewRepository;
 
+    /// <summary>
+    /// 初始化策略发布资格校验服务。
+    /// </summary>
     public PolicyPublishEligibilityService(
         PolicyPublishProfileResolver publishProfileResolver,
         IPolicyReviewRepository policyReviewRepository)
@@ -18,6 +24,9 @@ public sealed class PolicyPublishEligibilityService
         _policyReviewRepository = policyReviewRepository;
     }
 
+    /// <summary>
+    /// 校验策略版本是否允许进入运行时包发布流程。
+    /// </summary>
     public async Task EnsureEligibleAsync(PolicyAggregate policy, PolicyVersion version)
     {
         if (_publishProfileResolver.RequiresReview(policy))

@@ -1,9 +1,9 @@
-using Pricing.RuleCenter.Application.Dto;
+﻿using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Constants;
-using Pricing.RuleCenter.Core.Engine;
-using Pricing.RuleCenter.Core.Engine.RuleRuntimeSnapshot;
+using Pricing.RuleCenter.Application.Engine;
+using Pricing.RuleCenter.Application.Engine.RuleRuntimeSnapshot;
 using Pricing.RuleCenter.Core.Models;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
@@ -25,6 +25,8 @@ namespace Pricing.RuleCenter.Application.Pricing;
 /// </remarks>
 public sealed class PricingSpecialFlagResolver
 {
+    private readonly RuntimeRuleProjectionAdapter _runtimeProjectionAdapter = new();
+
     /// <summary>
     /// 旧规则主档仓储，用于未激活运行包时按项目读取已发布规则。
     /// </summary>
@@ -118,14 +120,7 @@ public sealed class PricingSpecialFlagResolver
             .Where(r => r.IsEffectiveAt(businessTime))
             .ToList();
 
-        return new SpecialFlagResponse
-        {
-            ItemCode = normalizedItemCode,
-            IsSpecial = published.Count > 0,
-            RuleCount = published.Count,
-            RollbackMode = ResolveRollbackMode(published),
-            MatchedRuleIds = published.Select(r => r.RuleId).Distinct().ToList()
-        };
+        return BuildPublishedRuleResponse(normalizedItemCode, published);
     }
 
     private async Task<SpecialFlagResponse> ResolveFromSnapshotLoaderAsync(
@@ -149,14 +144,7 @@ public sealed class PricingSpecialFlagResolver
             .Where(rule => rule.IsEffectiveAt(businessTime))
             .ToList();
 
-        return new SpecialFlagResponse
-        {
-            ItemCode = normalizedItemCode,
-            IsSpecial = publishedRules.Count > 0,
-            RuleCount = publishedRules.Count,
-            RollbackMode = ResolveRollbackMode(publishedRules),
-            MatchedRuleIds = publishedRules.Select(rule => rule.RuleId).Distinct().ToList()
-        };
+        return BuildPublishedRuleResponse(normalizedItemCode, publishedRules);
     }
 
     private async Task<SpecialFlagResponse> ResolveFromRuntimeSnapshotSetAsync(
@@ -216,53 +204,34 @@ public sealed class PricingSpecialFlagResolver
         DateTime businessTime,
         RuntimePackageRuleSnapshotResolution runtimeResolution)
     {
-        // 运行包快照需要适配成规则聚合视角，复用与正式计价一致的条件组匹配逻辑。
-        var adapter = new RuntimeRuleProjectionAdapter();
-        var context = BuildPricingContext(normalizedItemCode, request, businessTime);
-        var matchedSnapshots = new List<RuntimeRuleSnapshot>();
-
-        foreach (var runtimeSnapshot in runtimeResolution.Snapshots)
-        {
-            var snapshot = adapter.Adapt(runtimeSnapshot);
-            if (!snapshot.Header.IsEffectiveAt(businessTime))
+        return await ResolveFromRuntimeSnapshotSetAsync(
+            normalizedItemCode,
+            request,
+            businessTime,
+            new EffectiveRuleSnapshotLoadResult
             {
-                continue;
-            }
+                RuntimePackageId = runtimeResolution.RuntimePackageId,
+                RuntimePackageVersion = runtimeResolution.RuntimePackageVersion,
+                Snapshots = runtimeResolution.Snapshots
+                    .Select(_runtimeProjectionAdapter.Adapt)
+                    .ToList(),
+                RuntimeRulesById = runtimeResolution.Snapshots
+                    .Select(snapshot => snapshot.Rule)
+                    .ToDictionary(rule => rule.RuntimeRuleId)
+            });
+    }
 
-            // special-flag 查询只构造轻量 PricingContext，不做金额计算。
-            // 目的只是提前判断该项目在当前场景下是否会命中特殊规则。
-            if (_conditionMatcher is not null &&
-                !await _conditionMatcher.EvaluateAsync(snapshot.Conditions, context))
-            {
-                continue;
-            }
-
-            matchedSnapshots.Add(runtimeSnapshot);
-        }
-
-        var runtimeRuleIds = matchedSnapshots
-            .Select(snapshot => snapshot.Rule.RuntimeRuleId)
-            .Where(id => id > 0)
-            .Distinct()
-            .ToList();
-        var policyVersionIds = matchedSnapshots
-            .Select(snapshot => snapshot.Rule.SourcePolicyVersionId)
-            .Where(id => id > 0)
-            .Distinct()
-            .ToList();
-
+    private static SpecialFlagResponse BuildPublishedRuleResponse(
+        string normalizedItemCode,
+        IReadOnlyList<RuleAggregate> publishedRules)
+    {
         return new SpecialFlagResponse
         {
             ItemCode = normalizedItemCode,
-            IsSpecial = runtimeRuleIds.Count > 0,
-            RuleCount = runtimeRuleIds.Count,
-            // 运行包路径目前按最保守 STOP_CHARGE 返回。渠道在服务异常时不能按普通计价回退。
-            RollbackMode = "STOP_CHARGE",
-            RuntimePackageId = runtimeResolution.RuntimePackageId,
-            RuntimePackageVersion = runtimeResolution.RuntimePackageVersion,
-            MatchedRuleIds = runtimeRuleIds,
-            MatchedRuntimeRuleIds = runtimeRuleIds,
-            MatchedPolicyVersionIds = policyVersionIds
+            IsSpecial = publishedRules.Count > 0,
+            RuleCount = publishedRules.Count,
+            RollbackMode = ResolveRollbackMode(publishedRules),
+            MatchedRuleIds = publishedRules.Select(rule => rule.RuleId).Distinct().ToList()
         };
     }
 

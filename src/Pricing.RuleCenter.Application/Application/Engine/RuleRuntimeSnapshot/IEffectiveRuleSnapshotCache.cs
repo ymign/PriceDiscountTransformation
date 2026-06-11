@@ -1,4 +1,4 @@
-namespace Pricing.RuleCenter.Core.Engine.RuleRuntimeSnapshot;
+﻿namespace Pricing.RuleCenter.Application.Engine.RuleRuntimeSnapshot;
 
 /// <summary>
 /// 运行期生效规则快照缓存抽象。

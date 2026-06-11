@@ -1,4 +1,4 @@
-namespace Pricing.RuleCenter.Core.Engine.Evaluators;
+﻿namespace Pricing.RuleCenter.Application.Engine.Evaluators;
 
 /// <summary>
 /// 诊断/病种条件评估器，从 ExtraParams["diagnosisCodes"] 读取诊断编码列表。

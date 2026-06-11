@@ -6,23 +6,40 @@ using Pricing.RuleCenter.Core.Interfaces.Policies;
 
 namespace Pricing.RuleCenter.Application.Policies;
 
+/// <summary>
+/// 策略主档应用服务，负责策略主记录的查询、创建和更新。
+/// </summary>
 public sealed class PolicyAppService
 {
     private readonly IPolicyRepository _policyRepository;
     private readonly IClock _clock;
 
+    /// <summary>
+    /// 初始化策略主档应用服务。
+    /// </summary>
+    /// <param name="policyRepository">策略仓储。</param>
+    /// <param name="clock">技术时间提供者。</param>
     public PolicyAppService(IPolicyRepository policyRepository, IClock clock)
     {
         _policyRepository = policyRepository;
         _clock = clock;
     }
 
+    /// <summary>
+    /// 查询全部策略主档列表。
+    /// </summary>
+    /// <returns>策略概要集合。</returns>
     public async Task<IReadOnlyList<PolicyResponse>> GetAllAsync()
     {
         var items = await _policyRepository.GetAllAsync();
         return items.Select(MapToResponse).ToList();
     }
 
+    /// <summary>
+    /// 按主键查询策略详情及版本概要。
+    /// </summary>
+    /// <param name="policyId">策略主键。</param>
+    /// <returns>命中时返回策略详情；不存在时返回 <c>null</c>。</returns>
     public async Task<PolicyDetailResponse?> GetByIdAsync(long policyId)
     {
         var policy = await _policyRepository.GetByIdAsync(policyId);
@@ -46,6 +63,11 @@ public sealed class PolicyAppService
         };
     }
 
+    /// <summary>
+    /// 创建策略主档。
+    /// </summary>
+    /// <param name="request">策略创建请求。</param>
+    /// <returns>新建策略主键。</returns>
     public async Task<long> CreateAsync(PolicyCreateRequest request)
     {
         var existing = await _policyRepository.GetByCodeAsync(request.PolicyCode);
@@ -72,6 +94,11 @@ public sealed class PolicyAppService
         return await _policyRepository.InsertAsync(entity);
     }
 
+    /// <summary>
+    /// 更新策略主档基础信息。
+    /// </summary>
+    /// <param name="policyId">策略主键。</param>
+    /// <param name="request">策略更新请求。</param>
     public async Task UpdateAsync(long policyId, PolicyUpdateRequest request)
     {
         var entity = await _policyRepository.GetByIdAsync(policyId)

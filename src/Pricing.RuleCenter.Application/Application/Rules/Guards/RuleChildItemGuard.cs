@@ -1,5 +1,6 @@
-using Newtonsoft.Json;
+using System.Text.Json;
 using Pricing.RuleCenter.Application.Dto;
+using Pricing.RuleCenter.Application.Serialization;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Constants;
 
@@ -57,9 +58,9 @@ public sealed class RuleChildItemGuard
 
         try
         {
-            return JsonConvert.DeserializeObject<AddChildItemConfig>(paramsJson);
+            return RuleCenterJsonSerializer.Deserialize<AddChildItemConfig>(paramsJson);
         }
-        catch
+        catch (JsonException)
         {
             throw new BizException(
                 BizErrorCode.ActionParamInvalid,

@@ -1,7 +1,7 @@
-using Microsoft.Extensions.Caching.Memory;
+﻿using Microsoft.Extensions.Caching.Memory;
 using Pricing.RuleCenter.Application.RuntimePackages;
 
-namespace Pricing.RuleCenter.Core.Engine.RuleRuntimeSnapshot;
+namespace Pricing.RuleCenter.Application.Engine.RuleRuntimeSnapshot;
 
 /// <summary>
 /// 运行期生效规则快照缓存。

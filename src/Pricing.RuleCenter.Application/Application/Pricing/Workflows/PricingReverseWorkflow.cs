@@ -61,7 +61,6 @@ public sealed class PricingReverseWorkflow
     public async Task ExecuteAsync(PricingReverseRequest request)
     {
         PricingRequestGuard.EnsureReverseRequest(request);
-        var reverseNo = request.ReverseNo!;
 
         _logger.LogInformation(
             "退费冲正开始 原请求ID={OriginalRequestId}, 项目编码={ItemCode}, 退费数量={ReverseQty}",
@@ -70,94 +69,30 @@ public sealed class PricingReverseWorkflow
         await ExecuteInTransactionAsync(async () =>
         {
             // 锁定原请求和退费流水
-            await _limitRepository.EnsureAndLockAsync(new[]
-            {
-                PricingLockKeyBuilder.BuildRequestLockKey(request.OriginalRequestId),
-                PricingLockKeyBuilder.BuildReverseLockKey(request.OriginalRequestId, reverseNo)
-            });
+            await LockReverseRequestAsync(request);
 
-            var log = await _requestLogRepository.GetByIdAsync(request.OriginalRequestId)
-                ?? throw new BizException(BizErrorCode.RequestNotFound, 404, $"原请求不存在: {request.OriginalRequestId}");
+            var log = await GetOriginalRequestAsync(request.OriginalRequestId);
 
-            // 幂等检查：相同 ReverseNo 参数必须一致
             var reverseLogs = await _reverseLogRepository.GetByOriginalRequestIdAsync(request.OriginalRequestId);
-            var sameReverseNo = reverseLogs.FirstOrDefault(r =>
-                string.Equals(r.ReverseNo, request.ReverseNo, StringComparison.OrdinalIgnoreCase));
-            if (sameReverseNo is not null)
+            if (TryHandleIdempotentReverse(request, reverseLogs))
             {
-                if (!PricingReverseDetailSelector.IsSameReverseRequest(sameReverseNo, request))
-                {
-                    throw new BizException(BizErrorCode.IdempotencyConflict, 409,
-                        $"ReverseNo={request.ReverseNo} 已存在，但本次冲正参数与首次请求不一致");
-                }
-                _logger.LogInformation("退费冲正幂等命中 原请求ID={OriginalRequestId}, 冲正流水号={ReverseNo}",
-                    request.OriginalRequestId, request.ReverseNo);
                 return;
             }
 
-            // 只有已落账记录才能 reverse
-            if (!IsCommittedBusinessStatus(log.BusinessStatus))
-            {
-                throw new BizException(BizErrorCode.ReverseNotAllowed, 409,
-                    $"只有CONFIRMED或COMMITTED状态可以REVERSE, 当前: {log.BusinessStatus}");
-            }
-
+            EnsureReverseAllowed(log);
             var details = await _discountRepository.GetByRequestIdAsync(request.OriginalRequestId);
-            var matchedDetails = PricingReverseDetailSelector.FilterReverseDetails(details, request);
-            if (matchedDetails.Count == 0)
+            var reverseContext = await BuildReverseContextAsync(request, details);
+            ValidateResultGroupIntegrity(
+                reverseContext.MatchedDetails,
+                reverseLogs,
+                reverseContext.ReverseQty,
+                reverseContext.ReverseAmt,
+                reverseContext.OriginalQty,
+                reverseContext.OriginalAmt);
+
+            if (reverseContext.IsFullReverse)
             {
-                throw new BizException(BizErrorCode.ReverseNotAllowed, 409, "未找到可退费的原收费明细");
-            }
-
-            // 计算本次可退数量和金额
-            // allOriginalQty 是原请求全部有效明细的总量（不限于本次匹配范围），用于全退判断。
-            // originalQty/Amt 仅是本次匹配到的明细，用于部分退费的比例分摊和累计校验。
-            var allOriginalQty = details
-                .Where(d => d.Status == BusinessStatusCodes.Confirmed || d.Status == BusinessStatusCodes.Committed)
-                .Sum(d => d.FinalQty ?? 0);
-            var originalQty = matchedDetails.Sum(d => d.FinalQty ?? 0);
-            var originalAmt = matchedDetails.Sum(d => d.FinalAmt ?? 0);
-            var reverseQty = request.ReverseQty ?? originalQty;
-            if (reverseQty <= 0)
-            {
-                throw new BizException(BizErrorCode.ReverseNotAllowed, 409, "退费数量必须大于0");
-            }
-
-            var historicalReversedQty = await _reverseHistoryReader.GetHistoricalReversedQtyAsync(request);
-            var allHistoricalReversedQty = await _reverseHistoryReader.GetHistoricalReversedQtyAsync(request.OriginalRequestId);
-            if (historicalReversedQty + reverseQty > originalQty)
-            {
-                throw new BizException(BizErrorCode.ReverseNotAllowed, 409,
-                    $"原有效数量={originalQty}, 历史已退={historicalReversedQty}, 本次退费={reverseQty}");
-            }
-
-            var reverseAmt = request.ReverseAmt ??
-                (originalQty == 0 ? 0 : originalAmt * reverseQty / originalQty);
-            reverseAmt = PricingAmountRounder.RoundFinal(reverseAmt);
-            var historicalReversedAmt = await _reverseHistoryReader.GetHistoricalReversedAmtAsync(request);
-            if (historicalReversedAmt + reverseAmt > originalAmt)
-            {
-                throw new BizException(BizErrorCode.ReverseNotAllowed, 409,
-                    $"原有效金额={originalAmt}, 历史已退={historicalReversedAmt}, 本次退费={reverseAmt}");
-            }
-
-            // 全退必须同时满足数量和金额两个维度。多明细部分退费可能数量相等但金额因四舍五入有微差，
-            // 只看数量会误判为全退，必须两个维度都闭合才标记原请求为 REVERSED。
-            var isFullReverse =
-                allHistoricalReversedQty + reverseQty == allOriginalQty &&
-                historicalReversedAmt + reverseAmt == originalAmt;
-
-            // 主子项目结果组保护
-            ValidateResultGroupIntegrity(matchedDetails, reverseLogs, reverseQty, reverseAmt, originalQty, originalAmt);
-
-            // 推进状态或写负向占用
-            if (isFullReverse)
-            {
-                log.BusinessStatus = BusinessStatusCodes.Reversed;
-                log.ResponseAt = _clock.Now;
-                await _requestLogRepository.UpdateAsync(log);
-                await _discountRepository.UpdateStatusByRequestIdAsync(request.OriginalRequestId, OccupyStatusCodes.Reversed);
-                await _limitRepository.UpdateStatusByRequestIdAsync(request.OriginalRequestId, OccupyStatusCodes.Reversed);
+                await MarkOriginalRequestReversedAsync(log, request.OriginalRequestId);
             }
 
             var reverseTime = request.ReverseTime ?? _clock.Now;
@@ -165,22 +100,22 @@ public sealed class PricingReverseWorkflow
             {
                 Request = request,
                 OriginalLog = log,
-                MatchedDetails = matchedDetails,
-                ReverseQty = reverseQty,
-                ReverseAmt = reverseAmt,
+                MatchedDetails = reverseContext.MatchedDetails,
+                ReverseQty = reverseContext.ReverseQty,
+                ReverseAmt = reverseContext.ReverseAmt,
                 ReverseTime = reverseTime
             });
 
-            if (!isFullReverse)
+            if (!reverseContext.IsFullReverse)
             {
                 await _limitOccupyWriter.InsertNegativeAsync(new NegativeLimitOccupyInput
                 {
                     Request = request,
-                    MatchedDetails = matchedDetails,
+                    MatchedDetails = reverseContext.MatchedDetails,
                     ReverseRequestId = reverseRequestId,
                     TraceId = log.TraceId,
-                    ReverseQty = reverseQty,
-                    ReverseAmt = reverseAmt,
+                    ReverseQty = reverseContext.ReverseQty,
+                    ReverseAmt = reverseContext.ReverseAmt,
                     ReverseTime = reverseTime
                 });
             }
@@ -189,17 +124,136 @@ public sealed class PricingReverseWorkflow
             {
                 Request = request,
                 OriginalLog = log,
-                MatchedDetails = matchedDetails,
+                MatchedDetails = reverseContext.MatchedDetails,
                 ReverseRequestId = reverseRequestId,
-                ReverseQty = reverseQty,
-                ReverseAmt = reverseAmt,
+                ReverseQty = reverseContext.ReverseQty,
+                ReverseAmt = reverseContext.ReverseAmt,
                 ReverseTime = reverseTime
             });
 
             _logger.LogInformation(
                 "退费冲正成功 原请求ID={OriginalRequestId}, 退费数量={ReverseQty}, 退费金额={ReverseAmt}, 是否全退={IsFullReverse}",
-                request.OriginalRequestId, reverseQty, reverseAmt, isFullReverse);
+                request.OriginalRequestId,
+                reverseContext.ReverseQty,
+                reverseContext.ReverseAmt,
+                reverseContext.IsFullReverse);
         });
+    }
+
+    private async Task LockReverseRequestAsync(PricingReverseRequest request)
+    {
+        await _limitRepository.EnsureAndLockAsync(new[]
+        {
+            PricingLockKeyBuilder.BuildRequestLockKey(request.OriginalRequestId),
+            PricingLockKeyBuilder.BuildReverseLockKey(request.OriginalRequestId, request.ReverseNo!)
+        });
+    }
+
+    private async Task<ChargeRequest> GetOriginalRequestAsync(long originalRequestId)
+    {
+        return await _requestLogRepository.GetByIdAsync(originalRequestId)
+            ?? throw new BizException(BizErrorCode.RequestNotFound, 404, $"原请求不存在: {originalRequestId}");
+    }
+
+    private bool TryHandleIdempotentReverse(
+        PricingReverseRequest request,
+        IReadOnlyList<ChargeReverseLog> reverseLogs)
+    {
+        var sameReverseNo = reverseLogs.FirstOrDefault(reverseLog =>
+            string.Equals(reverseLog.ReverseNo, request.ReverseNo, StringComparison.OrdinalIgnoreCase));
+        if (sameReverseNo is null)
+        {
+            return false;
+        }
+
+        if (!PricingReverseDetailSelector.IsSameReverseRequest(sameReverseNo, request))
+        {
+            throw new BizException(
+                BizErrorCode.IdempotencyConflict,
+                409,
+                $"ReverseNo={request.ReverseNo} 已存在，但本次冲正参数与首次请求不一致");
+        }
+
+        _logger.LogInformation(
+            "退费冲正幂等命中 原请求ID={OriginalRequestId}, 冲正流水号={ReverseNo}",
+            request.OriginalRequestId,
+            request.ReverseNo);
+        return true;
+    }
+
+    private static void EnsureReverseAllowed(ChargeRequest log)
+    {
+        if (!IsCommittedBusinessStatus(log.BusinessStatus))
+        {
+            throw new BizException(
+                BizErrorCode.ReverseNotAllowed,
+                409,
+                $"只有CONFIRMED或COMMITTED状态可以REVERSE, 当前: {log.BusinessStatus}");
+        }
+    }
+
+    private async Task<ReverseExecutionContext> BuildReverseContextAsync(
+        PricingReverseRequest request,
+        IReadOnlyList<ChargeDiscountDetail> details)
+    {
+        var matchedDetails = PricingReverseDetailSelector.FilterReverseDetails(details, request);
+        if (matchedDetails.Count == 0)
+        {
+            throw new BizException(BizErrorCode.ReverseNotAllowed, 409, "未找到可退费的原收费明细");
+        }
+
+        var allOriginalQty = details
+            .Where(detail => detail.Status == BusinessStatusCodes.Confirmed || detail.Status == BusinessStatusCodes.Committed)
+            .Sum(detail => detail.FinalQty ?? 0);
+        var originalQty = matchedDetails.Sum(detail => detail.FinalQty ?? 0);
+        var originalAmt = matchedDetails.Sum(detail => detail.FinalAmt ?? 0);
+        var reverseQty = request.ReverseQty ?? originalQty;
+        if (reverseQty <= 0)
+        {
+            throw new BizException(BizErrorCode.ReverseNotAllowed, 409, "退费数量必须大于0");
+        }
+
+        var historicalReversedQty = await _reverseHistoryReader.GetHistoricalReversedQtyAsync(request);
+        var allHistoricalReversedQty = await _reverseHistoryReader.GetHistoricalReversedQtyAsync(request.OriginalRequestId);
+        if (historicalReversedQty + reverseQty > originalQty)
+        {
+            throw new BizException(
+                BizErrorCode.ReverseNotAllowed,
+                409,
+                $"原有效数量={originalQty}, 历史已退={historicalReversedQty}, 本次退费={reverseQty}");
+        }
+
+        var reverseAmt = request.ReverseAmt ??
+            (originalQty == 0 ? 0 : originalAmt * reverseQty / originalQty);
+        reverseAmt = PricingAmountRounder.RoundFinal(reverseAmt);
+        var historicalReversedAmt = await _reverseHistoryReader.GetHistoricalReversedAmtAsync(request);
+        if (historicalReversedAmt + reverseAmt > originalAmt)
+        {
+            throw new BizException(
+                BizErrorCode.ReverseNotAllowed,
+                409,
+                $"原有效金额={originalAmt}, 历史已退={historicalReversedAmt}, 本次退费={reverseAmt}");
+        }
+
+        return new ReverseExecutionContext
+        {
+            MatchedDetails = matchedDetails,
+            OriginalQty = originalQty,
+            OriginalAmt = originalAmt,
+            ReverseQty = reverseQty,
+            ReverseAmt = reverseAmt,
+            IsFullReverse =
+                allHistoricalReversedQty + reverseQty == allOriginalQty &&
+                historicalReversedAmt + reverseAmt == originalAmt
+        };
+    }
+
+    private async Task MarkOriginalRequestReversedAsync(ChargeRequest log, long originalRequestId)
+    {
+        log.MarkReversed(_clock.Now);
+        await _requestLogRepository.UpdateAsync(log);
+        await _discountRepository.UpdateStatusByRequestIdAsync(originalRequestId, OccupyStatusCodes.Reversed);
+        await _limitRepository.UpdateStatusByRequestIdAsync(originalRequestId, OccupyStatusCodes.Reversed);
     }
 
     /// <summary>
@@ -287,5 +341,21 @@ public sealed class PricingReverseWorkflow
             await _unitOfWork.RollbackAsync();
             throw;
         }
+    }
+
+    private sealed record ReverseExecutionContext
+    {
+        public IReadOnlyList<ChargeDiscountDetail> MatchedDetails { get; init; } =
+            Array.Empty<ChargeDiscountDetail>();
+
+        public decimal OriginalQty { get; init; }
+
+        public decimal OriginalAmt { get; init; }
+
+        public decimal ReverseQty { get; init; }
+
+        public decimal ReverseAmt { get; init; }
+
+        public bool IsFullReverse { get; init; }
     }
 }

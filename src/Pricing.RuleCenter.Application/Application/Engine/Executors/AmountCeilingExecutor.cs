@@ -1,9 +1,9 @@
-using Newtonsoft.Json;
+﻿using Pricing.RuleCenter.Application.Serialization;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Models;
 
-namespace Pricing.RuleCenter.Core.Engine.Executors;
+namespace Pricing.RuleCenter.Application.Engine.Executors;
 
 /// <summary>
 /// 金额封顶（上限）动作执行器。
@@ -82,7 +82,7 @@ public sealed class AmountCeilingExecutor : IRuleActionExecutor
             return null;
         }
 
-        return JsonConvert.DeserializeObject<AmountCeilingParams>(json);
+        return RuleCenterJsonSerializer.Deserialize<AmountCeilingParams>(json);
     }
 
     /// <summary>

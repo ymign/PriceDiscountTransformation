@@ -13,6 +13,9 @@ using Pricing.RuleCenter.Core.Interfaces.Templates;
 
 namespace Pricing.RuleCenter.Application.Policies;
 
+/// <summary>
+/// 历史规则导入应用服务，负责把旧规则转换为策略平台草稿版本。
+/// </summary>
 public sealed class PolicyImportService
 {
     private readonly IRuleHeaderRepository _ruleHeaderRepository;
@@ -23,6 +26,9 @@ public sealed class PolicyImportService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IClock _clock;
 
+    /// <summary>
+    /// 初始化历史规则导入应用服务。
+    /// </summary>
     public PolicyImportService(
         IRuleHeaderRepository ruleHeaderRepository,
         IRuleConditionRepository ruleConditionRepository,
@@ -41,6 +47,9 @@ public sealed class PolicyImportService
         _clock = clock;
     }
 
+    /// <summary>
+    /// 批量导入旧规则到策略平台。
+    /// </summary>
     public async Task<IReadOnlyList<long>> ImportAsync(IReadOnlyCollection<long> ruleIds, string importedBy)
     {
         var importedVersionIds = new List<long>();

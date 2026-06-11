@@ -1,4 +1,4 @@
-namespace Pricing.RuleCenter.Core.Engine.Evaluators;
+﻿namespace Pricing.RuleCenter.Application.Engine.Evaluators;
 
 /// <summary>
 /// 医保身份条件评估器，从 ExtraParams["insuranceType"] 读取渠道传入的医保身份编码。

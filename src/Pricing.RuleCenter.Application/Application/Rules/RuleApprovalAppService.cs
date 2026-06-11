@@ -28,7 +28,7 @@ public sealed class RuleApprovalAppService
     private readonly ILogger<RuleApprovalAppService> _logger;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="RuleApprovalAppService"/> class.
+    /// 初始化规则审批应用服务。
     /// </summary>
     /// <param name="headerRepository">规则主档仓储。</param>
     /// <param name="versionRepository">规则版本仓储。</param>
@@ -143,7 +143,7 @@ public sealed class RuleApprovalAppService
             throw new BizException(
                 BizErrorCode.ResourceAlreadyExists,
                 409,
-                $"RuleId={ruleId}, VersionNo={versionNo}, ActionType={normalizedActionType} 已存在待审核记录");
+                BuildPendingApprovalExistsMessage(ruleId, versionNo, normalizedActionType));
         }
 
         var now = _clock.Now;
@@ -167,7 +167,7 @@ public sealed class RuleApprovalAppService
             throw new BizException(
                 BizErrorCode.ResourceAlreadyExists,
                 409,
-                $"RuleId={ruleId}, VersionNo={versionNo}, ActionType={normalizedActionType} 已存在待审核记录");
+                BuildPendingApprovalExistsMessage(ruleId, versionNo, normalizedActionType));
         }
 
         await TryWriteChangeLogAsync(new RuleChangeLog
@@ -197,32 +197,13 @@ public sealed class RuleApprovalAppService
     /// <returns>表示异步审批操作的任务。</returns>
     public async Task ApproveAsync(long ruleId, int versionNo, RuleApprovalDecisionRequest request)
     {
-        var pending = await GetLatestPendingApprovalAsync(ruleId, versionNo, request.ActionType);
-        var updated = await _approvalRepository.UpdateStatusAsync(
-            pending.ApprovalId,
+        await ExecuteDecisionAsync(
+            ruleId,
+            versionNo,
+            request,
             ApprovalStatusCodes.Approved,
-            request.ReviewedBy.Trim(),
-            request.ReviewComment ?? string.Empty,
-            ApprovalStatusCodes.Pending);
-        if (!updated)
-        {
-            throw new BizException(
-                BizErrorCode.ConcurrencyConflict,
-                409,
-                $"ApprovalId={pending.ApprovalId} 状态已变化，请刷新后重试");
-        }
-
-        pending.ReviewedAt = _clock.Now;
-        await TryWriteChangeLogAsync(new RuleChangeLog
-        {
-            RuleId = ruleId,
-            VersionNo = versionNo,
-            ChangeType = "APPROVE",
-            ChangeSummary = $"审批通过：{pending.ActionType}",
-            ChangedBy = request.ReviewedBy.Trim(),
-            ChangedAt = pending.ReviewedAt.Value,
-            SourceSystem = "API"
-        });
+            "APPROVE",
+            "审批通过");
     }
 
     /// <summary>
@@ -234,12 +215,31 @@ public sealed class RuleApprovalAppService
     /// <returns>表示异步驳回操作的任务。</returns>
     public async Task RejectAsync(long ruleId, int versionNo, RuleApprovalDecisionRequest request)
     {
+        await ExecuteDecisionAsync(
+            ruleId,
+            versionNo,
+            request,
+            ApprovalStatusCodes.Rejected,
+            "REJECT",
+            "审批驳回");
+    }
+
+    private async Task ExecuteDecisionAsync(
+        long ruleId,
+        int versionNo,
+        RuleApprovalDecisionRequest request,
+        string targetStatus,
+        string changeType,
+        string changeSummaryPrefix)
+    {
         var pending = await GetLatestPendingApprovalAsync(ruleId, versionNo, request.ActionType);
+        var reviewedBy = request.ReviewedBy.Trim();
+        var reviewComment = request.ReviewComment ?? string.Empty;
         var updated = await _approvalRepository.UpdateStatusAsync(
             pending.ApprovalId,
-            ApprovalStatusCodes.Rejected,
-            request.ReviewedBy.Trim(),
-            request.ReviewComment ?? string.Empty,
+            targetStatus,
+            reviewedBy,
+            reviewComment,
             ApprovalStatusCodes.Pending);
         if (!updated)
         {
@@ -249,17 +249,15 @@ public sealed class RuleApprovalAppService
                 $"ApprovalId={pending.ApprovalId} 状态已变化，请刷新后重试");
         }
 
-        pending.ReviewedAt = _clock.Now;
-        await TryWriteChangeLogAsync(new RuleChangeLog
-        {
-            RuleId = ruleId,
-            VersionNo = versionNo,
-            ChangeType = "REJECT",
-            ChangeSummary = $"审批驳回：{pending.ActionType}",
-            ChangedBy = request.ReviewedBy.Trim(),
-            ChangedAt = pending.ReviewedAt.Value,
-            SourceSystem = "API"
-        });
+        var reviewedAt = _clock.Now;
+        pending.ReviewedAt = reviewedAt;
+        await TryWriteChangeLogAsync(CreateChangeLog(
+            ruleId,
+            versionNo,
+            changeType,
+            $"{changeSummaryPrefix}：{pending.ActionType}",
+            reviewedBy,
+            reviewedAt));
     }
 
     private async Task<(RuleAggregate Header, RuleVersion Version)> EnsureRuleAndVersionExistAsync(long ruleId, int versionNo)
@@ -319,6 +317,31 @@ public sealed class RuleApprovalAppService
             ReviewedAt = entity.ReviewedAt,
             ReviewComment = entity.ReviewComment
         };
+    }
+
+    private static RuleChangeLog CreateChangeLog(
+        long ruleId,
+        int? versionNo,
+        string changeType,
+        string changeSummary,
+        string changedBy,
+        DateTime changedAt)
+    {
+        return new RuleChangeLog
+        {
+            RuleId = ruleId,
+            VersionNo = versionNo,
+            ChangeType = changeType,
+            ChangeSummary = changeSummary,
+            ChangedBy = changedBy,
+            ChangedAt = changedAt,
+            SourceSystem = "API"
+        };
+    }
+
+    private static string BuildPendingApprovalExistsMessage(long ruleId, int versionNo, string actionType)
+    {
+        return $"RuleId={ruleId}, VersionNo={versionNo}, ActionType={actionType} 已存在待审核记录";
     }
 
     private static string NormalizeActionType(string actionType)

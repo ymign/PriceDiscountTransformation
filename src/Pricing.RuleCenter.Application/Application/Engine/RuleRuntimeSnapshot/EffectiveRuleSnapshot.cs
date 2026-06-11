@@ -1,6 +1,6 @@
-using Pricing.RuleCenter.Core.Aggregates.Rules;
+﻿using Pricing.RuleCenter.Core.Aggregates.Rules;
 
-namespace Pricing.RuleCenter.Core.Engine.RuleRuntimeSnapshot;
+namespace Pricing.RuleCenter.Application.Engine.RuleRuntimeSnapshot;
 
 /// <summary>
 /// 单条运行期生效规则快照。

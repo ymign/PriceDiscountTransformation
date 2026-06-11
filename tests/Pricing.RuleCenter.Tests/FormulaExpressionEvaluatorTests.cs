@@ -1,9 +1,9 @@
-using Microsoft.Extensions.Logging.Abstractions;
-using Newtonsoft.Json;
+﻿using Microsoft.Extensions.Logging.Abstractions;
+using System.Text.Json;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
-using Pricing.RuleCenter.Core.Engine;
-using Pricing.RuleCenter.Core.Engine.Executors;
-using Pricing.RuleCenter.Core.Engine.Formula;
+using Pricing.RuleCenter.Application.Engine;
+using Pricing.RuleCenter.Application.Engine.Executors;
+using Pricing.RuleCenter.Application.Engine.Formula;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 using Xunit;
@@ -93,7 +93,7 @@ public sealed class FormulaExpressionEvaluatorTests
         {
             ActionType = "FORMULA_CALC",
             ExecutorCode = "EXPRESSION_FORMULA",
-            ParamsJson = JsonConvert.SerializeObject(new
+            ParamsJson = JsonSerializer.Serialize(new
             {
                 Expression = "min(unitPrice * finalQty * 0.5 + area, 440)",
                 AmountField = "FinalAmount"
@@ -147,7 +147,7 @@ public sealed class FormulaExpressionEvaluatorTests
                 ActionType = "FORMULA_CALC",
                 ExecutorCode = "EXPRESSION_FORMULA",
                 OnError = "STOP",
-                ParamsJson = JsonConvert.SerializeObject(new
+                ParamsJson = JsonSerializer.Serialize(new
                 {
                     Expression = "unitPrice * finalQty * 0.5",
                     AmountField = "FinalAmount"

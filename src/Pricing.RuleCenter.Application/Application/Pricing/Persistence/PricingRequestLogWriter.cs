@@ -1,7 +1,7 @@
-using Pricing.RuleCenter.Application.RuntimePackages;
-using Newtonsoft.Json;
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Pricing.Builders;
+using Pricing.RuleCenter.Application.RuntimePackages;
+using Pricing.RuleCenter.Application.Serialization;
 using Pricing.RuleCenter.Core.Aggregates.Charging;
 using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
@@ -32,8 +32,8 @@ internal sealed record RequestLogSaveInput
     /// <summary>调用类型，例如 SIMULATE、CONFIRM、REVERSE。</summary>
     public string CallType { get; init; } = string.Empty;
 
-    /// <summary>业务状态，例如 SIMULATED、CONFIRM_PENDING。</summary>
-    public string BusinessStatus { get; init; } = string.Empty;
+    /// <summary>请求日志初始生命周期类型。</summary>
+    public RequestLogLifecycleKind LifecycleKind { get; init; }
 
     /// <summary>confirm 幂等请求指纹；simulate 可为空。</summary>
     public string? Fingerprint { get; init; }
@@ -84,7 +84,6 @@ public sealed class PricingRequestLogWriter
             RequestFingerprint = input.Fingerprint,
             TraceId = PricingTraceIdGenerator.Build(input.CallType, request.RequestNo, request.BusinessRequestNo, now),
             CallType = input.CallType,
-            BusinessStatus = input.BusinessStatus,
             SourceSystem = request.SourceSystem.Trim(),
             SourceTerminal = NormalizeString(request.SourceTerminal),
             PatientId = request.PatientId.Trim(),
@@ -103,12 +102,11 @@ public sealed class PricingRequestLogWriter
                 : request.BusinessChargeTime,
             RuntimePackageId = input.RuntimeTrace?.RuntimePackageId,
             RuntimePackageVersion = input.RuntimeTrace?.RuntimePackageVersion,
-            RequestJson = JsonConvert.SerializeObject(request),
-            ResponseJson = JsonConvert.SerializeObject(calculations.Select(c => c.Result).ToList()),
+            RequestJson = RuleCenterJsonSerializer.Serialize(request),
+            ResponseJson = RuleCenterJsonSerializer.Serialize(calculations.Select(c => c.Result).ToList()),
             RequestAt = now,
-            ResponseAt = now,
-            IsSuccess = EnableFlag.Yes
         };
+        RequestLogLifecycleInitializer.Apply(log, input.LifecycleKind, now);
 
         await _requestLogRepository.InsertAsync(log);
         return log;
@@ -117,7 +115,7 @@ public sealed class PricingRequestLogWriter
     internal async Task SaveResponseJsonAsync(ChargeRequest log, PricingCalculateResponse response)
     {
         // ResponseJson 是 confirm 幂等重试的事实来源，必须保存完整响应而不是只保存核心引擎结果。
-        log.ResponseJson = JsonConvert.SerializeObject(response);
+        log.ResponseJson = RuleCenterJsonSerializer.Serialize(response);
         log.ResponseAt = _clock.Now;
         await _requestLogRepository.UpdateAsync(log);
     }

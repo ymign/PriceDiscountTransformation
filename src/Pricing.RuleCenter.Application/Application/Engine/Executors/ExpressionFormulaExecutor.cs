@@ -1,11 +1,11 @@
-using Newtonsoft.Json;
+﻿using Pricing.RuleCenter.Application.Serialization;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Constants;
-using Pricing.RuleCenter.Core.Engine.Formula;
+using Pricing.RuleCenter.Application.Engine.Formula;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 
-namespace Pricing.RuleCenter.Core.Engine.Executors;
+namespace Pricing.RuleCenter.Application.Engine.Executors;
 
 /// <summary>
 /// 表达式公式执行器。
@@ -113,7 +113,7 @@ public sealed class ExpressionFormulaExecutor : IRuleActionExecutor, IFormulaExe
             return null;
         }
 
-        return JsonConvert.DeserializeObject<ExpressionFormulaParams>(json);
+        return RuleCenterJsonSerializer.Deserialize<ExpressionFormulaParams>(json);
     }
 
     private sealed class ExpressionFormulaParams

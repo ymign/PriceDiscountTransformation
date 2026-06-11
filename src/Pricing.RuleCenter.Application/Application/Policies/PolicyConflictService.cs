@@ -5,8 +5,14 @@ using Pricing.RuleCenter.Core.Constants;
 
 namespace Pricing.RuleCenter.Application.Policies;
 
-public sealed class PolicyConflictService
+/// <summary>
+/// 策略运行时冲突检测服务。
+/// </summary>
+internal sealed class PolicyConflictService : IPolicyConflictService
 {
+    /// <summary>
+    /// 校验候选运行时规则快照之间不存在单胜者冲突。
+    /// </summary>
     public void EnsureNoConflicts(IReadOnlyList<RuntimeRuleSnapshot> ruleSnapshots)
     {
         for (var i = 0; i < ruleSnapshots.Count; i++)

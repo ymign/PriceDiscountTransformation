@@ -17,7 +17,7 @@ public sealed class RuleEditGuard
     private readonly IRuleChangeLogRepository _changeLogRepository;
 
     /// <summary>
-    /// Initializes a new instance of the <see cref="RuleEditGuard"/> class.
+    /// 初始化规则编辑保护器。
     /// </summary>
     /// <param name="changeLogRepository">规则变更日志仓储，用于识别待处理发布审批。</param>
     public RuleEditGuard(IRuleChangeLogRepository changeLogRepository)

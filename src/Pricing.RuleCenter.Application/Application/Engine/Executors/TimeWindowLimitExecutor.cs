@@ -1,11 +1,11 @@
-using Newtonsoft.Json;
+﻿using Pricing.RuleCenter.Application.Serialization;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Quota;
 using Pricing.RuleCenter.Core.Aggregates.Quota;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Models;
 
-namespace Pricing.RuleCenter.Core.Engine.Executors;
+namespace Pricing.RuleCenter.Application.Engine.Executors;
 
 /// <summary>
 /// TimeWindowLimitExecutor 规则动作执行器，负责执行一种可配置动作并把结果写回计价上下文。
@@ -145,7 +145,7 @@ public sealed class TimeWindowLimitExecutor : IRuleActionExecutor
             return null;
         }
 
-        return JsonConvert.DeserializeObject<TimeWindowParams>(json);
+        return RuleCenterJsonSerializer.Deserialize<TimeWindowParams>(json);
     }
 
     /// <summary>

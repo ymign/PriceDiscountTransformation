@@ -9,7 +9,7 @@ namespace Pricing.RuleCenter.Application.Rules.Publishing;
 /// <summary>
 /// 规则发布后的缓存失效协调器。
 /// </summary>
-public sealed class RulePublishCacheCoordinator
+internal sealed class RulePublishCacheCoordinator
 {
     private readonly RulePublishGuard _publishGuard;
     private readonly RulePublishCacheInvalidator _cacheInvalidator;

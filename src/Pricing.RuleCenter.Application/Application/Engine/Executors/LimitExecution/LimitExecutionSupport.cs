@@ -1,6 +1,6 @@
-using Pricing.RuleCenter.Core.Models;
+﻿using Pricing.RuleCenter.Core.Models;
 
-namespace Pricing.RuleCenter.Core.Engine.Executors;
+namespace Pricing.RuleCenter.Application.Engine.Executors;
 
 /// <summary>
 /// 限额执行通用辅助方法。

@@ -9,7 +9,7 @@ namespace Pricing.RuleCenter.Application.Rules.Publishing;
 /// <summary>
 /// 发布规则事务主流程 workflow。
 /// </summary>
-public sealed class RulePublishExecutionWorkflow
+internal sealed class RulePublishExecutionWorkflow
 {
     private readonly IRuleHeaderRepository _headerRepository;
     private readonly IRuleVersionRepository _versionRepository;

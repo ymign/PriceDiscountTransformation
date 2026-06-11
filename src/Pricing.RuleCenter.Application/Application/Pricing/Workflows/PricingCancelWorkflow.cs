@@ -70,8 +70,7 @@ public sealed class PricingCancelWorkflow
             }
 
             // 请求日志、折价明细、限额占用三表状态必须一起变更，保证追溯和额度口径一致。
-            log.BusinessStatus = BusinessStatusCodes.Cancelled;
-            log.ResponseAt = _clock.Now;
+            log.MarkCancelled(_clock.Now);
             await _requestLogRepository.UpdateAsync(log);
             await _discountRepository.UpdateStatusByRequestIdAsync(request.RequestId, BusinessStatusCodes.Cancelled);
             await _limitRepository.UpdateStatusByRequestIdAsync(request.RequestId, BusinessStatusCodes.Cancelled);

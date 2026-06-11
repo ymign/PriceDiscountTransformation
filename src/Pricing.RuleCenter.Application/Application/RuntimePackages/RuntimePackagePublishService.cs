@@ -28,7 +28,7 @@ public sealed class RuntimePackagePublishService
     /// <summary>
     /// 发布资格校验服务，负责检查审批、状态和 checksum 是否满足发布要求。
     /// </summary>
-    private readonly PolicyPublishEligibilityService _eligibilityService;
+    private readonly IPolicyPublishEligibilityService _eligibilityService;
 
     /// <summary>
     /// 运行包编译器，负责把策略版本投影成运行期规则快照。
@@ -49,7 +49,7 @@ public sealed class RuntimePackagePublishService
     /// <param name="activationService">运行包激活服务。</param>
     public RuntimePackagePublishService(
         IPolicyRepository policyRepository,
-        PolicyPublishEligibilityService eligibilityService,
+        IPolicyPublishEligibilityService eligibilityService,
         RuntimePackageCompiler compiler,
         RuntimePackageActivationService activationService)
     {

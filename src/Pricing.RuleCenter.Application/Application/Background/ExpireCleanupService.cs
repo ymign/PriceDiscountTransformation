@@ -169,8 +169,7 @@ public sealed class ExpireCleanupAppService : BackgroundService
                 // 请求日志、折价明细和限额占用必须在同一事务中一起变成 EXPIRED。
                 // 如果只更新请求日志而不释放限额占用，会导致患者额度被永久占用；
                 // 如果只释放限额而不更新请求日志，会导致报表和追溯数据不一致。
-                current.BusinessStatus = BusinessStatusCodes.Expired;
-                current.ResponseAt = clock.Now;
+                current.MarkExpired(clock.Now);
                 await requestLogRepo.UpdateAsync(current);
 
                 await discountRepo.UpdateStatusByRequestIdAsync(log.RequestId, BusinessStatusCodes.Expired);

@@ -1,8 +1,8 @@
-using Pricing.RuleCenter.Core.Interfaces;
+﻿using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Models;
 
-namespace Pricing.RuleCenter.Core.Engine.Evaluators;
+namespace Pricing.RuleCenter.Application.Engine.Evaluators;
 
 /// <summary>
 /// 收费科室排除条件评估器。

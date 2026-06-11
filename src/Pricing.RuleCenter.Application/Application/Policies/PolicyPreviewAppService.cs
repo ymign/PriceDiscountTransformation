@@ -5,22 +5,31 @@ using Pricing.RuleCenter.Core.Interfaces.Templates;
 
 namespace Pricing.RuleCenter.Application.Policies;
 
+/// <summary>
+/// 策略预览应用服务，负责把策略版本解析为可读预览信息。
+/// </summary>
 public sealed class PolicyPreviewAppService
 {
     private readonly IPolicyRepository _policyRepository;
     private readonly ITemplateRepository _templateRepository;
-    private readonly PolicyValidationService _validationService;
+    private readonly IPolicyValidationService _validationService;
 
+    /// <summary>
+    /// 初始化策略预览应用服务。
+    /// </summary>
     public PolicyPreviewAppService(
         IPolicyRepository policyRepository,
         ITemplateRepository templateRepository,
-        PolicyValidationService validationService)
+        IPolicyValidationService validationService)
     {
         _policyRepository = policyRepository;
         _templateRepository = templateRepository;
         _validationService = validationService;
     }
 
+    /// <summary>
+    /// 预览指定策略版本的绑定、作用域和动作链。
+    /// </summary>
     public async Task<PolicyPreviewResponse> PreviewAsync(long policyVersionId)
     {
         var version = await _policyRepository.GetVersionAsync(policyVersionId)

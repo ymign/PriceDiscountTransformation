@@ -1,7 +1,6 @@
-using System.Reflection;
+﻿using System.Reflection;
 using Microsoft.Extensions.Caching.Memory;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+using System.Text.Json;
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Pricing;
 using Pricing.RuleCenter.Application.Pricing.Queries;
@@ -10,9 +9,9 @@ using Pricing.RuleCenter.Core.Aggregates.Charging;
 using Pricing.RuleCenter.Core.Aggregates.Quota;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Constants;
-using Pricing.RuleCenter.Core.Engine;
-using Pricing.RuleCenter.Core.Engine.Evaluators;
-using Pricing.RuleCenter.Core.Engine.Executors;
+using Pricing.RuleCenter.Application.Engine;
+using Pricing.RuleCenter.Application.Engine.Evaluators;
+using Pricing.RuleCenter.Application.Engine.Executors;
 using Pricing.RuleCenter.Core.Events;
 using Pricing.RuleCenter.Core.Exceptions;
 using Pricing.RuleCenter.Core.Interfaces;
@@ -321,20 +320,20 @@ public sealed class CoreBusinessCoverageTests
         var floor = new AmountFloorExecutor();
 
         var aboveCeiling = new PricingContext { FinalAmount = 120m, FinalQty = 3m };
-        await ceiling.ExecuteAsync(new RuleAction { ParamsJson = JsonConvert.SerializeObject(new { MaxAmount = 100m }) }, aboveCeiling);
+        await ceiling.ExecuteAsync(new RuleAction { ParamsJson = JsonSerializer.Serialize(new { MaxAmount = 100m }) }, aboveCeiling);
         Assert.Equal(100m, aboveCeiling.FinalAmount);
         Assert.Equal(3m, aboveCeiling.FinalQty);
 
         var belowCeiling = new PricingContext { FinalAmount = 80m };
-        await ceiling.ExecuteAsync(new RuleAction { ParamsJson = JsonConvert.SerializeObject(new { CeilingAmount = 100m }) }, belowCeiling);
+        await ceiling.ExecuteAsync(new RuleAction { ParamsJson = JsonSerializer.Serialize(new { CeilingAmount = 100m }) }, belowCeiling);
         Assert.Equal(80m, belowCeiling.FinalAmount);
 
         var aboveFloor = new PricingContext { FinalAmount = 120m };
-        await floor.ExecuteAsync(new RuleAction { ParamsJson = JsonConvert.SerializeObject(new { MinAmount = 100m }) }, aboveFloor);
+        await floor.ExecuteAsync(new RuleAction { ParamsJson = JsonSerializer.Serialize(new { MinAmount = 100m }) }, aboveFloor);
         Assert.Equal(120m, aboveFloor.FinalAmount);
 
         var belowFloor = new PricingContext { FinalAmount = 80m };
-        await floor.ExecuteAsync(new RuleAction { ParamsJson = JsonConvert.SerializeObject(new { FloorAmount = 100m }) }, belowFloor);
+        await floor.ExecuteAsync(new RuleAction { ParamsJson = JsonSerializer.Serialize(new { FloorAmount = 100m }) }, belowFloor);
         Assert.Equal(100m, belowFloor.FinalAmount);
 
         var missingCeiling = new PricingContext { FinalAmount = 120m };
@@ -474,8 +473,8 @@ public sealed class CoreBusinessCoverageTests
             {
                 [" operationNo "] = " OP-1 ",
                 ["pregnancyNo"] = 2.123456d,
-                ["mainChargeDetailNo"] = new JValue(" MAIN-1 "),
-                ["json"] = JObject.Parse("{\"b\":2,\"a\":1}"),
+                ["mainChargeDetailNo"] = CreateJsonElement(JsonSerializer.Serialize(" MAIN-1 ")),
+                ["json"] = CreateJsonElement("""{"b":2,"a":1}"""),
                 ["none"] = null
             },
             Items = new[]
@@ -553,9 +552,9 @@ public sealed class CoreBusinessCoverageTests
         Assert.Equal(1.2346m, NormalizeExtraValue(1.23456m));
         Assert.Equal(1.2346m, NormalizeExtraValue(1.23456d));
         Assert.Equal(1.2346m, NormalizeExtraValue(1.23456f));
-        Assert.Equal("json", NormalizeExtraValue(new JValue(" json ")));
-        Assert.Equal("123", NormalizeExtraValue(new JValue(123)));
-        Assert.Equal("{\"x\":1}", NormalizeExtraValue(JObject.Parse("{\"x\":1}")));
+        Assert.Equal("json", NormalizeExtraValue(CreateJsonElement(JsonSerializer.Serialize(" json "))));
+        Assert.Equal("123", NormalizeExtraValue(CreateJsonElement("123")));
+        Assert.Equal("{\"x\":1}", NormalizeExtraValue(CreateJsonElement("""{"x":1}""")));
     }
 
     [Fact]
@@ -682,6 +681,12 @@ public sealed class CoreBusinessCoverageTests
         var type = GetApplicationInternalType("Pricing.RuleCenter.Application.Pricing.PricingRequestFingerprintBuilder");
         var method = type.GetMethod("NormalizeExtraValue", BindingFlags.Public | BindingFlags.Static)!;
         return method.Invoke(null, new[] { value });
+    }
+
+    private static JsonElement CreateJsonElement(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement.Clone();
     }
 
     private static void InvokeCommitValidate(

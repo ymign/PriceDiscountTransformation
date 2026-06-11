@@ -6,7 +6,7 @@ namespace Pricing.RuleCenter.Application.Rules.Publishing;
 /// <summary>
 /// 规则发布相关 DTO 映射器。
 /// </summary>
-public static class RulePublishResponseMapper
+internal static class RulePublishResponseMapper
 {
     /// <summary>
     /// 将发布流水实体映射为接口响应。

@@ -1,11 +1,19 @@
-using Pricing.RuleCenter.Core.Aggregates.Rules;
+﻿using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Constants;
-using Pricing.RuleCenter.Core.Engine.RuleRuntimeSnapshot;
+using Pricing.RuleCenter.Application.Engine.RuleRuntimeSnapshot;
 
 namespace Pricing.RuleCenter.Application.RuntimePackages;
 
-public sealed class RuntimeRuleProjectionAdapter
+/// <summary>
+/// 运行时规则快照适配器，负责把运行包规则还原为旧规则聚合视角。
+/// </summary>
+internal sealed class RuntimeRuleProjectionAdapter
 {
+    /// <summary>
+    /// 把运行时规则快照转换为引擎兼容的生效规则快照。
+    /// </summary>
+    /// <param name="snapshot">运行时规则快照。</param>
+    /// <returns>适配后的生效规则快照。</returns>
     public EffectiveRuleSnapshot Adapt(RuntimeRuleSnapshot snapshot)
     {
         var rule = snapshot.Rule;

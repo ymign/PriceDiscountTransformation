@@ -1,8 +1,9 @@
-using Newtonsoft.Json;
+using System.Text.Json;
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Pricing.AuthorityPrice;
 using Pricing.RuleCenter.Application.Pricing.Builders;
 using Pricing.RuleCenter.Application.Pricing.Persistence;
+using Pricing.RuleCenter.Application.Serialization;
 using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Application.Pricing.Validation;
 using Pricing.RuleCenter.Core.Aggregates.Charging;
@@ -68,64 +69,14 @@ public sealed class PricingConfirmWorkflow
             request.SourceSystem, request.BusinessRequestNo, request.PatientId, firstItem.ItemCode, firstItem.InputQty);
 
         var fingerprint = PricingRequestFingerprintBuilder.BuildConfirmFingerprint(request, items, "CONFIRM");
-        var existing = await _requestLogRepository.GetByBusinessKeyAsync(
-            request.SourceSystem, request.BusinessRequestNo!, "CONFIRM");
-        var existingResponse = TryReadExistingResponse(request, fingerprint, firstItem, existing);
+        var existingResponse = await TryReadExistingResponseAsync(request, fingerprint, firstItem);
         if (existingResponse is not null)
         {
             return existingResponse;
         }
 
-        return await ExecuteInTransactionAsync(async () =>
-        {
-            await LockIdempotencyAsync(request);
-
-            var existingInTransaction = await _requestLogRepository.GetByBusinessKeyAsync(
-                request.SourceSystem, request.BusinessRequestNo!, "CONFIRM");
-            var transactionResponse = TryReadExistingResponse(request, fingerprint, firstItem, existingInTransaction);
-            if (transactionResponse is not null)
-            {
-                return transactionResponse;
-            }
-
-            var runtimePackageContext = await _runtimePackageTraceResolver.CaptureContextAsync();
-            using var runtimePackageScope = _runtimePackageTraceResolver.BeginScope(runtimePackageContext);
-
-            // 逐条明细计价，共享请求内累计状态（同组互斥、同手术封顶等）。
-            var sharedState = new RequestSharedPricingState();
-            var calculations = new List<ItemPricingCalculation>(items.Count);
-            foreach (var item in items)
-            {
-                var context = PricingContextFactory.Create(new PricingContextBuildInput
-                {
-                    Request = request,
-                    Item = item,
-                    CallType = "CONFIRM",
-                    ShouldLockLimits = true,
-                    RequestSharedState = sharedState
-                });
-                var result = await _engine.CalculateAsync(context);
-                sharedState.Accumulate(result, context);
-                calculations.Add(new ItemPricingCalculation(item, result));
-            }
-
-            var runtimeTrace = await _runtimePackageTraceResolver.ResolveAsync(calculations);
-            var response = await _persistenceService.PersistAsync(new PricingConfirmationPersistenceInput
-            {
-                Request = request,
-                Items = items,
-                Calculations = calculations,
-                Fingerprint = fingerprint,
-                RuntimeTrace = runtimeTrace
-            });
-
-            _logger.LogInformation(
-                "确认计价成功 请求ID={RequestId}, 来源系统={SourceSystem}, 业务请求号={BusinessRequestNo}, 项目编码={ItemCode}, 最终数量={FinalQty}, 最终金额={FinalAmount}, 是否特殊项目={IsSpecialItem}",
-                response.RequestId, request.SourceSystem, request.BusinessRequestNo,
-                firstItem.ItemCode, response.FinalQty, response.FinalAmount, response.IsSpecialItem);
-
-            return response;
-        });
+        return await ExecuteInTransactionAsync(() =>
+            ExecuteConfirmInTransactionAsync(request, items, fingerprint, firstItem));
     }
 
     private async Task<IReadOnlyList<PricingCalculateItemRequest>> ValidateRequestAsync(PricingCalculateRequest request)
@@ -139,6 +90,79 @@ public sealed class PricingConfirmWorkflow
 
         await _authorityPriceChecker.CheckAsync(request, items);
         return items;
+    }
+
+    private async Task<PricingCalculateResponse> ExecuteConfirmInTransactionAsync(
+        PricingCalculateRequest request,
+        IReadOnlyList<PricingCalculateItemRequest> items,
+        string fingerprint,
+        PricingCalculateItemRequest firstItem)
+    {
+        await LockIdempotencyAsync(request);
+
+        var existingResponse = await TryReadExistingResponseAsync(request, fingerprint, firstItem);
+        if (existingResponse is not null)
+        {
+            return existingResponse;
+        }
+
+        var runtimePackageContext = await _runtimePackageTraceResolver.CaptureContextAsync();
+        using var runtimePackageScope = _runtimePackageTraceResolver.BeginScope(runtimePackageContext);
+
+        var calculations = await CalculateItemsAsync(request, items);
+        var runtimeTrace = await _runtimePackageTraceResolver.ResolveAsync(calculations);
+        var response = await _persistenceService.PersistAsync(new PricingConfirmationPersistenceInput
+        {
+            Request = request,
+            Items = items,
+            Calculations = calculations,
+            Fingerprint = fingerprint,
+            RuntimeTrace = runtimeTrace
+        });
+
+        _logger.LogInformation(
+            "确认计价成功 请求ID={RequestId}, 来源系统={SourceSystem}, 业务请求号={BusinessRequestNo}, 项目编码={ItemCode}, 最终数量={FinalQty}, 最终金额={FinalAmount}, 是否特殊项目={IsSpecialItem}",
+            response.RequestId, request.SourceSystem, request.BusinessRequestNo,
+            firstItem.ItemCode, response.FinalQty, response.FinalAmount, response.IsSpecialItem);
+
+        return response;
+    }
+
+    private async Task<IReadOnlyList<ItemPricingCalculation>> CalculateItemsAsync(
+        PricingCalculateRequest request,
+        IReadOnlyList<PricingCalculateItemRequest> items)
+    {
+        // 逐条明细计价，共享请求内累计状态（同组互斥、同手术封顶等）。
+        var sharedState = new RequestSharedPricingState();
+        var calculations = new List<ItemPricingCalculation>(items.Count);
+        foreach (var item in items)
+        {
+            var context = PricingContextFactory.Create(new PricingContextBuildInput
+            {
+                Request = request,
+                Item = item,
+                CallType = "CONFIRM",
+                ShouldLockLimits = true,
+                RequestSharedState = sharedState
+            });
+            var result = await _engine.CalculateAsync(context);
+            sharedState.Accumulate(result, context);
+            calculations.Add(new ItemPricingCalculation(item, result));
+        }
+
+        return calculations;
+    }
+
+    private async Task<PricingCalculateResponse?> TryReadExistingResponseAsync(
+        PricingCalculateRequest request,
+        string fingerprint,
+        PricingCalculateItemRequest firstItem)
+    {
+        var existingRequest = await _requestLogRepository.GetByBusinessKeyAsync(
+            request.SourceSystem,
+            request.BusinessRequestNo!,
+            "CONFIRM");
+        return TryReadExistingResponse(request, fingerprint, firstItem, existingRequest);
     }
 
     private PricingCalculateResponse? TryReadExistingResponse(
@@ -174,7 +198,14 @@ public sealed class PricingConfirmWorkflow
 
         try
         {
-            var response = JsonConvert.DeserializeObject<PricingCalculateResponse>(existingRequest.ResponseJson);
+            var response = RuleCenterJsonSerializer.Deserialize<PricingCalculateResponse>(existingRequest.ResponseJson);
+            if (response is null || response.RequestId <= 0)
+            {
+                var normalizedLegacyJson =
+                    RuleCenterJsonSerializer.RewritePropertyNamesToSnakeCase(existingRequest.ResponseJson);
+                response = RuleCenterJsonSerializer.Deserialize<PricingCalculateResponse>(normalizedLegacyJson);
+            }
+
             if (response is not null)
             {
                 return response;

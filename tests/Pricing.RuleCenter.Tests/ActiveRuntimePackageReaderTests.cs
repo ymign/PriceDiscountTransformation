@@ -1,6 +1,6 @@
-using Pricing.RuleCenter.Application.RuntimePackages;
-using Pricing.RuleCenter.Core.Engine;
-using Pricing.RuleCenter.Core.Engine.RuleRuntimeSnapshot;
+﻿using Pricing.RuleCenter.Application.RuntimePackages;
+using Pricing.RuleCenter.Application.Engine;
+using Pricing.RuleCenter.Application.Engine.RuleRuntimeSnapshot;
 using Pricing.RuleCenter.Core.Interfaces;
 using Microsoft.Extensions.Caching.Memory;
 using Pricing.RuleCenter.Core.Models;

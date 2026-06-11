@@ -1,4 +1,4 @@
-using Pricing.RuleCenter.Core.Engine.Evaluators;
+﻿using Pricing.RuleCenter.Application.Engine.Evaluators;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 using Xunit;

@@ -1,7 +1,7 @@
-using Pricing.RuleCenter.Core.Constants;
+﻿using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
 
-namespace Pricing.RuleCenter.Core.Engine;
+namespace Pricing.RuleCenter.Application.Engine;
 
 /// <summary>
 /// 规则条件评估器工厂，负责根据条件类型编码（ConditionType）定位对应评估器实例。

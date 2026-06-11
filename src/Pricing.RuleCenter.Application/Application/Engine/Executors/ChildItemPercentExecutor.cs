@@ -1,10 +1,10 @@
-using Newtonsoft.Json;
+﻿using Pricing.RuleCenter.Application.Serialization;
 using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Models;
 
-namespace Pricing.RuleCenter.Core.Engine.Executors;
+namespace Pricing.RuleCenter.Application.Engine.Executors;
 
 /// <summary>
 /// 子项金额百分比公式执行器（B-4 儿童加收规则）。
@@ -143,7 +143,7 @@ public sealed class ChildItemPercentExecutor : IRuleActionExecutor, IFormulaExec
             return null;
         }
 
-        return JsonConvert.DeserializeObject<ChildItemPercentParams>(json);
+        return RuleCenterJsonSerializer.Deserialize<ChildItemPercentParams>(json);
     }
 
     /// <summary>

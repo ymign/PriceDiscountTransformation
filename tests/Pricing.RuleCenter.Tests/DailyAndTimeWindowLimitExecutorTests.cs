@@ -1,5 +1,5 @@
-﻿using Newtonsoft.Json;
-using Pricing.RuleCenter.Core.Engine.Executors;
+﻿using System.Text.Json;
+using Pricing.RuleCenter.Application.Engine.Executors;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 using Xunit;
@@ -35,7 +35,7 @@ public sealed class DailyAndTimeWindowLimitExecutorTests
         await executor.ExecuteAsync(new RuleAction
         {
             ActionType = "APPLY_DAY_LIMIT_QTY",
-            ParamsJson = JsonConvert.SerializeObject(new { MaxDailyQty = 5m })
+            ParamsJson = System.Text.Json.JsonSerializer.Serialize(new { MaxDailyQty = 5m })
         }, context);
 
         Assert.Equal(2m, context.FinalQty);
@@ -62,7 +62,7 @@ public sealed class DailyAndTimeWindowLimitExecutorTests
         await executor.ExecuteAsync(new RuleAction
         {
             ActionType = "APPLY_TIME_WINDOW_LIMIT",
-            ParamsJson = JsonConvert.SerializeObject(new { WindowMinutes = 120, LimitQty = 5m })
+            ParamsJson = System.Text.Json.JsonSerializer.Serialize(new { WindowMinutes = 120, LimitQty = 5m })
         }, context);
 
         Assert.Equal(2m, context.FinalQty);
@@ -91,7 +91,7 @@ public sealed class DailyAndTimeWindowLimitExecutorTests
         await executor.ExecuteAsync(new RuleAction
         {
             ActionType = "APPLY_TIME_WINDOW_LIMIT",
-            ParamsJson = JsonConvert.SerializeObject(new { WindowMinutes = 120, LimitQty = 5m })
+            ParamsJson = System.Text.Json.JsonSerializer.Serialize(new { WindowMinutes = 120, LimitQty = 5m })
         }, context);
 
         // 已占用 = 1(DB) + 1(InRequest) + 2(Legacy) = 4，剩余 = 5-4=1
@@ -120,7 +120,7 @@ public sealed class DailyAndTimeWindowLimitExecutorTests
         await executor.ExecuteAsync(new RuleAction
         {
             ActionType = "APPLY_TIME_WINDOW_LIMIT",
-            ParamsJson = JsonConvert.SerializeObject(new { WindowMinutes = 120, LimitQty = 5m })
+            ParamsJson = System.Text.Json.JsonSerializer.Serialize(new { WindowMinutes = 120, LimitQty = 5m })
         }, context);
 
         // 已占用 = 1(DB) + 2(InRequest) + 0(Legacy) = 3，剩余 = 2，本次4个截断为2

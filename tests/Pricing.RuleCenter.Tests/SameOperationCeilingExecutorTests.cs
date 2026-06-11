@@ -1,5 +1,5 @@
-using Newtonsoft.Json;
-using Pricing.RuleCenter.Core.Engine.Executors;
+﻿using System.Text.Json;
+using Pricing.RuleCenter.Application.Engine.Executors;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 using Xunit;
@@ -50,7 +50,7 @@ public sealed class SameOperationCeilingExecutorTests
         await executor.ExecuteAsync(new RuleAction
         {
             ActionType = "SAME_OPERATION_CEILING",
-            ParamsJson = JsonConvert.SerializeObject(new { CeilingPerOperation = 100m })
+            ParamsJson = JsonSerializer.Serialize(new { CeilingPerOperation = 100m })
         }, context);
 
         Assert.Equal(20m, context.FinalAmount);
@@ -78,7 +78,7 @@ public sealed class SameOperationCeilingExecutorTests
         await executor.ExecuteAsync(new RuleAction
         {
             ActionType = "SAME_OPERATION_CEILING",
-            ParamsJson = JsonConvert.SerializeObject(new { CeilingPerOperation = 100m })
+            ParamsJson = JsonSerializer.Serialize(new { CeilingPerOperation = 100m })
         }, context);
 
         Assert.Equal(50m, context.FinalAmount);
@@ -103,7 +103,7 @@ public sealed class SameOperationCeilingExecutorTests
         await executor.ExecuteAsync(new RuleAction
         {
             ActionType = "SAME_OPERATION_CEILING",
-            ParamsJson = JsonConvert.SerializeObject(new { CeilingPerItem = 100m })
+            ParamsJson = JsonSerializer.Serialize(new { CeilingPerItem = 100m })
         }, context);
 
         Assert.Equal(100m, context.FinalAmount);

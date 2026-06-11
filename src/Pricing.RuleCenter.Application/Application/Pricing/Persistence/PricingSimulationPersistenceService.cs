@@ -74,7 +74,7 @@ public sealed class PricingSimulationPersistenceService
             Items = input.Items,
             Calculations = input.Calculations,
             CallType = PricingCallTypeCodes.Simulate,
-            BusinessStatus = BusinessStatusCodes.Simulated,
+            LifecycleKind = RequestLogLifecycleKind.Simulated,
             RuntimeTrace = input.RuntimeTrace
         });
     }

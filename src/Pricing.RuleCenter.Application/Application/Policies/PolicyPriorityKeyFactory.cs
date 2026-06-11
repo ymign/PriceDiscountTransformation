@@ -2,8 +2,14 @@ using Pricing.RuleCenter.Core.Aggregates.Policies;
 
 namespace Pricing.RuleCenter.Application.Policies;
 
-public sealed class PolicyPriorityKeyFactory
+/// <summary>
+/// 策略运行时优先级键生成器。
+/// </summary>
+internal sealed class PolicyPriorityKeyFactory : IPolicyPriorityKeyFactory
 {
+    /// <summary>
+    /// 根据版本、绑定和作用域计算稳定优先级键。
+    /// </summary>
     public string Build(PolicyVersion version, PolicyBinding binding, IReadOnlyList<PolicyScope> scopes)
     {
         var bindingRank = GetBindingRank(binding);

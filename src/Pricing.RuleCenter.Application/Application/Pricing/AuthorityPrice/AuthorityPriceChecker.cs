@@ -273,8 +273,8 @@ public sealed class AuthorityPriceChecker
     private static string? ReadString(object? value) =>
         value switch
         {
-            // ExtraParams 可能来自 System.Text.Json，也可能来自 Newtonsoft.Json。
-            // 统一读成字符串后再做兼容判断。
+            // ExtraParams 统一由 System.Text.Json 反序列化，但内部测试和程序化构造
+            // 仍可能直接传入 string/bool/number，需要先规整成稳定文本再判断。
             null => null,
             string text => text,
             bool flag => flag ? "true" : "false",

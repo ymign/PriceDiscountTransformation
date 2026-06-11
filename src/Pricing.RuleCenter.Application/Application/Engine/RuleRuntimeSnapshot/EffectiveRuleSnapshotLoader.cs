@@ -1,8 +1,8 @@
-using Pricing.RuleCenter.Core.Aggregates.Rules;
+﻿using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Aggregates.Runtime;
 using Pricing.RuleCenter.Application.RuntimePackages;
 
-namespace Pricing.RuleCenter.Core.Engine.RuleRuntimeSnapshot;
+namespace Pricing.RuleCenter.Application.Engine.RuleRuntimeSnapshot;
 
 /// <summary>
 /// 运行期生效规则快照加载器。

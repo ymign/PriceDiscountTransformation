@@ -1,6 +1,11 @@
 using System;
 using System.IO;
+#if NET35
 using Newtonsoft.Json;
+#else
+using System.Text.Json;
+using System.Text.Json.Serialization;
+#endif
 
 namespace HIS.Pricing.Client
 {
@@ -9,6 +14,10 @@ namespace HIS.Pricing.Client
     /// </summary>
     public sealed class PricingCompensationStore
     {
+#if !NET35
+        private static readonly JsonSerializerOptions s_indentedJsonOptions = CreateIndentedJsonOptions();
+#endif
+
         private readonly string _directory;
 
         /// <summary>
@@ -75,7 +84,7 @@ namespace HIS.Pricing.Client
                     + SafeFileName(businessKey)
                     + ".json";
                 string path = Path.Combine(_directory, fileName);
-                File.WriteAllText(path, JsonConvert.SerializeObject(record, Formatting.Indented));
+                File.WriteAllText(path, SerializeJson(record));
                 return path;
             }
             catch
@@ -120,6 +129,28 @@ namespace HIS.Pricing.Client
 
             return new string(chars);
         }
+
+        private static string SerializeJson(object value)
+        {
+#if NET35
+            return JsonConvert.SerializeObject(value, Formatting.Indented);
+#else
+            return JsonSerializer.Serialize(value, s_indentedJsonOptions);
+#endif
+        }
+
+#if !NET35
+        private static JsonSerializerOptions CreateIndentedJsonOptions()
+        {
+            JsonSerializerOptions options = new JsonSerializerOptions();
+            options.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower;
+            options.PropertyNameCaseInsensitive = true;
+            options.NumberHandling = JsonNumberHandling.AllowReadingFromString;
+            options.DefaultIgnoreCondition = JsonIgnoreCondition.Never;
+            options.WriteIndented = true;
+            return options;
+        }
+#endif
     }
 
     /// <summary>

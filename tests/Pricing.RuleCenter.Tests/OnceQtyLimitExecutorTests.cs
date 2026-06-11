@@ -1,5 +1,5 @@
-﻿using Newtonsoft.Json;
-using Pricing.RuleCenter.Core.Engine.Executors;
+﻿using System.Text.Json;
+using Pricing.RuleCenter.Application.Engine.Executors;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 using Xunit;
@@ -44,7 +44,7 @@ public sealed class OnceQtyLimitExecutorTests
         var action = new RuleAction
         {
             ActionType = "APPLY_ONCE_LIMIT_QTY",
-            ParamsJson = JsonConvert.SerializeObject(new { MaxOnceQty = 5m })
+            ParamsJson = JsonSerializer.Serialize(new { MaxOnceQty = 5m })
         };
 
         await executor.ExecuteAsync(action, context);
@@ -78,7 +78,7 @@ public sealed class OnceQtyLimitExecutorTests
         var action = new RuleAction
         {
             ActionType = "APPLY_ONCE_LIMIT_QTY",
-            ParamsJson = JsonConvert.SerializeObject(new { MaxOnceQty = 0m })
+            ParamsJson = JsonSerializer.Serialize(new { MaxOnceQty = 0m })
         };
 
         await executor.ExecuteAsync(action, context);

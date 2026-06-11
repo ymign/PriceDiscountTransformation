@@ -1,4 +1,4 @@
-namespace Pricing.RuleCenter.Core.Engine.Evaluators;
+﻿namespace Pricing.RuleCenter.Application.Engine.Evaluators;
 
 /// <summary>
 /// 设备型号条件评估器，从 ExtraParams["deviceType"] 读取设备型号或设备等级编码。

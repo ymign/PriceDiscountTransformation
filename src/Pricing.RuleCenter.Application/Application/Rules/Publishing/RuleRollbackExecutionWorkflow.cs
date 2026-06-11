@@ -9,7 +9,7 @@ namespace Pricing.RuleCenter.Application.Rules.Publishing;
 /// <summary>
 /// 回滚规则事务主流程 workflow。
 /// </summary>
-public sealed class RuleRollbackExecutionWorkflow
+internal sealed class RuleRollbackExecutionWorkflow
 {
     private readonly IRuleHeaderRepository _headerRepository;
     private readonly IRuleVersionRepository _versionRepository;

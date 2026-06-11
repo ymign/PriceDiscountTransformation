@@ -1,10 +1,10 @@
 using System.Security.Cryptography;
-using Pricing.RuleCenter.Core.Constants;
 using System.Text;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+using System.Text.Json;
 using Pricing.RuleCenter.Application.Dto;
+using Pricing.RuleCenter.Application.Serialization;
 using Pricing.RuleCenter.Core.Aggregates.Charging;
+using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Services;
 
 namespace Pricing.RuleCenter.Application.Pricing;
@@ -137,10 +137,10 @@ internal static class PricingRequestFingerprintBuilder
     /// <summary>
     /// 规范化 ExtraParams 中的值。
     /// </summary>
-    /// <param name="value">原始扩展参数值，可能来自 System.Text.Json 或 Newtonsoft.Json。</param>
+    /// <param name="value">原始扩展参数值，统一按 System.Text.Json 语义规整。</param>
     /// <returns>规范化后的值。</returns>
     /// <remarks>
-    /// ExtraParams 同时进入规则上下文和幂等指纹。这里统一处理字符串、decimal、浮点和 JToken，
+    /// ExtraParams 同时进入规则上下文和幂等指纹。这里统一处理字符串、decimal、浮点和 JsonElement，
     /// 避免同一业务值因为 JSON 反序列化类型不同导致指纹不一致。
     /// </remarks>
     public static object? NormalizeExtraValue(object? value)
@@ -152,10 +152,14 @@ internal static class PricingRequestFingerprintBuilder
             decimal number => Math.Round(number, 4),
             double number => Math.Round((decimal)number, 4),
             float number => Math.Round((decimal)number, 4),
-            JValue jValue => jValue.Type == JTokenType.String
-                ? NormalizeString(jValue.Value<string>())
-                : jValue.ToString(),
-            JToken jToken => jToken.ToString(Formatting.None),
+            JsonElement { ValueKind: JsonValueKind.Null or JsonValueKind.Undefined } => null,
+            JsonElement { ValueKind: JsonValueKind.String } element => NormalizeString(element.GetString()),
+            JsonElement { ValueKind: JsonValueKind.Number } element => element.GetRawText(),
+            JsonElement { ValueKind: JsonValueKind.True } => "true",
+            JsonElement { ValueKind: JsonValueKind.False } => "false",
+            JsonElement { ValueKind: JsonValueKind.Object or JsonValueKind.Array } element =>
+                RuleCenterJsonSerializer.SerializeElement(element),
+            JsonDocument document => RuleCenterJsonSerializer.SerializeElement(document.RootElement),
             _ => value
         };
     }
@@ -163,7 +167,7 @@ internal static class PricingRequestFingerprintBuilder
     private static string HashPayload(object payload)
     {
         // 使用无格式 JSON 保证哈希输入稳定；SHA256 足够用于冲突检测，不需要可逆加密。
-        var json = JsonConvert.SerializeObject(payload, Formatting.None);
+        var json = RuleCenterJsonSerializer.Serialize(payload);
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(json));
         return Convert.ToHexString(hash);
     }

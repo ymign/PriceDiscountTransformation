@@ -10,20 +10,26 @@ using Pricing.RuleCenter.Core.Interfaces.Templates;
 
 namespace Pricing.RuleCenter.Application.Policies;
 
+/// <summary>
+/// 策略版本应用服务，负责草稿版本读取、保存和发布前校验。
+/// </summary>
 public sealed class PolicyVersionAppService
 {
     private readonly IPolicyRepository _policyRepository;
     private readonly ITemplateRepository _templateRepository;
-    private readonly PolicyExpressionGuard _expressionGuard;
-    private readonly PolicyValidationService _validationService;
+    private readonly IPolicyExpressionGuard _expressionGuard;
+    private readonly IPolicyValidationService _validationService;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IClock _clock;
 
+    /// <summary>
+    /// 初始化策略版本应用服务。
+    /// </summary>
     public PolicyVersionAppService(
         IPolicyRepository policyRepository,
         ITemplateRepository templateRepository,
-        PolicyExpressionGuard expressionGuard,
-        PolicyValidationService validationService,
+        IPolicyExpressionGuard expressionGuard,
+        IPolicyValidationService validationService,
         IUnitOfWork unitOfWork,
         IClock clock)
     {
@@ -35,6 +41,9 @@ public sealed class PolicyVersionAppService
         _clock = clock;
     }
 
+    /// <summary>
+    /// 按主键查询策略版本详情。
+    /// </summary>
     public async Task<PolicyVersionResponse?> GetByIdAsync(long policyVersionId)
     {
         var version = await _policyRepository.GetVersionAsync(policyVersionId);
@@ -46,6 +55,9 @@ public sealed class PolicyVersionAppService
         return await BuildResponseAsync(version);
     }
 
+    /// <summary>
+    /// 创建或更新策略草稿版本。
+    /// </summary>
     public async Task<long> SaveDraftAsync(long policyId, PolicyVersionSaveRequest request)
     {
         var policy = await _policyRepository.GetByIdAsync(policyId)
@@ -110,6 +122,9 @@ public sealed class PolicyVersionAppService
         }
     }
 
+    /// <summary>
+    /// 校验指定策略版本是否达到可发布状态。
+    /// </summary>
     public async Task<PolicyValidateResponse> ValidateAsync(long policyVersionId)
     {
         var version = await _policyRepository.GetVersionAsync(policyVersionId)

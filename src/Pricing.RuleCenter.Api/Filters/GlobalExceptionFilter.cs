@@ -7,7 +7,7 @@ using Pricing.RuleCenter.Core.Exceptions;
 namespace Pricing.RuleCenter.Api.Filters;
 
 /// <summary>
-/// 全局异常过滤器，把应用层异常统一转换为标准 API 响应。
+/// MVC 兼容异常过滤器，把应用层异常统一转换为标准 API 响应。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -30,14 +30,8 @@ namespace Pricing.RuleCenter.Api.Filters;
 ///   - 其他异常 → 500 Internal Server Error（隐藏内部细节）
 /// </para>
 /// <para>
-/// 【注册方式】
-/// 在 Program.cs 或 Startup.cs 中注册为全局过滤器：
-/// <code>
-/// builder.Services.AddControllers(options =>
-/// {
-///     options.Filters.Add&lt;GlobalExceptionFilter&gt;();
-/// });
-/// </code>
+/// 当前生产入口使用 <c>ExceptionHandlerMiddleware</c> 做统一异常处理；
+/// 本过滤器保留给 MVC 单元测试和少量兼容场景复用同一套异常映射。
 /// </para>
 /// </remarks>
 public sealed class GlobalExceptionFilter : IExceptionFilter

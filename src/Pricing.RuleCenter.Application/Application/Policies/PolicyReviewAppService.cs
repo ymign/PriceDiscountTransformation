@@ -6,6 +6,9 @@ using Pricing.RuleCenter.Core.Interfaces.Policies;
 
 namespace Pricing.RuleCenter.Application.Policies;
 
+/// <summary>
+/// 策略评审应用服务，负责提审、通过和驳回等评审流转。
+/// </summary>
 public sealed class PolicyReviewAppService
 {
     private readonly IPolicyRepository _policyRepository;
@@ -13,6 +16,9 @@ public sealed class PolicyReviewAppService
     private readonly IUnitOfWork _unitOfWork;
     private readonly IClock _clock;
 
+    /// <summary>
+    /// 初始化策略评审应用服务。
+    /// </summary>
     public PolicyReviewAppService(
         IPolicyRepository policyRepository,
         IPolicyReviewRepository policyReviewRepository,
@@ -25,6 +31,9 @@ public sealed class PolicyReviewAppService
         _clock = clock;
     }
 
+    /// <summary>
+    /// 提交策略版本进入评审流。
+    /// </summary>
     public async Task<long> SubmitAsync(long policyVersionId, string submittedBy, string reviewStage)
     {
         var version = await _policyRepository.GetVersionAsync(policyVersionId)
@@ -76,6 +85,9 @@ public sealed class PolicyReviewAppService
         }
     }
 
+    /// <summary>
+    /// 审批通过指定策略版本。
+    /// </summary>
     public async Task ApproveAsync(long policyVersionId, string reviewedBy, string? reviewComment)
     {
         var version = await _policyRepository.GetVersionAsync(policyVersionId)
@@ -115,6 +127,9 @@ public sealed class PolicyReviewAppService
         }
     }
 
+    /// <summary>
+    /// 驳回指定策略版本。
+    /// </summary>
     public async Task RejectAsync(long policyVersionId, string reviewedBy, string? reviewComment)
     {
         var version = await _policyRepository.GetVersionAsync(policyVersionId)

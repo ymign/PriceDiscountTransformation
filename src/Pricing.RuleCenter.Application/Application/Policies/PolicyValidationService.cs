@@ -1,12 +1,15 @@
-using Pricing.RuleCenter.Application.Dto;
+﻿using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Core.Aggregates.Policies;
 using Pricing.RuleCenter.Core.Aggregates.Templates;
 using Pricing.RuleCenter.Core.Constants;
-using Pricing.RuleCenter.Core.Engine.Formula;
+using Pricing.RuleCenter.Application.Engine.Formula;
 
 namespace Pricing.RuleCenter.Application.Policies;
 
-public sealed class PolicyValidationService
+/// <summary>
+/// 策略版本编译校验服务。
+/// </summary>
+internal sealed class PolicyValidationService : IPolicyValidationService
 {
     private static readonly HashSet<string> SupportedScopeDimensions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -18,11 +21,18 @@ public sealed class PolicyValidationService
 
     private readonly FormulaExpressionValidator _expressionValidator;
 
+    /// <summary>
+    /// 初始化策略版本编译校验服务。
+    /// </summary>
+    /// <param name="expressionValidator">表达式校验器。</param>
     public PolicyValidationService(FormulaExpressionValidator expressionValidator)
     {
         _expressionValidator = expressionValidator;
     }
 
+    /// <summary>
+    /// 校验策略版本是否具备进入运行时包编译阶段的条件。
+    /// </summary>
     public void ValidateForCompile(
         PolicyAggregate policy,
         PolicyVersion version,

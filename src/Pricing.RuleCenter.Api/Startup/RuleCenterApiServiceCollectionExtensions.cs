@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using Microsoft.OpenApi.Models;
 using Pricing.RuleCenter.Api.HealthChecks;
 using Pricing.RuleCenter.Api.ModelBinding;
@@ -18,11 +18,11 @@ using Pricing.RuleCenter.Application.Rules.Publishing;
 using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Application.Templates;
 using Pricing.RuleCenter.Application.Trace;
-using Pricing.RuleCenter.Core.Engine;
-using Pricing.RuleCenter.Core.Engine.Evaluators;
-using Pricing.RuleCenter.Core.Engine.Executors;
-using Pricing.RuleCenter.Core.Engine.Formula;
-using Pricing.RuleCenter.Core.Engine.RuleRuntimeSnapshot;
+using Pricing.RuleCenter.Application.Engine;
+using Pricing.RuleCenter.Application.Engine.Evaluators;
+using Pricing.RuleCenter.Application.Engine.Executors;
+using Pricing.RuleCenter.Application.Engine.Formula;
+using Pricing.RuleCenter.Application.Engine.RuleRuntimeSnapshot;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Catalog;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
@@ -64,7 +64,7 @@ internal static class RuleCenterApiServiceCollectionExtensions
     }
 
     /// <summary>
-    /// 注册应用层用例服务、规则发布服务、计价工作流和 MediatR 管道。
+    /// 注册应用层用例服务、规则发布服务和计价工作流。
     /// </summary>
     /// <param name="services">ASP.NET Core 服务集合。</param>
     /// <returns>注册后的服务集合。</returns>
@@ -110,18 +110,7 @@ internal static class RuleCenterApiServiceCollectionExtensions
         services.AddScoped<RuleCacheOutboxAppService>();
         services.AddScoped<TemplateAppService>();
         services.AddScoped<TemplateVersionAppService>();
-        services.AddScoped<PolicyExpressionGuard>();
-        services.AddScoped<PolicyAppService>();
-        services.AddScoped<PolicyImportService>();
-        services.AddScoped<PolicyVersionAppService>();
-        services.AddScoped<PolicyPreviewAppService>();
-        services.AddScoped<PolicyPriorityKeyFactory>();
-        services.AddScoped<PolicyValidationService>();
-        services.AddScoped<PolicyConflictService>();
-        services.AddScoped<PolicyPublishProfileResolver>();
-        services.AddScoped<PolicyPublishEligibilityService>();
-        services.AddScoped<PolicyReviewAppService>();
-        services.AddScoped<PolicyPackageDiffService>();
+        services.AddPolicyApplicationServices();
         services.AddScoped<RuntimeRuleProjectionFactory>();
         services.AddScoped<RuntimePackageCompiler>();
         services.AddScoped<RuntimePackageTraceContextAccessor>();

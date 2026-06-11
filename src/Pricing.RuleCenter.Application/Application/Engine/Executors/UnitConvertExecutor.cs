@@ -1,9 +1,9 @@
-using Newtonsoft.Json;
+﻿using Pricing.RuleCenter.Application.Serialization;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Models;
 
-namespace Pricing.RuleCenter.Core.Engine.Executors;
+namespace Pricing.RuleCenter.Application.Engine.Executors;
 
 /// <summary>
 /// 双单位换算动作执行器。
@@ -171,7 +171,7 @@ public sealed class UnitConvertExecutor : IRuleActionExecutor
             return null;
         }
 
-        return JsonConvert.DeserializeObject<UnitConvertParams>(json);
+        return RuleCenterJsonSerializer.Deserialize<UnitConvertParams>(json);
     }
 
     /// <summary>

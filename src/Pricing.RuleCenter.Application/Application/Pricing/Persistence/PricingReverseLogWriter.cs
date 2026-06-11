@@ -1,5 +1,5 @@
-using Newtonsoft.Json;
 using Pricing.RuleCenter.Application.Dto;
+using Pricing.RuleCenter.Application.Serialization;
 using Pricing.RuleCenter.Core.Aggregates.Charging;
 using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
@@ -101,7 +101,6 @@ public sealed class PricingReverseLogWriter
             RequestFingerprint = PricingRequestFingerprintBuilder.BuildReverseFingerprint(request, originalLog, input.ReverseTime),
             TraceId = originalLog.TraceId,
             CallType = PricingCallTypeCodes.Reverse,
-            BusinessStatus = BusinessStatusCodes.Reversed,
             SourceSystem = NormalizeString(request.SourceSystem) ?? NormalizeString(originalLog.SourceSystem) ?? "UNKNOWN",
             SourceTerminal = NormalizeString(request.SourceTerminal) ?? originalLog.SourceTerminal,
             PatientId = originalLog.PatientId,
@@ -117,8 +116,8 @@ public sealed class PricingReverseLogWriter
             BodyPartCode = originalLog.BodyPartCode,
             BusinessChargeTime = input.ReverseTime,
             PriceVersion = originalLog.PriceVersion,
-            RequestJson = JsonConvert.SerializeObject(request),
-            ResponseJson = JsonConvert.SerializeObject(new
+            RequestJson = RuleCenterJsonSerializer.Serialize(request),
+            ResponseJson = RuleCenterJsonSerializer.Serialize(new
             {
                 request.OriginalRequestId,
                 request.ReverseNo,
@@ -128,9 +127,8 @@ public sealed class PricingReverseLogWriter
                 ReverseAmt = input.ReverseAmt
             }),
             RequestAt = now,
-            ResponseAt = now,
-            IsSuccess = EnableFlag.Yes
         };
+        RequestLogLifecycleInitializer.Apply(reverseRequestLog, RequestLogLifecycleKind.Reversed, now);
 
         return await _requestLogRepository.InsertAsync(reverseRequestLog);
     }

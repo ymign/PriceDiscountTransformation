@@ -1,8 +1,9 @@
-using Newtonsoft.Json.Linq;
+﻿using System.Text.Json;
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Rules;
+using Pricing.RuleCenter.Application.Serialization;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
-using Pricing.RuleCenter.Core.Engine.Formula;
+using Pricing.RuleCenter.Application.Engine.Formula;
 using Pricing.RuleCenter.Core.Constants;
 
 namespace Pricing.RuleCenter.Application.Rules.Guards;
@@ -83,9 +84,11 @@ public sealed class RuleCapabilityGuard
 
     private void EnsureExpressionSupported(RuleAction action)
     {
-        var expressionParams = ParseParams(action.ParamsJson);
-        var expression = expressionParams?.TryGetValue(ExpressionParamName, StringComparison.OrdinalIgnoreCase, out var token) == true
-            ? token.ToString()
+        using var expressionParams = ParseParams(action.ParamsJson);
+        var root = expressionParams?.RootElement;
+        var expression = root is not null &&
+                         root.Value.TryGetPropertyIgnoreCase(ExpressionParamName, out var token)
+            ? token.ReadAsString()
             : null;
 
         try
@@ -101,7 +104,7 @@ public sealed class RuleCapabilityGuard
         }
     }
 
-    private static JObject? ParseParams(string? paramsJson)
+    private static JsonDocument? ParseParams(string? paramsJson)
     {
         if (string.IsNullOrWhiteSpace(paramsJson))
         {
@@ -110,9 +113,9 @@ public sealed class RuleCapabilityGuard
 
         try
         {
-            return JObject.Parse(paramsJson);
+            return RuleCenterJsonSerializer.ParseDocument(paramsJson);
         }
-        catch
+        catch (JsonException)
         {
             throw new BizException(
                 BizErrorCode.RuleFormulaUnsupported,

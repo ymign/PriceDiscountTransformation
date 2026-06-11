@@ -1,10 +1,10 @@
-using Newtonsoft.Json;
+﻿using Pricing.RuleCenter.Application.Serialization;
 using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Models;
 
-namespace Pricing.RuleCenter.Core.Engine.Executors;
+namespace Pricing.RuleCenter.Application.Engine.Executors;
 
 /// <summary>
 /// 按部位换算面积为数量的公式执行器（B-4 类规则）。
@@ -211,7 +211,7 @@ public sealed class ConvertQtyByPartExecutor : IRuleActionExecutor, IFormulaExec
             return null;
         }
 
-        return JsonConvert.DeserializeObject<ConvertQtyByPartParams>(json);
+        return RuleCenterJsonSerializer.Deserialize<ConvertQtyByPartParams>(json);
     }
 
     /// <summary>

@@ -51,12 +51,12 @@ public sealed class RuntimePackageCompiler
     /// <summary>
     /// 策略编译校验服务，负责检查绑定、作用域、参数和动作类型是否满足模板约束。
     /// </summary>
-    private readonly PolicyValidationService _validationService;
+    private readonly IPolicyValidationService _validationService;
 
     /// <summary>
     /// 策略冲突校验服务，负责阻断同项目同场景下不可并存的规则组合。
     /// </summary>
-    private readonly PolicyConflictService _conflictService;
+    private readonly IPolicyConflictService _conflictService;
 
     /// <summary>
     /// 运行期规则投影工厂，把策略版本投影成引擎可执行的 RuntimeRuleSnapshot。
@@ -84,8 +84,8 @@ public sealed class RuntimePackageCompiler
         ITemplateRepository templateRepository,
         IRuntimePackageRepository runtimePackageRepository,
         IRuntimeRuleBuildRepository runtimeRuleBuildRepository,
-        PolicyValidationService validationService,
-        PolicyConflictService conflictService,
+        IPolicyValidationService validationService,
+        IPolicyConflictService conflictService,
         RuntimeRuleProjectionFactory projectionFactory,
         IClock clock)
     {

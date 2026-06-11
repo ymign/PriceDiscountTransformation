@@ -1,6 +1,6 @@
-using Microsoft.Extensions.Caching.Memory;
+﻿using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
-using Newtonsoft.Json;
+using System.Text.Json;
 using Pricing.RuleCenter.Application.Background;
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Rules;
@@ -10,9 +10,9 @@ using Pricing.RuleCenter.Core.Aggregates.Catalog;
 using Pricing.RuleCenter.Core.Aggregates.Quota;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Constants;
-using Pricing.RuleCenter.Core.Engine.Evaluators;
-using Pricing.RuleCenter.Core.Engine.Executors;
-using Pricing.RuleCenter.Core.Engine.Formula;
+using Pricing.RuleCenter.Application.Engine.Evaluators;
+using Pricing.RuleCenter.Application.Engine.Executors;
+using Pricing.RuleCenter.Application.Engine.Formula;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Catalog;
 using Pricing.RuleCenter.Core.Interfaces.Quota;
@@ -941,7 +941,7 @@ public sealed class RulePublishConflictTests
             VersionNo = 1,
             ActionType = "FORMULA_CALC",
             ExecutorCode = "EXPRESSION_FORMULA",
-            ParamsJson = JsonConvert.SerializeObject(new { expression = "unitPrice * unknownQty" }),
+            ParamsJson = JsonSerializer.Serialize(new { expression = "unitPrice * unknownQty" }),
             OnError = "STOP",
             IsEnabled = "Y"
         });
@@ -1158,7 +1158,7 @@ public sealed class RulePublishConflictTests
             ActionType = "ADD_CHILD_ITEM",
             OnError = "STOP",
             IsEnabled = "Y",
-            ParamsJson = JsonConvert.SerializeObject(new
+            ParamsJson = JsonSerializer.Serialize(new
             {
                 childItems = new[]
                 {
