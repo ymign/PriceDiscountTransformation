@@ -88,7 +88,8 @@ public sealed class PricingController : ControllerBase
 
     /// <summary>批量查询特殊项目标识：一次收费动作下多条费用明细一起判断是否需要走折价计价逻辑。</summary>
     /// <remarks>
-    /// 请求体包含收费动作级上下文和明细级覆盖字段。响应逐行返回最终参与匹配的场景、时间、就诊类型、部位和科室，便于调用方排查误弹窗或漏弹窗。
+    /// 请求体包含收费动作级上下文和明细级覆盖字段。响应返回整批逐行判断结果，
+    /// 同时给出命中特殊规则的费用摘要，便于调用方快速定位误弹窗或漏弹窗。
     /// business_request_no 可选，仅用于诊断，不做幂等校验。
     /// </remarks>
     [HttpPost("items/special-flags")]
