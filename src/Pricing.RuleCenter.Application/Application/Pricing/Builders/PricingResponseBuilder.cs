@@ -73,7 +73,7 @@ internal static class PricingResponseBuilder
             BusinessStatus = expireAt.HasValue
                 ? BusinessStatusCodes.ConfirmPending
                 : BusinessStatusCodes.Simulated,
-            RuleSnapshotTime = now,
+            RuleReadTime = now,
             Items = itemResponses,
             IsSpecialItem = itemResponses.Any(i => i.IsSpecialItem),
             InputQty = itemResponses.Sum(i => i.InputQty),

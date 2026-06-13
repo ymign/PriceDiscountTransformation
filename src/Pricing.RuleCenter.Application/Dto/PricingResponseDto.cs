@@ -40,10 +40,10 @@ public sealed class PricingCalculateResponse
     public string? BusinessStatus { get; init; }
 
     /// <summary>
-    /// 本次决策读取规则快照的时间，用于排查规则发布前后结果差异。
+    /// 本次计价读取当前规则的时间，用于排查规则发布前后结果差异。
     /// </summary>
-    [JsonPropertyName("rule_snapshot_time")]
-    public DateTime RuleSnapshotTime { get; init; }
+    [JsonPropertyName("rule_read_time")]
+    public DateTime RuleReadTime { get; init; }
 
     /// <summary>
     /// 是否命中特殊计价规则。

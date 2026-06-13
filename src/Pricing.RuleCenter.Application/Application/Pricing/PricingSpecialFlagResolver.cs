@@ -1,6 +1,6 @@
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Engine;
-using Pricing.RuleCenter.Application.Engine.RuleRuntimeSnapshot;
+using Pricing.RuleCenter.Application.Engine.EffectiveRules;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
@@ -21,7 +21,7 @@ public sealed class PricingSpecialFlagResolver
     private const int MaxBatchItemCount = 50;
 
     /// <summary>
-    /// 规则主档仓储，用于未注入快照加载器时按项目粗判。
+    /// 规则主档仓储，用于未注入当前规则读取器时按项目粗判。
     /// </summary>
     private readonly IRuleHeaderRepository _headerRepository;
 
@@ -36,9 +36,9 @@ public sealed class PricingSpecialFlagResolver
     private readonly IRuleConditionGroupMatcher? _conditionMatcher;
 
     /// <summary>
-    /// 当前请求可见规则快照统一入口。
+    /// 当前请求可见规则统一读取入口。
     /// </summary>
-    private readonly EffectiveRuleSnapshotLoader? _effectiveRuleSnapshotLoader;
+    private readonly EffectiveRuleReader? _effectiveRuleReader;
 
     /// <summary>
     /// 初始化特殊项目标识解析器。
@@ -46,17 +46,17 @@ public sealed class PricingSpecialFlagResolver
     /// <param name="headerRepository">规则头仓储，用于读取项目关联规则。</param>
     /// <param name="clock">技术时间提供者，用于按当前时间过滤有效规则。</param>
     /// <param name="conditionMatcher">条件组匹配器，用于按查询维度预判规则命中。</param>
-    /// <param name="effectiveRuleSnapshotLoader">统一规则快照加载入口。</param>
+    /// <param name="effectiveRuleReader">统一当前规则读取入口。</param>
     public PricingSpecialFlagResolver(
         IRuleHeaderRepository headerRepository,
         IClock clock,
         IRuleConditionGroupMatcher? conditionMatcher = null,
-        EffectiveRuleSnapshotLoader? effectiveRuleSnapshotLoader = null)
+        EffectiveRuleReader? effectiveRuleReader = null)
     {
         _headerRepository = headerRepository;
         _clock = clock;
         _conditionMatcher = conditionMatcher;
-        _effectiveRuleSnapshotLoader = effectiveRuleSnapshotLoader;
+        _effectiveRuleReader = effectiveRuleReader;
     }
 
     /// <summary>
@@ -83,12 +83,12 @@ public sealed class PricingSpecialFlagResolver
         var decisionTime = _clock.Now;
         var businessTime = request.BusinessChargeTime ?? decisionTime;
 
-        if (_effectiveRuleSnapshotLoader is not null)
+        if (_effectiveRuleReader is not null)
         {
-            return await ResolveFromSnapshotLoaderAsync(normalizedItemCode, request, businessTime, decisionTime);
+            return await ResolveFromRuleReaderAsync(normalizedItemCode, request, businessTime, decisionTime);
         }
 
-        // 无快照加载器时只按项目、发布状态和生效期粗判。粗判宁可多返回特殊项目，也不能漏判。
+        // 无当前规则读取器时只按项目、发布状态和生效期粗判。粗判宁可多返回特殊项目，也不能漏判。
         var rules = await _headerRepository.GetByItemCodeAsync(normalizedItemCode);
         var published = rules
             .Where(r => r.Status == RuleStatusCodes.Published && r.IsEnabled == EnableFlag.Yes)
@@ -160,7 +160,7 @@ public sealed class PricingSpecialFlagResolver
                 NextAction = singleResult.NextAction,
                 DecisionReason = singleResult.DecisionReason,
                 Blocking = singleResult.Blocking,
-                RuleSnapshotTime = singleResult.RuleSnapshotTime,
+                RuleReadTime = singleResult.RuleReadTime,
                 EffectiveChargeScene = effectiveChargeScene,
                 EffectiveBusinessChargeTime = effectiveBusinessTime,
                 EffectiveVisitType = effectiveVisitType,
@@ -172,9 +172,9 @@ public sealed class PricingSpecialFlagResolver
 
         var specialItemCount = responses.Count(item => item.IsSpecial);
         var blocking = responses.Any(item => item.Blocking);
-        var ruleSnapshotTime = responses.Count == 0
+        var ruleReadTime = responses.Count == 0
             ? _clock.Now
-            : responses.Max(item => item.RuleSnapshotTime);
+            : responses.Max(item => item.RuleReadTime);
 
         return new SpecialFlagBatchResponse
         {
@@ -186,44 +186,44 @@ public sealed class PricingSpecialFlagResolver
             NextAction = blocking ? PricingNextActionCodes.CallSimulate : PricingNextActionCodes.NormalPricing,
             Blocking = blocking,
             DecisionReason = BuildBatchDecisionReason(responses.Count, specialItemCount),
-            RuleSnapshotTime = ruleSnapshotTime,
+            RuleReadTime = ruleReadTime,
             Items = responses
         };
     }
 
-    private async Task<SpecialFlagResponse> ResolveFromSnapshotLoaderAsync(
+    private async Task<SpecialFlagResponse> ResolveFromRuleReaderAsync(
         string normalizedItemCode,
         SpecialFlagRequest request,
         DateTime businessTime,
         DateTime decisionTime)
     {
-        var ruleSet = await _effectiveRuleSnapshotLoader!.LoadCurrentAsync(normalizedItemCode);
+        var ruleSet = await _effectiveRuleReader!.ReadCurrentAsync(normalizedItemCode);
         var context = BuildPricingContext(normalizedItemCode, request, businessTime);
-        var matchedSnapshots = new List<EffectiveRuleSnapshot>();
+        var matchedRules = new List<EffectiveRuleView>();
 
-        foreach (var snapshot in ruleSet.Snapshots)
+        foreach (var rule in ruleSet.Rules)
         {
-            if (snapshot.Header.Status != RuleStatusCodes.Published ||
-                snapshot.Header.IsEnabled != EnableFlag.Yes ||
-                !snapshot.Header.IsEffectiveAt(businessTime))
+            if (rule.Header.Status != RuleStatusCodes.Published ||
+                rule.Header.IsEnabled != EnableFlag.Yes ||
+                !rule.Header.IsEffectiveAt(businessTime))
             {
                 continue;
             }
 
             if (_conditionMatcher is not null &&
-                !await _conditionMatcher.EvaluateAsync(snapshot.Conditions, context))
+                !await _conditionMatcher.EvaluateAsync(rule.Conditions, context))
             {
                 continue;
             }
 
-            matchedSnapshots.Add(snapshot);
+            matchedRules.Add(rule);
         }
 
-        var matchedRules = matchedSnapshots
-            .Select(snapshot => snapshot.Header)
+        var matchedRuleHeaders = matchedRules
+            .Select(rule => rule.Header)
             .ToList();
 
-        return BuildPublishedRuleResponse(normalizedItemCode, matchedRules, decisionTime);
+        return BuildPublishedRuleResponse(normalizedItemCode, matchedRuleHeaders, decisionTime);
     }
 
     private static SpecialFlagResponse BuildPublishedRuleResponse(
@@ -244,7 +244,7 @@ public sealed class PricingSpecialFlagResolver
             NextAction = isSpecial ? PricingNextActionCodes.CallSimulate : PricingNextActionCodes.NormalPricing,
             DecisionReason = BuildItemDecisionReason(publishedRules, rollbackMode),
             Blocking = isSpecial,
-            RuleSnapshotTime = decisionTime
+            RuleReadTime = decisionTime
         };
     }
 

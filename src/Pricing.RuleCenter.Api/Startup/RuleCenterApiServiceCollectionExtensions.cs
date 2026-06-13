@@ -18,10 +18,10 @@ using Pricing.RuleCenter.Application.Rules.Publishing;
 using Pricing.RuleCenter.Application.Templates;
 using Pricing.RuleCenter.Application.Trace;
 using Pricing.RuleCenter.Application.Engine;
+using Pricing.RuleCenter.Application.Engine.EffectiveRules;
 using Pricing.RuleCenter.Application.Engine.Evaluators;
 using Pricing.RuleCenter.Application.Engine.Executors;
 using Pricing.RuleCenter.Application.Engine.Formula;
-using Pricing.RuleCenter.Application.Engine.RuleRuntimeSnapshot;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Catalog;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
@@ -275,8 +275,8 @@ internal static class RuleCenterApiServiceCollectionExtensions
             provider.GetRequiredService<IRuleConditionRepository>(),
             provider.GetRequiredService<IRuleActionRepository>(),
             provider.GetRequiredService<IDictRepository>()));
-        services.AddScoped<EffectiveRuleSnapshotLoader>();
-        services.AddScoped<IEffectiveRuleSnapshotCache, EffectiveRuleSnapshotCache>();
+        services.AddScoped<EffectiveRuleReader>();
+        services.AddScoped<IEffectiveRuleViewCache, EffectiveRuleViewCache>();
         services.AddScoped<ILimitOccupyValueFinalizer, SameGroupLimitOccupyValueFinalizer>();
         services.AddScoped<ILimitOccupyValueFinalizer, SameOperationLimitOccupyValueFinalizer>();
         services.AddScoped<ILimitOccupyValueFinalizer, DefaultLimitOccupyValueFinalizer>();

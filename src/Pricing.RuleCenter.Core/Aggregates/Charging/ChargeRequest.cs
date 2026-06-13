@@ -284,22 +284,6 @@ public sealed class ChargeRequest
     public string? PriceVersion { get; set; }
 
     /// <summary>
-    /// 历史运行包兼容列。
-    /// </summary>
-    /// <remarks>
-    /// 当前直接规则链路不再写入该字段，保留属性仅用于兼容既有 PR_CHARGE_REQUEST_LOG 表结构。
-    /// </remarks>
-    public long? RuntimePackageId { get; set; }
-
-    /// <summary>
-    /// 历史运行包版本兼容列。
-    /// </summary>
-    /// <remarks>
-    /// 当前直接规则链路不再写入该字段，保留属性仅用于兼容既有 PR_CHARGE_REQUEST_LOG 表结构。
-    /// </remarks>
-    public long? RuntimePackageVersion { get; set; }
-
-    /// <summary>
     /// 原始请求快照 JSON，存储调用方传入的完整请求参数。
     /// </summary>
     /// <remarks>

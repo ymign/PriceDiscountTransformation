@@ -13,7 +13,7 @@ internal static class EffectiveRuleCacheKeys
     /// </summary>
     /// <remarks>
     /// IMemoryCache 没有按前缀批量清理能力，因此发布、停用、回滚规则时必须记住曾经写入过哪些 key，
-    /// 再逐个删除，避免计价入口继续使用旧规则快照。
+    /// 再逐个删除，避免计价入口继续使用旧规则结果。
     /// </remarks>
     private static readonly ConcurrentDictionary<string, byte> Keys = new(StringComparer.Ordinal);
 

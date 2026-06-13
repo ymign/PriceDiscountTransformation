@@ -548,8 +548,6 @@ public static class EntityTypeConfigs
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.BodyPartCode), DbColumnName = "BODY_PART_CODE" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.BusinessChargeTime), DbColumnName = "BUSINESS_CHARGE_TIME" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.PriceVersion), DbColumnName = "PRICE_VERSION" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.RuntimePackageId), DbColumnName = "RUNTIME_PACKAGE_ID" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.RuntimePackageVersion), DbColumnName = "RUNTIME_PACKAGE_VERSION" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.RequestJson), DbColumnName = "REQUEST_JSON" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.ResponseJson), DbColumnName = "RESPONSE_JSON" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeRequest), PropertyName = nameof(ChargeRequest.RequestAt), DbColumnName = "REQUEST_AT" });
@@ -575,7 +573,6 @@ public static class EntityTypeConfigs
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeDiscountDetail), PropertyName = nameof(ChargeDiscountDetail.ItemName), DbColumnName = "ITEM_NAME" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeDiscountDetail), PropertyName = nameof(ChargeDiscountDetail.RuleId), DbColumnName = "RULE_ID" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeDiscountDetail), PropertyName = nameof(ChargeDiscountDetail.RuleVersionNo), DbColumnName = "RULE_VERSION_NO" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeDiscountDetail), PropertyName = nameof(ChargeDiscountDetail.RuntimePackageId), DbColumnName = "RUNTIME_PACKAGE_ID" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeDiscountDetail), PropertyName = nameof(ChargeDiscountDetail.RuntimeRuleId), DbColumnName = "RUNTIME_RULE_ID" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeDiscountDetail), PropertyName = nameof(ChargeDiscountDetail.SourcePolicyVersionId), DbColumnName = "SOURCE_POLICY_VERSION_ID" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeDiscountDetail), PropertyName = nameof(ChargeDiscountDetail.SourceTemplateVersionId), DbColumnName = "SOURCE_TEMPLATE_VERSION_ID" });
@@ -617,7 +614,6 @@ public static class EntityTypeConfigs
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeTraceStep), PropertyName = nameof(ChargeTraceStep.StepType), DbColumnName = "STEP_TYPE" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeTraceStep), PropertyName = nameof(ChargeTraceStep.RuleId), DbColumnName = "RULE_ID" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeTraceStep), PropertyName = nameof(ChargeTraceStep.RuleVersionNo), DbColumnName = "RULE_VERSION_NO" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeTraceStep), PropertyName = nameof(ChargeTraceStep.RuntimePackageId), DbColumnName = "RUNTIME_PACKAGE_ID" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeTraceStep), PropertyName = nameof(ChargeTraceStep.RuntimeRuleId), DbColumnName = "RUNTIME_RULE_ID" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeTraceStep), PropertyName = nameof(ChargeTraceStep.SourcePolicyVersionId), DbColumnName = "SOURCE_POLICY_VERSION_ID" });
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(ChargeTraceStep), PropertyName = nameof(ChargeTraceStep.SourceTemplateVersionId), DbColumnName = "SOURCE_TEMPLATE_VERSION_ID" });

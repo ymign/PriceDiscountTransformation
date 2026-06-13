@@ -41,7 +41,7 @@ public interface IRuleConditionRepository
     /// 批量查询多个规则版本的条件配置。
     ///
     /// 使用场景：
-    /// - 生效规则快照批量加载
+    /// - 生效规则批量加载
     /// - 发布冲突检测批量构建规则 profile
     ///
     /// 默认实现退回逐条调用 <see cref="GetByRuleAndVersionAsync(long, int)"/>，

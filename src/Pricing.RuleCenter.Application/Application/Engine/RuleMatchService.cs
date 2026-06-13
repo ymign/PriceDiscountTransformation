@@ -1,7 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Caching.Memory;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
-using Pricing.RuleCenter.Application.Engine.RuleRuntimeSnapshot;
+using Pricing.RuleCenter.Application.Engine.EffectiveRules;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 
@@ -42,7 +42,7 @@ namespace Pricing.RuleCenter.Application.Engine;
 /// </remarks>
 public sealed class RuleMatchService : IRuleRuntimeCacheInvalidator
 {
-    private readonly IEffectiveRuleSnapshotCache _snapshotCache;
+    private readonly IEffectiveRuleViewCache _ruleViewCache;
     private readonly IRuleConditionGroupMatcher _conditionMatcher;
     private readonly IRuleActionPlanBuilder _actionPlanBuilder;
 
@@ -54,17 +54,17 @@ public sealed class RuleMatchService : IRuleRuntimeCacheInvalidator
     /// <summary>
     /// 初始化规则匹配服务。
     /// </summary>
-    /// <param name="snapshotCache">运行期候选规则快照缓存。</param>
+    /// <param name="ruleViewCache">运行期候选规则视图缓存。</param>
     /// <param name="conditionMatcher">条件组匹配器。</param>
     /// <param name="actionPlanBuilder">动作执行计划构建器。</param>
     /// <param name="logger">日志对象。</param>
     public RuleMatchService(
-        IEffectiveRuleSnapshotCache snapshotCache,
+        IEffectiveRuleViewCache ruleViewCache,
         IRuleConditionGroupMatcher conditionMatcher,
         IRuleActionPlanBuilder actionPlanBuilder,
         ILogger<RuleMatchService> logger)
     {
-        _snapshotCache = snapshotCache;
+        _ruleViewCache = ruleViewCache;
         _conditionMatcher = conditionMatcher;
         _actionPlanBuilder = actionPlanBuilder;
         _logger = logger;
@@ -86,7 +86,7 @@ public sealed class RuleMatchService : IRuleRuntimeCacheInvalidator
         // ========== 第一阶段：按项目编码取候选规则 ==========
         // 初筛只看 ITEM_CODE，避免全表扫描。项目组规则后续可扩展为按 GROUP_CODE 查询。
         // 仓储实现应利用索引 PR_RULE_HEADER(ITEM_CODE, STATUS, IS_ENABLED) 加速查询。
-        var candidates = await _snapshotCache.GetByItemCodeAsync(context.ItemCode);
+        var candidates = await _ruleViewCache.GetByItemCodeAsync(context.ItemCode);
 
         // ========== 第二阶段：过滤已发布、启用、业务时间有效的规则 ==========
         // 三重过滤：
@@ -163,7 +163,7 @@ public sealed class RuleMatchService : IRuleRuntimeCacheInvalidator
     public void ClearRuntimeCache()
     {
         ClearActionTypeOrderCache();
-        _snapshotCache.Clear();
+        _ruleViewCache.Clear();
     }
 
     /// <summary>

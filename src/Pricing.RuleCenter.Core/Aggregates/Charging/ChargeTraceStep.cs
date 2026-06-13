@@ -108,11 +108,6 @@ public sealed class ChargeTraceStep
         public int? RuleVersionNo { get; set; }
 
     /// <summary>
-    /// 历史运行包兼容列，当前直接规则链路不再写入。
-    /// </summary>
-    public long? RuntimePackageId { get; set; }
-
-    /// <summary>
     /// 历史运行时规则兼容列，当前直接规则链路不再写入。
     /// </summary>
     public long? RuntimeRuleId { get; set; }

@@ -305,9 +305,9 @@ public sealed class SpecialFlagBatchResponse
     [JsonPropertyName("blocking")]
     public bool Blocking { get; init; }
 
-    /// <summary>本次判断读取规则快照的时间。</summary>
-    [JsonPropertyName("rule_snapshot_time")]
-    public DateTime RuleSnapshotTime { get; init; }
+    /// <summary>本次判断读取当前规则的时间。</summary>
+    [JsonPropertyName("rule_read_time")]
+    public DateTime RuleReadTime { get; init; }
 
     /// <summary>逐费用明细特殊标识判断结果。</summary>
     [JsonPropertyName("items")]
@@ -394,9 +394,9 @@ public sealed class SpecialFlagBatchItemResponse
     [JsonPropertyName("blocking")]
     public bool Blocking { get; init; }
 
-    /// <inheritdoc cref="SpecialFlagResponse.RuleSnapshotTime" />
-    [JsonPropertyName("rule_snapshot_time")]
-    public DateTime RuleSnapshotTime { get; init; }
+    /// <inheritdoc cref="SpecialFlagResponse.RuleReadTime" />
+    [JsonPropertyName("rule_read_time")]
+    public DateTime RuleReadTime { get; init; }
 
     /// <summary>本行最终用于规则匹配的收费场景。</summary>
     [JsonPropertyName("effective_charge_scene")]
@@ -486,8 +486,8 @@ public sealed class SpecialFlagResponse
     public bool Blocking { get; init; }
 
     /// <summary>
-    /// 本次判断读取规则快照的时间。
+    /// 本次判断读取当前规则的时间。
     /// </summary>
-    [JsonPropertyName("rule_snapshot_time")]
-    public DateTime RuleSnapshotTime { get; init; }
+    [JsonPropertyName("rule_read_time")]
+    public DateTime RuleReadTime { get; init; }
 }
