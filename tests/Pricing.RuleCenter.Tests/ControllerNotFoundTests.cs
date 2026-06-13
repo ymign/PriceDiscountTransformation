@@ -1,5 +1,11 @@
+using System.Net;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Pricing.RuleCenter.Application.Background;
 using Pricing.RuleCenter.Application.Catalog;
@@ -15,6 +21,22 @@ namespace Pricing.RuleCenter.Tests;
 
 public sealed class ControllerNotFoundTests
 {
+    [Theory]
+    [InlineData("/api/pricing/runtime-packages/history")]
+    [InlineData("/api/pricing/runtime-packages/1/diff")]
+    public async Task RuntimePackageRoutes_ReturnNotFound(string path)
+    {
+        await using var factory = new RouteProbeApiFactory();
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        var response = await client.GetAsync(path);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
     [Fact]
     public async Task RuleHeaderController_GetByIdAsync_ReturnsNotFoundResultWhenMissing()
     {
@@ -149,6 +171,33 @@ public sealed class ControllerNotFoundTests
     {
         public void ClearRuntimeCache()
         {
+        }
+    }
+
+    private sealed class RouteProbeApiFactory : WebApplicationFactory<Program>
+    {
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            builder.UseEnvironment("Testing");
+            builder.ConfigureAppConfiguration((_, configurationBuilder) =>
+            {
+                configurationBuilder.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Pricing:OracleConnectionString"] = "Data Source=TEST;User Id=test;Password=test;",
+                    ["Authentication:ApiKey:Keys:0:Key"] = "admin-key",
+                    ["Authentication:ApiKey:Keys:0:Roles:0"] = "pricing.admin"
+                });
+            });
+            builder.ConfigureServices(services =>
+            {
+                var hostedServices = services
+                    .Where(descriptor => descriptor.ServiceType == typeof(IHostedService))
+                    .ToList();
+                foreach (var descriptor in hostedServices)
+                {
+                    services.Remove(descriptor);
+                }
+            });
         }
     }
 }

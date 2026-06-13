@@ -84,8 +84,7 @@ public sealed class SameGroupMutexBatchTests
     {
         var snapshotCache = new EffectiveRuleSnapshotCache(
             new MemoryCache(new MemoryCacheOptions()),
-            new EffectiveRuleSnapshotLoader(repositories),
-            repositories.RuntimePackageTraceContextAccessor);
+            new EffectiveRuleSnapshotLoader(repositories));
         var matcher = new RuleConditionGroupMatcher(
             evaluatorFactory,
             NullLogger<RuleConditionGroupMatcher>.Instance);

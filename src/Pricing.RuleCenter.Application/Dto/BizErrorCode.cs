@@ -141,9 +141,6 @@ public static class BizErrorCode
     /// <summary>策略状态不允许当前生命周期操作。</summary>
     public const int PolicyStatusNotAllowed = 1036;
 
-    /// <summary>运行时包构建冲突。</summary>
-    public const int RuntimePackageBuildConflict = 1037;
-
     /// <summary>策略审批未通过或缺失。</summary>
     public const int PolicyReviewRequired = 1038;
 
@@ -152,12 +149,6 @@ public static class BizErrorCode
 
     /// <summary>策略审批已驳回。</summary>
     public const int PolicyReviewRejected = 1040;
-
-    /// <summary>运行时包不存在。</summary>
-    public const int RuntimePackageNotFound = 1041;
-
-    /// <summary>运行时包状态不允许激活。</summary>
-    public const int RuntimePackageStatusNotAllowed = 1042;
 
     // ========== 计价计算类错误（2001-2099） ==========
 
@@ -202,6 +193,9 @@ public static class BizErrorCode
 
     /// <summary>幂等响应快照缺失或不可解析。</summary>
     public const int IdempotencyResponseSnapshotInvalid = 2014;
+
+    /// <summary>业务请求号重复，通常表示 simulate 使用了已存在的业务号。</summary>
+    public const int BusinessRequestNoDuplicated = 2015;
 
     // ========== 状态流转类错误（3001-3099） ==========
 

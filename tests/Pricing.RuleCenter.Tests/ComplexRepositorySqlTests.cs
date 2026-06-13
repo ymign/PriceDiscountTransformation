@@ -1,66 +1,36 @@
-﻿using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Caching.Memory;
 using Pricing.RuleCenter.Core.Aggregates.Catalog;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
-using Pricing.RuleCenter.Application.Engine;
-using Pricing.RuleCenter.Application.Engine.RuleRuntimeSnapshot;
-using Pricing.RuleCenter.Core.Interfaces.Catalog;
-using Pricing.RuleCenter.Core.Interfaces.Rules;
-using Pricing.RuleCenter.Core.Models;
 using Pricing.RuleCenter.Infrastructure;
 using Pricing.RuleCenter.Infrastructure.Database;
 using Pricing.RuleCenter.Infrastructure.Repositories.Rules;
 using SqlSugar;
 using Xunit;
 
-namespace Pricing.RuleCenter.Core.Tests;
+namespace Pricing.RuleCenter.Tests;
 
-public sealed class RuleMatchServiceGroupScopeTests
+public sealed class ComplexRepositorySqlTests
 {
     [Fact]
-    public async Task MatchAsync_should_include_group_scoped_rule_when_item_belongs_to_group()
+    public async Task RuleHeaderRepository_GetByItemCodeAsync_ShouldUseSingleSelectForGroupScopedMatch()
     {
-        await using var fixture = await SqlSugarFixture.CreateAsync();
-        await fixture.SeedGroupScopedRuleAsync();
+        await using var fixture = await SqliteRepositoryFixture.CreateAsync();
+        await fixture.SeedRuleHeaderGroupScopedDataAsync();
+        fixture.ClearSqlLogs();
 
-        var repositories = new RuleMatchRepositories(
-            new RuleHeaderRepository(fixture.Db, new SystemClock()),
-            new StubRuleConditionRepository(),
-            new StubRuleActionRepository(),
-            new StubDictRepository());
-        var service = new RuleMatchService(
-            new EffectiveRuleSnapshotCache(
-                new MemoryCache(new MemoryCacheOptions()),
-                new EffectiveRuleSnapshotLoader(repositories)),
-            new RuleConditionGroupMatcher(
-                new ConditionEvaluatorFactory(Array.Empty<Pricing.RuleCenter.Core.Interfaces.IRuleConditionEvaluator>()),
-                NullLogger<RuleConditionGroupMatcher>.Instance),
-            new RuleActionPlanBuilder(
-                repositories.DictRepository,
-                NullLogger<RuleActionPlanBuilder>.Instance),
-            NullLogger<RuleMatchService>.Instance);
+        var repository = new RuleHeaderRepository(fixture.Db, new SystemClock());
 
-        var context = new PricingContext
-        {
-            PatientId = "P001",
-            ItemCode = "ITEM_A",
-            InputQty = 1,
-            UnitPrice = 100,
-            BusinessChargeTime = new DateTime(2026, 5, 14, 9, 0, 0)
-        };
+        var items = await repository.GetByItemCodeAsync("ITEM_A");
 
-        var (rules, actions) = await service.MatchAsync(context);
-
-        Assert.Single(rules);
-        Assert.Equal("RULE_GROUP_A", rules[0].RuleCode);
-        Assert.Empty(actions);
+        Assert.Equal(new[] { "RULE_GROUP_A" }, items.Select(item => item.RuleCode).ToArray());
+        Assert.Equal(1, fixture.CountSelectStatements());
     }
 
-    private sealed class SqlSugarFixture : IAsyncDisposable
+    private sealed class SqliteRepositoryFixture : IAsyncDisposable
     {
         private readonly string _dbPath;
+        private readonly List<string> _sqlLogs = new();
 
-        private SqlSugarFixture(string dbPath, SqlSugarClient db)
+        private SqliteRepositoryFixture(string dbPath, SqlSugarClient db)
         {
             _dbPath = dbPath;
             Db = db;
@@ -68,9 +38,9 @@ public sealed class RuleMatchServiceGroupScopeTests
 
         public SqlSugarClient Db { get; }
 
-        public static async Task<SqlSugarFixture> CreateAsync()
+        public static async Task<SqliteRepositoryFixture> CreateAsync()
         {
-            var dbPath = Path.Combine(Path.GetTempPath(), $"pricing-rule-center-tests-{Guid.NewGuid():N}.db");
+            var dbPath = Path.Combine(Path.GetTempPath(), $"pricing-repository-sql-{Guid.NewGuid():N}.db");
             var db = new SqlSugarClient(new ConnectionConfig
             {
                 DbType = DbType.Sqlite,
@@ -82,10 +52,24 @@ public sealed class RuleMatchServiceGroupScopeTests
 
             EntityTypeConfigs.ApplyAllConfigs(db);
             db.CodeFirst.InitTables<RuleAggregate, ItemGroup, ItemGroupDetail>();
-            return await Task.FromResult(new SqlSugarFixture(dbPath, db));
+
+            var fixture = new SqliteRepositoryFixture(dbPath, db);
+            db.Aop.OnLogExecuting = (sql, _) => fixture._sqlLogs.Add(sql);
+            return await Task.FromResult(fixture);
         }
 
-        public async Task SeedGroupScopedRuleAsync()
+        public void ClearSqlLogs()
+        {
+            _sqlLogs.Clear();
+        }
+
+        public int CountSelectStatements()
+        {
+            return _sqlLogs.Count(sql =>
+                sql.TrimStart().StartsWith("SELECT", StringComparison.OrdinalIgnoreCase));
+        }
+
+        public async Task SeedRuleHeaderGroupScopedDataAsync()
         {
             await Db.Insertable(new ItemGroup
             {
@@ -108,30 +92,30 @@ public sealed class RuleMatchServiceGroupScopeTests
                 ItemCode = "ITEM_A",
                 ItemName = "Item A",
                 RoleType = "MEMBER",
-                SortNo = 10,
+                SortNo = 1,
                 IsEnabled = "Y"
             }).ExecuteCommandAsync();
 
             await Db.Insertable(new RuleAggregate
             {
-                RuleId = 1,
+                RuleId = 11,
                 RuleCode = "RULE_GROUP_A",
                 RuleName = "Group scoped rule",
                 RuleCategory = "MIXED",
                 RuleScope = "GROUP",
                 ItemCode = string.Empty,
+                ItemName = string.Empty,
                 GroupCode = "GROUP_A",
                 Priority = 10,
                 CurrentVersion = 1,
                 Status = "PUBLISHED",
                 IsEnabled = "Y",
-                ItemName = string.Empty,
+                EffectiveFrom = new DateTime(2026, 1, 1),
+                EffectiveTo = new DateTime(2026, 12, 31),
                 RollbackMode = string.Empty,
                 Remark = string.Empty,
                 CreatedBy = string.Empty,
                 UpdatedBy = string.Empty,
-                EffectiveFrom = new DateTime(2026, 1, 1),
-                EffectiveTo = new DateTime(2026, 12, 31),
                 CreatedAt = DateTime.Now,
                 UpdatedAt = DateTime.Now
             }).ExecuteCommandAsync();
@@ -149,7 +133,6 @@ public sealed class RuleMatchServiceGroupScopeTests
             }
             catch (IOException)
             {
-                // SQLite 文件在测试进程结束前可能仍被短暂占用，这里只做最佳努力清理。
             }
 
             return ValueTask.CompletedTask;

@@ -46,7 +46,7 @@ public sealed class ApiSecurityIntegrationTests
     }
 
     [Fact]
-    public async Task RulePublish_WithAdminApiKey_ReturnsGoneWhenLegacyAuthoringDisabled()
+    public async Task RulePublish_WithAdminApiKey_DoesNotReturnGone()
     {
         await using var factory = new SecureApiFactory();
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
@@ -61,7 +61,7 @@ public sealed class ApiSecurityIntegrationTests
             published_by = "tester"
         });
 
-        Assert.Equal(HttpStatusCode.Gone, response.StatusCode);
+        Assert.NotEqual(HttpStatusCode.Gone, response.StatusCode);
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.True(document.RootElement.TryGetProperty("trace_id", out _));
         Assert.False(document.RootElement.TryGetProperty("traceId", out _));

@@ -8,7 +8,8 @@ namespace Pricing.RuleCenter.Application.Dto;
 /// </summary>
 /// <remarks>
 /// reverse 针对已经 commit 成功的原请求，通常用于退费或撤销收费。冲正会写入冲正日志，
-/// 并通过负向占用释放对应限额。
+/// 并通过负向占用释放对应限额。reverse 的幂等边界是 original_request_id + reverse_no，
+/// 同一退费流水重试必须复用相同 reverse_no。
 /// </remarks>
 public sealed class PricingReverseRequest
 {
@@ -76,4 +77,34 @@ public sealed class PricingReverseRequest
     /// </summary>
     [JsonPropertyName("reason")]
     public string? Reason { get; init; }
+}
+
+/// <summary>
+/// 已提交计价结果冲正响应 DTO。
+/// </summary>
+public sealed class PricingReverseResponse
+{
+    /// <summary>原始确认请求 ID。</summary>
+    [JsonPropertyName("original_request_id")]
+    public long OriginalRequestId { get; init; }
+
+    /// <summary>调用方冲正流水号。</summary>
+    [JsonPropertyName("reverse_no")]
+    public string ReverseNo { get; init; } = string.Empty;
+
+    /// <summary>计价中心为本次冲正生成的请求日志 ID。</summary>
+    [JsonPropertyName("reverse_request_id")]
+    public long ReverseRequestId { get; init; }
+
+    /// <summary>本次是否将原请求全部冲正。</summary>
+    [JsonPropertyName("is_full_reverse")]
+    public bool IsFullReverse { get; init; }
+
+    /// <summary>冲正请求的业务状态。</summary>
+    [JsonPropertyName("business_status")]
+    public string BusinessStatus { get; init; } = string.Empty;
+
+    /// <summary>下一步动作。冲正成功后通常无需继续调用计价中心。</summary>
+    [JsonPropertyName("next_action")]
+    public string NextAction { get; init; } = PricingNextActionCodes.NoFurtherAction;
 }

@@ -9,7 +9,6 @@ using Pricing.RuleCenter.Core.Interfaces.Quota;
 using Pricing.RuleCenter.Core.Interfaces.Catalog;
 using Pricing.RuleCenter.Core.Interfaces.Policies;
 using Pricing.RuleCenter.Core.Options;
-using Pricing.RuleCenter.Core.Interfaces.Runtime;
 using Pricing.RuleCenter.Core.Interfaces.Templates;
 using Pricing.RuleCenter.Infrastructure.Database;
 using Pricing.RuleCenter.Infrastructure.Repositories;
@@ -18,7 +17,6 @@ using Pricing.RuleCenter.Infrastructure.Repositories.Charging;
 using Pricing.RuleCenter.Infrastructure.Repositories.Quota;
 using Pricing.RuleCenter.Infrastructure.Repositories.Catalog;
 using Pricing.RuleCenter.Infrastructure.Repositories.Policies;
-using Pricing.RuleCenter.Infrastructure.Repositories.Runtime;
 using Pricing.RuleCenter.Infrastructure.Repositories.Templates;
 
 namespace Pricing.RuleCenter.Infrastructure;
@@ -83,10 +81,6 @@ public static class DependencyInjection
         services.AddScoped<IRulePublishRepository, RulePublishRepository>();
         services.AddScoped<IRuleChangeLogRepository, RuleChangeLogRepository>();
         services.AddScoped<IRuleApprovalRepository, RuleApprovalRepository>();
-        services.AddScoped<IRuntimePackageRepository, RuntimePackageRepository>();
-        services.AddScoped<IRuntimePackageStateRepository, RuntimePackageStateRepository>();
-        services.AddScoped<IRuntimeRuleBuildRepository, RuntimeRuleBuildRepository>();
-        services.AddScoped<IRuntimeRuleReadRepository, RuntimeRuleReadRepository>();
         services.AddScoped<ITemplateRepository, TemplateRepository>();
         services.AddScoped<IPolicyRepository, PolicyRepository>();
         services.AddScoped<IPolicyReviewRepository, PolicyReviewRepository>();

@@ -1,18 +1,20 @@
 ﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using System.Text.Json;
+using Pricing.RuleCenter.Api.Serialization;
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Pricing;
 using Pricing.RuleCenter.Application.Pricing.AuthorityPrice;
 
 using Pricing.RuleCenter.Application.Pricing.Persistence;
-using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Application.Engine;
 using Pricing.RuleCenter.Application.Engine.Evaluators;
+using Pricing.RuleCenter.Application.Engine.RuleRuntimeSnapshot;
 using Pricing.RuleCenter.Core.Interfaces;
-using Pricing.RuleCenter.Core.Interfaces.Runtime;
-using Pricing.RuleCenter.Core.Aggregates.Runtime;
+using Pricing.RuleCenter.Core.Interfaces.Catalog;
+using Pricing.RuleCenter.Core.Interfaces.Rules;
 using Pricing.RuleCenter.Core.Models;
 using Pricing.RuleCenter.Core.Options;
 using Xunit;
@@ -306,32 +308,60 @@ public sealed class PricingApiServiceTests
     }
 
     [Fact]
-    public async Task GetSpecialFlagAsync_UsesActiveRuntimePackageAndQueryDimensions()
+    public void PricingResponseDtos_DoNotExposeRuntimePackageFields()
     {
-        var runtimeRule = new RuntimeRule
+        Assert.Null(typeof(PricingCalculateResponse).GetProperty("RuntimePackageId"));
+        Assert.Null(typeof(PricingCalculateResponse).GetProperty("RuntimePackageVersion"));
+        Assert.Null(typeof(PricingCalculateResponse).GetProperty("MatchedRuntimeRuleIds"));
+        Assert.Null(typeof(PricingCalculateResponse).GetProperty("MatchedPolicyVersionIds"));
+        Assert.Null(typeof(PricingCalculateResponse).GetProperty("MatchedTemplateVersionIds"));
+
+        Assert.Null(typeof(PricingCalculateItemResponse).GetProperty("RuntimePackageId"));
+        Assert.Null(typeof(PricingCalculateItemResponse).GetProperty("RuntimePackageVersion"));
+        Assert.Null(typeof(PricingCalculateItemResponse).GetProperty("MatchedRuntimeRuleIds"));
+        Assert.Null(typeof(PricingCalculateItemResponse).GetProperty("MatchedPolicyVersionIds"));
+        Assert.Null(typeof(PricingCalculateItemResponse).GetProperty("MatchedTemplateVersionIds"));
+
+        Assert.Null(typeof(SpecialFlagResponse).GetProperty("RuntimePackageId"));
+        Assert.Null(typeof(SpecialFlagResponse).GetProperty("RuntimePackageVersion"));
+        Assert.Null(typeof(SpecialFlagResponse).GetProperty("MatchedRuntimeRuleIds"));
+        Assert.Null(typeof(SpecialFlagResponse).GetProperty("MatchedPolicyVersionIds"));
+
+        Assert.Null(typeof(PricingTraceStepResponse).GetProperty("RuntimeRuleId"));
+        Assert.Null(typeof(PricingTraceStepResponse).GetProperty("SourcePolicyVersionId"));
+        Assert.Null(typeof(PricingTraceStepResponse).GetProperty("SourceTemplateVersionId"));
+        Assert.NotNull(typeof(PricingTraceStepResponse).GetProperty("RuleId"));
+    }
+
+    [Fact]
+    public async Task GetSpecialFlagAsync_UsesDirectRuleSnapshotAndQueryDimensions()
+    {
+        var directRule = new RuleHeader
         {
-            RuntimeRuleId = 901,
-            PackageId = 88,
-            SourcePolicyVersionId = 7008,
-            SourceTemplateVersionId = 8008,
-            TargetItemCode = "ITEM001",
-            CapabilityFamily = "FORMULA_PRICING",
-            MergeMode = "SINGLE_WINNER",
-            ScopeLevel = "SCENE",
-            PriorityKey = "001|001|998|005|0010|000001|000000000001",
+            RuleId = 901,
+            RuleCode = "RULE-DIRECT-SPECIAL-FLAG",
+            RuleName = "直接规则特殊项目",
+            ItemCode = "ITEM001",
+            Status = "PUBLISHED",
+            IsEnabled = "Y",
+            CurrentVersion = 1,
+            RollbackMode = "STOP_CHARGE",
             EffectiveFrom = new DateTime(2026, 5, 1),
             EffectiveTo = new DateTime(2026, 5, 31, 23, 59, 59),
-            MatchKey = "FORMULA_PRICING|ITEM:ITEM001|SCENE"
+            CreatedAt = DateTime.Now,
+            UpdatedAt = DateTime.Now
         };
         var conditions = new[]
         {
-            new RuntimeCondition
+            new RuleCondition
             {
-                RuntimeConditionId = 1,
-                RuntimeRuleId = 901,
+                ConditionId = 1,
+                RuleId = 901,
+                VersionNo = 1,
                 ConditionGroup = "DEFAULT",
                 ConditionType = RuleConditionTypeCodes.ChargeScene,
                 RightValue = "OUTPATIENT",
+                IsEnabled = "Y",
                 SortNo = 10
             }
         };
@@ -339,17 +369,7 @@ public sealed class PricingApiServiceTests
             new CapturingPricingEngine(),
             new SpecialFlagRuleHeaderRepository(new[]
             {
-                new RuleHeader
-                {
-                    RuleId = 1,
-                    RuleCode = "LEGACY-SHOULD-NOT-BE-USED",
-                    RuleName = "旧规则不应参与运行时包判断",
-                    ItemCode = "ITEM001",
-                    Status = "PUBLISHED",
-                    IsEnabled = "Y",
-                    CreatedAt = DateTime.Now,
-                    UpdatedAt = DateTime.Now
-                }
+                directRule
             }),
             new InMemoryChargeRequestLogRepository(),
             new EmptyChargeDiscountDetailRepository(),
@@ -360,13 +380,8 @@ public sealed class PricingApiServiceTests
             new NoopUnitOfWork(),
             Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
             NullLogger<PricingApiService>.Instance,
-            new FixedRuntimePackageStateRepository(new RuntimePackageState
-            {
-                StateCode = RuntimePackageStateCodes.Active,
-                ActivePackageId = 88,
-                ActivePackageVersion = 6
-            }),
-            new FixedRuntimeRuleReadRepository(runtimeRule, conditions),
+            new FixedRuleConditionRepository(conditions),
+            new EmptyRuleActionRepository(),
             new ConditionEvaluatorFactory(new IRuleConditionEvaluator[]
             {
                 new ChargeSceneMatchEvaluator()
@@ -386,13 +401,222 @@ public sealed class PricingApiServiceTests
         });
 
         Assert.True(matched.IsSpecial);
-        Assert.Equal(88, matched.RuntimePackageId);
-        Assert.Equal(6, matched.RuntimePackageVersion);
-        Assert.Equal(new[] { 901L }, matched.MatchedRuntimeRuleIds);
-        Assert.Equal(new[] { 7008L }, matched.MatchedPolicyVersionIds);
+        Assert.Equal(new[] { 901L }, matched.MatchedRuleIds);
         Assert.False(notMatched.IsSpecial);
         Assert.Equal(0, notMatched.RuleCount);
-        Assert.Equal(88, notMatched.RuntimePackageId);
+    }
+
+    [Fact]
+    public async Task GetSpecialFlagsAsync_ReturnsBatchSummaryAndEffectiveContext()
+    {
+        var directRule = new RuleHeader
+        {
+            RuleId = 902,
+            RuleCode = "RULE-BATCH-SPECIAL-FLAG",
+            RuleName = "批量特殊项目规则",
+            ItemCode = "ITEM_SPECIAL",
+            Status = "PUBLISHED",
+            IsEnabled = "Y",
+            CurrentVersion = 1,
+            RollbackMode = "STOP_CHARGE",
+            EffectiveFrom = new DateTime(2026, 5, 1),
+            EffectiveTo = new DateTime(2026, 5, 31, 23, 59, 59),
+            CreatedAt = DateTime.Now,
+            UpdatedAt = DateTime.Now
+        };
+        var conditions = new[]
+        {
+            new RuleCondition
+            {
+                ConditionId = 1,
+                RuleId = 902,
+                VersionNo = 1,
+                ConditionGroup = "DEFAULT",
+                ConditionType = RuleConditionTypeCodes.ChargeScene,
+                RightValue = "OUTPATIENT",
+                IsEnabled = "Y",
+                SortNo = 10
+            },
+            new RuleCondition
+            {
+                ConditionId = 2,
+                RuleId = 902,
+                VersionNo = 1,
+                ConditionGroup = "DEFAULT",
+                ConditionType = RuleConditionTypeCodes.BodyPart,
+                RightValue = "HEAD",
+                IsEnabled = "Y",
+                SortNo = 20
+            }
+        };
+        var service = CreatePricingApiService(
+            new CapturingPricingEngine(),
+            new SpecialFlagRuleHeaderRepository(new[]
+            {
+                directRule
+            }),
+            new InMemoryChargeRequestLogRepository(),
+            new EmptyChargeDiscountDetailRepository(),
+            new EmptyChargeTraceStepRepository(),
+            new EmptyLimitOccupyRepository(),
+            new EmptyChargeReverseLogRepository(),
+            new EmptyPriceMasterRepository(),
+            new NoopUnitOfWork(),
+            Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
+            NullLogger<PricingApiService>.Instance,
+            new FixedRuleConditionRepository(conditions),
+            new EmptyRuleActionRepository(),
+            new ConditionEvaluatorFactory(new IRuleConditionEvaluator[]
+            {
+                new ChargeSceneMatchEvaluator(),
+                new BodyPartMatchEvaluator()
+            }));
+        var request = new SpecialFlagBatchRequest
+        {
+            RequestNo = "REQ-SPECIAL-FLAG-BATCH-001",
+            SourceSystem = "HIS",
+            SourceTerminal = "SWAGGER",
+            PatientId = "P001",
+            VisitId = "V001",
+            VisitType = "OUTPATIENT",
+            EncounterNo = "OP20260510001",
+            ChargeScene = "OUTPATIENT",
+            ChargeDeptCode = "998",
+            ChargeNo = "C001",
+            BusinessRequestNo = "BR-SPECIAL-FLAG-BATCH-001",
+            BusinessChargeTime = new DateTime(2026, 5, 10, 9, 30, 0),
+            OperatorId = "tester",
+            OperatorName = "测试员",
+            ExtraParams = new Dictionary<string, object?>
+            {
+                ["operationNo"] = "OP001"
+            },
+            Items = new[]
+            {
+                new SpecialFlagBatchItemRequest
+                {
+                    ItemRequestNo = "1",
+                    ChargeDetailNo = "CD001",
+                    ItemCode = "ITEM_SPECIAL",
+                    ItemName = "特殊测试项目",
+                    ItemGroupCode = "GROUP_A",
+                    InputQty = 2m,
+                    Unit = "PART",
+                    UnitPrice = 100m,
+                    BodyPartCode = "HEAD",
+                    ExtraParams = new Dictionary<string, object?>
+                    {
+                        ["rowNo"] = "1"
+                    }
+                },
+                new SpecialFlagBatchItemRequest
+                {
+                    ItemRequestNo = "2",
+                    ChargeDetailNo = "CD002",
+                    ItemCode = "ITEM_NORMAL",
+                    ItemName = "普通测试项目",
+                    ItemGroupCode = "GROUP_B",
+                    InputQty = 1m,
+                    Unit = "EACH",
+                    UnitPrice = 20m,
+                    ChargeScene = "INPATIENT",
+                    BusinessChargeTime = new DateTime(2026, 5, 10, 10, 0, 0),
+                    VisitType = "INPATIENT",
+                    BodyPartCode = "CHEST",
+                    ChargeDeptCode = "997"
+                }
+            }
+        };
+
+        var result = await service.GetSpecialFlagsAsync(request);
+
+        Assert.True(result.IsSpecial);
+        Assert.Equal(2, result.ItemCount);
+        Assert.Equal(1, result.SpecialItemCount);
+        Assert.Equal("CALL_SIMULATE", result.NextAction);
+        Assert.True(result.Blocking);
+        Assert.Contains("1 条特殊项目", result.DecisionReason);
+        Assert.Equal(new DateTime(2026, 5, 10, 10, 0, 0), result.RuleSnapshotTime);
+        Assert.Collection(
+            result.Items,
+            first =>
+            {
+                Assert.Equal("1", first.ItemRequestNo);
+                Assert.Equal("CD001", first.ChargeDetailNo);
+                Assert.Equal("ITEM_SPECIAL", first.ItemCode);
+                Assert.Equal("特殊测试项目", first.ItemName);
+                Assert.True(first.IsSpecial);
+                Assert.Equal(1, first.RuleCount);
+                Assert.Equal("STOP_CHARGE", first.RollbackMode);
+                Assert.Equal(new[] { 902L }, first.MatchedRuleIds);
+                Assert.Equal("CALL_SIMULATE", first.NextAction);
+                Assert.True(first.Blocking);
+                Assert.Contains("批量特殊项目规则", first.DecisionReason);
+                var matchedRule = Assert.Single(first.MatchedRules);
+                Assert.Equal(902L, matchedRule.RuleId);
+                Assert.Equal("RULE-BATCH-SPECIAL-FLAG", matchedRule.RuleCode);
+                Assert.Equal("批量特殊项目规则", matchedRule.RuleName);
+                Assert.Equal("STOP_CHARGE", matchedRule.RollbackMode);
+                Assert.Equal(new DateTime(2026, 5, 10, 10, 0, 0), first.RuleSnapshotTime);
+                Assert.Equal("OUTPATIENT", first.EffectiveChargeScene);
+                Assert.Equal(new DateTime(2026, 5, 10, 9, 30, 0), first.EffectiveBusinessChargeTime);
+                Assert.Equal("OUTPATIENT", first.EffectiveVisitType);
+                Assert.Equal("HEAD", first.EffectiveBodyPartCode);
+                Assert.Equal("998", first.EffectiveChargeDeptCode);
+            },
+            second =>
+            {
+                Assert.Equal("2", second.ItemRequestNo);
+                Assert.Equal("CD002", second.ChargeDetailNo);
+                Assert.Equal("ITEM_NORMAL", second.ItemCode);
+                Assert.Equal("普通测试项目", second.ItemName);
+                Assert.False(second.IsSpecial);
+                Assert.Equal(0, second.RuleCount);
+                Assert.Empty(second.MatchedRuleIds);
+                Assert.Empty(second.MatchedRules);
+                Assert.Equal("NORMAL_PRICING", second.NextAction);
+                Assert.False(second.Blocking);
+                Assert.Contains("未命中特殊计价规则", second.DecisionReason);
+                Assert.Equal(new DateTime(2026, 5, 10, 10, 0, 0), second.RuleSnapshotTime);
+                Assert.Equal("INPATIENT", second.EffectiveChargeScene);
+                Assert.Equal(new DateTime(2026, 5, 10, 10, 0, 0), second.EffectiveBusinessChargeTime);
+                Assert.Equal("INPATIENT", second.EffectiveVisitType);
+                Assert.Equal("CHEST", second.EffectiveBodyPartCode);
+                Assert.Equal("997", second.EffectiveChargeDeptCode);
+            });
+    }
+
+    [Fact]
+    public async Task GetSpecialFlagsAsync_RejectsInvalidBatchItems()
+    {
+        var service = CreateValidationService();
+
+        var emptyItems = await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.GetSpecialFlagsAsync(new SpecialFlagBatchRequest
+            {
+                Items = Array.Empty<SpecialFlagBatchItemRequest>()
+            }));
+        var tooManyItems = await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.GetSpecialFlagsAsync(new SpecialFlagBatchRequest
+            {
+                Items = Enumerable.Range(1, 51)
+                    .Select(index => new SpecialFlagBatchItemRequest { ItemCode = $"ITEM{index:000}" })
+                    .ToArray()
+            }));
+        var blankItemCode = await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.GetSpecialFlagsAsync(new SpecialFlagBatchRequest
+            {
+                Items = new[]
+                {
+                    new SpecialFlagBatchItemRequest { ItemCode = "ITEM001" },
+                    new SpecialFlagBatchItemRequest { ItemCode = " " }
+                }
+            }));
+
+        Assert.Contains("Items", emptyItems.Message);
+        Assert.Contains("50", tooManyItems.Message);
+        Assert.Contains("第 2 行", blankItemCode.Message);
+        Assert.Contains("项目编码", blankItemCode.Message);
     }
 
     [Fact]
@@ -419,6 +643,8 @@ public sealed class PricingApiServiceTests
             SourceSystem = "HIS",
             PatientId = "P001",
             VisitType = "OUTPATIENT",
+            ChargeScene = "REQUEST_SCENE",
+            ChargeDeptCode = "REQ_DEPT",
             PatientAge = 32,
             ChargeNo = "C001",
             BusinessChargeTime = new DateTime(2026, 5, 10, 9, 30, 0),
@@ -437,6 +663,9 @@ public sealed class PricingApiServiceTests
                     InputQty = 2m,
                     Unit = "PART",
                     UnitPrice = 300m,
+                    ChargeScene = "ITEM_SCENE",
+                    VisitType = "ITEM_VISIT",
+                    ChargeDeptCode = "ITEM_DEPT",
                     ExtraParams = new Dictionary<string, object?>
                     {
                         ["pregnancyNo"] = "PREG001"
@@ -463,7 +692,9 @@ public sealed class PricingApiServiceTests
                 Assert.Equal("CT001", first.ItemCode);
                 Assert.Equal("CD001", response.Items[0].ChargeDetailNo);
                 Assert.Equal("CT_GROUP", first.ItemGroupCode);
-                Assert.Equal("OUTPATIENT", first.VisitType);
+                Assert.Equal("ITEM_SCENE", first.ChargeScene);
+                Assert.Equal("ITEM_VISIT", first.VisitType);
+                Assert.Equal("ITEM_DEPT", first.ChargeDeptCode);
                 Assert.Equal(32, first.PatientAge);
                 Assert.Equal(2m, first.InputQty);
                 Assert.Equal("OP001", first.ExtraParams?["operationNo"]);
@@ -474,10 +705,67 @@ public sealed class PricingApiServiceTests
                 Assert.Equal("SKIN001", second.ItemCode);
                 Assert.Equal("CD002", response.Items[1].ChargeDetailNo);
                 Assert.Equal(18m, second.InputQty);
+                Assert.Equal("REQUEST_SCENE", second.ChargeScene);
+                Assert.Equal("OUTPATIENT", second.VisitType);
+                Assert.Equal("REQ_DEPT", second.ChargeDeptCode);
             });
         Assert.Equal(2, response.Items.Count);
         Assert.Equal(4200m, response.FinalAmount);
+        Assert.Equal("CONFIRM_BEFORE_CHARGE", response.NextAction);
+        Assert.Equal("SIMULATED", response.BusinessStatus);
+        Assert.Equal(new DateTime(2026, 5, 10, 10, 0, 0), response.RuleSnapshotTime);
         Assert.Null(requestLogRepository.Inserted[0].ItemCode);
+    }
+
+    [Fact]
+    public async Task SimulateAsync_RejectsDuplicateBusinessRequestNo()
+    {
+        var requestLogRepository = new InMemoryChargeRequestLogRepository();
+        var service = CreatePricingApiService(
+            new CapturingPricingEngine(),
+            new EmptyRuleHeaderRepository(),
+            requestLogRepository,
+            new EmptyChargeDiscountDetailRepository(),
+            new EmptyChargeTraceStepRepository(),
+            new EmptyLimitOccupyRepository(),
+            new EmptyChargeReverseLogRepository(),
+            new EmptyPriceMasterRepository(),
+            new NoopUnitOfWork(),
+            Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
+            NullLogger<PricingApiService>.Instance);
+        var request = CreateConfirmRequest("REQ-SIM-DUPLICATE", "BR-SIM-DUPLICATE");
+
+        await service.SimulateAsync(request);
+        var ex = await Assert.ThrowsAsync<BizException>(() => service.SimulateAsync(request));
+
+        Assert.Equal(BizErrorCode.BusinessRequestNoDuplicated, ex.Code);
+        Assert.Equal(409, ex.HttpStatusCode);
+        Assert.Contains("业务请求号重复", ex.Message);
+        Assert.Single(requestLogRepository.Inserted);
+    }
+
+    [Fact]
+    public async Task SimulateAsync_MapsUniqueConstraintDuplicateBusinessRequestNoToConflict()
+    {
+        var service = CreatePricingApiService(
+            new CapturingPricingEngine(),
+            new EmptyRuleHeaderRepository(),
+            new DuplicateOnInsertChargeRequestLogRepository(),
+            new EmptyChargeDiscountDetailRepository(),
+            new EmptyChargeTraceStepRepository(),
+            new EmptyLimitOccupyRepository(),
+            new EmptyChargeReverseLogRepository(),
+            new EmptyPriceMasterRepository(),
+            new NoopUnitOfWork(),
+            Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
+            NullLogger<PricingApiService>.Instance);
+
+        var ex = await Assert.ThrowsAsync<BizException>(() =>
+            service.SimulateAsync(CreateConfirmRequest("REQ-SIM-DUPLICATE-DB", "BR-SIM-DUPLICATE-DB")));
+
+        Assert.Equal(BizErrorCode.BusinessRequestNoDuplicated, ex.Code);
+        Assert.Equal(409, ex.HttpStatusCode);
+        Assert.Contains("业务请求号重复", ex.Message);
     }
 
     [Fact]
@@ -589,6 +877,9 @@ public sealed class PricingApiServiceTests
         Assert.Equal(4m, replacementDetail.FinalQty);
         Assert.Equal(20m, replacementDetail.FinalAmt);
         Assert.Equal(mainDetail.ResultGroupNo, replacementDetail.ResultGroupNo);
+        Assert.Equal("COMMIT_OR_CANCEL", response.NextAction);
+        Assert.Equal("CONFIRM_PENDING", response.BusinessStatus);
+        Assert.Equal(new DateTime(2026, 5, 10, 10, 0, 0), response.RuleSnapshotTime);
     }
 
     [Fact]
@@ -787,14 +1078,14 @@ public sealed class PricingApiServiceTests
     }
 
     [Fact]
-    public async Task ConfirmAsync_PersistsRuntimePackageAndRuleTraceMetadata()
+    public async Task ConfirmAsync_DoesNotPersistRuntimePackageMetadata()
     {
         var requestRepository = new InMemoryChargeRequestLogRepository();
         var discountRepository = new CapturingChargeDiscountDetailRepository();
         var traceRepository = new CapturingChargeTraceStepRepository();
         var limitRepository = new CapturingLimitOccupyRepository();
         var service = CreatePricingApiService(
-            new RuntimeAwareTracePricingEngine(),
+            new RuleTracePricingEngine(),
             new EmptyRuleHeaderRepository(),
             requestRepository,
             discountRepository,
@@ -804,26 +1095,7 @@ public sealed class PricingApiServiceTests
             new EmptyPriceMasterRepository(),
             new NoopUnitOfWork(),
             Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
-            NullLogger<PricingApiService>.Instance,
-            new FixedRuntimePackageStateRepository(new RuntimePackageState
-            {
-                StateCode = RuntimePackageStateCodes.Active,
-                ActivePackageId = 99,
-                ActivePackageVersion = 3
-            }),
-            new FixedRuntimeRuleReadRepository(new RuntimeRule
-            {
-                RuntimeRuleId = 501,
-                PackageId = 99,
-                SourcePolicyVersionId = 7001,
-                SourceTemplateVersionId = 8001,
-                TargetItemCode = "ITEM_TRACE",
-                CapabilityFamily = "FORMULA_PRICING",
-                MergeMode = "SINGLE_WINNER",
-                ScopeLevel = "SCENE",
-                PriorityKey = "001|001|998|005|0010|000001|000000000001",
-                MatchKey = "FORMULA_PRICING|ITEM:ITEM_TRACE|SCENE"
-            }));
+            NullLogger<PricingApiService>.Instance);
 
         var response = await service.ConfirmAsync(new PricingCalculateRequest
         {
@@ -846,32 +1118,152 @@ public sealed class PricingApiServiceTests
             }
         });
 
-        Assert.Equal(99, response.RuntimePackageId);
-        Assert.Equal(3, response.RuntimePackageVersion);
-        Assert.Equal(new[] { 501L }, response.MatchedRuntimeRuleIds);
-        Assert.Equal(new[] { 7001L }, response.MatchedPolicyVersionIds);
-        Assert.Equal(new[] { 8001L }, response.MatchedTemplateVersionIds);
+        Assert.Equal(new[] { 501L }, response.MatchedRuleIds);
         Assert.Equal(10m, response.TotalOriginalAmount);
         Assert.Equal(response.FinalAmount, response.TotalFinalAmount);
         Assert.Equal(response.DiscountAmount, response.TotalDiscountAmount);
-        Assert.Equal(99, response.Items[0].RuntimePackageId);
-        Assert.Equal(new[] { 501L }, response.Items[0].MatchedRuntimeRuleIds);
-        Assert.Equal(501, response.Items[0].TraceSteps[0].RuntimeRuleId);
-        Assert.Equal(7001, response.Items[0].TraceSteps[0].SourcePolicyVersionId);
+        Assert.Equal(new[] { 501L }, response.Items[0].MatchedRuleIds);
+        Assert.Equal(501, response.Items[0].TraceSteps[0].RuleId);
 
         var requestLog = Assert.Single(requestRepository.Inserted);
-        Assert.Equal(99, requestLog.RuntimePackageId);
-        Assert.Equal(3, requestLog.RuntimePackageVersion);
-        var traceStep = Assert.Single(traceRepository.Inserted);
-        Assert.Equal(99, traceStep.RuntimePackageId);
-        Assert.Equal(501, traceStep.RuntimeRuleId);
-        Assert.Equal(7001, traceStep.SourcePolicyVersionId);
-        Assert.Equal(8001, traceStep.SourceTemplateVersionId);
+        Assert.Null(requestLog.RuntimePackageId);
+        Assert.Null(requestLog.RuntimePackageVersion);
+        Assert.Equal(2, traceRepository.Inserted.Count);
+        Assert.All(traceRepository.Inserted, traceStep =>
+        {
+            Assert.Null(traceStep.RuntimePackageId);
+            Assert.Equal(501, traceStep.RuleId);
+            Assert.Null(traceStep.RuntimeRuleId);
+            Assert.Null(traceStep.SourcePolicyVersionId);
+            Assert.Null(traceStep.SourceTemplateVersionId);
+        });
         var discountDetail = Assert.Single(discountRepository.Inserted);
-        Assert.Equal(99, discountDetail.RuntimePackageId);
-        Assert.Equal(501, discountDetail.RuntimeRuleId);
-        Assert.Equal(7001, discountDetail.SourcePolicyVersionId);
-        Assert.Equal(8001, discountDetail.SourceTemplateVersionId);
+        Assert.Null(discountDetail.RuntimePackageId);
+        Assert.Equal(501, discountDetail.RuleId);
+        Assert.Null(discountDetail.RuntimeRuleId);
+        Assert.Null(discountDetail.SourcePolicyVersionId);
+        Assert.Null(discountDetail.SourceTemplateVersionId);
+    }
+
+    [Fact]
+    public async Task SimulateAsync_ReturnsReadableTraceNodesOnItemOnly()
+    {
+        var service = CreatePricingApiService(
+            new RuleTracePricingEngine(),
+            new EmptyRuleHeaderRepository(),
+            new InMemoryChargeRequestLogRepository(),
+            new EmptyChargeDiscountDetailRepository(),
+            new EmptyChargeTraceStepRepository(),
+            new EmptyLimitOccupyRepository(),
+            new EmptyChargeReverseLogRepository(),
+            new EmptyPriceMasterRepository(),
+            new NoopUnitOfWork(),
+            Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
+            NullLogger<PricingApiService>.Instance);
+
+        var response = await service.SimulateAsync(new PricingCalculateRequest
+        {
+            RequestNo = "REQ-TRACE-NODE",
+            SourceSystem = "HIS",
+            PatientId = "P001",
+            ChargeNo = "C-TRACE-NODE",
+            BusinessChargeTime = new DateTime(2026, 5, 10, 9, 30, 0),
+            Items = new[]
+            {
+                new PricingCalculateItemRequest
+                {
+                    ChargeDetailNo = "CD-TRACE-NODE",
+                    ItemCode = "ITEM_TRACE",
+                    ItemName = "追溯项目",
+                    InputQty = 2m,
+                    UnitPrice = 100m
+                }
+            }
+        });
+
+        Assert.Null(response.TraceSteps);
+
+        var item = Assert.Single(response.Items);
+        Assert.Collection(
+            item.TraceSteps,
+            match =>
+            {
+                Assert.False(string.IsNullOrWhiteSpace(match.NodeKey));
+                Assert.Equal("规则匹配", match.NodeTitle);
+                Assert.Equal("RULE-TIME-WINDOW", match.RuleCode);
+                Assert.Equal("测试时间窗上限规则", match.RuleName);
+                Assert.Contains("测试时间窗上限规则", match.NodeDesc);
+                Assert.Equal("MATCH_RESULT", match.ValueType);
+                Assert.Equal("输入数量", match.InputName);
+                Assert.Equal("动作数量", match.OutputName);
+            },
+            limit =>
+            {
+                Assert.False(string.IsNullOrWhiteSpace(limit.NodeKey));
+                Assert.Equal("限额处理", limit.NodeTitle);
+                Assert.Equal("RULE-TIME-WINDOW", limit.RuleCode);
+                Assert.Equal("测试时间窗上限规则", limit.RuleName);
+                Assert.Equal("APPLY_TIME_WINDOW_LIMIT", limit.ActionCode);
+                Assert.Equal("时间窗口限额", limit.ActionName);
+                Assert.Contains("测试时间窗上限规则", limit.NodeDesc);
+                Assert.Contains("时间窗口限额", limit.NodeDesc);
+                Assert.Equal("AMOUNT", limit.ValueType);
+                Assert.Equal("元", limit.ValueUnit);
+                Assert.Equal("处理前金额", limit.InputName);
+                Assert.Equal("处理后金额", limit.OutputName);
+            });
+
+        var json = JsonSerializer.Serialize(response, ApiJsonSerializerOptions.Create());
+        using var document = JsonDocument.Parse(json);
+        Assert.False(document.RootElement.TryGetProperty("trace_steps", out _));
+        Assert.True(document.RootElement.GetProperty("items")[0].TryGetProperty("trace_steps", out var itemTraceSteps));
+        Assert.True(itemTraceSteps[0].TryGetProperty("node_title", out _));
+    }
+
+    [Fact]
+    public async Task SimulateAsync_DoesNotPersistRuntimePackageMetadata_WhenEngineStateChangesDuringExecution()
+    {
+        var requestRepository = new InMemoryChargeRequestLogRepository();
+        var engine = new RuleStateChangingPricingEngine();
+        var service = CreatePricingApiService(
+            engine,
+            new EmptyRuleHeaderRepository(),
+            requestRepository,
+            new EmptyChargeDiscountDetailRepository(),
+            new EmptyChargeTraceStepRepository(),
+            new EmptyLimitOccupyRepository(),
+            new EmptyChargeReverseLogRepository(),
+            new EmptyPriceMasterRepository(),
+            new NoopUnitOfWork(),
+            Options.Create(new PricingOptions { EnableAuthorityPriceCheck = false }),
+            NullLogger<PricingApiService>.Instance);
+
+        var response = await service.SimulateAsync(new PricingCalculateRequest
+        {
+            RequestNo = "REQ-RUNTIME-SWITCH",
+            SourceSystem = "HIS",
+            PatientId = "P001",
+            ChargeNo = "C-RUNTIME-SWITCH",
+            BusinessChargeTime = new DateTime(2026, 5, 10, 9, 30, 0),
+            Items = new[]
+            {
+                new PricingCalculateItemRequest
+                {
+                    ChargeDetailNo = "CD-RULE-SWITCH",
+                    ItemCode = "ITEM_SWITCH",
+                    ItemName = "规则切换项目",
+                    InputQty = 1m,
+                    UnitPrice = 10m
+                }
+            }
+        });
+
+        Assert.Equal(new[] { 601L }, response.MatchedRuleIds);
+        Assert.True(engine.WasSwitched);
+
+        var requestLog = Assert.Single(requestRepository.Inserted);
+        Assert.Null(requestLog.RuntimePackageId);
+        Assert.Null(requestLog.RuntimePackageVersion);
     }
 
     [Fact]
@@ -998,7 +1390,7 @@ public sealed class PricingApiServiceTests
         var limitRepository = new CommitLimitOccupyRepository();
         var service = CreateCommitService(requestRepository, discountRepository, limitRepository);
 
-        await service.CommitAsync(new PricingCommitRequest
+        var commitResponse = await service.CommitAsync(new PricingCommitRequest
         {
             RequestId = 900,
             ChargeNo = "C900-HIS",
@@ -1021,6 +1413,50 @@ public sealed class PricingApiServiceTests
         Assert.NotNull(limitRepository.LastStatusUpdate);
         Assert.Equal(900L, limitRepository.LastStatusUpdate.Value.RequestId);
         Assert.Equal("CONFIRMED", limitRepository.LastStatusUpdate.Value.Status);
+        Assert.Equal(900L, commitResponse.RequestId);
+        Assert.Equal("CONFIRMED", commitResponse.BusinessStatus);
+        Assert.Equal("C900-HIS", commitResponse.ChargeNo);
+        Assert.Equal("NO_FURTHER_ACTION", commitResponse.NextAction);
+        Assert.NotNull(commitResponse.CommittedAt);
+    }
+
+    [Fact]
+    public async Task CancelAsync_ReturnsCancelledResponse()
+    {
+        var requestRepository = new CommitRequestLogRepository(new ChargeRequestLog
+        {
+            RequestId = 910,
+            BusinessStatus = "CONFIRM_PENDING",
+            SourceSystem = "HIS",
+            RequestAt = DateTime.Now
+        });
+        var discountRepository = new CommitDiscountDetailRepository(new[]
+        {
+            new ChargeDiscountDetail
+            {
+                RequestId = 910,
+                ChargeDetailNo = "CD910",
+                ItemCode = "ITEM910",
+                FinalQty = 1m,
+                FinalAmt = 10m,
+                Status = "PENDING"
+            }
+        });
+        var limitRepository = new CommitLimitOccupyRepository();
+        var service = CreateCommitService(requestRepository, discountRepository, limitRepository);
+
+        var cancelResponse = await service.CancelAsync(new PricingCancelRequest
+        {
+            RequestId = 910,
+            CancelNo = "CN910",
+            CancelReason = "HIS 落账失败"
+        });
+
+        Assert.Equal("CANCELLED", requestRepository.Log.BusinessStatus);
+        Assert.Equal("CANCELLED", Assert.Single(discountRepository.Details).Status);
+        Assert.Equal(910L, cancelResponse.RequestId);
+        Assert.Equal("CANCELLED", cancelResponse.BusinessStatus);
+        Assert.Equal("NO_FURTHER_ACTION", cancelResponse.NextAction);
     }
 
     [Fact]
@@ -1293,8 +1729,8 @@ public sealed class PricingApiServiceTests
         IUnitOfWork unitOfWork,
         IOptions<PricingOptions> options,
         ILogger<PricingApiService> logger,
-        IRuntimePackageStateRepository? runtimePackageStateRepository = null,
-        IRuntimeRuleReadRepository? runtimeRuleReadRepository = null,
+        IRuleConditionRepository? ruleConditionRepository = null,
+        IRuleActionRepository? ruleActionRepository = null,
         ConditionEvaluatorFactory? conditionEvaluatorFactory = null)
     {
         var authorityPriceChecker = new AuthorityPriceChecker(
@@ -1305,9 +1741,6 @@ public sealed class PricingApiServiceTests
         var requestLogWriter = new PricingRequestLogWriter(requestLogRepository, clock);
         var traceStepWriter = new PricingTraceStepWriter(traceStepRepository, clock);
         var discountDetailWriter = new PricingDiscountDetailWriter(discountRepository, clock);
-        var runtimeTraceResolver = new RuntimePackageTraceResolver(
-            runtimePackageStateRepository ?? new EmptyRuntimePackageStateRepository(),
-            runtimeRuleReadRepository ?? new EmptyRuntimeRuleReadRepository());
         var limitOccupyWriter = new PricingLimitOccupyWriter(
             limitRepository,
             options,
@@ -1331,18 +1764,25 @@ public sealed class PricingApiServiceTests
             : new RuleConditionGroupMatcher(
                 conditionEvaluatorFactory,
                 NullLogger<RuleConditionGroupMatcher>.Instance);
+        var effectiveRuleSnapshotLoader = ruleConditionRepository is null
+            ? null
+            : new EffectiveRuleSnapshotLoader(new RuleMatchRepositories(
+                headerRepository,
+                ruleConditionRepository,
+                ruleActionRepository ?? new EmptyRuleActionRepository(),
+                new EmptyDictRepository()));
         var specialFlagResolver = new PricingSpecialFlagResolver(
             headerRepository,
             clock,
-            runtimeTraceResolver,
-            conditionMatcher);
+            conditionMatcher,
+            effectiveRuleSnapshotLoader);
 
         return new PricingApiService(
             new PricingSimulateWorkflow(
                 engine,
+                requestLogRepository,
                 authorityPriceChecker,
                 simulationPersistenceService,
-                runtimeTraceResolver,
                 clock,
                 NullLogger<PricingSimulateWorkflow>.Instance),
             new PricingConfirmWorkflow(
@@ -1350,7 +1790,6 @@ public sealed class PricingApiServiceTests
                 requestLogRepository,
                 authorityPriceChecker,
                 confirmationPersistenceService,
-                runtimeTraceResolver,
                 limitRepository,
                 unitOfWork,
                 options,
@@ -1398,95 +1837,52 @@ public sealed class PricingApiServiceTests
         }
     }
 
-    private sealed class EmptyRuntimePackageStateRepository : IRuntimePackageStateRepository
+    private sealed class FixedRuleConditionRepository : IRuleConditionRepository
     {
-        public Task<RuntimePackageState?> GetActiveAsync() => Task.FromResult<RuntimePackageState?>(null);
-        public Task<RuntimePackageState?> GetActiveForUpdateAsync() => Task.FromResult<RuntimePackageState?>(null);
-        public Task UpsertAsync(RuntimePackageState entity) => Task.CompletedTask;
-    }
+        private readonly IReadOnlyList<RuleCondition> _conditions;
 
-    private sealed class EmptyRuntimeRuleReadRepository : IRuntimeRuleReadRepository
-    {
-        public Task<IReadOnlyList<RuntimeRule>> GetRulesByItemCodeAsync(long packageId, string itemCode) =>
-            Task.FromResult((IReadOnlyList<RuntimeRule>)Array.Empty<RuntimeRule>());
-
-        public Task<IReadOnlyList<RuntimeRule>> GetRulesByIdsAsync(IReadOnlyCollection<long> runtimeRuleIds) =>
-            Task.FromResult((IReadOnlyList<RuntimeRule>)Array.Empty<RuntimeRule>());
-
-        public Task<IReadOnlyDictionary<long, IReadOnlyList<RuntimeCondition>>> GetConditionsByRuleIdsAsync(IReadOnlyCollection<long> runtimeRuleIds) =>
-            Task.FromResult((IReadOnlyDictionary<long, IReadOnlyList<RuntimeCondition>>)new Dictionary<long, IReadOnlyList<RuntimeCondition>>());
-
-        public Task<IReadOnlyDictionary<long, IReadOnlyList<RuntimeAction>>> GetActionsByRuleIdsAsync(IReadOnlyCollection<long> runtimeRuleIds) =>
-            Task.FromResult((IReadOnlyDictionary<long, IReadOnlyList<RuntimeAction>>)new Dictionary<long, IReadOnlyList<RuntimeAction>>());
-    }
-
-    private sealed class FixedRuntimePackageStateRepository : IRuntimePackageStateRepository
-    {
-        private readonly RuntimePackageState _state;
-
-        public FixedRuntimePackageStateRepository(RuntimePackageState state)
+        public FixedRuleConditionRepository(IReadOnlyList<RuleCondition> conditions)
         {
-            _state = state;
+            _conditions = conditions;
         }
 
-        public Task<RuntimePackageState?> GetActiveAsync() => Task.FromResult<RuntimePackageState?>(_state);
-        public Task<RuntimePackageState?> GetActiveForUpdateAsync() => Task.FromResult<RuntimePackageState?>(_state);
-        public Task UpsertAsync(RuntimePackageState entity) => Task.CompletedTask;
-    }
-
-    private sealed class FixedRuntimeRuleReadRepository : IRuntimeRuleReadRepository
-    {
-        private readonly IReadOnlyList<RuntimeRule> _rules;
-        private readonly IReadOnlyDictionary<long, IReadOnlyList<RuntimeCondition>> _conditionsByRuleId;
-        private readonly IReadOnlyDictionary<long, IReadOnlyList<RuntimeAction>> _actionsByRuleId;
-
-        public FixedRuntimeRuleReadRepository(
-            RuntimeRule rule,
-            IReadOnlyList<RuntimeCondition>? conditions = null,
-            IReadOnlyList<RuntimeAction>? actions = null)
-            : this(new[] { rule }, conditions, actions)
-        {
-        }
-
-        public FixedRuntimeRuleReadRepository(
-            IReadOnlyList<RuntimeRule> rules,
-            IReadOnlyList<RuntimeCondition>? conditions = null,
-            IReadOnlyList<RuntimeAction>? actions = null)
-        {
-            _rules = rules;
-            _conditionsByRuleId = (conditions ?? Array.Empty<RuntimeCondition>())
-                .GroupBy(condition => condition.RuntimeRuleId)
-                .ToDictionary(
-                    group => group.Key,
-                    group => (IReadOnlyList<RuntimeCondition>)group.ToList());
-            _actionsByRuleId = (actions ?? Array.Empty<RuntimeAction>())
-                .GroupBy(action => action.RuntimeRuleId)
-                .ToDictionary(
-                    group => group.Key,
-                    group => (IReadOnlyList<RuntimeAction>)group.ToList());
-        }
-
-        public Task<IReadOnlyList<RuntimeRule>> GetRulesByItemCodeAsync(long packageId, string itemCode) =>
-            Task.FromResult((IReadOnlyList<RuntimeRule>)_rules
-                .Where(rule =>
-                    rule.PackageId == packageId &&
-                    string.Equals(rule.TargetItemCode, itemCode, StringComparison.OrdinalIgnoreCase))
+        public Task<IReadOnlyList<RuleCondition>> GetByRuleAndVersionAsync(long ruleId, int versionNo) =>
+            Task.FromResult((IReadOnlyList<RuleCondition>)_conditions
+                .Where(condition => condition.RuleId == ruleId && condition.VersionNo == versionNo)
                 .ToList());
 
-        public Task<IReadOnlyList<RuntimeRule>> GetRulesByIdsAsync(IReadOnlyCollection<long> runtimeRuleIds) =>
-            Task.FromResult((IReadOnlyList<RuntimeRule>)_rules
-                .Where(rule => runtimeRuleIds.Contains(rule.RuntimeRuleId))
-                .ToList());
+        public Task InsertBatchAsync(IReadOnlyList<RuleCondition> entities) => Task.CompletedTask;
 
-        public Task<IReadOnlyDictionary<long, IReadOnlyList<RuntimeCondition>>> GetConditionsByRuleIdsAsync(IReadOnlyCollection<long> runtimeRuleIds) =>
-            Task.FromResult((IReadOnlyDictionary<long, IReadOnlyList<RuntimeCondition>>)_conditionsByRuleId
-                .Where(pair => runtimeRuleIds.Contains(pair.Key))
-                .ToDictionary(pair => pair.Key, pair => pair.Value));
+        public Task DeleteByRuleAndVersionAsync(long ruleId, int versionNo) => Task.CompletedTask;
+    }
 
-        public Task<IReadOnlyDictionary<long, IReadOnlyList<RuntimeAction>>> GetActionsByRuleIdsAsync(IReadOnlyCollection<long> runtimeRuleIds) =>
-            Task.FromResult((IReadOnlyDictionary<long, IReadOnlyList<RuntimeAction>>)_actionsByRuleId
-                .Where(pair => runtimeRuleIds.Contains(pair.Key))
-                .ToDictionary(pair => pair.Key, pair => pair.Value));
+    private sealed class EmptyRuleActionRepository : IRuleActionRepository
+    {
+        public Task<IReadOnlyList<RuleAction>> GetByRuleAndVersionAsync(long ruleId, int versionNo) =>
+            Task.FromResult((IReadOnlyList<RuleAction>)Array.Empty<RuleAction>());
+
+        public Task InsertBatchAsync(IReadOnlyList<RuleAction> entities) => Task.CompletedTask;
+
+        public Task DeleteByRuleAndVersionAsync(long ruleId, int versionNo) => Task.CompletedTask;
+    }
+
+    private sealed class EmptyDictRepository : IDictRepository
+    {
+        public Task<Dict?> GetByIdAsync(long dictId) => Task.FromResult<Dict?>(null);
+
+        public Task<IReadOnlyList<Dict>> GetByTypeAsync(string dictType) =>
+            Task.FromResult((IReadOnlyList<Dict>)Array.Empty<Dict>());
+
+        public Task<IReadOnlyList<string>> GetAllTypesAsync() =>
+            Task.FromResult((IReadOnlyList<string>)Array.Empty<string>());
+
+        public Task<long> InsertAsync(Dict entity) => Task.FromResult(0L);
+
+        public Task<bool> UpdateAsync(Dict entity) => Task.FromResult(false);
+
+        public Task<bool> SetEnabledAsync(long dictId, string isEnabled) => Task.FromResult(false);
+
+        public Task<bool> ExistsAsync(string dictType, string dictCode) => Task.FromResult(false);
     }
 
     private static PricingCalculateRequest CreateValidCalculateRequest(
@@ -1729,7 +2125,7 @@ public sealed class PricingApiServiceTests
         }
     }
 
-    private sealed class RuntimeAwareTracePricingEngine : IPricingEngine
+    private sealed class RuleTracePricingEngine : IPricingEngine
     {
         public Task<PricingResult> CalculateAsync(PricingContext context)
         {
@@ -1748,13 +2144,59 @@ public sealed class PricingApiServiceTests
                     {
                         StepNo = 1,
                         StepType = "MATCH",
-                        StepDesc = "命中运行时规则",
+                        StepDesc = "命中规则",
                         InputValue = context.InputQty,
                         OutputValue = context.InputQty,
                         RuntimeRuleId = 501
+                    },
+                    new TraceStep
+                    {
+                        StepNo = 2,
+                        StepType = "LIMIT",
+                        StepDesc = "执行时间窗口限额",
+                        InputValue = context.InputQty * context.UnitPrice,
+                        OutputValue = context.UnitPrice,
+                        RuntimeRuleId = 501,
+                        ActionCode = "APPLY_TIME_WINDOW_LIMIT"
                     }
                 },
-                MatchedRuleIds = new[] { 501L }
+                MatchedRuleIds = new[] { 501L },
+                MatchedRuleInfos = new[]
+                {
+                    new PricingRuleTraceInfo
+                    {
+                        RuleId = 501,
+                        RuleCode = "RULE-TIME-WINDOW",
+                        RuleName = "测试时间窗上限规则"
+                    }
+                }
+            });
+        }
+    }
+
+    private sealed class RuleStateChangingPricingEngine : IPricingEngine
+    {
+        private bool _switched;
+
+        public bool WasSwitched => _switched;
+
+        public Task<PricingResult> CalculateAsync(PricingContext context)
+        {
+            if (!_switched)
+            {
+                _switched = true;
+            }
+
+            return Task.FromResult(new PricingResult
+            {
+                IsSpecialItem = true,
+                InputQty = context.InputQty,
+                ConvertedQty = context.InputQty,
+                FinalQty = context.InputQty,
+                UnitPrice = context.UnitPrice,
+                FinalAmount = context.InputQty * context.UnitPrice,
+                DiscountAmount = 0m,
+                MatchedRuleIds = new[] { 601L }
             });
         }
     }
@@ -1795,6 +2237,42 @@ public sealed class PricingApiServiceTests
 
             return Task.CompletedTask;
         }
+
+        public Task<(IReadOnlyList<ChargeRequestLog> Items, int Total)> GetPagedAsync(
+            string? patientId,
+            string? itemCode,
+            string? chargeNo,
+            DateTime? startTime,
+            DateTime? endTime,
+            int pageIndex,
+            int pageSize) =>
+            Task.FromResult(((IReadOnlyList<ChargeRequestLog>)Array.Empty<ChargeRequestLog>(), 0));
+
+        public Task<IReadOnlyList<ChargeRequestLog>> GetPendingExpiredAsync(DateTime expireBefore) =>
+            Task.FromResult((IReadOnlyList<ChargeRequestLog>)Array.Empty<ChargeRequestLog>());
+    }
+
+    private sealed class DuplicateOnInsertChargeRequestLogRepository : IChargeRequestLogRepository
+    {
+        public Task<ChargeRequestLog?> GetByIdAsync(long requestId) =>
+            Task.FromResult<ChargeRequestLog?>(null);
+
+        public Task<ChargeRequestLog?> GetByBusinessKeyAsync(
+            string sourceSystem,
+            string businessRequestNo,
+            string callType) =>
+            Task.FromResult<ChargeRequestLog?>(null);
+
+        public Task<ChargeRequestLog?> GetByFingerprintAsync(string fingerprint) =>
+            Task.FromResult<ChargeRequestLog?>(null);
+
+        public Task<long> InsertAsync(ChargeRequestLog entity)
+        {
+            throw new InvalidOperationException(
+                "ORA-00001: unique constraint (PRICING.UK_PR_CRL_BIZ) violated");
+        }
+
+        public Task UpdateAsync(ChargeRequestLog entity) => Task.CompletedTask;
 
         public Task<(IReadOnlyList<ChargeRequestLog> Items, int Total)> GetPagedAsync(
             string? patientId,

@@ -4,7 +4,6 @@ using Pricing.RuleCenter.Core.Aggregates.Quota;
 using Pricing.RuleCenter.Core.Aggregates.Catalog;
 using Pricing.RuleCenter.Core.Aggregates.Templates;
 using Pricing.RuleCenter.Core.Aggregates.Policies;
-using Pricing.RuleCenter.Core.Aggregates.Runtime;
 using Pricing.RuleCenter.Core.Models;
 using SqlSugar;
 
@@ -53,13 +52,7 @@ public static class EntityTypeConfigs
             [typeof(PolicyBinding)] = nameof(PolicyBinding.PolicyBindingId),
             [typeof(PolicyScope)] = nameof(PolicyScope.PolicyScopeId),
             [typeof(PolicyParam)] = nameof(PolicyParam.PolicyParamId),
-            [typeof(PolicyReview)] = nameof(PolicyReview.ReviewId),
-            [typeof(RuntimePackage)] = nameof(RuntimePackage.PackageId),
-            [typeof(RuntimePackagePolicy)] = nameof(RuntimePackagePolicy.PackagePolicyId),
-            [typeof(RuntimeRule)] = nameof(RuntimeRule.RuntimeRuleId),
-            [typeof(RuntimeCondition)] = nameof(RuntimeCondition.RuntimeConditionId),
-            [typeof(RuntimeAction)] = nameof(RuntimeAction.RuntimeActionId),
-            [typeof(RuntimePackageState)] = nameof(RuntimePackageState.StateCode)
+            [typeof(PolicyReview)] = nameof(PolicyReview.ReviewId)
         };
 
     /// <summary>
@@ -527,89 +520,6 @@ public static class EntityTypeConfigs
         db.MappingColumns.Add(new MappingColumn { EntityName = nameof(PolicyReview), PropertyName = nameof(PolicyReview.SourceChecksum), DbColumnName = "SOURCE_CHECKSUM" });
     }
 
-    public static void ConfigureRuntimePackage(SqlSugarClient db)
-    {
-        db.MappingTables.Add(typeof(RuntimePackage).Name, "PR_RUNTIME_PACKAGE");
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackage), PropertyName = nameof(RuntimePackage.PackageId), DbColumnName = "PACKAGE_ID" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackage), PropertyName = nameof(RuntimePackage.PackageVersion), DbColumnName = "PACKAGE_VERSION" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackage), PropertyName = nameof(RuntimePackage.PackageStatus), DbColumnName = "PACKAGE_STATUS" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackage), PropertyName = nameof(RuntimePackage.BuildScope), DbColumnName = "BUILD_SCOPE" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackage), PropertyName = nameof(RuntimePackage.SourceChecksum), DbColumnName = "SOURCE_CHECKSUM" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackage), PropertyName = nameof(RuntimePackage.BuiltBy), DbColumnName = "BUILT_BY" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackage), PropertyName = nameof(RuntimePackage.BuiltAt), DbColumnName = "BUILT_AT" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackage), PropertyName = nameof(RuntimePackage.ActivatedBy), DbColumnName = "ACTIVATED_BY" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackage), PropertyName = nameof(RuntimePackage.ActivatedAt), DbColumnName = "ACTIVATED_AT" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackage), PropertyName = nameof(RuntimePackage.RolledBackFromPackageId), DbColumnName = "ROLLED_BACK_FROM_PACKAGE_ID" });
-    }
-
-    public static void ConfigureRuntimePackagePolicy(SqlSugarClient db)
-    {
-        db.MappingTables.Add(typeof(RuntimePackagePolicy).Name, "PR_RUNTIME_PACKAGE_POLICY");
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackagePolicy), PropertyName = nameof(RuntimePackagePolicy.PackagePolicyId), DbColumnName = "PACKAGE_POLICY_ID" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackagePolicy), PropertyName = nameof(RuntimePackagePolicy.PackageId), DbColumnName = "PACKAGE_ID" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackagePolicy), PropertyName = nameof(RuntimePackagePolicy.PolicyVersionId), DbColumnName = "POLICY_VERSION_ID" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackagePolicy), PropertyName = nameof(RuntimePackagePolicy.PolicyCode), DbColumnName = "POLICY_CODE" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackagePolicy), PropertyName = nameof(RuntimePackagePolicy.TemplateVersionId), DbColumnName = "TEMPLATE_VERSION_ID" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackagePolicy), PropertyName = nameof(RuntimePackagePolicy.CapabilityFamily), DbColumnName = "CAPABILITY_FAMILY" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackagePolicy), PropertyName = nameof(RuntimePackagePolicy.PriorityKey), DbColumnName = "PRIORITY_KEY" });
-    }
-
-    public static void ConfigureRuntimeRule(SqlSugarClient db)
-    {
-        db.MappingTables.Add(typeof(RuntimeRule).Name, "PR_RUNTIME_RULE");
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeRule), PropertyName = nameof(RuntimeRule.RuntimeRuleId), DbColumnName = "RUNTIME_RULE_ID" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeRule), PropertyName = nameof(RuntimeRule.PackageId), DbColumnName = "PACKAGE_ID" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeRule), PropertyName = nameof(RuntimeRule.SourceTemplateVersionId), DbColumnName = "SOURCE_TEMPLATE_VERSION_ID" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeRule), PropertyName = nameof(RuntimeRule.SourcePolicyVersionId), DbColumnName = "SOURCE_POLICY_VERSION_ID" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeRule), PropertyName = nameof(RuntimeRule.CapabilityFamily), DbColumnName = "CAPABILITY_FAMILY" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeRule), PropertyName = nameof(RuntimeRule.MergeMode), DbColumnName = "MERGE_MODE" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeRule), PropertyName = nameof(RuntimeRule.TargetItemCode), DbColumnName = "TARGET_ITEM_CODE" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeRule), PropertyName = nameof(RuntimeRule.TargetGroupCode), DbColumnName = "TARGET_GROUP_CODE" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeRule), PropertyName = nameof(RuntimeRule.ScopeLevel), DbColumnName = "SCOPE_LEVEL" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeRule), PropertyName = nameof(RuntimeRule.PriorityKey), DbColumnName = "PRIORITY_KEY" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeRule), PropertyName = nameof(RuntimeRule.EffectiveFrom), DbColumnName = "EFFECTIVE_FROM" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeRule), PropertyName = nameof(RuntimeRule.EffectiveTo), DbColumnName = "EFFECTIVE_TO" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeRule), PropertyName = nameof(RuntimeRule.MatchKey), DbColumnName = "MATCH_KEY" });
-    }
-
-    public static void ConfigureRuntimeCondition(SqlSugarClient db)
-    {
-        db.MappingTables.Add(typeof(RuntimeCondition).Name, "PR_RUNTIME_CONDITION");
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeCondition), PropertyName = nameof(RuntimeCondition.RuntimeConditionId), DbColumnName = "RUNTIME_CONDITION_ID" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeCondition), PropertyName = nameof(RuntimeCondition.RuntimeRuleId), DbColumnName = "RUNTIME_RULE_ID" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeCondition), PropertyName = nameof(RuntimeCondition.ConditionGroup), DbColumnName = "CONDITION_GROUP" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeCondition), PropertyName = nameof(RuntimeCondition.ConditionType), DbColumnName = "CONDITION_TYPE" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeCondition), PropertyName = nameof(RuntimeCondition.OperatorType), DbColumnName = "OPERATOR_TYPE" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeCondition), PropertyName = nameof(RuntimeCondition.LeftKey), DbColumnName = "LEFT_KEY" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeCondition), PropertyName = nameof(RuntimeCondition.RightValue), DbColumnName = "RIGHT_VALUE" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeCondition), PropertyName = nameof(RuntimeCondition.ParamsJson), DbColumnName = "PARAMS_JSON" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeCondition), PropertyName = nameof(RuntimeCondition.SortNo), DbColumnName = "SORT_NO" });
-    }
-
-    public static void ConfigureRuntimeAction(SqlSugarClient db)
-    {
-        db.MappingTables.Add(typeof(RuntimeAction).Name, "PR_RUNTIME_ACTION");
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeAction), PropertyName = nameof(RuntimeAction.RuntimeActionId), DbColumnName = "RUNTIME_ACTION_ID" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeAction), PropertyName = nameof(RuntimeAction.RuntimeRuleId), DbColumnName = "RUNTIME_RULE_ID" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeAction), PropertyName = nameof(RuntimeAction.StepNo), DbColumnName = "STEP_NO" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeAction), PropertyName = nameof(RuntimeAction.ActionType), DbColumnName = "ACTION_TYPE" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeAction), PropertyName = nameof(RuntimeAction.ExecutorCode), DbColumnName = "EXECUTOR_CODE" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeAction), PropertyName = nameof(RuntimeAction.ParamsJson), DbColumnName = "PARAMS_JSON" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeAction), PropertyName = nameof(RuntimeAction.ExclusiveGroup), DbColumnName = "EXCLUSIVE_GROUP" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeAction), PropertyName = nameof(RuntimeAction.SortNo), DbColumnName = "SORT_NO" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimeAction), PropertyName = nameof(RuntimeAction.OnError), DbColumnName = "ON_ERROR" });
-    }
-
-    public static void ConfigureRuntimePackageState(SqlSugarClient db)
-    {
-        db.MappingTables.Add(typeof(RuntimePackageState).Name, "PR_RUNTIME_PACKAGE_STATE");
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackageState), PropertyName = nameof(RuntimePackageState.StateCode), DbColumnName = "STATE_CODE" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackageState), PropertyName = nameof(RuntimePackageState.ActivePackageId), DbColumnName = "ACTIVE_PACKAGE_ID" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackageState), PropertyName = nameof(RuntimePackageState.ActivePackageVersion), DbColumnName = "ACTIVE_PACKAGE_VERSION" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackageState), PropertyName = nameof(RuntimePackageState.UpdatedAt), DbColumnName = "UPDATED_AT" });
-        db.MappingColumns.Add(new MappingColumn { EntityName = nameof(RuntimePackageState), PropertyName = nameof(RuntimePackageState.UpdatedBy), DbColumnName = "UPDATED_BY" });
-    }
-
     /// <summary>
     /// 配置 PR_CHARGE_REQUEST_LOG 表映射。
     /// </summary>
@@ -820,12 +730,6 @@ public static class EntityTypeConfigs
         ConfigurePolicyScope(db);
         ConfigurePolicyParam(db);
         ConfigurePolicyReview(db);
-        ConfigureRuntimePackage(db);
-        ConfigureRuntimePackagePolicy(db);
-        ConfigureRuntimeRule(db);
-        ConfigureRuntimeCondition(db);
-        ConfigureRuntimeAction(db);
-        ConfigureRuntimePackageState(db);
         ConfigureChargeRequest(db);
         ConfigureChargeDiscountDetail(db);
         ConfigureChargeTraceStep(db);

@@ -1,5 +1,4 @@
 using Pricing.RuleCenter.Application.Pricing.Builders;
-using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Core.Aggregates.Charging;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Charging;
@@ -40,8 +39,7 @@ public sealed class PricingTraceStepWriter
     internal async Task SaveAsync(
         long requestId,
         string? traceId,
-        IReadOnlyList<ItemPricingCalculation> calculations,
-        RuntimePackageTraceResolution? runtimeTrace = null)
+        IReadOnlyList<ItemPricingCalculation> calculations)
     {
         // 多明细请求会把所有明细的步骤扁平化写入同一请求下，StepDesc 前缀补项目编码，方便追溯页面区分。
         var steps = calculations
@@ -63,10 +61,8 @@ public sealed class PricingTraceStepWriter
             // StepNo 在整个请求范围内连续编号，而不是每条费用明细从 1 开始，便于按请求时间线回放。
             StepName = s.Step.StepType,
             StepType = s.Step.StepType,
-            RuntimePackageId = runtimeTrace?.RuntimePackageId,
-            RuntimeRuleId = s.Step.RuntimeRuleId,
-            SourcePolicyVersionId = runtimeTrace?.FindRule(s.Step.RuntimeRuleId)?.SourcePolicyVersionId,
-            SourceTemplateVersionId = runtimeTrace?.FindRule(s.Step.RuntimeRuleId)?.SourceTemplateVersionId,
+            // TraceStep.RuntimeRuleId 是引擎内的历史命名兼容字段，落库时写入直接规则 RuleId。
+            RuleId = s.Step.RuntimeRuleId,
             InputSnapshot = s.Step.InputValue?.ToString(),
             OutputSnapshot = s.Step.OutputValue?.ToString(),
             StepDesc = $"{s.Item.ItemCode}: {s.Step.StepDesc}",

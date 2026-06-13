@@ -284,21 +284,18 @@ public sealed class ChargeRequest
     public string? PriceVersion { get; set; }
 
     /// <summary>
-    /// 本次计价使用的运行时包主键。
+    /// 历史运行包兼容列。
     /// </summary>
     /// <remarks>
-    /// 对应 PR_RUNTIME_PACKAGE.PACKAGE_ID。
-    /// 用于在请求级追溯“当时到底执行的是哪一个激活包”。
-    /// 一次请求只会对应一个激活包，因此该字段保存在请求主表。
+    /// 当前直接规则链路不再写入该字段，保留属性仅用于兼容既有 PR_CHARGE_REQUEST_LOG 表结构。
     /// </remarks>
     public long? RuntimePackageId { get; set; }
 
     /// <summary>
-    /// 本次计价使用的运行时包版本号。
+    /// 历史运行包版本兼容列。
     /// </summary>
     /// <remarks>
-    /// 对应 PR_RUNTIME_PACKAGE.PACKAGE_VERSION。
-    /// 与 RuntimePackageId 共同构成面向运维和审计更友好的追溯信息。
+    /// 当前直接规则链路不再写入该字段，保留属性仅用于兼容既有 PR_CHARGE_REQUEST_LOG 表结构。
     /// </remarks>
     public long? RuntimePackageVersion { get; set; }
 

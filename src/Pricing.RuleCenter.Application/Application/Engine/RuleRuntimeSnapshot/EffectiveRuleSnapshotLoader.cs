@@ -1,6 +1,4 @@
-﻿using Pricing.RuleCenter.Core.Aggregates.Rules;
-using Pricing.RuleCenter.Core.Aggregates.Runtime;
-using Pricing.RuleCenter.Application.RuntimePackages;
+using Pricing.RuleCenter.Core.Aggregates.Rules;
 
 namespace Pricing.RuleCenter.Application.Engine.RuleRuntimeSnapshot;
 
@@ -8,28 +6,15 @@ namespace Pricing.RuleCenter.Application.Engine.RuleRuntimeSnapshot;
 /// 运行期生效规则快照加载器。
 /// </summary>
 /// <remarks>
-/// <para>
-/// 规则中心存在两套规则来源：旧规则表 <c>PR_RULE_*</c> 和新策略平台编译出的运行包表。
-/// 当运行包仓储已注册时，运行期计价必须优先读取当前激活运行包，保证发布/回滚具备版本一致性；
-/// 仅在运行包基础设施不存在时才回退旧规则表。
-/// </para>
+/// 计价主链路直接读取 <c>PR_RULE_*</c> 生效规则。当前业务规则发布只在无人收费时段启用，
+/// 不再维护独立的包化读模型。
 /// </remarks>
 public sealed class EffectiveRuleSnapshotLoader
 {
     /// <summary>
-    /// 旧规则表和运行包读取所需的仓储集合。
+    /// 规则表读取所需的仓储集合。
     /// </summary>
     private readonly RuleMatchRepositories _repositories;
-
-    /// <summary>
-    /// 激活运行包读取器。存在时表示当前环境支持新策略平台运行期模型。
-    /// </summary>
-    private readonly ActiveRuntimePackageReader? _runtimePackageReader;
-
-    /// <summary>
-    /// 运行包规则投影适配器，把运行期规则结构适配成引擎统一快照结构。
-    /// </summary>
-    private readonly RuntimeRuleProjectionAdapter _runtimeProjectionAdapter = new();
 
     /// <summary>
     /// 初始化运行期生效规则快照加载器。
@@ -38,48 +23,23 @@ public sealed class EffectiveRuleSnapshotLoader
     public EffectiveRuleSnapshotLoader(RuleMatchRepositories repositories)
     {
         _repositories = repositories;
-        if (repositories.RuntimePackageStateRepository is not null &&
-            repositories.RuntimeRuleReadRepository is not null)
-        {
-            _runtimePackageReader = new ActiveRuntimePackageReader(
-                repositories.RuntimePackageStateRepository,
-                repositories.RuntimeRuleReadRepository,
-                repositories.RuntimePackageTraceContextAccessor);
-        }
     }
 
     /// <summary>
     /// 按项目编码加载候选规则及其当前版本条件、动作。
     /// </summary>
     /// <param name="itemCode">HIS 收费项目编码。</param>
-    /// <returns>当前运行期可参与匹配的规则快照集合。</returns>
+    /// <returns>当前可参与匹配的规则快照集合。</returns>
     public async Task<IReadOnlyList<EffectiveRuleSnapshot>> LoadByItemCodeAsync(string itemCode)
     {
         return (await LoadCurrentAsync(itemCode)).Snapshots;
     }
 
     /// <summary>
-    /// 按项目编码加载当前请求可见的规则快照及其来源元数据。
+    /// 按项目编码加载当前请求可见的规则快照。
     /// </summary>
     public async Task<EffectiveRuleSnapshotLoadResult> LoadCurrentAsync(string itemCode)
     {
-        if (_runtimePackageReader is not null)
-        {
-            // 新策略平台路径：只读取当前激活运行包。
-            // 这样规则发布瞬间不会混读旧版本和新版本，也方便追踪每次计价命中的运行包版本。
-            var runtimeReadResult = await _runtimePackageReader.LoadCurrentPackageAsync(itemCode);
-            return new EffectiveRuleSnapshotLoadResult
-            {
-                RuntimePackageId = runtimeReadResult.RuntimePackageId,
-                RuntimePackageVersion = runtimeReadResult.RuntimePackageVersion,
-                Snapshots = runtimeReadResult.Snapshots.Select(_runtimeProjectionAdapter.Adapt).ToList(),
-                RuntimeRulesById = runtimeReadResult.Snapshots
-                    .Select(snapshot => snapshot.Rule)
-                    .ToDictionary(rule => rule.RuntimeRuleId)
-            };
-        }
-
-        // 旧规则表回退路径：用于尚未启用策略平台/运行包表的环境。
         var headers = await _repositories.HeaderRepository.GetByItemCodeAsync(itemCode);
         if (headers.Count == 0)
         {
@@ -126,28 +86,7 @@ public sealed class EffectiveRuleSnapshotLoader
 public sealed class EffectiveRuleSnapshotLoadResult
 {
     /// <summary>
-    /// Gets the active runtime package identifier.
-    /// </summary>
-    public long? RuntimePackageId { get; init; }
-
-    /// <summary>
-    /// Gets the active runtime package version.
-    /// </summary>
-    public long? RuntimePackageVersion { get; init; }
-
-    /// <summary>
-    /// Gets a value that indicates whether the current result comes from an active runtime package.
-    /// </summary>
-    public bool HasRuntimePackage => RuntimePackageId.HasValue && RuntimePackageId.Value > 0;
-
-    /// <summary>
     /// Gets the effective rule snapshots visible to the current request.
     /// </summary>
     public IReadOnlyList<EffectiveRuleSnapshot> Snapshots { get; init; } = Array.Empty<EffectiveRuleSnapshot>();
-
-    /// <summary>
-    /// Gets the runtime rules keyed by runtime rule identifier.
-    /// </summary>
-    public IReadOnlyDictionary<long, RuntimeRule> RuntimeRulesById { get; init; } =
-        new Dictionary<long, RuntimeRule>();
 }

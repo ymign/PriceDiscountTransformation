@@ -44,12 +44,6 @@ public sealed class SqlSugarEntityTypeConfigTests
         AssertPrimaryKey<PolicyScope>(db, nameof(PolicyScope.PolicyScopeId));
         AssertPrimaryKey<PolicyParam>(db, nameof(PolicyParam.PolicyParamId));
         AssertPrimaryKey<PolicyReview>(db, nameof(PolicyReview.ReviewId));
-        AssertPrimaryKey<RuntimePackage>(db, nameof(RuntimePackage.PackageId));
-        AssertPrimaryKey<RuntimePackagePolicy>(db, nameof(RuntimePackagePolicy.PackagePolicyId));
-        AssertPrimaryKey<RuntimeRule>(db, nameof(RuntimeRule.RuntimeRuleId));
-        AssertPrimaryKey<RuntimeCondition>(db, nameof(RuntimeCondition.RuntimeConditionId));
-        AssertPrimaryKey<RuntimeAction>(db, nameof(RuntimeAction.RuntimeActionId));
-        AssertPrimaryKey<RuntimePackageState>(db, nameof(RuntimePackageState.StateCode));
     }
 
     [Fact]

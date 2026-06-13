@@ -14,7 +14,7 @@ public static class SpecialFlagCacheKeys
     /// </summary>
     private const string Prefix = "pricing:special-flag:";
     /// <summary>
-    /// 已登记的缓存键集合，用于规则发布或运行包切换时批量清理。
+    /// 已登记的缓存键集合，用于规则发布、停用或回滚时批量清理。
     /// </summary>
     private static readonly HashSet<string> s_keys = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>

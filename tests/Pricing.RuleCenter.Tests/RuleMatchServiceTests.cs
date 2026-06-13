@@ -403,8 +403,7 @@ public sealed class RuleMatchServiceTests
                         headerRepository,
                         conditionRepository,
                         actionRepository,
-                        dictRepository)),
-                null),
+                        dictRepository))),
             new RuleConditionGroupMatcher(
                 evaluatorFactory,
                 NullLogger<RuleConditionGroupMatcher>.Instance),

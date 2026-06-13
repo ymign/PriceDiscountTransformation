@@ -14,7 +14,7 @@ public sealed class TemplateVersion
 
     public string CapabilityFamily { get; set; } = string.Empty;
 
-    public string MergeMode { get; set; } = RuntimeMergeModeCodes.SingleWinner;
+    public string MergeMode { get; set; } = "SINGLE_WINNER";
 
     public string? Checksum { get; set; }
 

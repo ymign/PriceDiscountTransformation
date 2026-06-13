@@ -1,4 +1,5 @@
 using Pricing.RuleCenter.Application.Dto;
+using Pricing.RuleCenter.Core.Aggregates.Charging;
 using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces.Charging;
 using Pricing.RuleCenter.Core.Interfaces.Quota;
@@ -47,7 +48,7 @@ public sealed class PricingCommitWorkflow
     /// <summary>
     /// 执行落账提交：校验 → 锁定 → 状态/过期校验 → 对账 → 推进状态。
     /// </summary>
-    public async Task ExecuteAsync(PricingCommitRequest request)
+    public async Task<PricingCommitResponse> ExecuteAsync(PricingCommitRequest request)
     {
         PricingRequestGuard.EnsureCommitRequest(request);
 
@@ -55,7 +56,7 @@ public sealed class PricingCommitWorkflow
             "落账提交开始 请求ID={RequestId}, 收费单号={ChargeNo}, 提交流水号={CommitNo}",
             request.RequestId, request.ChargeNo, request.CommitNo);
 
-        await ExecuteInTransactionAsync(async () =>
+        return await ExecuteInTransactionAsync(async () =>
         {
             await _limitRepository.EnsureAndLockAsync(new[] { PricingLockKeyBuilder.BuildRequestLockKey(request.RequestId) });
 
@@ -72,7 +73,7 @@ public sealed class PricingCommitWorkflow
                     PricingCommitActualValidator.Validate(request, confirmedDetails, requireActualItems: false);
                 }
                 _logger.LogInformation("落账提交幂等命中 请求ID={RequestId}, 当前状态={Status}", request.RequestId, log.BusinessStatus);
-                return;
+                return BuildResponse(log);
             }
 
             // 只有 CONFIRM_PENDING 且未过期才能提交
@@ -92,7 +93,8 @@ public sealed class PricingCommitWorkflow
 
             // 推进状态：请求日志 + 折价明细 + 限额占用一起变更
             log.ChargeNo = request.ChargeNo ?? log.ChargeNo;
-            log.MarkCommitted(_clock.Now);
+            var committedAt = _clock.Now;
+            log.MarkCommitted(committedAt);
             await _requestLogRepository.UpdateAsync(log);
             await _discountRepository.UpdateStatusByRequestIdAsync(request.RequestId, BusinessStatusCodes.Confirmed);
             await _limitRepository.UpdateStatusByRequestIdAsync(request.RequestId, BusinessStatusCodes.Confirmed);
@@ -100,16 +102,31 @@ public sealed class PricingCommitWorkflow
             _logger.LogInformation(
                 "落账提交成功 请求ID={RequestId}, 收费单号={ChargeNo}, 提交流水号={CommitNo}",
                 request.RequestId, request.ChargeNo, request.CommitNo);
+
+            return BuildResponse(log, committedAt);
         });
     }
 
-    private async Task ExecuteInTransactionAsync(Func<Task> action)
+    private static PricingCommitResponse BuildResponse(ChargeRequest log, DateTime? committedAt = null)
+    {
+        return new PricingCommitResponse
+        {
+            RequestId = log.RequestId,
+            BusinessStatus = log.BusinessStatus,
+            ChargeNo = log.ChargeNo,
+            CommittedAt = committedAt ?? log.ResponseAt,
+            NextAction = PricingNextActionCodes.NoFurtherAction
+        };
+    }
+
+    private async Task<T> ExecuteInTransactionAsync<T>(Func<Task<T>> action)
     {
         try
         {
             await _unitOfWork.BeginAsync();
-            await action();
+            var result = await action();
             await _unitOfWork.CommitAsync();
+            return result;
         }
         catch (Exception ex)
         {

@@ -15,7 +15,6 @@ using Pricing.RuleCenter.Application.Pricing.Persistence;
 using Pricing.RuleCenter.Application.Rules;
 using Pricing.RuleCenter.Application.Rules.Guards;
 using Pricing.RuleCenter.Application.Rules.Publishing;
-using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Application.Templates;
 using Pricing.RuleCenter.Application.Trace;
 using Pricing.RuleCenter.Application.Engine;
@@ -26,7 +25,6 @@ using Pricing.RuleCenter.Application.Engine.RuleRuntimeSnapshot;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Catalog;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
-using Pricing.RuleCenter.Core.Interfaces.Runtime;
 using Pricing.RuleCenter.Infrastructure;
 
 namespace Pricing.RuleCenter.Api.Startup;
@@ -77,7 +75,7 @@ internal static class RuleCenterApiServiceCollectionExtensions
     private static IServiceCollection AddRuleCenterApplicationServices(this IServiceCollection services)
     {
         // ========== 规则维护与发布 ==========
-        // 包含旧规则表维护、新策略平台、运行包编译/激活/回滚，以及发布时的冲突和审批校验。
+        // 包含旧规则表维护、策略平台配置，以及规则发布时的冲突和审批校验。
         services.AddScoped<DictAppService>();
         services.AddScoped<FormulaDefAppService>();
         services.AddScoped<RuleHeaderAppService>();
@@ -111,15 +109,6 @@ internal static class RuleCenterApiServiceCollectionExtensions
         services.AddScoped<TemplateAppService>();
         services.AddScoped<TemplateVersionAppService>();
         services.AddPolicyApplicationServices();
-        services.AddScoped<RuntimeRuleProjectionFactory>();
-        services.AddScoped<RuntimePackageCompiler>();
-        services.AddScoped<RuntimePackageTraceContextAccessor>();
-        services.AddScoped<RuntimePackageTraceResolver>();
-        services.AddScoped<RuntimePackageQueryAppService>();
-        services.AddScoped<RuntimePackageActivationService>();
-        services.AddScoped<RuntimePackageRollbackService>();
-        services.AddScoped<RuntimePackagePublishService>();
-        services.AddScoped<LegacyRuleAuthoringGuardFilter>();
 
         // ========== 计价请求生命周期 ==========
         services.AddScoped<AuthorityPriceChecker>();
@@ -154,13 +143,15 @@ internal static class RuleCenterApiServiceCollectionExtensions
     /// <para>
     /// 计价服务面向 HIS、自助机、微信等后端渠道，不使用 Cookie 登录态。
     /// API Key 角色分为 <c>pricing.service</c> 和 <c>pricing.admin</c>：
-    /// 前者调用计价接口，后者维护规则、发布运行包和查询管理数据。
+    /// 前者调用计价接口，后者维护规则、发布生效规则和查询管理数据。
     /// </para>
     /// </remarks>
     private static IServiceCollection AddRuleCenterSecurity(
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        var apiKeyDisabled = configuration.GetValue<bool>("Authentication:ApiKey:Disabled");
+
         services.AddAuthentication(ApiKeyAuthenticationOptions.SchemeName)
             .AddScheme<ApiKeyAuthenticationOptions, ApiKeyAuthenticationHandler>(
                 ApiKeyAuthenticationOptions.SchemeName,
@@ -193,6 +184,13 @@ internal static class RuleCenterApiServiceCollectionExtensions
 
         services.AddAuthorization(options =>
         {
+            if (apiKeyDisabled)
+            {
+                options.AddPolicy("PricingService", policy => policy.RequireAssertion(_ => true));
+                options.AddPolicy("RuleAdmin", policy => policy.RequireAssertion(_ => true));
+                return;
+            }
+
             options.AddPolicy("PricingService", policy =>
             {
                 policy.AddAuthenticationSchemes(ApiKeyAuthenticationOptions.SchemeName);
@@ -276,10 +274,7 @@ internal static class RuleCenterApiServiceCollectionExtensions
             provider.GetRequiredService<IRuleHeaderRepository>(),
             provider.GetRequiredService<IRuleConditionRepository>(),
             provider.GetRequiredService<IRuleActionRepository>(),
-            provider.GetRequiredService<IDictRepository>(),
-            provider.GetService<IRuntimePackageStateRepository>(),
-            provider.GetService<IRuntimeRuleReadRepository>(),
-            provider.GetRequiredService<RuntimePackageTraceContextAccessor>()));
+            provider.GetRequiredService<IDictRepository>()));
         services.AddScoped<EffectiveRuleSnapshotLoader>();
         services.AddScoped<IEffectiveRuleSnapshotCache, EffectiveRuleSnapshotCache>();
         services.AddScoped<ILimitOccupyValueFinalizer, SameGroupLimitOccupyValueFinalizer>();
@@ -341,7 +336,17 @@ internal static class RuleCenterApiServiceCollectionExtensions
                 Version = version,
                 Description = "医院物价折价规则中心 API，按 DDD 边界展示计价、规则、字典、追溯和运维接口。"
             });
+            var apiKeyHeaderName = configuration["Authentication:ApiKey:HeaderName"]
+                ?? ApiKeyAuthenticationOptions.DefaultHeaderName;
+            options.AddSecurityDefinition(ApiKeySecurityOperationFilter.SchemeName, new OpenApiSecurityScheme
+            {
+                Type = SecuritySchemeType.ApiKey,
+                In = ParameterLocation.Header,
+                Name = apiKeyHeaderName,
+                Description = "本地联调可使用 service-key 调用计价接口；规则维护接口使用 admin-key。"
+            });
             options.OperationFilter<SnakeCaseQueryParameterOperationFilter>();
+            options.OperationFilter<ApiKeySecurityOperationFilter>();
 
             options.TagActionsBy(api =>
             {
@@ -352,7 +357,7 @@ internal static class RuleCenterApiServiceCollectionExtensions
                     {
                         "Pricing" => "Application - 计价用例",
                         "RuleHeader" or "RuleVersion" or "RuleCondition" or "RuleAction" or "RuleApproval" or "RulePublish" => "Application - 规则生命周期",
-                        "Template" or "Policy" or "RuntimePackage" => "Application - 新规则平台",
+                        "Template" or "Policy" => "Application - 新规则平台",
                         "Dict" or "FormulaDef" => "Application - 基础配置",
                         "Trace" => "Application - 计价追溯",
                         "Health" => "API - 运维健康检查",

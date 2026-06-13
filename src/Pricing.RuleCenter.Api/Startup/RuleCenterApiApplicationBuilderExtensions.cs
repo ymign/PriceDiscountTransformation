@@ -72,6 +72,7 @@ internal static class RuleCenterApiApplicationBuilderExtensions
                 options.SwaggerEndpoint("/swagger/v1/swagger.json", "Pricing RuleCenter API v1");
                 options.RoutePrefix = "swagger";
                 options.DisplayRequestDuration();
+                options.ConfigObject.PersistAuthorization = true;
             });
         }
 

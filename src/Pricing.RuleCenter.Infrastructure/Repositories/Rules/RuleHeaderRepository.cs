@@ -149,31 +149,35 @@ public sealed class RuleHeaderRepository : IRuleHeaderRepository
         }
 
         var normalizedItemCode = itemCode.Trim();
+        var parameterPrefix = GetParameterPrefix();
+        var itemCodeParameter = $"{parameterPrefix}ItemCode";
+        var sql = $"""
+SELECT R.*
+FROM PR_RULE_HEADER R
+WHERE R.IS_ENABLED = 'Y'
+  AND (
+    R.ITEM_CODE = {itemCodeParameter}
+    OR (
+      R.RULE_SCOPE = 'GROUP'
+      AND R.GROUP_CODE IS NOT NULL
+      AND EXISTS (
+        SELECT 1
+        FROM PR_ITEM_GROUP_DETAIL D
+        INNER JOIN PR_ITEM_GROUP G ON G.GROUP_ID = D.GROUP_ID
+        WHERE D.ITEM_CODE = {itemCodeParameter}
+          AND D.IS_ENABLED = 'Y'
+          AND G.IS_ENABLED = 'Y'
+          AND G.GROUP_CODE = R.GROUP_CODE
+      )
+    )
+  )
+ORDER BY R.PRIORITY
+""";
 
-        var groupCodes = await _db.Queryable<ItemGroupDetail, ItemGroup>((detail, group) => new JoinQueryInfos(
-                JoinType.Inner, detail.GroupId == group.GroupId))
-            .Where((detail, group) =>
-                detail.ItemCode == normalizedItemCode &&
-                detail.IsEnabled == "Y" &&
-                group.IsEnabled == "Y")
-            .Select((detail, group) => group.GroupCode)
-            .Distinct()
-            .ToListAsync();
-
-        var query = _db.Queryable<RuleAggregate>()
-            .Where(r => r.IsEnabled == "Y");
-
-        query = groupCodes.Count == 0
-            ? query.Where(r => r.ItemCode == normalizedItemCode)
-            : query.Where(r =>
-                r.ItemCode == normalizedItemCode ||
-                (r.RuleScope == "GROUP" &&
-                 r.GroupCode != null &&
-                 groupCodes.Contains(r.GroupCode)));
-
-        return await query
-            .OrderBy(r => r.Priority)
-            .ToListAsync();
+        return await _db.Ado.SqlQueryAsync<RuleAggregate>(sql, new[]
+        {
+            new SugarParameter(itemCodeParameter, normalizedItemCode)
+        });
     }
 
     /// <summary>
@@ -337,5 +341,10 @@ public sealed class RuleHeaderRepository : IRuleHeaderRepository
     {
         return await _db.Queryable<RuleAggregate>()
             .AnyAsync(r => r.RuleCode == ruleCode);
+    }
+
+    private string GetParameterPrefix()
+    {
+        return _db.CurrentConnectionConfig.DbType == DbType.Oracle ? ":" : "@";
     }
 }

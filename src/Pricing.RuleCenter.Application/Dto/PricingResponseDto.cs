@@ -26,16 +26,25 @@ public sealed class PricingCalculateResponse
     /// </summary>
     [JsonPropertyName("request_id")]
     public long RequestId { get; init; }
+
     /// <summary>
-    /// 本次计价使用的运行时包主键。为空表示当前仍走旧规则读模型或未激活运行时包。
+    /// 调用方下一步动作编码。simulate 通常返回 CONFIRM_BEFORE_CHARGE，confirm 返回 COMMIT_OR_CANCEL。
     /// </summary>
-    [JsonPropertyName("runtime_package_id")]
-    public long? RuntimePackageId { get; init; }
+    [JsonPropertyName("next_action")]
+    public string NextAction { get; init; } = string.Empty;
+
     /// <summary>
-    /// 本次计价使用的运行时包版本号。
+    /// 本次请求在计价中心的业务状态，例如 SIMULATED 或 CONFIRM_PENDING。
     /// </summary>
-    [JsonPropertyName("runtime_package_version")]
-    public long? RuntimePackageVersion { get; init; }
+    [JsonPropertyName("business_status")]
+    public string? BusinessStatus { get; init; }
+
+    /// <summary>
+    /// 本次决策读取规则快照的时间，用于排查规则发布前后结果差异。
+    /// </summary>
+    [JsonPropertyName("rule_snapshot_time")]
+    public DateTime RuleSnapshotTime { get; init; }
+
     /// <summary>
     /// 是否命中特殊计价规则。
     /// </summary>
@@ -92,30 +101,16 @@ public sealed class PricingCalculateResponse
     [JsonPropertyName("expire_seconds")]
     public int? ExpireSeconds { get; init; }
     /// <summary>
-    /// 本次计价追踪步骤，用于接口调用方展示或排查。
+    /// 兼容字段：根层不再返回单条明细的重复追踪步骤，调用方应读取 items[].trace_steps。
     /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonPropertyName("trace_steps")]
-    public IReadOnlyList<PricingTraceStepResponse> TraceSteps { get; init; } = Array.Empty<PricingTraceStepResponse>();
+    public IReadOnlyList<PricingTraceStepResponse>? TraceSteps { get; init; }
     /// <summary>
     /// 本次计价命中的规则主键集合。
     /// </summary>
     [JsonPropertyName("matched_rule_ids")]
     public IReadOnlyList<long> MatchedRuleIds { get; init; } = Array.Empty<long>();
-    /// <summary>
-    /// 本次计价命中的运行时规则主键集合。当前响应存在 RuntimePackageId 时，该字段与 MatchedRuleIds 口径一致。
-    /// </summary>
-    [JsonPropertyName("matched_runtime_rule_ids")]
-    public IReadOnlyList<long> MatchedRuntimeRuleIds { get; init; } = Array.Empty<long>();
-    /// <summary>
-    /// 本次计价命中的来源策略版本主键集合。
-    /// </summary>
-    [JsonPropertyName("matched_policy_version_ids")]
-    public IReadOnlyList<long> MatchedPolicyVersionIds { get; init; } = Array.Empty<long>();
-    /// <summary>
-    /// 本次计价命中的来源模板版本主键集合。
-    /// </summary>
-    [JsonPropertyName("matched_template_version_ids")]
-    public IReadOnlyList<long> MatchedTemplateVersionIds { get; init; } = Array.Empty<long>();
 }
 
 /// <summary>
@@ -143,16 +138,6 @@ public sealed class PricingCalculateItemResponse
     /// </summary>
     [JsonPropertyName("request_id")]
     public long RequestId { get; init; }
-    /// <summary>
-    /// 本条费用使用的运行时包主键。
-    /// </summary>
-    [JsonPropertyName("runtime_package_id")]
-    public long? RuntimePackageId { get; init; }
-    /// <summary>
-    /// 本条费用使用的运行时包版本号。
-    /// </summary>
-    [JsonPropertyName("runtime_package_version")]
-    public long? RuntimePackageVersion { get; init; }
     /// <summary>
     /// 项目编码，是规则匹配、价格诊断和限额累计的核心维度。
     /// 该字段属于单条费用明细响应；多明细请求通过 Items 返回多条结果，响应根对象不再放单个 ItemCode。
@@ -229,21 +214,6 @@ public sealed class PricingCalculateItemResponse
     /// </summary>
     [JsonPropertyName("matched_rule_ids")]
     public IReadOnlyList<long> MatchedRuleIds { get; init; } = Array.Empty<long>();
-    /// <summary>
-    /// 本条费用命中的运行时规则主键集合。
-    /// </summary>
-    [JsonPropertyName("matched_runtime_rule_ids")]
-    public IReadOnlyList<long> MatchedRuntimeRuleIds { get; init; } = Array.Empty<long>();
-    /// <summary>
-    /// 本条费用命中的来源策略版本主键集合。
-    /// </summary>
-    [JsonPropertyName("matched_policy_version_ids")]
-    public IReadOnlyList<long> MatchedPolicyVersionIds { get; init; } = Array.Empty<long>();
-    /// <summary>
-    /// 本条费用命中的来源模板版本主键集合。
-    /// </summary>
-    [JsonPropertyName("matched_template_version_ids")]
-    public IReadOnlyList<long> MatchedTemplateVersionIds { get; init; } = Array.Empty<long>();
 }
 
 /// <summary>
@@ -321,6 +291,24 @@ public sealed class PricingChildItemResponse
 public sealed class PricingTraceStepResponse
 {
     /// <summary>
+    /// 节点唯一键，供调用方前端渲染列表时使用。
+    /// </summary>
+    [JsonPropertyName("node_key")]
+    public string NodeKey { get; init; } = string.Empty;
+
+    /// <summary>
+    /// 节点标题，例如规则匹配、限额处理、折价处理。
+    /// </summary>
+    [JsonPropertyName("node_title")]
+    public string NodeTitle { get; init; } = string.Empty;
+
+    /// <summary>
+    /// 面向业务展示的节点说明。
+    /// </summary>
+    [JsonPropertyName("node_desc")]
+    public string? NodeDesc { get; init; }
+
+    /// <summary>
     /// 步骤序号，按计价链路执行顺序递增
     /// </summary>
     [JsonPropertyName("step_no")]
@@ -346,18 +334,71 @@ public sealed class PricingTraceStepResponse
     [JsonPropertyName("output_value")]
     public decimal? OutputValue { get; init; }
     /// <summary>
-    /// 产生本步骤的运行时规则主键。
+    /// 产生本步骤的规则主键。
     /// </summary>
-    [JsonPropertyName("runtime_rule_id")]
-    public long? RuntimeRuleId { get; init; }
+    [JsonPropertyName("rule_id")]
+    public long? RuleId { get; init; }
+
     /// <summary>
-    /// 产生本步骤的来源策略版本主键。
+    /// 产生本步骤的规则编码。
     /// </summary>
-    [JsonPropertyName("source_policy_version_id")]
-    public long? SourcePolicyVersionId { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("rule_code")]
+    public string? RuleCode { get; init; }
+
     /// <summary>
-    /// 产生本步骤的来源模板版本主键。
+    /// 产生本步骤的规则名称。
     /// </summary>
-    [JsonPropertyName("source_template_version_id")]
-    public long? SourceTemplateVersionId { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("rule_name")]
+    public string? RuleName { get; init; }
+
+    /// <summary>
+    /// 产生本步骤的动作编码。
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("action_code")]
+    public string? ActionCode { get; init; }
+
+    /// <summary>
+    /// 产生本步骤的动作名称。
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("action_name")]
+    public string? ActionName { get; init; }
+
+    /// <summary>
+    /// 执行器编码，用于区分同一动作类型下的具体公式或策略。
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("executor_code")]
+    public string? ExecutorCode { get; init; }
+
+    /// <summary>
+    /// 输入输出数值的业务类型，例如 AMOUNT、QTY、MATCH_RESULT。
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("value_type")]
+    public string? ValueType { get; init; }
+
+    /// <summary>
+    /// 输入输出数值的单位，例如元、次、个。
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("value_unit")]
+    public string? ValueUnit { get; init; }
+
+    /// <summary>
+    /// 输入值的业务名称。
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("input_name")]
+    public string? InputName { get; init; }
+
+    /// <summary>
+    /// 输出值的业务名称。
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("output_name")]
+    public string? OutputName { get; init; }
 }

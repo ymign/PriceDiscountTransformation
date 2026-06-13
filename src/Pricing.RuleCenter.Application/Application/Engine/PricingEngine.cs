@@ -87,14 +87,20 @@ public sealed class PricingEngine : IPricingEngine
     {
         context.MatchedRules = matchedRules;
         context.OrderedActions = orderedActions;
+        var singleRule = matchedRules.Count == 1 ? matchedRules[0] : null;
         context.TraceSteps.Add(new TraceStep
         {
             StepNo = 1,
             StepType = "MATCH",
-            StepDesc = $"命中 {matchedRules.Count} 条规则",
+            StepDesc = BuildMatchStepDesc(matchedRules, orderedActions.Count),
             InputValue = context.InputQty,
             OutputValue = orderedActions.Count,
-            RuntimeRuleId = matchedRules.Count == 1 ? matchedRules[0].RuleId : null
+            RuntimeRuleId = singleRule?.RuleId,
+            RuleCode = NormalizeString(singleRule?.RuleCode),
+            RuleName = NormalizeString(singleRule?.RuleName),
+            ValueType = "MATCH_RESULT",
+            InputName = "输入数量",
+            OutputName = "动作数量"
         });
     }
 
@@ -137,10 +143,44 @@ public sealed class PricingEngine : IPricingEngine
             ChildPricingResults = context.ChildPricingResults.ToList(),
             TraceSteps = context.TraceSteps.ToList(),
             MatchedRuleIds = context.MatchedRules.Select(r => r.RuleId).ToList(),
+            MatchedRuleInfos = context.MatchedRules.Select(ToRuleTraceInfo).ToList(),
             LimitOccupies = context.PendingLimitOccupies
                 .Where(o => o.OccupyQty != 0 || o.OccupyAmt != 0)
                 .ToList()
         };
+    }
+
+    private static PricingRuleTraceInfo ToRuleTraceInfo(RuleAggregate rule)
+    {
+        return new PricingRuleTraceInfo
+        {
+            RuleId = rule.RuleId,
+            RuleCode = NormalizeString(rule.RuleCode),
+            RuleName = NormalizeString(rule.RuleName)
+        };
+    }
+
+    private static string BuildMatchStepDesc(
+        IReadOnlyList<RuleAggregate> matchedRules,
+        int actionCount)
+    {
+        var ruleNames = matchedRules
+            .Select(rule => NormalizeString(rule.RuleName) ?? NormalizeString(rule.RuleCode))
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToList();
+
+        if (ruleNames.Count == 0)
+        {
+            return $"命中 {matchedRules.Count} 条规则，待执行 {actionCount} 个动作";
+        }
+
+        return $"命中规则：{string.Join("、", ruleNames)}；待执行 {actionCount} 个动作";
+    }
+
+    private static string? NormalizeString(string? value)
+    {
+        var normalized = value?.Trim();
+        return string.IsNullOrEmpty(normalized) ? null : normalized;
     }
 
     /// <summary>

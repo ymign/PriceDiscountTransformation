@@ -1,8 +1,6 @@
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Pricing.Builders;
-using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Core.Aggregates.Charging;
-using Pricing.RuleCenter.Core.Aggregates.Runtime;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Charging;
 using Pricing.RuleCenter.Core.Models;
@@ -36,8 +34,6 @@ internal sealed record DiscountDetailSaveInput
     /// <summary>明细状态，confirm 阶段通常为 PENDING。</summary>
     public string Status { get; init; } = string.Empty;
 
-    /// <summary>运行包追溯解析结果。</summary>
-    public RuntimePackageTraceResolution? RuntimeTrace { get; init; }
 }
 
 /// <summary>
@@ -67,7 +63,6 @@ internal sealed record ChildDiscountDetailSaveInput
 
     public DateTime Now { get; init; }
 
-    public RuntimePackageTraceResolution? RuntimeTrace { get; init; }
 }
 
 internal sealed record MainDiscountDetailContext
@@ -84,7 +79,6 @@ internal sealed record MainDiscountDetailContext
 
     public decimal MainDiscountAmount { get; init; }
 
-    public RuntimeRule? FirstRuntimeRule { get; init; }
 }
 
 /// <summary>
@@ -142,8 +136,7 @@ public sealed class PricingDiscountDetailWriter
             ReplacementAmount = replacementAmount,
             MainFinalAmount = mainFinalAmount,
             MainDiscountAmount = PricingAmountRounder.RoundFinal(
-                input.Item.UnitPrice * input.Item.InputQty - mainFinalAmount),
-            FirstRuntimeRule = input.RuntimeTrace?.FindRule(firstRuleId == 0 ? null : firstRuleId)
+                input.Item.UnitPrice * input.Item.InputQty - mainFinalAmount)
         };
     }
 
@@ -165,10 +158,6 @@ public sealed class PricingDiscountDetailWriter
             ItemCode = input.Item.ItemCode,
             ItemName = input.Item.ItemName,
             RuleId = firstRuleId,
-            RuntimePackageId = input.RuntimeTrace?.RuntimePackageId,
-            RuntimeRuleId = firstRuleId,
-            SourcePolicyVersionId = context.FirstRuntimeRule?.SourcePolicyVersionId,
-            SourceTemplateVersionId = context.FirstRuntimeRule?.SourceTemplateVersionId,
             ResultGroupNo = context.ResultGroupNo,
             OriginalQty = input.Item.InputQty,
             ConvertedQty = input.Result.ConvertedQty,
@@ -219,10 +208,6 @@ public sealed class PricingDiscountDetailWriter
             ItemCode = replacement.ItemCode,
             ItemName = replacement.ItemName,
             RuleId = firstRuleId,
-            RuntimePackageId = input.RuntimeTrace?.RuntimePackageId,
-            RuntimeRuleId = firstRuleId,
-            SourcePolicyVersionId = context.FirstRuntimeRule?.SourcePolicyVersionId,
-            SourceTemplateVersionId = context.FirstRuntimeRule?.SourceTemplateVersionId,
             ResultGroupNo = context.ResultGroupNo,
             ParentDiscountId = mainDiscountId,
             ConvertedQty = replacement.Qty,
@@ -256,8 +241,7 @@ public sealed class PricingDiscountDetailWriter
             MainDiscountId = mainDiscountId,
             FirstRuleId = context.FirstRuleId,
             Status = input.Status,
-            Now = context.OccurredAt,
-            RuntimeTrace = input.RuntimeTrace
+            Now = context.OccurredAt
         };
     }
 
@@ -275,7 +259,6 @@ public sealed class PricingDiscountDetailWriter
     {
         var childAmount = PricingAmountRounder.RoundFinal(child.Amount);
         long? firstRuleId = input.FirstRuleId == 0 ? null : input.FirstRuleId;
-        var runtimeRule = input.RuntimeTrace?.FindRule(firstRuleId);
 
         return new ChargeDiscountDetail
         {
@@ -288,10 +271,6 @@ public sealed class PricingDiscountDetailWriter
             ItemCode = child.ItemCode,
             ItemName = child.ItemName,
             RuleId = firstRuleId,
-            RuntimePackageId = input.RuntimeTrace?.RuntimePackageId,
-            RuntimeRuleId = firstRuleId,
-            SourcePolicyVersionId = runtimeRule?.SourcePolicyVersionId,
-            SourceTemplateVersionId = runtimeRule?.SourceTemplateVersionId,
             ResultGroupNo = input.ResultGroupNo,
             ParentDiscountId = input.MainDiscountId,
             ConvertedQty = child.Qty,

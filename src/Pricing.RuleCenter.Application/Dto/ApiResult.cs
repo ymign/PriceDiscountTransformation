@@ -41,6 +41,11 @@ public sealed class ApiResult<T>
     [JsonPropertyName("trace_id")]
     public string TraceId { get; init; } = string.Empty;
 
+    /// <summary>机器可读错误码。成功响应为空，失败响应用于调用方分支处理。</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("error_code")]
+    public string? ErrorCode { get; init; }
+
     /// <summary>响应生成时间。</summary>
     [JsonPropertyName("timestamp")]
     public DateTime Timestamp { get; init; } = ApiResultClock.Current;
@@ -66,13 +71,19 @@ public sealed class ApiResult<T>
     }
 
     /// <summary>创建失败响应。</summary>
-    public static ApiResult<T> Fail(int code, string message, string? traceId = null, IReadOnlyDictionary<string, string[]>? errors = null)
+    public static ApiResult<T> Fail(
+        int code,
+        string message,
+        string? traceId = null,
+        IReadOnlyDictionary<string, string[]>? errors = null,
+        string? errorCode = null)
     {
         return new ApiResult<T>
         {
             Code = code,
             Message = message,
             TraceId = traceId ?? string.Empty,
+            ErrorCode = errorCode,
             Errors = errors
         };
     }
@@ -95,6 +106,11 @@ public sealed class ApiResult
     [JsonPropertyName("trace_id")]
     public string TraceId { get; init; } = string.Empty;
 
+    /// <summary>机器可读错误码。成功响应为空，失败响应用于调用方分支处理。</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonPropertyName("error_code")]
+    public string? ErrorCode { get; init; }
+
     /// <summary>响应生成时间。</summary>
     [JsonPropertyName("timestamp")]
     public DateTime Timestamp { get; init; } = ApiResultClock.Current;
@@ -110,8 +126,20 @@ public sealed class ApiResult
     }
 
     /// <summary>创建失败响应。</summary>
-    public static ApiResult Fail(int code, string message, string? traceId = null, IReadOnlyDictionary<string, string[]>? errors = null)
+    public static ApiResult Fail(
+        int code,
+        string message,
+        string? traceId = null,
+        IReadOnlyDictionary<string, string[]>? errors = null,
+        string? errorCode = null)
     {
-        return new ApiResult { Code = code, Message = message, TraceId = traceId ?? string.Empty, Errors = errors };
+        return new ApiResult
+        {
+            Code = code,
+            Message = message,
+            TraceId = traceId ?? string.Empty,
+            ErrorCode = errorCode,
+            Errors = errors
+        };
     }
 }

@@ -1,5 +1,6 @@
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Pricing.Validation;
+using Pricing.RuleCenter.Core.Aggregates.Charging;
 using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Charging;
@@ -41,7 +42,7 @@ public sealed class PricingCancelWorkflow
     /// <summary>
     /// 执行取消确认：校验 → 锁定 → 状态校验 → 释放占用。
     /// </summary>
-    public async Task ExecuteAsync(PricingCancelRequest request)
+    public async Task<PricingCancelResponse> ExecuteAsync(PricingCancelRequest request)
     {
         PricingRequestGuard.EnsureCancelRequest(request);
 
@@ -49,7 +50,7 @@ public sealed class PricingCancelWorkflow
             "取消确认开始 请求ID={RequestId}, 取消流水号={CancelNo}, 取消人={CancelledBy}",
             request.RequestId, request.CancelNo, request.CancelledBy);
 
-        await ExecuteInTransactionAsync(async () =>
+        return await ExecuteInTransactionAsync(async () =>
         {
             await _limitRepository.EnsureAndLockAsync(new[] { PricingLockKeyBuilder.BuildRequestLockKey(request.RequestId) });
 
@@ -60,7 +61,7 @@ public sealed class PricingCancelWorkflow
             if (log.BusinessStatus == BusinessStatusCodes.Cancelled || log.BusinessStatus == BusinessStatusCodes.Expired)
             {
                 _logger.LogInformation("取消确认幂等命中 请求ID={RequestId}, 当前状态={Status}", request.RequestId, log.BusinessStatus);
-                return;
+                return BuildResponse(log);
             }
 
             if (log.BusinessStatus != BusinessStatusCodes.ConfirmPending)
@@ -76,16 +77,28 @@ public sealed class PricingCancelWorkflow
             await _limitRepository.UpdateStatusByRequestIdAsync(request.RequestId, BusinessStatusCodes.Cancelled);
 
             _logger.LogInformation("取消确认成功 请求ID={RequestId}, 取消流水号={CancelNo}", request.RequestId, request.CancelNo);
+            return BuildResponse(log);
         });
     }
 
-    private async Task ExecuteInTransactionAsync(Func<Task> action)
+    private static PricingCancelResponse BuildResponse(ChargeRequest log)
+    {
+        return new PricingCancelResponse
+        {
+            RequestId = log.RequestId,
+            BusinessStatus = log.BusinessStatus,
+            NextAction = PricingNextActionCodes.NoFurtherAction
+        };
+    }
+
+    private async Task<T> ExecuteInTransactionAsync<T>(Func<Task<T>> action)
     {
         try
         {
             await _unitOfWork.BeginAsync();
-            await action();
+            var result = await action();
             await _unitOfWork.CommitAsync();
+            return result;
         }
         catch (Exception ex)
         {

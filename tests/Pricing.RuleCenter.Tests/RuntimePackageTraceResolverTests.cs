@@ -1,7 +1,3 @@
-using Pricing.RuleCenter.Application.RuntimePackages;
-using Pricing.RuleCenter.Core.Aggregates.Runtime;
-using Pricing.RuleCenter.Core.Constants;
-using Pricing.RuleCenter.Core.Interfaces.Runtime;
 using Xunit;
 
 namespace Pricing.RuleCenter.Tests;
@@ -9,67 +5,78 @@ namespace Pricing.RuleCenter.Tests;
 public sealed class RuntimePackageTraceResolverTests
 {
     [Fact]
-    public async Task ResolveAsync_ReturnsActivePackageAndMatchedRuntimeRules()
+    public void PricingWorkflows_DoNotResolveRuntimePackageTrace()
     {
-        var resolver = new RuntimePackageTraceResolver(
-            new FixedRuntimePackageStateRepository(new RuntimePackageState
-            {
-                StateCode = RuntimePackageStateCodes.Active,
-                ActivePackageId = 77,
-                ActivePackageVersion = 5
-            }),
-            new FixedRuntimeRuleReadRepository(new RuntimeRule
-            {
-                RuntimeRuleId = 501,
-                PackageId = 77,
-                SourcePolicyVersionId = 9001,
-                SourceTemplateVersionId = 8001
-            }));
+        var workflowSources = new[]
+        {
+            ReadRepoFile(
+                "src",
+                "Pricing.RuleCenter.Application",
+                "Application",
+                "Pricing",
+                "Workflows",
+                "PricingSimulateWorkflow.cs"),
+            ReadRepoFile(
+                "src",
+                "Pricing.RuleCenter.Application",
+                "Application",
+                "Pricing",
+                "Workflows",
+                "PricingConfirmWorkflow.cs")
+        };
 
-        var resolution = await resolver.ResolveAsync(new[] { 501L });
-
-        Assert.Equal(77, resolution.RuntimePackageId);
-        Assert.Equal(5, resolution.RuntimePackageVersion);
-        var rule = Assert.Single(resolution.RuntimeRulesById.Values);
-        Assert.Equal(9001, rule.SourcePolicyVersionId);
-        Assert.Equal(8001, rule.SourceTemplateVersionId);
+        foreach (var source in workflowSources)
+        {
+            Assert.DoesNotContain("RuntimePackageTraceResolver", source);
+            Assert.DoesNotContain("RuntimeTrace =", source);
+            Assert.DoesNotContain("ResolveAsync(calculations)", source);
+        }
     }
 
-    private sealed class FixedRuntimePackageStateRepository : IRuntimePackageStateRepository
+    [Fact]
+    public void RuntimePackageTraceResolver_IsNotPartOfPricingApplication()
     {
-        private readonly RuntimePackageState _state;
-
-        public FixedRuntimePackageStateRepository(RuntimePackageState state)
-        {
-            _state = state;
-        }
-
-        public Task<RuntimePackageState?> GetActiveAsync() => Task.FromResult<RuntimePackageState?>(_state);
-        public Task<RuntimePackageState?> GetActiveForUpdateAsync() => Task.FromResult<RuntimePackageState?>(_state);
-        public Task UpsertAsync(RuntimePackageState entity) => Task.CompletedTask;
+        Assert.False(RepoFileExists(
+            "src",
+            "Pricing.RuleCenter.Application",
+            "Application",
+            "RuntimePackages",
+            "RuntimePackageTraceResolver.cs"));
+        Assert.False(RepoFileExists(
+            "src",
+            "Pricing.RuleCenter.Application",
+            "Application",
+            "RuntimePackages",
+            "RuntimePackageTraceResolution.cs"));
     }
 
-    private sealed class FixedRuntimeRuleReadRepository : IRuntimeRuleReadRepository
+    private static string ReadRepoFile(params string[] pathParts)
     {
-        private readonly RuntimeRule _rule;
-
-        public FixedRuntimeRuleReadRepository(RuntimeRule rule)
+        var path = ResolveRepoPath(pathParts);
+        if (!File.Exists(path))
         {
-            _rule = rule;
+            throw new FileNotFoundException($"无法定位仓库文件：{Path.Combine(pathParts)}", path);
         }
 
-        public Task<IReadOnlyList<RuntimeRule>> GetRulesByItemCodeAsync(long packageId, string itemCode) =>
-            Task.FromResult((IReadOnlyList<RuntimeRule>)new[] { _rule });
+        return File.ReadAllText(path);
+    }
 
-        public Task<IReadOnlyList<RuntimeRule>> GetRulesByIdsAsync(IReadOnlyCollection<long> runtimeRuleIds) =>
-            Task.FromResult((IReadOnlyList<RuntimeRule>)(runtimeRuleIds.Contains(_rule.RuntimeRuleId)
-                ? new[] { _rule }
-                : Array.Empty<RuntimeRule>()));
+    private static bool RepoFileExists(params string[] pathParts) => File.Exists(ResolveRepoPath(pathParts));
 
-        public Task<IReadOnlyDictionary<long, IReadOnlyList<RuntimeCondition>>> GetConditionsByRuleIdsAsync(IReadOnlyCollection<long> runtimeRuleIds) =>
-            Task.FromResult((IReadOnlyDictionary<long, IReadOnlyList<RuntimeCondition>>)new Dictionary<long, IReadOnlyList<RuntimeCondition>>());
+    private static string ResolveRepoPath(params string[] pathParts)
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            var candidate = Path.Combine(new[] { directory.FullName }.Concat(pathParts).ToArray());
+            if (File.Exists(candidate) || Directory.Exists(Path.GetDirectoryName(candidate)))
+            {
+                return candidate;
+            }
 
-        public Task<IReadOnlyDictionary<long, IReadOnlyList<RuntimeAction>>> GetActionsByRuleIdsAsync(IReadOnlyCollection<long> runtimeRuleIds) =>
-            Task.FromResult((IReadOnlyDictionary<long, IReadOnlyList<RuntimeAction>>)new Dictionary<long, IReadOnlyList<RuntimeAction>>());
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException($"无法定位仓库路径：{Path.Combine(pathParts)}");
     }
 }

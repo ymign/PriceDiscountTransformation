@@ -16,18 +16,23 @@ public static class ApiExceptionMapper
     {
         return exception switch
         {
-            BizException ex => new ApiExceptionMapping(ex.HttpStatusCode, ex.Code, GetBizExceptionClientMessage(ex)),
-            ValidationException ex => new ApiExceptionMapping(400, ex.Code, ex.Message, ex.Errors),
-            NotFoundException ex => new ApiExceptionMapping(404, ex.Code, ex.Message),
-            DomainException ex => new ApiExceptionMapping(409, ex.Code, ex.Message),
+            BizException ex => new ApiExceptionMapping(
+                ex.HttpStatusCode,
+                ex.Code,
+                GetBizExceptionClientMessage(ex),
+                GetMachineReadableErrorCode(ex.Code)),
+            ValidationException ex => new ApiExceptionMapping(400, ex.Code, ex.Message, "INVALID_REQUEST", ex.Errors),
+            NotFoundException ex => new ApiExceptionMapping(404, ex.Code, ex.Message, GetMachineReadableErrorCode(ex.Code)),
+            DomainException ex => new ApiExceptionMapping(409, ex.Code, ex.Message, GetMachineReadableErrorCode(ex.Code)),
             LimitLockException ex => new ApiExceptionMapping(
                 ex.IsConcurrencyConflict ? 409 : 500,
                 ex.IsConcurrencyConflict ? BizErrorCode.ConcurrencyConflict : BizErrorCode.LimitLockFailed,
-                GetLimitLockClientMessage(ex)),
-            ArgumentException => new ApiExceptionMapping(400, 400, "请求参数不合法"),
-            KeyNotFoundException => new ApiExceptionMapping(404, 404, "资源不存在"),
-            InvalidOperationException => new ApiExceptionMapping(409, 409, "当前状态不允许执行该操作"),
-            _ => new ApiExceptionMapping(500, 500, "服务器内部错误")
+                GetLimitLockClientMessage(ex),
+                ex.IsConcurrencyConflict ? "CONCURRENCY_CONFLICT" : "PRICING_SERVICE_UNAVAILABLE"),
+            ArgumentException => new ApiExceptionMapping(400, 400, "请求参数不合法", "INVALID_REQUEST"),
+            KeyNotFoundException => new ApiExceptionMapping(404, 404, "资源不存在", "NOT_FOUND"),
+            InvalidOperationException => new ApiExceptionMapping(409, 409, "当前状态不允许执行该操作", "INVALID_STATE"),
+            _ => new ApiExceptionMapping(500, 500, "服务器内部错误", "PRICING_SERVICE_UNAVAILABLE")
         };
     }
 
@@ -50,6 +55,33 @@ public static class ApiExceptionMapper
             ? "限额锁竞争失败，请稍后重试"
             : "限额锁处理失败";
     }
+
+    private static string GetMachineReadableErrorCode(int code)
+    {
+        return code switch
+        {
+            400 => "INVALID_REQUEST",
+            404 => "NOT_FOUND",
+            409 => "INVALID_STATE",
+            500 => "PRICING_SERVICE_UNAVAILABLE",
+            BizErrorCode.BusinessRequestNoDuplicated => "BUSINESS_REQUEST_NO_DUPLICATED",
+            BizErrorCode.IdempotencyConflict => "IDEMPOTENT_CONFLICT",
+            BizErrorCode.CommitDetailMismatch
+                or BizErrorCode.CommitQtyMismatch
+                or BizErrorCode.CommitAmountMismatch
+                or BizErrorCode.CommitActualItemsRequired
+                or BizErrorCode.CommitDetailNotFound => "COMMIT_DETAIL_MISMATCH",
+            BizErrorCode.ReverseNotAllowed => "REVERSE_NOT_ALLOWED",
+            BizErrorCode.ServiceDegraded
+                or BizErrorCode.DatabaseError
+                or BizErrorCode.LimitLockFailed => "PRICING_SERVICE_UNAVAILABLE",
+            _ => code >= 1000 && code < 2000 ? "RULE_CONFIG_ERROR" :
+                 code >= 2000 && code < 3000 ? "PRICING_BUSINESS_ERROR" :
+                 code >= 3000 && code < 4000 ? "INVALID_STATE" :
+                 code >= 4000 && code < 5000 ? "CONCURRENCY_CONFLICT" :
+                 "PRICING_SERVICE_UNAVAILABLE"
+        };
+    }
 }
 
 /// <summary>
@@ -59,4 +91,5 @@ public sealed record ApiExceptionMapping(
     int StatusCode,
     int Code,
     string Message,
+    string ErrorCode,
     IReadOnlyDictionary<string, string[]>? Errors = null);

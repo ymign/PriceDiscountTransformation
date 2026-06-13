@@ -18,7 +18,7 @@ public sealed class PolicyValidationServiceTests
         var ex = Assert.Throws<BizException>(() => service.ValidateForCompile(
             new PolicyAggregate { PolicyCode = "POL001" },
             new PolicyVersion { VersionNo = 1, PolicyStatus = PolicyLifecycleCodes.PublishReady, ScopeLevel = "SCENE" },
-            new TemplateVersion { TemplateVersionId = 11, CapabilityFamily = TemplateCapabilityCodes.FormulaPricing, MergeMode = RuntimeMergeModeCodes.SingleWinner },
+            new TemplateVersion { TemplateVersionId = 11, CapabilityFamily = TemplateCapabilityCodes.FormulaPricing, MergeMode = "SINGLE_WINNER" },
             new[] { new TemplateParamDef { ParamCode = "RATE", ValueType = "NUMBER", IsRequired = EnableFlag.Yes } },
             new[] { new TemplateStepDef { StepKind = "ACTION", ActionType = RuleActionTypeCodes.FormulaCalc, ExecutorCode = FormulaExecutorCodes.IncrementPercent } },
             new[] { new TemplateScopeDef { ScopeDimension = "SCENE", IsRequired = EnableFlag.Yes } },
@@ -37,7 +37,7 @@ public sealed class PolicyValidationServiceTests
         var ex = Assert.Throws<BizException>(() => service.ValidateForCompile(
             new PolicyAggregate { PolicyCode = "POL002" },
             new PolicyVersion { VersionNo = 1, PolicyStatus = PolicyLifecycleCodes.PublishReady, ScopeLevel = "DEPT" },
-            new TemplateVersion { TemplateVersionId = 12, CapabilityFamily = TemplateCapabilityCodes.FormulaPricing, MergeMode = RuntimeMergeModeCodes.SingleWinner },
+            new TemplateVersion { TemplateVersionId = 12, CapabilityFamily = TemplateCapabilityCodes.FormulaPricing, MergeMode = "SINGLE_WINNER" },
             Array.Empty<TemplateParamDef>(),
             new[] { new TemplateStepDef { StepKind = "ACTION", ActionType = RuleActionTypeCodes.FormulaCalc, ExecutorCode = FormulaExecutorCodes.IncrementPercent } },
             new[] { new TemplateScopeDef { ScopeDimension = "DEPT", IsRequired = EnableFlag.No } },
@@ -56,7 +56,7 @@ public sealed class PolicyValidationServiceTests
         service.ValidateForCompile(
             new PolicyAggregate { PolicyCode = "POL003" },
             new PolicyVersion { VersionNo = 1, PolicyStatus = PolicyLifecycleCodes.PublishReady, ScopeLevel = "SCENE" },
-            new TemplateVersion { TemplateVersionId = 13, CapabilityFamily = TemplateCapabilityCodes.FormulaPricing, MergeMode = RuntimeMergeModeCodes.SingleWinner },
+            new TemplateVersion { TemplateVersionId = 13, CapabilityFamily = TemplateCapabilityCodes.FormulaPricing, MergeMode = "SINGLE_WINNER" },
             new[]
             {
                 new TemplateParamDef { ParamCode = "RATE", ValueType = "NUMBER", IsRequired = EnableFlag.Yes, MinValue = 0m, MaxValue = 1m }

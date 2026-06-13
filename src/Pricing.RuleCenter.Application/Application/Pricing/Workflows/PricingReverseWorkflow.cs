@@ -58,7 +58,7 @@ public sealed class PricingReverseWorkflow
     /// <summary>
     /// 执行退费冲正：校验 → 锁定 → 幂等 → 可退校验 → 计算可退 → 写冲正日志。
     /// </summary>
-    public async Task ExecuteAsync(PricingReverseRequest request)
+    public async Task<PricingReverseResponse> ExecuteAsync(PricingReverseRequest request)
     {
         PricingRequestGuard.EnsureReverseRequest(request);
 
@@ -66,7 +66,7 @@ public sealed class PricingReverseWorkflow
             "退费冲正开始 原请求ID={OriginalRequestId}, 项目编码={ItemCode}, 退费数量={ReverseQty}",
             request.OriginalRequestId, request.ItemCode, request.ReverseQty);
 
-        await ExecuteInTransactionAsync(async () =>
+        return await ExecuteInTransactionAsync(async () =>
         {
             // 锁定原请求和退费流水
             await LockReverseRequestAsync(request);
@@ -74,9 +74,10 @@ public sealed class PricingReverseWorkflow
             var log = await GetOriginalRequestAsync(request.OriginalRequestId);
 
             var reverseLogs = await _reverseLogRepository.GetByOriginalRequestIdAsync(request.OriginalRequestId);
-            if (TryHandleIdempotentReverse(request, reverseLogs))
+            var idempotentResponse = TryHandleIdempotentReverse(request, reverseLogs);
+            if (idempotentResponse is not null)
             {
-                return;
+                return idempotentResponse;
             }
 
             EnsureReverseAllowed(log);
@@ -128,7 +129,8 @@ public sealed class PricingReverseWorkflow
                 ReverseRequestId = reverseRequestId,
                 ReverseQty = reverseContext.ReverseQty,
                 ReverseAmt = reverseContext.ReverseAmt,
-                ReverseTime = reverseTime
+                ReverseTime = reverseTime,
+                IsFullReverse = reverseContext.IsFullReverse
             });
 
             _logger.LogInformation(
@@ -137,6 +139,8 @@ public sealed class PricingReverseWorkflow
                 reverseContext.ReverseQty,
                 reverseContext.ReverseAmt,
                 reverseContext.IsFullReverse);
+
+            return BuildResponse(request, reverseRequestId, reverseContext.IsFullReverse);
         });
     }
 
@@ -155,7 +159,7 @@ public sealed class PricingReverseWorkflow
             ?? throw new BizException(BizErrorCode.RequestNotFound, 404, $"原请求不存在: {originalRequestId}");
     }
 
-    private bool TryHandleIdempotentReverse(
+    private PricingReverseResponse? TryHandleIdempotentReverse(
         PricingReverseRequest request,
         IReadOnlyList<ChargeReverseLog> reverseLogs)
     {
@@ -163,7 +167,7 @@ public sealed class PricingReverseWorkflow
             string.Equals(reverseLog.ReverseNo, request.ReverseNo, StringComparison.OrdinalIgnoreCase));
         if (sameReverseNo is null)
         {
-            return false;
+            return null;
         }
 
         if (!PricingReverseDetailSelector.IsSameReverseRequest(sameReverseNo, request))
@@ -178,7 +182,10 @@ public sealed class PricingReverseWorkflow
             "退费冲正幂等命中 原请求ID={OriginalRequestId}, 冲正流水号={ReverseNo}",
             request.OriginalRequestId,
             request.ReverseNo);
-        return true;
+        return BuildResponse(
+            request,
+            sameReverseNo.ReverseRequestId ?? 0,
+            string.Equals(sameReverseNo.ReverseType, "FULL", StringComparison.OrdinalIgnoreCase));
     }
 
     private static void EnsureReverseAllowed(ChargeRequest log)
@@ -327,13 +334,30 @@ public sealed class PricingReverseWorkflow
                string.Equals(businessStatus, BusinessStatusCodes.Committed, StringComparison.OrdinalIgnoreCase);
     }
 
-    private async Task ExecuteInTransactionAsync(Func<Task> action)
+    private static PricingReverseResponse BuildResponse(
+        PricingReverseRequest request,
+        long reverseRequestId,
+        bool isFullReverse)
+    {
+        return new PricingReverseResponse
+        {
+            OriginalRequestId = request.OriginalRequestId,
+            ReverseNo = request.ReverseNo!.Trim(),
+            ReverseRequestId = reverseRequestId,
+            IsFullReverse = isFullReverse,
+            BusinessStatus = BusinessStatusCodes.Reversed,
+            NextAction = PricingNextActionCodes.NoFurtherAction
+        };
+    }
+
+    private async Task<T> ExecuteInTransactionAsync<T>(Func<Task<T>> action)
     {
         try
         {
             await _unitOfWork.BeginAsync();
-            await action();
+            var result = await action();
             await _unitOfWork.CommitAsync();
+            return result;
         }
         catch (Exception ex)
         {

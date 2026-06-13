@@ -38,17 +38,17 @@ internal sealed class PricingWorkflowHarness
         return _confirmWorkflow.ExecuteAsync(request);
     }
 
-    public Task CommitAsync(PricingCommitRequest request)
+    public Task<PricingCommitResponse> CommitAsync(PricingCommitRequest request)
     {
         return _commitWorkflow.ExecuteAsync(request);
     }
 
-    public Task CancelAsync(PricingCancelRequest request)
+    public Task<PricingCancelResponse> CancelAsync(PricingCancelRequest request)
     {
         return _cancelWorkflow.ExecuteAsync(request);
     }
 
-    public Task ReverseAsync(PricingReverseRequest request)
+    public Task<PricingReverseResponse> ReverseAsync(PricingReverseRequest request)
     {
         return _reverseWorkflow.ExecuteAsync(request);
     }
@@ -61,5 +61,10 @@ internal sealed class PricingWorkflowHarness
     public Task<SpecialFlagResponse> GetSpecialFlagAsync(SpecialFlagRequest request)
     {
         return _specialFlagResolver.ResolveAsync(request);
+    }
+
+    public Task<SpecialFlagBatchResponse> GetSpecialFlagsAsync(SpecialFlagBatchRequest request)
+    {
+        return _specialFlagResolver.ResolveBatchAsync(request);
     }
 }

@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Options;
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Pricing.Builders;
-using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Core.Aggregates.Charging;
 using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
@@ -27,8 +26,6 @@ internal sealed record PricingConfirmationPersistenceInput
         Array.Empty<ItemPricingCalculation>();
 
     public string Fingerprint { get; init; } = string.Empty;
-
-    public RuntimePackageTraceResolution? RuntimeTrace { get; init; }
 }
 
 /// <summary>
@@ -74,8 +71,7 @@ public sealed class PricingConfirmationPersistenceService
         await _traceStepWriter.SaveAsync(
             requestLog.RequestId,
             requestLog.TraceId,
-            input.Calculations,
-            input.RuntimeTrace);
+            input.Calculations);
 
         await SaveCalculationArtifactsAsync(requestLog, input);
 
@@ -93,8 +89,7 @@ public sealed class PricingConfirmationPersistenceService
             Calculations = input.Calculations,
             CallType = PricingCallTypeCodes.Confirm,
             LifecycleKind = RequestLogLifecycleKind.ConfirmPending,
-            Fingerprint = input.Fingerprint,
-            RuntimeTrace = input.RuntimeTrace
+            Fingerprint = input.Fingerprint
         });
     }
 
@@ -120,8 +115,7 @@ public sealed class PricingConfirmationPersistenceService
             Request = input.Request,
             Item = calculation.Item,
             Result = calculation.Result,
-            Status = OccupyStatusCodes.Pending,
-            RuntimeTrace = input.RuntimeTrace
+            Status = OccupyStatusCodes.Pending
         });
 
         if (!calculation.Result.IsSpecialItem)
@@ -145,7 +139,6 @@ public sealed class PricingConfirmationPersistenceService
             requestLog.TraceId,
             input.Calculations,
             _clock.Now,
-            input.RuntimeTrace,
             requestLog.RequestAt.AddMinutes(_options.ConfirmExpireMinutes));
     }
 }

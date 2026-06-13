@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Pricing.RuleCenter.Api.Middleware;
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Core.Exceptions;
@@ -22,6 +23,37 @@ public sealed class ApiExceptionMapperTests
         Assert.Equal(400, mapped.Code);
         Assert.Equal("参数校验失败", mapped.Message);
         Assert.Same(errors, mapped.Errors);
+        Assert.Equal("INVALID_REQUEST", mapped.ErrorCode);
+    }
+
+    [Theory]
+    [InlineData(BizErrorCode.BusinessRequestNoDuplicated, "BUSINESS_REQUEST_NO_DUPLICATED")]
+    [InlineData(BizErrorCode.IdempotencyConflict, "IDEMPOTENT_CONFLICT")]
+    [InlineData(BizErrorCode.CommitDetailMismatch, "COMMIT_DETAIL_MISMATCH")]
+    [InlineData(BizErrorCode.CommitQtyMismatch, "COMMIT_DETAIL_MISMATCH")]
+    [InlineData(BizErrorCode.CommitAmountMismatch, "COMMIT_DETAIL_MISMATCH")]
+    [InlineData(BizErrorCode.ReverseNotAllowed, "REVERSE_NOT_ALLOWED")]
+    [InlineData(BizErrorCode.ServiceDegraded, "PRICING_SERVICE_UNAVAILABLE")]
+    public void Map_ShouldExposeMachineReadableErrorCode(int businessCode, string expectedErrorCode)
+    {
+        var mapped = ApiExceptionMapper.Map(new BizException(businessCode, 409, "业务异常"));
+
+        Assert.Equal(expectedErrorCode, mapped.ErrorCode);
+    }
+
+    [Fact]
+    public void ApiResultFail_ShouldSerializeMachineReadableErrorCode()
+    {
+        var result = ApiResult.Fail(
+            400,
+            "请求参数不合法",
+            traceId: "TRACE-ERR",
+            errorCode: "INVALID_REQUEST");
+
+        var json = JsonSerializer.Serialize(result);
+
+        using var document = JsonDocument.Parse(json);
+        Assert.Equal("INVALID_REQUEST", document.RootElement.GetProperty("error_code").GetString());
     }
 
     [Fact]

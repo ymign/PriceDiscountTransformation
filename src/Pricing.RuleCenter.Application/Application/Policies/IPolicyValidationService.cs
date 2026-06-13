@@ -9,7 +9,7 @@ namespace Pricing.RuleCenter.Application.Policies;
 public interface IPolicyValidationService
 {
     /// <summary>
-    /// 校验策略版本是否具备进入运行时包编译阶段的条件。
+    /// 校验策略版本是否具备生成直接规则配置的条件。
     /// </summary>
     void ValidateForCompile(
         PolicyAggregate policy,

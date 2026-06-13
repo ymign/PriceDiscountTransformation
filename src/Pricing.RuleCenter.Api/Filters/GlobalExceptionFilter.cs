@@ -86,7 +86,11 @@ public sealed class GlobalExceptionFilter : IExceptionFilter
         // 参数错误、资源不存在和状态冲突是可预期业务错误；其他异常统一隐藏内部细节，返回 500。
         // 这样前端可以按 HTTP 状态码做分支处理，同时 ApiResult.Code 提供更细粒度的错误码。
         var mapping = ApiExceptionMapper.Map(context.Exception);
-        var response = ApiResult.Fail(mapping.Code, mapping.Message, errors: mapping.Errors);
+        var response = ApiResult.Fail(
+            mapping.Code,
+            mapping.Message,
+            errors: mapping.Errors,
+            errorCode: mapping.ErrorCode);
 
         // ========== 第三阶段：设置 HTTP 状态码 ==========
         // ApiResult.Code 与 HTTP StatusCode 保持一致，方便前端既能按 HTTP 状态处理，也能读统一响应体。

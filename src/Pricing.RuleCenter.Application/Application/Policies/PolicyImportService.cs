@@ -1,7 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
 using Pricing.RuleCenter.Application.Dto;
-using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Core.Aggregates.Policies;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Aggregates.Templates;
@@ -18,6 +17,8 @@ namespace Pricing.RuleCenter.Application.Policies;
 /// </summary>
 public sealed class PolicyImportService
 {
+    private const string LegacyActionParamsJsonParamCode = "LEGACY_ACTION_PARAMS_JSON";
+
     private readonly IRuleHeaderRepository _ruleHeaderRepository;
     private readonly IRuleConditionRepository _ruleConditionRepository;
     private readonly IRuleActionRepository _ruleActionRepository;
@@ -312,7 +313,7 @@ public sealed class PolicyImportService
             items.Add(new PolicyParam
             {
                 PolicyVersionId = version.PolicyVersionId,
-                ParamCode = RuntimeRuleProjectionFactory.LegacyActionParamsJsonParamCode,
+                ParamCode = LegacyActionParamsJsonParamCode,
                 ValueType = "TEXT",
                 ValueText = action.ParamsJson
             });

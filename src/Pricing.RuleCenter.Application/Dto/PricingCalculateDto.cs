@@ -8,7 +8,8 @@ namespace Pricing.RuleCenter.Application.Dto;
 /// </summary>
 /// <remarks>
 /// 该请求同时服务试算和确认计费。试算可以没有稳定业务请求号，确认计费必须尽量提供
-/// BusinessRequestNo，便于规则中心做幂等保护和重复提交识别。
+/// simulate 可不传 BusinessRequestNo；一旦传入则必须在本次试算调用中唯一，重复会返回 409。
+/// confirm 必须传入稳定 BusinessRequestNo，超时重试必须复用，规则中心会按该字段做幂等保护。
 /// </remarks>
 public sealed class PricingCalculateRequest
 {
@@ -81,7 +82,9 @@ public sealed class PricingCalculateRequest
     [JsonPropertyName("charge_no")]
     public string? ChargeNo { get; init; }
     /// <summary>
-    /// 调用方稳定业务号，confirm 重试必须复用，用于幂等保护
+    /// 调用方稳定业务号。
+    /// simulate 中该字段可选，仅用于排查；如果传入则必须按每次试算唯一，重复会返回 409。
+    /// confirm 中该字段必填且必须稳定，超时重试要复用同一个值。
     /// </summary>
     [JsonPropertyName("business_request_no")]
     public string? BusinessRequestNo { get; init; }
@@ -143,6 +146,25 @@ public sealed class PricingCalculateItemRequest
     /// </summary>
     [JsonPropertyName("item_group_code")]
     public string? ItemGroupCode { get; init; }
+
+    /// <summary>
+    /// 明细级收费场景。为空时使用请求根级 charge_scene。
+    /// 一次收费包含多项目时，不同项目可分别携带门诊、住院、医技或手术等场景。
+    /// </summary>
+    [JsonPropertyName("charge_scene")]
+    public string? ChargeScene { get; init; }
+
+    /// <summary>
+    /// 明细级就诊类型。为空时使用请求根级 visit_type。
+    /// </summary>
+    [JsonPropertyName("visit_type")]
+    public string? VisitType { get; init; }
+
+    /// <summary>
+    /// 明细级收费科室编码。为空时使用请求根级 charge_dept_code。
+    /// </summary>
+    [JsonPropertyName("charge_dept_code")]
+    public string? ChargeDeptCode { get; init; }
 
     /// <summary>
     /// 调用方录入的原始数量，金额计算前不得随意覆盖。

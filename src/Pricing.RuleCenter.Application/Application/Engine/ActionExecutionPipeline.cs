@@ -140,7 +140,7 @@ public sealed class ActionExecutionPipeline
                 // 前面已经通过 CanHandle 确认只有一个执行器可以处理当前动作。
                 // 这里不再循环所有候选执行器，避免 ExecutorCode 配错时静默跳过，也避免重复执行同一动作。
                 await executors[0].ExecuteAsync(action, context);
-                StampRuntimeRuleId(context.TraceSteps, traceStepCountBeforeExecute, action.RuleId);
+                StampActionTraceMetadata(context, traceStepCountBeforeExecute, action);
 
                 // ========== 第三阶段：写成功追溯步骤 ==========
                 // StepType 必须映射到数据库 CHECK 约束允许的稳定类别（CONVERT/FORMULA/LIMIT/DISCOUNT/VALIDATE），
@@ -155,10 +155,18 @@ public sealed class ActionExecutionPipeline
                     StepType = RuleActionTraceStepTypes.EnsureAllowed(
                         executors[0].TraceStepType,
                         action.ActionType),
-                    StepDesc = $"执行 {action.ActionType}",
+                    StepDesc = $"执行 {ResolveActionName(action.ActionType)}",
                     InputValue = inputValue,
                     OutputValue = context.FinalAmount,
-                    RuntimeRuleId = action.RuleId,
+                    RuntimeRuleId = NormalizeRuleId(action.RuleId),
+                    RuleCode = NormalizeString(FindRule(context, action.RuleId)?.RuleCode),
+                    RuleName = NormalizeString(FindRule(context, action.RuleId)?.RuleName),
+                    ActionCode = NormalizeString(action.ActionType),
+                    ExecutorCode = NormalizeString(action.ExecutorCode),
+                    ValueType = "AMOUNT",
+                    ValueUnit = "元",
+                    InputName = "处理前金额",
+                    OutputName = "处理后金额",
                     ParamsJson = action.ParamsJson
                 });
             }
@@ -191,7 +199,11 @@ public sealed class ActionExecutionPipeline
                         StepDesc = $"执行异常(已跳过): {ex.Message}",
                         InputValue = inputValue,
                         OutputValue = context.FinalAmount,
-                        RuntimeRuleId = action.RuleId
+                        RuntimeRuleId = NormalizeRuleId(action.RuleId),
+                        RuleCode = NormalizeString(FindRule(context, action.RuleId)?.RuleCode),
+                        RuleName = NormalizeString(FindRule(context, action.RuleId)?.RuleName),
+                        ActionCode = NormalizeString(action.ActionType),
+                        ExecutorCode = NormalizeString(action.ExecutorCode)
                     });
                 }
 
@@ -229,16 +241,70 @@ public sealed class ActionExecutionPipeline
         return string.Equals(action.OnError, "WARN", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static void StampRuntimeRuleId(IReadOnlyList<TraceStep> traceSteps, int startIndex, long runtimeRuleId)
+    private static void StampActionTraceMetadata(
+        PricingContext context,
+        int startIndex,
+        RuleAction action)
     {
         // 有些执行器会先写更细粒度的业务步骤，再由管线补通用步骤。
-        // 执行器内部步骤如果没有 RuntimeRuleId，这里统一回填当前动作所属运行时规则，保证追溯能反查来源规则。
+        // TraceStep.RuntimeRuleId 是历史命名兼容字段；当前直接规则链路用它暂存 PR_RULE_HEADER.RULE_ID。
+        var rule = FindRule(context, action.RuleId);
+        var ruleId = NormalizeRuleId(action.RuleId);
+        var ruleCode = NormalizeString(rule?.RuleCode);
+        var ruleName = NormalizeString(rule?.RuleName);
+        var actionCode = NormalizeString(action.ActionType);
+        var executorCode = NormalizeString(action.ExecutorCode);
+
+        var traceSteps = context.TraceSteps;
         for (var index = startIndex; index < traceSteps.Count; index++)
         {
-            if (!traceSteps[index].RuntimeRuleId.HasValue)
+            var step = traceSteps[index];
+            if (!step.RuntimeRuleId.HasValue)
             {
-                traceSteps[index].RuntimeRuleId = runtimeRuleId;
+                step.RuntimeRuleId = ruleId;
             }
+
+            step.RuleCode ??= ruleCode;
+            step.RuleName ??= ruleName;
+            step.ActionCode ??= actionCode;
+            step.ExecutorCode ??= executorCode;
         }
+    }
+
+    private static RuleAggregate? FindRule(PricingContext context, long ruleId)
+    {
+        return ruleId > 0
+            ? context.MatchedRules.FirstOrDefault(rule => rule.RuleId == ruleId)
+            : null;
+    }
+
+    private static long? NormalizeRuleId(long ruleId)
+    {
+        return ruleId > 0 ? ruleId : null;
+    }
+
+    private static string? NormalizeString(string? value)
+    {
+        var normalized = value?.Trim();
+        return string.IsNullOrEmpty(normalized) ? null : normalized;
+    }
+
+    private static string ResolveActionName(string? actionCode)
+    {
+        return NormalizeString(actionCode)?.ToUpperInvariant() switch
+        {
+            "CONVERT_QTY" => "双单位换算",
+            "FORMULA_CALC" => "公式计价",
+            "APPLY_MIN_AMOUNT" => "金额下限",
+            "APPLY_MAX_AMOUNT" => "金额上限",
+            "APPLY_DAY_LIMIT_QTY" => "日数量限额",
+            "APPLY_TIME_WINDOW_LIMIT" => "时间窗口限额",
+            "APPLY_ONCE_LIMIT_QTY" => "单次数量限额",
+            "SAME_GROUP_MUTEX" => "同组互斥",
+            "SAME_OPERATION_CEILING" => "同手术封顶",
+            "DISCOUNT_EXCEED_TO_ZERO" => "超出部分归零",
+            "ADD_CHILD_ITEM" => "子项加收",
+            _ => actionCode ?? "未知动作"
+        };
     }
 }

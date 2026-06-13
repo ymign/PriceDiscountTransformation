@@ -1,6 +1,5 @@
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Pricing.Builders;
-using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Core.Aggregates.Charging;
 using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
@@ -23,8 +22,6 @@ internal sealed record PricingSimulationPersistenceInput
 
     public IReadOnlyList<ItemPricingCalculation> Calculations { get; init; } =
         Array.Empty<ItemPricingCalculation>();
-
-    public RuntimePackageTraceResolution? RuntimeTrace { get; init; }
 }
 
 /// <summary>
@@ -54,12 +51,20 @@ public sealed class PricingSimulationPersistenceService
 
     internal async Task<PricingCalculateResponse> PersistAsync(PricingSimulationPersistenceInput input)
     {
-        var requestLog = await SaveRequestLogAsync(input);
+        ChargeRequest requestLog;
+        try
+        {
+            requestLog = await SaveRequestLogAsync(input);
+        }
+        catch (Exception ex) when (IsBusinessRequestNoUniqueConstraintViolation(ex))
+        {
+            throw BuildDuplicateBusinessRequestNoException(input.Request);
+        }
+
         await _traceStepWriter.SaveAsync(
             requestLog.RequestId,
             requestLog.TraceId,
-            input.Calculations,
-            input.RuntimeTrace);
+            input.Calculations);
 
         var response = BuildResponse(requestLog, input);
         await _requestLogWriter.SaveResponseJsonAsync(requestLog, response);
@@ -74,9 +79,24 @@ public sealed class PricingSimulationPersistenceService
             Items = input.Items,
             Calculations = input.Calculations,
             CallType = PricingCallTypeCodes.Simulate,
-            LifecycleKind = RequestLogLifecycleKind.Simulated,
-            RuntimeTrace = input.RuntimeTrace
+            LifecycleKind = RequestLogLifecycleKind.Simulated
         });
+    }
+
+    private static BizException BuildDuplicateBusinessRequestNoException(PricingCalculateRequest request)
+    {
+        var sourceSystem = request.SourceSystem.Trim();
+        var businessRequestNo = NormalizeString(request.BusinessRequestNo) ?? "(空)";
+        return new BizException(
+            BizErrorCode.BusinessRequestNoDuplicated,
+            409,
+            $"业务请求号重复：source_system={sourceSystem}, business_request_no={businessRequestNo}, call_type=SIMULATE。请更换业务请求号后重新试算。");
+    }
+
+    private static bool IsBusinessRequestNoUniqueConstraintViolation(Exception ex)
+    {
+        return ex.Message.Contains("ORA-00001", StringComparison.OrdinalIgnoreCase) &&
+               ex.Message.Contains("UK_PR_CRL_BIZ", StringComparison.OrdinalIgnoreCase);
     }
 
     private PricingCalculateResponse BuildResponse(
@@ -87,7 +107,12 @@ public sealed class PricingSimulationPersistenceService
             requestLog.RequestId,
             requestLog.TraceId,
             input.Calculations,
-            _clock.Now,
-            input.RuntimeTrace);
+            _clock.Now);
+    }
+
+    private static string? NormalizeString(string? value)
+    {
+        var normalized = value?.Trim();
+        return string.IsNullOrEmpty(normalized) ? null : normalized;
     }
 }

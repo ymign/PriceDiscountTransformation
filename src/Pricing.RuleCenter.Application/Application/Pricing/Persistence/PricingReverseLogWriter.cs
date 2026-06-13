@@ -49,6 +49,8 @@ internal sealed record ReverseLogSaveInput
     public decimal ReverseAmt { get; init; }
 
     public DateTime ReverseTime { get; init; }
+
+    public bool IsFullReverse { get; init; }
 }
 
 /// <summary>
@@ -148,6 +150,7 @@ public sealed class PricingReverseLogWriter
                        input.MatchedDetails.FirstOrDefault()?.ItemCode ??
                        input.OriginalLog.ItemCode,
             PartSeq = input.Request.PartSeq,
+            ReverseType = input.IsFullReverse ? "FULL" : "PARTIAL",
             ReverseQty = input.ReverseQty,
             ReverseAmt = input.ReverseAmt,
             ReverseReason = input.Request.Reason,

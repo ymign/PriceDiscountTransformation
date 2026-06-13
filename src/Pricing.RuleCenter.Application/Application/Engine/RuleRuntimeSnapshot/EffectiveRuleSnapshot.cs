@@ -3,11 +3,11 @@
 namespace Pricing.RuleCenter.Application.Engine.RuleRuntimeSnapshot;
 
 /// <summary>
-/// 单条运行期生效规则快照。
+/// 单条生效规则快照。
 /// </summary>
 /// <remarks>
-/// 规则匹配服务只消费快照，不直接关心快照来自旧 PR_RULE_* 表还是新运行包读模型。
-/// 该对象把规则主档、当前版本条件和动作放在一起，保证同一次匹配使用同一版本配置。
+/// 规则匹配服务只消费快照，不直接读取仓储。
+/// 该对象把 PR_RULE_* 的规则主档、当前版本条件和动作放在一起，保证同一次匹配使用同一版本配置。
 /// </remarks>
 public sealed class EffectiveRuleSnapshot
 {

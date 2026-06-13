@@ -13,7 +13,7 @@ namespace Pricing.RuleCenter.Application.Dto;
 public sealed class PricingCommitRequest
 {
     /// <summary>
-    /// 计价请求日志主键，用于串联请求、步骤、折价明细和限额占用
+    /// 计价请求日志主键。commit/cancel 不再使用 business_request_no 定位，必须使用 confirm 响应返回的 request_id。
     /// </summary>
     [Required(ErrorMessage = "请求ID不能为空")]
     [JsonPropertyName("request_id")]
@@ -96,6 +96,32 @@ public sealed class PricingCommitActualItemRequest
 }
 
 /// <summary>
+/// 确认计费提交响应 DTO。
+/// </summary>
+public sealed class PricingCommitResponse
+{
+    /// <summary>本次 commit 对应的 confirm 请求 ID。</summary>
+    [JsonPropertyName("request_id")]
+    public long RequestId { get; init; }
+
+    /// <summary>推进后的业务状态，成功时通常为 CONFIRMED。</summary>
+    [JsonPropertyName("business_status")]
+    public string BusinessStatus { get; init; } = string.Empty;
+
+    /// <summary>HIS 实际收费单号。</summary>
+    [JsonPropertyName("charge_no")]
+    public string? ChargeNo { get; init; }
+
+    /// <summary>计价中心确认收到 commit 的时间。</summary>
+    [JsonPropertyName("committed_at")]
+    public DateTime? CommittedAt { get; init; }
+
+    /// <summary>下一步动作。commit 成功后通常无需继续调用计价中心。</summary>
+    [JsonPropertyName("next_action")]
+    public string NextAction { get; init; } = PricingNextActionCodes.NoFurtherAction;
+}
+
+/// <summary>
 /// 确认计费取消请求 DTO。
 /// </summary>
 /// <remarks>
@@ -104,7 +130,7 @@ public sealed class PricingCommitActualItemRequest
 public sealed class PricingCancelRequest
 {
     /// <summary>
-    /// 计价请求日志主键，用于串联请求、步骤、折价明细和限额占用
+    /// 计价请求日志主键。commit/cancel 不再使用 business_request_no 定位，必须使用 confirm 响应返回的 request_id。
     /// </summary>
     [Required(ErrorMessage = "请求ID不能为空")]
     [JsonPropertyName("request_id")]
@@ -133,4 +159,22 @@ public sealed class PricingCancelRequest
     /// </summary>
     [JsonPropertyName("cancelled_at")]
     public DateTime? CancelledAt { get; init; }
+}
+
+/// <summary>
+/// 确认计费取消响应 DTO。
+/// </summary>
+public sealed class PricingCancelResponse
+{
+    /// <summary>本次 cancel 对应的 confirm 请求 ID。</summary>
+    [JsonPropertyName("request_id")]
+    public long RequestId { get; init; }
+
+    /// <summary>推进后的业务状态，成功时通常为 CANCELLED。</summary>
+    [JsonPropertyName("business_status")]
+    public string BusinessStatus { get; init; } = string.Empty;
+
+    /// <summary>下一步动作。cancel 成功后通常无需继续调用计价中心。</summary>
+    [JsonPropertyName("next_action")]
+    public string NextAction { get; init; } = PricingNextActionCodes.NoFurtherAction;
 }

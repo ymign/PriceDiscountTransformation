@@ -234,23 +234,6 @@ public sealed class PolicyReviewDecisionRequest
     public string? ReviewComment { get; init; }
 }
 
-public sealed class RuntimePackagePublishRequest
-{
-    [Required]
-    [JsonPropertyName("policy_version_ids")]
-    public IReadOnlyList<long> PolicyVersionIds { get; init; } = Array.Empty<long>();
-    [Required]
-    [JsonPropertyName("published_by")]
-    public string PublishedBy { get; init; } = string.Empty;
-}
-
-public sealed class RuntimePackageOperationRequest
-{
-    [Required]
-    [JsonPropertyName("operated_by")]
-    public string OperatedBy { get; init; } = string.Empty;
-}
-
 public sealed class PolicyImportRequest
 {
     [Required]
@@ -259,22 +242,4 @@ public sealed class PolicyImportRequest
     [Required]
     [JsonPropertyName("imported_by")]
     public string ImportedBy { get; init; } = string.Empty;
-}
-
-public sealed class RuntimePackageHistoryResponse
-{
-    [JsonPropertyName("package_id")]
-    public long PackageId { get; init; }
-    [JsonPropertyName("package_version")]
-    public long PackageVersion { get; init; }
-    [JsonPropertyName("package_status")]
-    public string PackageStatus { get; init; } = string.Empty;
-    [JsonPropertyName("built_by")]
-    public string? BuiltBy { get; init; }
-    [JsonPropertyName("built_at")]
-    public DateTime? BuiltAt { get; init; }
-    [JsonPropertyName("activated_by")]
-    public string? ActivatedBy { get; init; }
-    [JsonPropertyName("activated_at")]
-    public DateTime? ActivatedAt { get; init; }
 }

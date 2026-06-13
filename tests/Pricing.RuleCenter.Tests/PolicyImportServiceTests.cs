@@ -1,6 +1,5 @@
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Policies;
-using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Core.Aggregates.Policies;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Aggregates.Templates;
@@ -95,7 +94,7 @@ public sealed class PolicyImportServiceTests
         Assert.Single(policyRepository.Bindings[versionId]);
         Assert.Single(policyRepository.Scopes[versionId]);
         var parameter = Assert.Single(policyRepository.Params[versionId]);
-        Assert.Equal(RuntimeRuleProjectionFactory.LegacyActionParamsJsonParamCode, parameter.ParamCode);
+        Assert.Equal("LEGACY_ACTION_PARAMS_JSON", parameter.ParamCode);
         Assert.Equal("{\"rate\":0.8}", parameter.ValueText);
     }
 

@@ -122,12 +122,12 @@ public sealed class ChargeDiscountDetail
         public int? RuleVersionNo { get; set; }
 
     /// <summary>
-    /// 产生本次折价结果的运行时包主键。
+    /// 历史运行包兼容列，当前直接规则链路不再写入。
     /// </summary>
     public long? RuntimePackageId { get; set; }
 
     /// <summary>
-    /// 产生本次折价结果的运行时规则主键。
+    /// 历史运行时规则兼容列，当前直接规则链路不再写入。
     /// </summary>
     public long? RuntimeRuleId { get; set; }
 

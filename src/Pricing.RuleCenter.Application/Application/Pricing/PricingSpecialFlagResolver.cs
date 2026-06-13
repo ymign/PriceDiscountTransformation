@@ -1,12 +1,11 @@
-﻿using Pricing.RuleCenter.Application.Dto;
-using Pricing.RuleCenter.Application.RuntimePackages;
-using Pricing.RuleCenter.Core.Aggregates.Rules;
-using Pricing.RuleCenter.Core.Constants;
+using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Engine;
 using Pricing.RuleCenter.Application.Engine.RuleRuntimeSnapshot;
-using Pricing.RuleCenter.Core.Models;
+using Pricing.RuleCenter.Core.Aggregates.Rules;
+using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
+using Pricing.RuleCenter.Core.Models;
 
 namespace Pricing.RuleCenter.Application.Pricing;
 
@@ -14,58 +13,48 @@ namespace Pricing.RuleCenter.Application.Pricing;
 /// 特殊项目标识解析器。
 /// </summary>
 /// <remarks>
-/// <para>
 /// special-flag 是渠道决定“是否必须调用统一计价服务”的前置接口。它不能漏判特殊项目：
 /// 若漏判，渠道可能按普通价格收费，绕过折价规则、限额和追溯。
-/// </para>
-/// <para>
-/// 解析器优先读取当前激活运行包；没有运行包时回退旧规则主档。
-/// 运行包路径可以按查询条件预评估规则条件，旧规则路径只做项目和生效期粗判。
-/// </para>
 /// </remarks>
 public sealed class PricingSpecialFlagResolver
 {
-    private readonly RuntimeRuleProjectionAdapter _runtimeProjectionAdapter = new();
+    private const int MaxBatchItemCount = 50;
 
     /// <summary>
-    /// 旧规则主档仓储，用于未激活运行包时按项目读取已发布规则。
+    /// 规则主档仓储，用于未注入快照加载器时按项目粗判。
     /// </summary>
     private readonly IRuleHeaderRepository _headerRepository;
+
     /// <summary>
     /// 统一时钟，用于 businessChargeTime 未传入时判断规则生效期。
     /// </summary>
     private readonly IClock _clock;
-    /// <summary>
-    /// 运行包追溯解析器，用于读取当前激活运行包中的运行时规则快照。
-    /// </summary>
-    private readonly RuntimePackageTraceResolver? _runtimePackageTraceResolver;
-    /// <summary>
-    /// 当前请求可见规则快照统一入口。存在时优先使用该入口，统一封装运行包和旧规则回退逻辑。
-    /// </summary>
-    private readonly EffectiveRuleSnapshotLoader? _effectiveRuleSnapshotLoader;
+
     /// <summary>
     /// 条件组匹配器，用于 special-flag 查询时提前按场景、部位、就诊类型等条件预判命中。
     /// </summary>
     private readonly IRuleConditionGroupMatcher? _conditionMatcher;
 
     /// <summary>
+    /// 当前请求可见规则快照统一入口。
+    /// </summary>
+    private readonly EffectiveRuleSnapshotLoader? _effectiveRuleSnapshotLoader;
+
+    /// <summary>
     /// 初始化特殊项目标识解析器。
     /// </summary>
     /// <param name="headerRepository">规则头仓储，用于读取项目关联规则。</param>
     /// <param name="clock">技术时间提供者，用于按当前时间过滤有效规则。</param>
-    /// <param name="runtimePackageTraceResolver">运行时包追溯解析器，用于优先读取激活运行时包。</param>
     /// <param name="conditionMatcher">条件组匹配器，用于按查询维度预判规则命中。</param>
-    /// <param name="effectiveRuleSnapshotLoader">统一规则快照加载入口，用于优先复用运行包和旧规则回退逻辑。</param>
+    /// <param name="effectiveRuleSnapshotLoader">统一规则快照加载入口。</param>
     public PricingSpecialFlagResolver(
         IRuleHeaderRepository headerRepository,
         IClock clock,
-        RuntimePackageTraceResolver? runtimePackageTraceResolver = null,
         IRuleConditionGroupMatcher? conditionMatcher = null,
         EffectiveRuleSnapshotLoader? effectiveRuleSnapshotLoader = null)
     {
         _headerRepository = headerRepository;
         _clock = clock;
-        _runtimePackageTraceResolver = runtimePackageTraceResolver;
         _conditionMatcher = conditionMatcher;
         _effectiveRuleSnapshotLoader = effectiveRuleSnapshotLoader;
     }
@@ -91,74 +80,132 @@ public sealed class PricingSpecialFlagResolver
 
         var normalizedItemCode = NormalizeString(request.ItemCode)
             ?? throw new ArgumentException("项目编码不能为空", nameof(request.ItemCode));
-        var businessTime = request.BusinessChargeTime ?? _clock.Now;
+        var decisionTime = _clock.Now;
+        var businessTime = request.BusinessChargeTime ?? decisionTime;
 
         if (_effectiveRuleSnapshotLoader is not null)
         {
-            return await ResolveFromSnapshotLoaderAsync(normalizedItemCode, request, businessTime);
+            return await ResolveFromSnapshotLoaderAsync(normalizedItemCode, request, businessTime, decisionTime);
         }
 
-        // 优先使用激活运行包。运行包是发布后的稳定快照，能避免查询过程中规则主表被编辑造成判断不一致。
-        if (_runtimePackageTraceResolver is not null)
-        {
-            var runtimeResolution = await _runtimePackageTraceResolver.LoadActiveRuleSnapshotsByItemCodeAsync(normalizedItemCode);
-            if (runtimeResolution.HasActiveRuntimePackage)
-            {
-                return await ResolveFromRuntimePackageAsync(
-                    normalizedItemCode,
-                    request,
-                    businessTime,
-                    runtimeResolution);
-            }
-        }
-
-        // 没有运行包时回退旧规则模型。此路径无法完整执行所有条件，只按项目、发布状态和生效期粗判。
-        // 粗判宁可多返回特殊项目，也不能漏掉需要统一计价的项目。
+        // 无快照加载器时只按项目、发布状态和生效期粗判。粗判宁可多返回特殊项目，也不能漏判。
         var rules = await _headerRepository.GetByItemCodeAsync(normalizedItemCode);
         var published = rules
             .Where(r => r.Status == RuleStatusCodes.Published && r.IsEnabled == EnableFlag.Yes)
             .Where(r => r.IsEffectiveAt(businessTime))
             .ToList();
 
-        return BuildPublishedRuleResponse(normalizedItemCode, published);
+        return BuildPublishedRuleResponse(normalizedItemCode, published, decisionTime);
+    }
+
+    /// <summary>
+    /// 批量解析本次收费动作中多条费用明细的特殊项目标识。
+    /// </summary>
+    /// <param name="request">批量特殊项目标识查询请求。</param>
+    /// <returns>批量特殊项目标识响应。</returns>
+    public async Task<SpecialFlagBatchResponse> ResolveBatchAsync(SpecialFlagBatchRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.Items is null || request.Items.Count == 0)
+        {
+            throw new ArgumentException("Items 不能为空", nameof(request.Items));
+        }
+
+        if (request.Items.Count > MaxBatchItemCount)
+        {
+            throw new ArgumentException($"Items 最多支持 {MaxBatchItemCount} 条", nameof(request.Items));
+        }
+
+        var responses = new List<SpecialFlagBatchItemResponse>(request.Items.Count);
+        for (var index = 0; index < request.Items.Count; index++)
+        {
+            var item = request.Items[index];
+            var normalizedItemCode = NormalizeString(item.ItemCode)
+                ?? throw new ArgumentException($"第 {index + 1} 行项目编码不能为空", nameof(request.Items));
+            var effectiveChargeScene = NormalizeString(item.ChargeScene) ?? NormalizeString(request.ChargeScene);
+            var effectiveBusinessTime = item.BusinessChargeTime ?? request.BusinessChargeTime ?? _clock.Now;
+            var effectiveVisitType = NormalizeString(item.VisitType) ?? NormalizeString(request.VisitType);
+            var effectiveBodyPartCode = NormalizeString(item.BodyPartCode);
+            var effectiveChargeDeptCode = NormalizeString(item.ChargeDeptCode) ?? NormalizeString(request.ChargeDeptCode);
+            var effectiveExtraParams = MergeExtraParams(request.ExtraParams, item.ExtraParams);
+
+            var singleResult = await ResolveAsync(new SpecialFlagRequest
+            {
+                ItemCode = normalizedItemCode,
+                ItemGroupCode = NormalizeString(item.ItemGroupCode),
+                InputQty = item.InputQty,
+                Unit = NormalizeString(item.Unit),
+                UnitPrice = item.UnitPrice,
+                PricingParts = item.PricingParts,
+                ChargeScene = effectiveChargeScene,
+                BusinessChargeTime = effectiveBusinessTime,
+                VisitType = effectiveVisitType,
+                BodyPartCode = effectiveBodyPartCode,
+                ChargeDeptCode = effectiveChargeDeptCode,
+                ExtraParams = ToObjectDictionary(effectiveExtraParams)
+            });
+
+            responses.Add(new SpecialFlagBatchItemResponse
+            {
+                ItemRequestNo = NormalizeString(item.ItemRequestNo),
+                ChargeDetailNo = NormalizeString(item.ChargeDetailNo),
+                ItemCode = singleResult.ItemCode,
+                ItemName = NormalizeString(item.ItemName),
+                ItemGroupCode = NormalizeString(item.ItemGroupCode),
+                IsSpecial = singleResult.IsSpecial,
+                RuleCount = singleResult.RuleCount,
+                RollbackMode = singleResult.RollbackMode,
+                MatchedRuleIds = singleResult.MatchedRuleIds,
+                MatchedRules = singleResult.MatchedRules,
+                NextAction = singleResult.NextAction,
+                DecisionReason = singleResult.DecisionReason,
+                Blocking = singleResult.Blocking,
+                RuleSnapshotTime = singleResult.RuleSnapshotTime,
+                EffectiveChargeScene = effectiveChargeScene,
+                EffectiveBusinessChargeTime = effectiveBusinessTime,
+                EffectiveVisitType = effectiveVisitType,
+                EffectiveBodyPartCode = effectiveBodyPartCode,
+                EffectiveChargeDeptCode = effectiveChargeDeptCode,
+                EffectiveExtraParams = effectiveExtraParams
+            });
+        }
+
+        var specialItemCount = responses.Count(item => item.IsSpecial);
+        var blocking = responses.Any(item => item.Blocking);
+        var ruleSnapshotTime = responses.Count == 0
+            ? _clock.Now
+            : responses.Max(item => item.RuleSnapshotTime);
+
+        return new SpecialFlagBatchResponse
+        {
+            RequestNo = NormalizeString(request.RequestNo),
+            BusinessRequestNo = NormalizeString(request.BusinessRequestNo),
+            ItemCount = responses.Count,
+            SpecialItemCount = specialItemCount,
+            IsSpecial = specialItemCount > 0,
+            NextAction = blocking ? PricingNextActionCodes.CallSimulate : PricingNextActionCodes.NormalPricing,
+            Blocking = blocking,
+            DecisionReason = BuildBatchDecisionReason(responses.Count, specialItemCount),
+            RuleSnapshotTime = ruleSnapshotTime,
+            Items = responses
+        };
     }
 
     private async Task<SpecialFlagResponse> ResolveFromSnapshotLoaderAsync(
         string normalizedItemCode,
         SpecialFlagRequest request,
-        DateTime businessTime)
+        DateTime businessTime,
+        DateTime decisionTime)
     {
         var ruleSet = await _effectiveRuleSnapshotLoader!.LoadCurrentAsync(normalizedItemCode);
-        if (ruleSet.HasRuntimePackage)
-        {
-            return await ResolveFromRuntimeSnapshotSetAsync(
-                normalizedItemCode,
-                request,
-                businessTime,
-                ruleSet);
-        }
-
-        var publishedRules = ruleSet.Snapshots
-            .Select(snapshot => snapshot.Header)
-            .Where(rule => rule.Status == RuleStatusCodes.Published && rule.IsEnabled == EnableFlag.Yes)
-            .Where(rule => rule.IsEffectiveAt(businessTime))
-            .ToList();
-
-        return BuildPublishedRuleResponse(normalizedItemCode, publishedRules);
-    }
-
-    private async Task<SpecialFlagResponse> ResolveFromRuntimeSnapshotSetAsync(
-        string normalizedItemCode,
-        SpecialFlagRequest request,
-        DateTime businessTime,
-        EffectiveRuleSnapshotLoadResult ruleSet)
-    {
         var context = BuildPricingContext(normalizedItemCode, request, businessTime);
         var matchedSnapshots = new List<EffectiveRuleSnapshot>();
 
         foreach (var snapshot in ruleSet.Snapshots)
         {
-            if (!snapshot.Header.IsEffectiveAt(businessTime))
+            if (snapshot.Header.Status != RuleStatusCodes.Published ||
+                snapshot.Header.IsEnabled != EnableFlag.Yes ||
+                !snapshot.Header.IsEffectiveAt(businessTime))
             {
                 continue;
             }
@@ -172,66 +219,32 @@ public sealed class PricingSpecialFlagResolver
             matchedSnapshots.Add(snapshot);
         }
 
-        var runtimeRuleIds = matchedSnapshots
-            .Select(snapshot => snapshot.Header.RuleId)
-            .Where(id => id > 0)
-            .Distinct()
-            .ToList();
-        var policyVersionIds = runtimeRuleIds
-            .Where(ruleSet.RuntimeRulesById.ContainsKey)
-            .Select(ruleId => ruleSet.RuntimeRulesById[ruleId].SourcePolicyVersionId)
-            .Where(id => id > 0)
-            .Distinct()
+        var matchedRules = matchedSnapshots
+            .Select(snapshot => snapshot.Header)
             .ToList();
 
-        return new SpecialFlagResponse
-        {
-            ItemCode = normalizedItemCode,
-            IsSpecial = runtimeRuleIds.Count > 0,
-            RuleCount = runtimeRuleIds.Count,
-            RollbackMode = "STOP_CHARGE",
-            RuntimePackageId = ruleSet.RuntimePackageId,
-            RuntimePackageVersion = ruleSet.RuntimePackageVersion,
-            MatchedRuleIds = runtimeRuleIds,
-            MatchedRuntimeRuleIds = runtimeRuleIds,
-            MatchedPolicyVersionIds = policyVersionIds
-        };
-    }
-
-    private async Task<SpecialFlagResponse> ResolveFromRuntimePackageAsync(
-        string normalizedItemCode,
-        SpecialFlagRequest request,
-        DateTime businessTime,
-        RuntimePackageRuleSnapshotResolution runtimeResolution)
-    {
-        return await ResolveFromRuntimeSnapshotSetAsync(
-            normalizedItemCode,
-            request,
-            businessTime,
-            new EffectiveRuleSnapshotLoadResult
-            {
-                RuntimePackageId = runtimeResolution.RuntimePackageId,
-                RuntimePackageVersion = runtimeResolution.RuntimePackageVersion,
-                Snapshots = runtimeResolution.Snapshots
-                    .Select(_runtimeProjectionAdapter.Adapt)
-                    .ToList(),
-                RuntimeRulesById = runtimeResolution.Snapshots
-                    .Select(snapshot => snapshot.Rule)
-                    .ToDictionary(rule => rule.RuntimeRuleId)
-            });
+        return BuildPublishedRuleResponse(normalizedItemCode, matchedRules, decisionTime);
     }
 
     private static SpecialFlagResponse BuildPublishedRuleResponse(
         string normalizedItemCode,
-        IReadOnlyList<RuleAggregate> publishedRules)
+        IReadOnlyList<RuleAggregate> publishedRules,
+        DateTime decisionTime)
     {
+        var rollbackMode = ResolveRollbackMode(publishedRules);
+        var isSpecial = publishedRules.Count > 0;
         return new SpecialFlagResponse
         {
             ItemCode = normalizedItemCode,
-            IsSpecial = publishedRules.Count > 0,
+            IsSpecial = isSpecial,
             RuleCount = publishedRules.Count,
-            RollbackMode = ResolveRollbackMode(publishedRules),
-            MatchedRuleIds = publishedRules.Select(rule => rule.RuleId).Distinct().ToList()
+            RollbackMode = rollbackMode,
+            MatchedRuleIds = publishedRules.Select(rule => rule.RuleId).Distinct().ToList(),
+            MatchedRules = BuildMatchedRuleResponses(publishedRules),
+            NextAction = isSpecial ? PricingNextActionCodes.CallSimulate : PricingNextActionCodes.NormalPricing,
+            DecisionReason = BuildItemDecisionReason(publishedRules, rollbackMode),
+            Blocking = isSpecial,
+            RuleSnapshotTime = decisionTime
         };
     }
 
@@ -240,24 +253,88 @@ public sealed class PricingSpecialFlagResolver
         SpecialFlagRequest request,
         DateTime businessTime)
     {
-        // special-flag 只需要规则匹配条件，不需要真实数量和单价。
-        // 使用 1 和 0 的占位值是为了满足 PricingContext 的必填字段，执行器不会在此路径运行。
+        var inputQty = request.InputQty.HasValue && request.InputQty.Value > 0
+            ? request.InputQty.Value
+            : 1m;
+        var unitPrice = request.UnitPrice.GetValueOrDefault();
+
+        // special-flag 只需要规则匹配条件，不进行最终金额计算。
+        // 数量、单位、单价和 pricingParts 只作为提前模拟条件的诊断上下文。
         return new PricingContext
         {
             CallType = "SPECIAL_FLAG",
             PatientId = "-",
             ItemCode = normalizedItemCode,
-            InputQty = 1m,
-            ConvertedQty = 1m,
-            FinalQty = 1m,
-            UnitPrice = 0m,
+            InputQty = inputQty,
+            ConvertedQty = inputQty,
+            FinalQty = inputQty,
+            Unit = NormalizeString(request.Unit),
+            UnitPrice = unitPrice,
+            FinalAmount = inputQty * unitPrice,
             ChargeScene = NormalizeString(request.ChargeScene),
             BusinessChargeTime = businessTime,
             SourceSystem = "SPECIAL_FLAG_QUERY",
+            ItemGroupCode = NormalizeString(request.ItemGroupCode),
+            ExtraParams = NormalizeExtraParams(request.ExtraParams),
             BodyPartCode = NormalizeString(request.BodyPartCode),
             VisitType = NormalizeString(request.VisitType),
-            ChargeDeptCode = NormalizeString(request.ChargeDeptCode)
+            ChargeDeptCode = NormalizeString(request.ChargeDeptCode),
+            PricingParts = request.PricingParts?.Select(p => new PricingPartItem
+            {
+                PartSeq = p.PartSeq,
+                PartCode = NormalizeString(p.PartCode),
+                PartName = NormalizeString(p.PartName),
+                BodyPartCode = NormalizeString(p.BodyPartCode),
+                Qty = p.Qty,
+                Area = p.Area,
+                MeasureType = NormalizeString(p.MeasureType),
+                MeasureValue = p.MeasureValue,
+                MeasureUnit = NormalizeString(p.MeasureUnit),
+                LesionCount = p.LesionCount
+            }).ToList()
         };
+    }
+
+    private static IReadOnlyList<SpecialFlagMatchedRuleResponse> BuildMatchedRuleResponses(
+        IReadOnlyList<RuleAggregate> publishedRules)
+    {
+        return publishedRules
+            .GroupBy(rule => rule.RuleId)
+            .Select(group =>
+            {
+                var rule = group.First();
+                return new SpecialFlagMatchedRuleResponse
+                {
+                    RuleId = rule.RuleId,
+                    RuleCode = NormalizeString(rule.RuleCode),
+                    RuleName = NormalizeString(rule.RuleName),
+                    RollbackMode = NormalizeString(rule.RollbackMode) ?? "STOP_CHARGE"
+                };
+            })
+            .ToList();
+    }
+
+    private static string BuildItemDecisionReason(
+        IReadOnlyList<RuleAggregate> publishedRules,
+        string rollbackMode)
+    {
+        if (publishedRules.Count == 0)
+        {
+            return "未命中特殊计价规则，可按普通价格流程收费";
+        }
+
+        var ruleNames = publishedRules
+            .Select(rule => NormalizeString(rule.RuleName) ?? NormalizeString(rule.RuleCode) ?? rule.RuleId.ToString())
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        return $"命中 {publishedRules.Count} 条特殊计价规则：{string.Join("、", ruleNames)}；下一步需调用统一计价；计价服务不可用时按 {rollbackMode} 处理";
+    }
+
+    private static string BuildBatchDecisionReason(int itemCount, int specialItemCount)
+    {
+        return specialItemCount == 0
+            ? $"本批次 {itemCount} 条费用均未命中特殊计价规则，可按普通价格流程收费"
+            : $"本批次 {itemCount} 条费用中有 {specialItemCount} 条特殊项目，需先调用统一计价";
     }
 
     private static string ResolveRollbackMode(IReadOnlyList<RuleAggregate> rules)
@@ -288,6 +365,57 @@ public sealed class PricingSpecialFlagResolver
         }
 
         return "STOP_CHARGE";
+    }
+
+    private static IReadOnlyDictionary<string, string>? MergeExtraParams(
+        IReadOnlyDictionary<string, object?>? requestParams,
+        IReadOnlyDictionary<string, object?>? itemParams)
+    {
+        var merged = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        AddExtraParams(merged, requestParams);
+        AddExtraParams(merged, itemParams);
+        return merged.Count == 0 ? null : merged;
+    }
+
+    private static IReadOnlyDictionary<string, string>? NormalizeExtraParams(
+        IReadOnlyDictionary<string, object?>? source)
+    {
+        var normalized = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        AddExtraParams(normalized, source);
+        return normalized.Count == 0 ? null : normalized;
+    }
+
+    private static void AddExtraParams(
+        Dictionary<string, string> target,
+        IReadOnlyDictionary<string, object?>? source)
+    {
+        if (source is null)
+        {
+            return;
+        }
+
+        foreach (var pair in source)
+        {
+            var key = NormalizeString(pair.Key);
+            if (key is null)
+            {
+                continue;
+            }
+
+            var normalizedValue = PricingRequestFingerprintBuilder.NormalizeExtraValue(pair.Value);
+            var textValue = NormalizeString(normalizedValue?.ToString());
+            if (textValue is not null)
+            {
+                target[key] = textValue;
+            }
+        }
+    }
+
+    private static Dictionary<string, object?>? ToObjectDictionary(IReadOnlyDictionary<string, string>? source)
+    {
+        return source is null
+            ? null
+            : source.ToDictionary(pair => pair.Key, pair => (object?)pair.Value, StringComparer.OrdinalIgnoreCase);
     }
 
     private static string? NormalizeString(string? value)

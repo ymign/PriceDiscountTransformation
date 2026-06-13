@@ -2,7 +2,6 @@ using System.Xml.Linq;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Pricing.RuleCenter.Api.Controllers;
-using Pricing.RuleCenter.Api.Security;
 using Xunit;
 
 namespace Pricing.RuleCenter.Tests;
@@ -106,7 +105,77 @@ public sealed class ProjectReleaseGateTests
     }
 
     [Fact]
-    public void LegacyAuthoringControllers_ShouldBeHiddenFromSwaggerAndGuarded()
+    public void PricingMainChain_ShouldNotDependOnRuntimePackageReaders()
+    {
+        var root = FindRepositoryRoot();
+        var startupPath = Path.Combine(
+            root,
+            "src",
+            "Pricing.RuleCenter.Api",
+            "Startup",
+            "RuleCenterApiServiceCollectionExtensions.cs");
+        var repositoriesPath = Path.Combine(
+            root,
+            "src",
+            "Pricing.RuleCenter.Application",
+            "Application",
+            "Engine",
+            "RuleMatchRepositories.cs");
+        var loaderPath = Path.Combine(
+            root,
+            "src",
+            "Pricing.RuleCenter.Application",
+            "Application",
+            "Engine",
+            "RuleRuntimeSnapshot",
+            "EffectiveRuleSnapshotLoader.cs");
+
+        var startupContent = File.ReadAllText(startupPath);
+        var engineRegistration = ExtractMethodSection(
+            startupContent,
+            "private static IServiceCollection AddRuleCenterRuleEngine",
+            "private static IServiceCollection AddRuleCenterHealthChecks");
+        var mainChainContent = string.Join(
+            Environment.NewLine,
+            engineRegistration,
+            File.ReadAllText(repositoriesPath),
+            File.ReadAllText(loaderPath));
+
+        Assert.DoesNotContain("RuntimePackageTraceResolver", mainChainContent, StringComparison.Ordinal);
+        Assert.DoesNotContain("ActiveRuntimePackageReader", mainChainContent, StringComparison.Ordinal);
+        Assert.DoesNotContain("IRuntimePackageStateRepository", mainChainContent, StringComparison.Ordinal);
+        Assert.DoesNotContain("IRuntimeRuleReadRepository", mainChainContent, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RuntimePackagePlatformCode_ShouldBeRetired()
+    {
+        var root = FindRepositoryRoot();
+        var retiredDirectories = new[]
+        {
+            Path.Combine(root, "src", "Pricing.RuleCenter.Application", "Application", "RuntimePackages"),
+            Path.Combine(root, "src", "Pricing.RuleCenter.Core", "Aggregates", "Runtime"),
+            Path.Combine(root, "src", "Pricing.RuleCenter.Core", "Interfaces", "Runtime"),
+            Path.Combine(root, "src", "Pricing.RuleCenter.Infrastructure", "Repositories", "Runtime")
+        };
+        var retiredFiles = new[]
+        {
+            Path.Combine(root, "src", "Pricing.RuleCenter.Core", "Constants", "RuntimePackageStatusCodes.cs"),
+            Path.Combine(root, "src", "Pricing.RuleCenter.Api", "Controllers", "RuntimePackageController.cs")
+        };
+
+        var existingPaths = retiredFiles
+            .Where(File.Exists)
+            .Concat(retiredDirectories
+                .Where(Directory.Exists)
+                .SelectMany(path => Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories)))
+            .ToArray();
+
+        Assert.True(existingPaths.Length == 0, string.Join(Environment.NewLine, existingPaths));
+    }
+
+    [Fact]
+    public void LegacyAuthoringControllers_ShouldBeHiddenFromSwaggerButNotGuarded()
     {
         var controllers = new[]
         {
@@ -126,11 +195,21 @@ public sealed class ProjectReleaseGateTests
             Assert.NotNull(explorer);
             Assert.True(explorer!.IgnoreApi);
 
-            var serviceFilter = controller.GetCustomAttributes(typeof(ServiceFilterAttribute), inherit: false)
+            var serviceFilters = controller.GetCustomAttributes(typeof(ServiceFilterAttribute), inherit: false)
                 .Cast<ServiceFilterAttribute>()
-                .SingleOrDefault(attribute => attribute.ServiceType == typeof(LegacyRuleAuthoringGuardFilter));
-            Assert.NotNull(serviceFilter);
+                .ToArray();
+            Assert.DoesNotContain(serviceFilters, attribute =>
+                string.Equals(attribute.ServiceType.Name, "LegacyRuleAuthoringGuardFilter", StringComparison.Ordinal));
         }
+    }
+
+    private static string ExtractMethodSection(string content, string startMarker, string endMarker)
+    {
+        var start = content.IndexOf(startMarker, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"Missing marker: {startMarker}");
+        var end = content.IndexOf(endMarker, start, StringComparison.Ordinal);
+        Assert.True(end > start, $"Missing marker: {endMarker}");
+        return content[start..end];
     }
 
     private static string FindRepositoryRoot()

@@ -1,8 +1,6 @@
 ﻿using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
 using Pricing.RuleCenter.Core.Interfaces.Catalog;
-using Pricing.RuleCenter.Core.Interfaces.Runtime;
-using Pricing.RuleCenter.Application.RuntimePackages;
 
 namespace Pricing.RuleCenter.Application.Engine;
 
@@ -28,36 +26,11 @@ public sealed class RuleMatchRepositories
         IRuleConditionRepository conditionRepository,
         IRuleActionRepository actionRepository,
         IDictRepository dictRepository)
-        : this(
-            headerRepository,
-            conditionRepository,
-            actionRepository,
-            dictRepository,
-            null,
-            null,
-            null)
-    {
-    }
-
-    /// <summary>
-    /// 初始化规则匹配仓储集合，并可选附带新的运行时包读取依赖。
-    /// </summary>
-    public RuleMatchRepositories(
-        IRuleHeaderRepository headerRepository,
-        IRuleConditionRepository conditionRepository,
-        IRuleActionRepository actionRepository,
-        IDictRepository dictRepository,
-        IRuntimePackageStateRepository? runtimePackageStateRepository,
-        IRuntimeRuleReadRepository? runtimeRuleReadRepository,
-        RuntimePackageTraceContextAccessor? runtimePackageTraceContextAccessor = null)
     {
         HeaderRepository = headerRepository;
         ConditionRepository = conditionRepository;
         ActionRepository = actionRepository;
         DictRepository = dictRepository;
-        RuntimePackageStateRepository = runtimePackageStateRepository;
-        RuntimeRuleReadRepository = runtimeRuleReadRepository;
-        RuntimePackageTraceContextAccessor = runtimePackageTraceContextAccessor;
     }
 
     /// <summary>
@@ -80,18 +53,4 @@ public sealed class RuleMatchRepositories
     /// </summary>
     public IDictRepository DictRepository { get; }
 
-    /// <summary>
-    /// 运行时包活动指针仓储。存在时优先走新运行时读模型。
-    /// </summary>
-    public IRuntimePackageStateRepository? RuntimePackageStateRepository { get; }
-
-    /// <summary>
-    /// 运行时规则读仓储。存在时优先走新运行时读模型。
-    /// </summary>
-    public IRuntimeRuleReadRepository? RuntimeRuleReadRepository { get; }
-
-    /// <summary>
-    /// 单次计价请求捕获的运行时包指针访问器。存在时按请求快照读取规则，避免发布竞态。
-    /// </summary>
-    public RuntimePackageTraceContextAccessor? RuntimePackageTraceContextAccessor { get; }
 }

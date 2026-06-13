@@ -4,7 +4,6 @@ using Pricing.RuleCenter.Application.Pricing.AuthorityPrice;
 using Pricing.RuleCenter.Application.Pricing.Builders;
 using Pricing.RuleCenter.Application.Pricing.Persistence;
 using Pricing.RuleCenter.Application.Serialization;
-using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Application.Pricing.Validation;
 using Pricing.RuleCenter.Core.Aggregates.Charging;
 using Pricing.RuleCenter.Core.Constants;
@@ -26,7 +25,6 @@ public sealed class PricingConfirmWorkflow
     private readonly IChargeRequestLogRepository _requestLogRepository;
     private readonly AuthorityPriceChecker _authorityPriceChecker;
     private readonly PricingConfirmationPersistenceService _persistenceService;
-    private readonly RuntimePackageTraceResolver _runtimePackageTraceResolver;
     private readonly ILimitOccupyRepository _limitRepository;
     private readonly IUnitOfWork _unitOfWork;
     private readonly PricingOptions _options;
@@ -38,7 +36,6 @@ public sealed class PricingConfirmWorkflow
         IChargeRequestLogRepository requestLogRepository,
         AuthorityPriceChecker authorityPriceChecker,
         PricingConfirmationPersistenceService persistenceService,
-        RuntimePackageTraceResolver runtimePackageTraceResolver,
         ILimitOccupyRepository limitRepository,
         IUnitOfWork unitOfWork,
         IOptions<PricingOptions> options,
@@ -49,7 +46,6 @@ public sealed class PricingConfirmWorkflow
         _requestLogRepository = requestLogRepository;
         _authorityPriceChecker = authorityPriceChecker;
         _persistenceService = persistenceService;
-        _runtimePackageTraceResolver = runtimePackageTraceResolver;
         _limitRepository = limitRepository;
         _unitOfWork = unitOfWork;
         _options = options.Value;
@@ -106,18 +102,13 @@ public sealed class PricingConfirmWorkflow
             return existingResponse;
         }
 
-        var runtimePackageContext = await _runtimePackageTraceResolver.CaptureContextAsync();
-        using var runtimePackageScope = _runtimePackageTraceResolver.BeginScope(runtimePackageContext);
-
         var calculations = await CalculateItemsAsync(request, items);
-        var runtimeTrace = await _runtimePackageTraceResolver.ResolveAsync(calculations);
         var response = await _persistenceService.PersistAsync(new PricingConfirmationPersistenceInput
         {
             Request = request,
             Items = items,
             Calculations = calculations,
-            Fingerprint = fingerprint,
-            RuntimeTrace = runtimeTrace
+            Fingerprint = fingerprint
         });
 
         _logger.LogInformation(

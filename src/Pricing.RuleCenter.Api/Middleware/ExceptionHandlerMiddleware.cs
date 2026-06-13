@@ -49,7 +49,7 @@ public sealed class ExceptionHandlerMiddleware
         context.Response.StatusCode = mapping.StatusCode;
         context.Response.ContentType = "application/json; charset=utf-8";
 
-        var result = ApiResult.Fail(mapping.Code, mapping.Message, traceId, mapping.Errors);
+        var result = ApiResult.Fail(mapping.Code, mapping.Message, traceId, mapping.Errors, mapping.ErrorCode);
         await context.Response.WriteAsync(JsonSerializer.Serialize(result, ApiJsonSerializerOptions.Create()));
     }
 }

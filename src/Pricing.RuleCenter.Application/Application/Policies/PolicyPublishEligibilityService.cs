@@ -25,7 +25,7 @@ internal sealed class PolicyPublishEligibilityService : IPolicyPublishEligibilit
     }
 
     /// <summary>
-    /// 校验策略版本是否允许进入运行时包发布流程。
+    /// 校验策略版本是否允许进入规则发布流程。
     /// </summary>
     public async Task EnsureEligibleAsync(PolicyAggregate policy, PolicyVersion version)
     {

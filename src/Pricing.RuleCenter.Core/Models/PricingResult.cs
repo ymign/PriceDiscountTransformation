@@ -131,6 +131,14 @@ public sealed class PricingResult
     public IReadOnlyList<long> MatchedRuleIds { get; set; } = Array.Empty<long>();
 
     /// <summary>
+    /// 本次计价命中的规则展示信息集合。
+    /// </summary>
+    /// <remarks>
+    /// 与 <see cref="MatchedRuleIds"/> 口径一致，但额外携带规则编码和规则名称，供响应追溯节点生成可读说明。
+    /// </remarks>
+    public IReadOnlyList<PricingRuleTraceInfo> MatchedRuleInfos { get; set; } = Array.Empty<PricingRuleTraceInfo>();
+
+    /// <summary>
     /// 本次计价生成的限额占用草稿或明细。
     /// </summary>
     /// <remarks>

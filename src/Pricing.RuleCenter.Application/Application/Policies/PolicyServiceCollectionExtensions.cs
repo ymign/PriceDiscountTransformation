@@ -21,11 +21,9 @@ public static class PolicyServiceCollectionExtensions
         services.AddScoped<PolicyPreviewAppService>();
         services.AddScoped<IPolicyPriorityKeyFactory, PolicyPriorityKeyFactory>();
         services.AddScoped<IPolicyValidationService, PolicyValidationService>();
-        services.AddScoped<IPolicyConflictService, PolicyConflictService>();
         services.AddScoped<PolicyPublishProfileResolver>();
         services.AddScoped<IPolicyPublishEligibilityService, PolicyPublishEligibilityService>();
         services.AddScoped<PolicyReviewAppService>();
-        services.AddScoped<PolicyPackageDiffService>();
 
         return services;
     }

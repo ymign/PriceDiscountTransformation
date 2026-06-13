@@ -6,7 +6,6 @@ using Pricing.RuleCenter.Application.Rules;
 using Pricing.RuleCenter.Application.Catalog;
 using Pricing.RuleCenter.Application.Trace;
 using Pricing.RuleCenter.Application.Background;
-using Pricing.RuleCenter.Api.Security;
 
 namespace Pricing.RuleCenter.Api.Controllers;
 
@@ -52,7 +51,6 @@ namespace Pricing.RuleCenter.Api.Controllers;
 [ApiController]
 [ApiExplorerSettings(IgnoreApi = true)]
 [Authorize(Policy = "RuleAdmin")]
-[ServiceFilter(typeof(LegacyRuleAuthoringGuardFilter))]
 [Route("api/pricing/rules/{ruleId:long}/versions/{versionNo:int}/actions")]
 public sealed class RuleActionController : ControllerBase
 {

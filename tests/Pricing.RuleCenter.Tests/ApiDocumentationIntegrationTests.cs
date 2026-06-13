@@ -41,7 +41,7 @@ public sealed class ApiDocumentationIntegrationTests
         Assert.Contains("Pricing RuleCenter API", body);
         Assert.Contains("/api/pricing/templates", body);
         Assert.Contains("/api/pricing/policies", body);
-        Assert.Contains("/api/pricing/runtime-packages/publish", body);
+        Assert.DoesNotContain("/api/pricing/runtime-packages", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("/api/pricing/rules/1/publish", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("/api/pricing/rules/{ruleId}/publish", body, StringComparison.OrdinalIgnoreCase);
     }
@@ -221,13 +221,87 @@ public sealed class ApiDocumentationIntegrationTests
             .GetProperty("properties");
         Assert.True(itemProperties.TryGetProperty("item_code", out _));
         Assert.True(itemProperties.TryGetProperty("input_qty", out _));
+        Assert.True(itemProperties.TryGetProperty("charge_scene", out _));
+        Assert.True(itemProperties.TryGetProperty("visit_type", out _));
+        Assert.True(itemProperties.TryGetProperty("charge_dept_code", out _));
         Assert.False(itemProperties.TryGetProperty("itemCode", out _));
+
+        var calculateResponseProperties = schemas
+            .GetProperty(nameof(PricingCalculateResponse))
+            .GetProperty("properties");
+        Assert.True(calculateResponseProperties.TryGetProperty("next_action", out _));
+        Assert.True(calculateResponseProperties.TryGetProperty("business_status", out _));
+        Assert.True(calculateResponseProperties.TryGetProperty("rule_snapshot_time", out _));
 
         var specialFlagPath = document.RootElement
             .GetProperty("paths")
             .EnumerateObject()
             .FirstOrDefault(item => item.Name.EndsWith("/special-flag", StringComparison.OrdinalIgnoreCase));
         Assert.NotEqual(default, specialFlagPath);
+
+        var specialFlagsPath = document.RootElement
+            .GetProperty("paths")
+            .EnumerateObject()
+            .FirstOrDefault(item => item.Name.EndsWith("/special-flags", StringComparison.OrdinalIgnoreCase));
+        Assert.NotEqual(default, specialFlagsPath);
+
+        var specialFlagBatchProperties = schemas
+            .GetProperty(nameof(SpecialFlagBatchRequest))
+            .GetProperty("properties");
+        Assert.True(specialFlagBatchProperties.TryGetProperty("business_request_no", out _));
+        Assert.True(specialFlagBatchProperties.TryGetProperty("business_charge_time", out _));
+        Assert.True(specialFlagBatchProperties.TryGetProperty("source_terminal", out _));
+        Assert.False(specialFlagBatchProperties.TryGetProperty("businessRequestNo", out _));
+
+        var specialFlagBatchItemProperties = schemas
+            .GetProperty(nameof(SpecialFlagBatchItemRequest))
+            .GetProperty("properties");
+        Assert.True(specialFlagBatchItemProperties.TryGetProperty("item_request_no", out _));
+        Assert.True(specialFlagBatchItemProperties.TryGetProperty("charge_detail_no", out _));
+        Assert.True(specialFlagBatchItemProperties.TryGetProperty("body_part_code", out _));
+        Assert.True(specialFlagBatchItemProperties.TryGetProperty("input_qty", out _));
+        Assert.True(specialFlagBatchItemProperties.TryGetProperty("unit_price", out _));
+        Assert.True(specialFlagBatchItemProperties.TryGetProperty("pricing_parts", out _));
+        Assert.False(specialFlagBatchItemProperties.TryGetProperty("itemRequestNo", out _));
+
+        var specialFlagBatchResponseProperties = schemas
+            .GetProperty(nameof(SpecialFlagBatchResponse))
+            .GetProperty("properties");
+        Assert.True(specialFlagBatchResponseProperties.TryGetProperty("next_action", out _));
+        Assert.True(specialFlagBatchResponseProperties.TryGetProperty("decision_reason", out _));
+        Assert.True(specialFlagBatchResponseProperties.TryGetProperty("blocking", out _));
+        Assert.True(specialFlagBatchResponseProperties.TryGetProperty("rule_snapshot_time", out _));
+
+        var specialFlagBatchItemResponseProperties = schemas
+            .GetProperty(nameof(SpecialFlagBatchItemResponse))
+            .GetProperty("properties");
+        Assert.True(specialFlagBatchItemResponseProperties.TryGetProperty("matched_rules", out _));
+        Assert.True(specialFlagBatchItemResponseProperties.TryGetProperty("next_action", out _));
+        Assert.True(specialFlagBatchItemResponseProperties.TryGetProperty("decision_reason", out _));
+
+        var commitResponseProperties = schemas
+            .GetProperty(nameof(PricingCommitResponse))
+            .GetProperty("properties");
+        Assert.True(commitResponseProperties.TryGetProperty("request_id", out _));
+        Assert.True(commitResponseProperties.TryGetProperty("business_status", out _));
+        Assert.True(commitResponseProperties.TryGetProperty("next_action", out _));
+
+        var cancelResponseProperties = schemas
+            .GetProperty(nameof(PricingCancelResponse))
+            .GetProperty("properties");
+        Assert.True(cancelResponseProperties.TryGetProperty("request_id", out _));
+        Assert.True(cancelResponseProperties.TryGetProperty("business_status", out _));
+        Assert.True(cancelResponseProperties.TryGetProperty("next_action", out _));
+
+        var reverseResponseProperties = schemas
+            .GetProperty(nameof(PricingReverseResponse))
+            .GetProperty("properties");
+        Assert.True(reverseResponseProperties.TryGetProperty("original_request_id", out _));
+        Assert.True(reverseResponseProperties.TryGetProperty("reverse_no", out _));
+        Assert.True(reverseResponseProperties.TryGetProperty("reverse_request_id", out _));
+        Assert.True(reverseResponseProperties.TryGetProperty("is_full_reverse", out _));
+        Assert.True(reverseResponseProperties.TryGetProperty("business_status", out _));
+        Assert.True(reverseResponseProperties.TryGetProperty("next_action", out _));
 
         var parameterNames = specialFlagPath.Value
             .GetProperty("get")
@@ -239,6 +313,55 @@ public sealed class ApiDocumentationIntegrationTests
         Assert.Contains("charge_scene", parameterNames);
         Assert.Contains("business_charge_time", parameterNames);
         Assert.DoesNotContain("chargeScene", parameterNames);
+    }
+
+    [Fact]
+    public async Task SwaggerJson_DeclaresApiKeySecurityForProtectedEndpoints()
+    {
+        await using var factory = new PricingRuleCenterWebApplicationFactory(new Dictionary<string, string?>
+        {
+            ["Swagger:Enabled"] = "true"
+        });
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/swagger/v1/swagger.json");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var securitySchemes = document.RootElement
+            .GetProperty("components")
+            .GetProperty("securitySchemes");
+        var apiKeyScheme = securitySchemes.GetProperty("ApiKey");
+        Assert.Equal("apiKey", apiKeyScheme.GetProperty("type").GetString());
+        Assert.Equal("header", apiKeyScheme.GetProperty("in").GetString());
+        Assert.Equal("X-Api-Key", apiKeyScheme.GetProperty("name").GetString());
+
+        var simulateOperation = document.RootElement
+            .GetProperty("paths")
+            .GetProperty("/api/pricing/calculate/simulate")
+            .GetProperty("post");
+        var security = simulateOperation.GetProperty("security");
+        Assert.Contains(security.EnumerateArray(), requirement =>
+            requirement.TryGetProperty("ApiKey", out _));
+    }
+
+    [Fact]
+    public async Task SwaggerUi_DoesNotInjectDefaultApiKeyScript()
+    {
+        await using var factory = new PricingRuleCenterWebApplicationFactory(new Dictionary<string, string?>
+        {
+            ["Swagger:Enabled"] = "true",
+            ["Authentication:ApiKey:Disabled"] = "true"
+        });
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/swagger/index.html");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("request.headers", body);
+        Assert.DoesNotContain("X-Api-Key", body);
+        Assert.DoesNotContain("service-key", body);
     }
 
     /// <summary>

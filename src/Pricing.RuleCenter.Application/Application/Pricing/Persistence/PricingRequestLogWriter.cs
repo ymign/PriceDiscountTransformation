@@ -1,6 +1,5 @@
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Pricing.Builders;
-using Pricing.RuleCenter.Application.RuntimePackages;
 using Pricing.RuleCenter.Application.Serialization;
 using Pricing.RuleCenter.Core.Aggregates.Charging;
 using Pricing.RuleCenter.Core.Constants;
@@ -13,7 +12,7 @@ namespace Pricing.RuleCenter.Application.Pricing.Persistence;
 /// 保存计价请求日志所需的输入。
 /// </summary>
 /// <remarks>
-/// 请求日志是整条计价追溯链的主表。它既保存原始请求 JSON，也保存响应快照和运行包版本，
+/// 请求日志是整条计价追溯链的主表。它既保存原始请求 JSON，也保存响应快照，
 /// 后续幂等重试、commit/cancel/reverse 和追溯查询都依赖该记录。
 /// </remarks>
 internal sealed record RequestLogSaveInput
@@ -38,8 +37,6 @@ internal sealed record RequestLogSaveInput
     /// <summary>confirm 幂等请求指纹；simulate 可为空。</summary>
     public string? Fingerprint { get; init; }
 
-    /// <summary>运行包追溯解析结果。</summary>
-    public RuntimePackageTraceResolution? RuntimeTrace { get; init; }
 }
 
 /// <summary>
@@ -100,8 +97,6 @@ public sealed class PricingRequestLogWriter
             BusinessChargeTime = items.Count == 1
                 ? items[0].BusinessChargeTime ?? request.BusinessChargeTime
                 : request.BusinessChargeTime,
-            RuntimePackageId = input.RuntimeTrace?.RuntimePackageId,
-            RuntimePackageVersion = input.RuntimeTrace?.RuntimePackageVersion,
             RequestJson = RuleCenterJsonSerializer.Serialize(request),
             ResponseJson = RuleCenterJsonSerializer.Serialize(calculations.Select(c => c.Result).ToList()),
             RequestAt = now,

@@ -18,6 +18,7 @@ public sealed class PricingController : ControllerBase
     /// </summary>
     /// <remarks>
     /// 计算顺序：匹配规则 → 双单位换算 → 日数量限制 → 时间窗数量限制 → 同组互斥 → 公式计算 → 金额下限 → 金额上限 → 子项加收 → 超出归零。
+    /// business_request_no 可选；如果传入，必须保证本次试算唯一，重复会返回 409 BUSINESS_REQUEST_NO_DUPLICATED。
     /// </remarks>
     [HttpPost("calculate/simulate")]
     public async Task<ApiResult<PricingCalculateResponse>> SimulateAsync(
@@ -33,6 +34,7 @@ public sealed class PricingController : ControllerBase
     /// </summary>
     /// <remarks>
     /// 与 simulate 使用同一工作流。下游根据 Items.Count 构造批量上下文，使多条明细参与同组互斥、同手术封顶和窗口额度的请求内虚拟占用。
+    /// business_request_no 可选；如果传入，必须保证本次试算唯一，重复会返回 409 BUSINESS_REQUEST_NO_DUPLICATED。
     /// </remarks>
     [HttpPost("calculate/batch-simulate")]
     public async Task<ApiResult<PricingCalculateResponse>> BatchSimulateAsync(
@@ -44,6 +46,7 @@ public sealed class PricingController : ControllerBase
     }
 
     /// <summary>确认计价：正式计价并占用额度，返回 RequestId 供后续 commit/cancel 引用。</summary>
+    /// <remarks>business_request_no 必填且必须稳定，confirm 超时重试必须复用同一个值。</remarks>
     [HttpPost("calculate/confirm")]
     public async Task<ApiResult<PricingCalculateResponse>> ConfirmAsync(
         [FromServices] PricingConfirmWorkflow confirmWorkflow,
@@ -54,33 +57,36 @@ public sealed class PricingController : ControllerBase
     }
 
     /// <summary>落账提交：HIS 成功落账后通知，将 CONFIRM_PENDING 推进为 CONFIRMED。</summary>
+    /// <remarks>commit 使用 confirm 响应返回的 request_id，不使用 business_request_no 定位。</remarks>
     [HttpPost("calculate/commit")]
-    public async Task<ApiResult> CommitAsync(
+    public async Task<ApiResult<PricingCommitResponse>> CommitAsync(
         [FromServices] PricingCommitWorkflow commitWorkflow,
         [FromBody] PricingCommitRequest request)
     {
-        await commitWorkflow.ExecuteAsync(request);
-        return ApiResult.Ok();
+        var result = await commitWorkflow.ExecuteAsync(request);
+        return ApiResult<PricingCommitResponse>.Ok(result);
     }
 
     /// <summary>取消确认：HIS 未落账时释放待确认额度。</summary>
+    /// <remarks>cancel 使用 confirm 响应返回的 request_id，不使用 business_request_no 定位。</remarks>
     [HttpPost("calculate/cancel")]
-    public async Task<ApiResult> CancelAsync(
+    public async Task<ApiResult<PricingCancelResponse>> CancelAsync(
         [FromServices] PricingCancelWorkflow cancelWorkflow,
         [FromBody] PricingCancelRequest request)
     {
-        await cancelWorkflow.ExecuteAsync(request);
-        return ApiResult.Ok();
+        var result = await cancelWorkflow.ExecuteAsync(request);
+        return ApiResult<PricingCancelResponse>.Ok(result);
     }
 
     /// <summary>冲正退费：针对已落账记录做退费/冲销处理。</summary>
+    /// <remarks>reverse 的幂等边界是 original_request_id + reverse_no，同一退费流水重试必须复用 reverse_no。</remarks>
     [HttpPost("calculate/reverse")]
-    public async Task<ApiResult> ReverseAsync(
+    public async Task<ApiResult<PricingReverseResponse>> ReverseAsync(
         [FromServices] PricingReverseWorkflow reverseWorkflow,
         [FromBody] PricingReverseRequest request)
     {
-        await reverseWorkflow.ExecuteAsync(request);
-        return ApiResult.Ok();
+        var result = await reverseWorkflow.ExecuteAsync(request);
+        return ApiResult<PricingReverseResponse>.Ok(result);
     }
 
     /// <summary>查询特殊项目标识：判断收费项目是否需要走折价计价逻辑。</summary>
@@ -94,5 +100,19 @@ public sealed class PricingController : ControllerBase
         var request = SpecialFlagRequest.From(itemCode, query);
         var result = await specialFlagResolver.ResolveAsync(request);
         return ApiResult<SpecialFlagResponse>.Ok(result);
+    }
+
+    /// <summary>批量查询特殊项目标识：一次收费动作下多条费用明细一起判断是否需要走折价计价逻辑。</summary>
+    /// <remarks>
+    /// 请求体包含收费动作级上下文和明细级覆盖字段。响应逐行返回最终参与匹配的场景、时间、就诊类型、部位和科室，便于调用方排查误弹窗或漏弹窗。
+    /// business_request_no 可选，仅用于诊断，不做幂等校验。
+    /// </remarks>
+    [HttpPost("items/special-flags")]
+    public async Task<ApiResult<SpecialFlagBatchResponse>> BatchSpecialFlagsAsync(
+        [FromServices] PricingSpecialFlagResolver specialFlagResolver,
+        [FromBody] SpecialFlagBatchRequest request)
+    {
+        var result = await specialFlagResolver.ResolveBatchAsync(request);
+        return ApiResult<SpecialFlagBatchResponse>.Ok(result);
     }
 }
