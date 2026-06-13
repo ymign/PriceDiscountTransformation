@@ -181,6 +181,31 @@ ORDER BY R.PRIORITY
     }
 
     /// <summary>
+    /// 按多个项目编码批量读取启用规则主档候选，结果按项目编码分组返回。
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, IReadOnlyList<RuleAggregate>>> GetByItemCodesAsync(
+        IReadOnlyCollection<string> itemCodes)
+    {
+        var normalizedItemCodes = itemCodes
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .Select(code => code.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (normalizedItemCodes.Length == 0)
+        {
+            return new Dictionary<string, IReadOnlyList<RuleAggregate>>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var groups = new Dictionary<string, IReadOnlyList<RuleAggregate>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var itemCode in normalizedItemCodes)
+        {
+            groups[itemCode] = await GetByItemCodeAsync(itemCode);
+        }
+
+        return groups;
+    }
+
+    /// <summary>
     /// 分页查询规则主档。
     /// </summary>
     /// <param name="itemCode">项目编码筛选条件；为 null 或空字符串时不限制。</param>

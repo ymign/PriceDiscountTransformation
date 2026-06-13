@@ -116,6 +116,7 @@ public sealed class PricingSpecialFlagResolver
             throw new ArgumentException($"Items 最多支持 {MaxBatchItemCount} 条", nameof(request.Items));
         }
 
+        var ruleViewsByItemCode = await LoadRuleViewsByItemCodeAsync(request.Items);
         var responses = new List<SpecialFlagBatchItemResponse>(request.Items.Count);
         for (var index = 0; index < request.Items.Count; index++)
         {
@@ -129,7 +130,7 @@ public sealed class PricingSpecialFlagResolver
             var effectiveChargeDeptCode = NormalizeString(item.ChargeDeptCode) ?? NormalizeString(request.ChargeDeptCode);
             var effectiveExtraParams = MergeExtraParams(request.ExtraParams, item.ExtraParams);
 
-            var singleResult = await ResolveAsync(new SpecialFlagRequest
+            var singleRequest = new SpecialFlagRequest
             {
                 ItemCode = normalizedItemCode,
                 ItemGroupCode = NormalizeString(item.ItemGroupCode),
@@ -143,7 +144,15 @@ public sealed class PricingSpecialFlagResolver
                 BodyPartCode = effectiveBodyPartCode,
                 ChargeDeptCode = effectiveChargeDeptCode,
                 ExtraParams = ToObjectDictionary(effectiveExtraParams)
-            });
+            };
+            var singleResult = await ResolveFromCandidateRulesAsync(
+                normalizedItemCode,
+                singleRequest,
+                effectiveBusinessTime,
+                _clock.Now,
+                ruleViewsByItemCode.TryGetValue(normalizedItemCode, out var ruleViews)
+                    ? ruleViews
+                    : null);
 
             responses.Add(new SpecialFlagBatchItemResponse
             {
@@ -175,6 +184,16 @@ public sealed class PricingSpecialFlagResolver
         var ruleReadTime = responses.Count == 0
             ? _clock.Now
             : responses.Max(item => item.RuleReadTime);
+        var hitItemsSummary = responses
+            .Where(item => item.IsSpecial)
+            .Select(item => new SpecialFlagHitItemSummaryResponse
+            {
+                ItemRequestNo = item.ItemRequestNo,
+                ChargeDetailNo = item.ChargeDetailNo,
+                ItemCode = item.ItemCode,
+                RuleCount = item.RuleCount
+            })
+            .ToList();
 
         return new SpecialFlagBatchResponse
         {
@@ -182,12 +201,93 @@ public sealed class PricingSpecialFlagResolver
             BusinessRequestNo = NormalizeString(request.BusinessRequestNo),
             ItemCount = responses.Count,
             SpecialItemCount = specialItemCount,
+            HitItemsSummary = hitItemsSummary,
             IsSpecial = specialItemCount > 0,
             NextAction = blocking ? PricingNextActionCodes.CallSimulate : PricingNextActionCodes.NormalPricing,
             Blocking = blocking,
-            DecisionReason = BuildBatchDecisionReason(responses.Count, specialItemCount),
+            DecisionReason = BuildBatchDecisionReason(responses.Count, specialItemCount, hitItemsSummary),
             RuleReadTime = ruleReadTime,
             Items = responses
+        };
+    }
+
+    /// <summary>
+    /// 快速判断本次收费动作中是否存在任一特殊项目。
+    /// </summary>
+    public async Task<SpecialFlagAnyResponse> ResolveAnyAsync(SpecialFlagBatchRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.Items is null || request.Items.Count == 0)
+        {
+            throw new ArgumentException("Items 不能为空", nameof(request.Items));
+        }
+
+        if (request.Items.Count > MaxBatchItemCount)
+        {
+            throw new ArgumentException($"Items 最多支持 {MaxBatchItemCount} 条", nameof(request.Items));
+        }
+
+        var ruleViewsByItemCode = await LoadRuleViewsByItemCodeAsync(request.Items);
+        for (var index = 0; index < request.Items.Count; index++)
+        {
+            var item = request.Items[index];
+            var normalizedItemCode = NormalizeString(item.ItemCode)
+                ?? throw new ArgumentException($"第 {index + 1} 行项目编码不能为空", nameof(request.Items));
+            var effectiveChargeScene = NormalizeString(item.ChargeScene) ?? NormalizeString(request.ChargeScene);
+            var effectiveBusinessTime = item.BusinessChargeTime ?? request.BusinessChargeTime ?? _clock.Now;
+            var effectiveVisitType = NormalizeString(item.VisitType) ?? NormalizeString(request.VisitType);
+            var effectiveBodyPartCode = NormalizeString(item.BodyPartCode);
+            var effectiveChargeDeptCode = NormalizeString(item.ChargeDeptCode) ?? NormalizeString(request.ChargeDeptCode);
+            var effectiveExtraParams = MergeExtraParams(request.ExtraParams, item.ExtraParams);
+            var singleRequest = new SpecialFlagRequest
+            {
+                ItemCode = normalizedItemCode,
+                ItemGroupCode = NormalizeString(item.ItemGroupCode),
+                InputQty = item.InputQty,
+                Unit = NormalizeString(item.Unit),
+                UnitPrice = item.UnitPrice,
+                PricingParts = item.PricingParts,
+                ChargeScene = effectiveChargeScene,
+                BusinessChargeTime = effectiveBusinessTime,
+                VisitType = effectiveVisitType,
+                BodyPartCode = effectiveBodyPartCode,
+                ChargeDeptCode = effectiveChargeDeptCode,
+                ExtraParams = ToObjectDictionary(effectiveExtraParams)
+            };
+            var singleResult = await ResolveFromCandidateRulesAsync(
+                normalizedItemCode,
+                singleRequest,
+                effectiveBusinessTime,
+                _clock.Now,
+                ruleViewsByItemCode.TryGetValue(normalizedItemCode, out var ruleViews)
+                    ? ruleViews
+                    : null);
+            if (!singleResult.IsSpecial)
+            {
+                continue;
+            }
+
+            return new SpecialFlagAnyResponse
+            {
+                IsSpecial = true,
+                Blocking = true,
+                NextAction = PricingNextActionCodes.CallSimulate,
+                DecisionReason = $"检测到特殊项目 {normalizedItemCode}，需进入统一计价",
+                RuleReadTime = singleResult.RuleReadTime,
+                FirstHitItemRequestNo = NormalizeString(item.ItemRequestNo),
+                FirstHitChargeDetailNo = NormalizeString(item.ChargeDetailNo),
+                FirstHitItemCode = normalizedItemCode,
+                FirstMatchedRules = singleResult.MatchedRules
+            };
+        }
+
+        return new SpecialFlagAnyResponse
+        {
+            IsSpecial = false,
+            Blocking = false,
+            NextAction = PricingNextActionCodes.NormalPricing,
+            DecisionReason = $"本批次 {request.Items.Count} 条费用均未命中特殊计价规则，可按普通价格流程收费",
+            RuleReadTime = _clock.Now
         };
     }
 
@@ -198,10 +298,25 @@ public sealed class PricingSpecialFlagResolver
         DateTime decisionTime)
     {
         var ruleSet = await _effectiveRuleReader!.ReadCurrentAsync(normalizedItemCode);
+        return await ResolveFromCandidateRulesAsync(normalizedItemCode, request, businessTime, decisionTime, ruleSet.Rules);
+    }
+
+    private async Task<SpecialFlagResponse> ResolveFromCandidateRulesAsync(
+        string normalizedItemCode,
+        SpecialFlagRequest request,
+        DateTime businessTime,
+        DateTime decisionTime,
+        IReadOnlyList<EffectiveRuleView>? candidateRules)
+    {
+        if (candidateRules is null)
+        {
+            return await ResolveAsync(request);
+        }
+
         var context = BuildPricingContext(normalizedItemCode, request, businessTime);
         var matchedRules = new List<EffectiveRuleView>();
 
-        foreach (var rule in ruleSet.Rules)
+        foreach (var rule in candidateRules)
         {
             if (rule.Header.Status != RuleStatusCodes.Published ||
                 rule.Header.IsEnabled != EnableFlag.Yes ||
@@ -330,11 +445,32 @@ public sealed class PricingSpecialFlagResolver
         return $"命中 {publishedRules.Count} 条特殊计价规则：{string.Join("、", ruleNames)}；下一步需调用统一计价；计价服务不可用时按 {rollbackMode} 处理";
     }
 
-    private static string BuildBatchDecisionReason(int itemCount, int specialItemCount)
+    private static string BuildBatchDecisionReason(
+        int itemCount,
+        int specialItemCount,
+        IReadOnlyList<SpecialFlagHitItemSummaryResponse> hitItemsSummary)
     {
         return specialItemCount == 0
             ? $"本批次 {itemCount} 条费用均未命中特殊计价规则，可按普通价格流程收费"
-            : $"本批次 {itemCount} 条费用中有 {specialItemCount} 条特殊项目，需先调用统一计价";
+            : $"本批次 {itemCount} 条费用中有 {specialItemCount} 条特殊项目，需先调用统一计价；命中项目：{string.Join("、", hitItemsSummary.Select(item => item.ItemCode))}";
+    }
+
+    private async Task<IReadOnlyDictionary<string, IReadOnlyList<EffectiveRuleView>>> LoadRuleViewsByItemCodeAsync(
+        IReadOnlyList<SpecialFlagBatchItemRequest> items)
+    {
+        if (_effectiveRuleReader is null)
+        {
+            return new Dictionary<string, IReadOnlyList<EffectiveRuleView>>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var itemCodes = items
+            .Select(item => NormalizeString(item.ItemCode))
+            .Where(code => code is not null)
+            .Select(code => code!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return await _effectiveRuleReader.ReadCurrentByItemCodesAsync(itemCodes);
     }
 
     private static string ResolveRollbackMode(IReadOnlyList<RuleAggregate> rules)

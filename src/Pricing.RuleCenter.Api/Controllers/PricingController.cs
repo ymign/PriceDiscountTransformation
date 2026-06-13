@@ -99,4 +99,18 @@ public sealed class PricingController : ControllerBase
         var result = await specialFlagResolver.ResolveBatchAsync(request);
         return ApiResult<SpecialFlagBatchResponse>.Ok(result);
     }
+
+    /// <summary>快速判断本次收费动作中是否存在任一特殊项目。</summary>
+    /// <remarks>
+    /// 该接口是 special-flags 的轻量闸门版本，只回答是否需要进入统一计价。
+    /// 一旦发现首条特殊项目即可返回，不提供整批逐行诊断结果。
+    /// </remarks>
+    [HttpPost("items/special-flags/any")]
+    public async Task<ApiResult<SpecialFlagAnyResponse>> AnySpecialFlagAsync(
+        [FromServices] PricingSpecialFlagResolver specialFlagResolver,
+        [FromBody] SpecialFlagBatchRequest request)
+    {
+        var result = await specialFlagResolver.ResolveAnyAsync(request);
+        return ApiResult<SpecialFlagAnyResponse>.Ok(result);
+    }
 }

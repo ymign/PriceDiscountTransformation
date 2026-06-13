@@ -136,42 +136,52 @@ public sealed class SpecialFlagRequest
 public sealed class SpecialFlagBatchRequest
 {
     /// <summary>调用方技术请求流水号，用于定位一次 HTTP 调用。</summary>
+    /// <remarks>诊断字段：仅用于日志排查，不直接参与规则命中判断。</remarks>
     [JsonPropertyName("request_no")]
     public string? RequestNo { get; init; }
 
     /// <summary>来源系统编码，例如 HIS、SELF_MACHINE、WECHAT。</summary>
+    /// <remarks>诊断字段：用于串联来源系统，不直接参与规则命中判断。</remarks>
     [JsonPropertyName("source_system")]
     public string? SourceSystem { get; init; }
 
     /// <summary>来源终端、站点或服务实例标识。</summary>
+    /// <remarks>诊断字段：仅用于日志排查，不直接参与规则命中判断。</remarks>
     [JsonPropertyName("source_terminal")]
     public string? SourceTerminal { get; init; }
 
     /// <summary>患者 ID，用于排查具体患者收费动作。</summary>
+    /// <remarks>诊断字段：当前接口不按 patient_id 做规则命中判断。</remarks>
     [JsonPropertyName("patient_id")]
     public string? PatientId { get; init; }
 
     /// <summary>就诊 ID，用于区分同一患者多次就诊。</summary>
+    /// <remarks>诊断字段：当前接口不按 visit_id 做规则命中判断。</remarks>
     [JsonPropertyName("visit_id")]
     public string? VisitId { get; init; }
 
     /// <summary>默认就诊类型，明细未传时使用该值。</summary>
+    /// <remarks>决策字段：参与规则命中判断，明细未传时作为默认值。</remarks>
     [JsonPropertyName("visit_type")]
     public string? VisitType { get; init; }
 
     /// <summary>门诊号、住院号或就诊流水号。</summary>
+    /// <remarks>诊断字段：仅用于日志排查，不直接参与规则命中判断。</remarks>
     [JsonPropertyName("encounter_no")]
     public string? EncounterNo { get; init; }
 
     /// <summary>默认收费场景，明细未传时使用该值。</summary>
+    /// <remarks>决策字段：参与规则命中判断，明细未传时作为默认值。</remarks>
     [JsonPropertyName("charge_scene")]
     public string? ChargeScene { get; init; }
 
     /// <summary>默认收费科室编码，明细未传时使用该值。</summary>
+    /// <remarks>决策字段：参与规则命中判断，明细未传时作为默认值。</remarks>
     [JsonPropertyName("charge_dept_code")]
     public string? ChargeDeptCode { get; init; }
 
     /// <summary>收费单号，用于和 HIS 收费动作关联。</summary>
+    /// <remarks>诊断字段：仅用于日志排查，不直接参与规则命中判断。</remarks>
     [JsonPropertyName("charge_no")]
     public string? ChargeNo { get; init; }
 
@@ -182,18 +192,22 @@ public sealed class SpecialFlagBatchRequest
     public string? BusinessRequestNo { get; init; }
 
     /// <summary>默认业务收费发生时间，明细未传时使用该值；为空时使用计价中心当前时间。</summary>
+    /// <remarks>决策字段：参与规则生效期和时间维度命中判断。</remarks>
     [JsonPropertyName("business_charge_time")]
     public DateTime? BusinessChargeTime { get; init; }
 
     /// <summary>操作员编码。</summary>
+    /// <remarks>诊断字段：仅用于日志排查，不直接参与规则命中判断。</remarks>
     [JsonPropertyName("operator_id")]
     public string? OperatorId { get; init; }
 
     /// <summary>操作员姓名。</summary>
+    /// <remarks>诊断字段：仅用于日志排查，不直接参与规则命中判断。</remarks>
     [JsonPropertyName("operator_name")]
     public string? OperatorName { get; init; }
 
     /// <summary>收费动作级扩展参数。明细级同名参数会覆盖该值。</summary>
+    /// <remarks>决策字段：会与明细级参数合并后参与规则命中判断。</remarks>
     [JsonPropertyName("extra_params")]
     public Dictionary<string, object?>? ExtraParams { get; init; }
 
@@ -293,6 +307,11 @@ public sealed class SpecialFlagBatchResponse
     [JsonPropertyName("special_item_count")]
     public int SpecialItemCount { get; init; }
 
+    /// <summary>命中特殊计价规则的费用明细摘要集合，便于调用方快速排查。</summary>
+    [JsonPropertyName("hit_items_summary")]
+    public IReadOnlyList<SpecialFlagHitItemSummaryResponse> HitItemsSummary { get; init; } =
+        Array.Empty<SpecialFlagHitItemSummaryResponse>();
+
     /// <summary>本批次建议调用方执行的下一步动作。</summary>
     [JsonPropertyName("next_action")]
     public string NextAction { get; init; } = PricingNextActionCodes.NormalPricing;
@@ -334,6 +353,71 @@ public sealed class SpecialFlagMatchedRuleResponse
     /// <summary>计价服务不可用时该规则的降级处理模式。</summary>
     [JsonPropertyName("rollback_mode")]
     public string RollbackMode { get; init; } = "STOP_CHARGE";
+}
+
+/// <summary>
+/// 命中特殊计价规则的费用明细摘要。
+/// </summary>
+public sealed class SpecialFlagHitItemSummaryResponse
+{
+    /// <summary>调用方单条费用请求号。</summary>
+    [JsonPropertyName("item_request_no")]
+    public string? ItemRequestNo { get; init; }
+
+    /// <summary>收费明细号。</summary>
+    [JsonPropertyName("charge_detail_no")]
+    public string? ChargeDetailNo { get; init; }
+
+    /// <summary>项目编码。</summary>
+    [JsonPropertyName("item_code")]
+    public string ItemCode { get; init; } = string.Empty;
+
+    /// <summary>命中规则数量。</summary>
+    [JsonPropertyName("rule_count")]
+    public int RuleCount { get; init; }
+}
+
+/// <summary>
+/// 批量特殊计价快速闸门响应。
+/// </summary>
+public sealed class SpecialFlagAnyResponse
+{
+    /// <summary>本次收费动作是否存在任一特殊项目。</summary>
+    [JsonPropertyName("is_special")]
+    public bool IsSpecial { get; init; }
+
+    /// <summary>是否阻断普通收费流程。</summary>
+    [JsonPropertyName("blocking")]
+    public bool Blocking { get; init; }
+
+    /// <summary>建议调用方执行的下一步动作。</summary>
+    [JsonPropertyName("next_action")]
+    public string NextAction { get; init; } = PricingNextActionCodes.NormalPricing;
+
+    /// <summary>本次快速判断的业务原因说明。</summary>
+    [JsonPropertyName("decision_reason")]
+    public string DecisionReason { get; init; } = string.Empty;
+
+    /// <summary>本次判断读取当前规则的时间。</summary>
+    [JsonPropertyName("rule_read_time")]
+    public DateTime RuleReadTime { get; init; }
+
+    /// <summary>首条命中特殊计价规则的调用方费用请求号。</summary>
+    [JsonPropertyName("first_hit_item_request_no")]
+    public string? FirstHitItemRequestNo { get; init; }
+
+    /// <summary>首条命中特殊计价规则的收费明细号。</summary>
+    [JsonPropertyName("first_hit_charge_detail_no")]
+    public string? FirstHitChargeDetailNo { get; init; }
+
+    /// <summary>首条命中特殊计价规则的项目编码。</summary>
+    [JsonPropertyName("first_hit_item_code")]
+    public string? FirstHitItemCode { get; init; }
+
+    /// <summary>首条命中特殊计价规则的规则摘要。</summary>
+    [JsonPropertyName("first_matched_rules")]
+    public IReadOnlyList<SpecialFlagMatchedRuleResponse> FirstMatchedRules { get; init; } =
+        Array.Empty<SpecialFlagMatchedRuleResponse>();
 }
 
 /// <summary>

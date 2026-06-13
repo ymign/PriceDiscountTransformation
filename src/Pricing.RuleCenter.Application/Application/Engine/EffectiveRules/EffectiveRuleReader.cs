@@ -36,6 +36,40 @@ public sealed class EffectiveRuleReader
     }
 
     /// <summary>
+    /// 按多个项目编码批量读取当前请求可见的规则视图。
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, IReadOnlyList<EffectiveRuleView>>> ReadCurrentByItemCodesAsync(
+        IReadOnlyCollection<string> itemCodes)
+    {
+        if (itemCodes.Count == 0)
+        {
+            return new Dictionary<string, IReadOnlyList<EffectiveRuleView>>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var headersByItemCode = await _repositories.HeaderRepository.GetByItemCodesAsync(itemCodes);
+        var allHeaders = headersByItemCode.Values.SelectMany(static headers => headers).ToList();
+        if (allHeaders.Count == 0)
+        {
+            return headersByItemCode.Keys.ToDictionary(
+                key => key,
+                _ => (IReadOnlyList<EffectiveRuleView>)Array.Empty<EffectiveRuleView>(),
+                StringComparer.OrdinalIgnoreCase);
+        }
+
+        var ruleVersions = allHeaders
+            .Select(header => (header.RuleId, header.CurrentVersion))
+            .Distinct()
+            .ToArray();
+        var conditionsByRuleVersion = await _repositories.ConditionRepository.GetByRuleVersionsAsync(ruleVersions);
+        var actionsByRuleVersion = await _repositories.ActionRepository.GetByRuleVersionsAsync(ruleVersions);
+
+        return headersByItemCode.ToDictionary(
+            pair => pair.Key,
+            pair => (IReadOnlyList<EffectiveRuleView>)BuildRuleViews(pair.Value, conditionsByRuleVersion, actionsByRuleVersion),
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// 按项目编码读取当前请求可见的规则视图。
     /// </summary>
     public async Task<EffectiveRuleReadResult> ReadCurrentAsync(string itemCode)
@@ -52,6 +86,19 @@ public sealed class EffectiveRuleReader
             .ToArray();
         var conditionsByRuleVersion = await _repositories.ConditionRepository.GetByRuleVersionsAsync(ruleVersions);
         var actionsByRuleVersion = await _repositories.ActionRepository.GetByRuleVersionsAsync(ruleVersions);
+        var rules = BuildRuleViews(headers, conditionsByRuleVersion, actionsByRuleVersion);
+
+        return new EffectiveRuleReadResult
+        {
+            Rules = rules
+        };
+    }
+
+    private static IReadOnlyList<EffectiveRuleView> BuildRuleViews(
+        IReadOnlyList<RuleAggregate> headers,
+        IReadOnlyDictionary<(long RuleId, int VersionNo), IReadOnlyList<RuleCondition>> conditionsByRuleVersion,
+        IReadOnlyDictionary<(long RuleId, int VersionNo), IReadOnlyList<RuleAction>> actionsByRuleVersion)
+    {
         var rules = new List<EffectiveRuleView>(headers.Count);
 
         foreach (var header in headers)
@@ -72,10 +119,7 @@ public sealed class EffectiveRuleReader
             });
         }
 
-        return new EffectiveRuleReadResult
-        {
-            Rules = rules
-        };
+        return rules;
     }
 }
 

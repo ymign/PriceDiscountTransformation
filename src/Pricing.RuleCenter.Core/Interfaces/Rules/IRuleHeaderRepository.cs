@@ -62,6 +62,14 @@ public interface IRuleHeaderRepository
     Task<IReadOnlyList<RuleAggregate>> GetByItemCodeAsync(string itemCode);
 
     /// <summary>
+    /// 根据多个项目编码批量查询关联的所有规则。
+    /// </summary>
+    /// <param name="itemCodes">项目编码集合（HIS 物价项目编码）。</param>
+    /// <returns>按项目编码分组的规则列表。</returns>
+    Task<IReadOnlyDictionary<string, IReadOnlyList<RuleAggregate>>> GetByItemCodesAsync(
+        IReadOnlyCollection<string> itemCodes);
+
+    /// <summary>
     /// 分页查询规则主表，支持按项目编码、状态、分类筛选。
     ///
     /// 使用场景：工作台的规则列表页面，支持多条件筛选和分页。
