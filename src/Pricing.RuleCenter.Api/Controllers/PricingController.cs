@@ -29,22 +29,6 @@ public sealed class PricingController : ControllerBase
         return ApiResult<PricingCalculateResponse>.Ok(result);
     }
 
-    /// <summary>
-    /// 批量试算：多条费用明细共享批量上下文，不占用额度。
-    /// </summary>
-    /// <remarks>
-    /// 与 simulate 使用同一工作流。下游根据 Items.Count 构造批量上下文，使多条明细参与同组互斥、同手术封顶和窗口额度的请求内虚拟占用。
-    /// business_request_no 可选；如果传入，必须保证本次试算唯一，重复会返回 409 BUSINESS_REQUEST_NO_DUPLICATED。
-    /// </remarks>
-    [HttpPost("calculate/batch-simulate")]
-    public async Task<ApiResult<PricingCalculateResponse>> BatchSimulateAsync(
-        [FromServices] PricingSimulateWorkflow simulateWorkflow,
-        [FromBody] PricingCalculateRequest request)
-    {
-        var result = await simulateWorkflow.ExecuteAsync(request);
-        return ApiResult<PricingCalculateResponse>.Ok(result);
-    }
-
     /// <summary>确认计价：正式计价并占用额度，返回 RequestId 供后续 commit/cancel 引用。</summary>
     /// <remarks>business_request_no 必填且必须稳定，confirm 超时重试必须复用同一个值。</remarks>
     [HttpPost("calculate/confirm")]

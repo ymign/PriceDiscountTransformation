@@ -11,7 +11,7 @@ internal static class PricingRequestGuard
     /// 单次计价请求最多允许的费用明细数。
     /// </summary>
     /// <remarks>
-    /// 该限制保护 batch-simulate/confirm 不被超大请求拖垮，同时与接口设计中批量最多 50 项保持一致。
+    /// 该限制保护 simulate/confirm 不被超大请求拖垮，同时与一次收费动作最多 50 条明细的约束保持一致。
     /// </remarks>
     private const int MaxCalculateItemCount = 50;
 
