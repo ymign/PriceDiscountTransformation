@@ -39,6 +39,31 @@ internal sealed record PricingContextBuildInput
 }
 
 /// <summary>
+/// 构建特殊项目前置判断上下文所需的输入。
+/// </summary>
+/// <remarks>
+/// special-flag 不执行金额动作，也不占用额度，但必须使用与 simulate/confirm 相同的
+/// <see cref="PricingContext"/> 字段规范化口径参与规则条件匹配。
+/// </remarks>
+internal sealed record SpecialFlagPricingContextBuildInput
+{
+    /// <summary>
+    /// 特殊项目查询请求。
+    /// </summary>
+    public SpecialFlagRequest Request { get; init; } = null!;
+
+    /// <summary>
+    /// 已标准化或待标准化的项目编码。
+    /// </summary>
+    public string ItemCode { get; init; } = string.Empty;
+
+    /// <summary>
+    /// 本次特殊项目判断使用的业务收费时间。
+    /// </summary>
+    public DateTime BusinessTime { get; init; }
+}
+
+/// <summary>
 /// 计价上下文工厂，把 HTTP DTO 转换为核心引擎可直接消费的 <see cref="PricingContext"/>。
 /// </summary>
 /// <remarks>
@@ -88,19 +113,51 @@ internal static class PricingContextFactory
             LegacyOccupiedQty = item.LegacyOccupiedQty ?? 0m,
             ExtraParams = MergeExtraParams(request.ExtraParams, item.ExtraParams),
             RequestSharedState = input.RequestSharedState?.CreateSnapshot() ?? new RequestSharedPricingState(),
-            PricingParts = item.PricingParts?.Select(p => new PricingPartItem
-            {
-                PartSeq = p.PartSeq,
-                PartCode = NormalizeString(p.PartCode),
-                PartName = NormalizeString(p.PartName),
-                BodyPartCode = NormalizeString(p.BodyPartCode),
-                Qty = p.Qty,
-                Area = p.Area,
-                MeasureType = NormalizeString(p.MeasureType),
-                MeasureValue = p.MeasureValue,
-                MeasureUnit = NormalizeString(p.MeasureUnit),
-                LesionCount = p.LesionCount
-            }).ToList()
+            PricingParts = CreatePricingParts(item.PricingParts)
+        };
+    }
+
+    /// <summary>
+    /// 创建特殊项目前置判断上下文。
+    /// </summary>
+    /// <param name="input">special-flag 上下文构建输入。</param>
+    /// <returns>用于规则条件匹配的计价上下文。</returns>
+    public static PricingContext Create(SpecialFlagPricingContextBuildInput input)
+    {
+        var request = input.Request;
+        var itemCode = NormalizeString(input.ItemCode) ?? NormalizeString(request.ItemCode);
+        if (itemCode is null)
+        {
+            throw new ArgumentException("项目编码不能为空", nameof(input.ItemCode));
+        }
+
+        var inputQty = request.InputQty.HasValue && request.InputQty.Value > 0
+            ? request.InputQty.Value
+            : 1m;
+        var unitPrice = request.UnitPrice.GetValueOrDefault();
+
+        // special-flag 只做规则条件匹配，不执行动作链；数量和金额用于金额/数量类条件诊断。
+        return new PricingContext
+        {
+            CallType = "SPECIAL_FLAG",
+            ShouldLockLimits = false,
+            PatientId = "-",
+            ItemCode = itemCode,
+            InputQty = inputQty,
+            ConvertedQty = inputQty,
+            FinalQty = inputQty,
+            Unit = NormalizeString(request.Unit),
+            UnitPrice = unitPrice,
+            FinalAmount = inputQty * unitPrice,
+            ChargeScene = NormalizeString(request.ChargeScene),
+            ItemGroupCode = NormalizeString(request.ItemGroupCode),
+            VisitType = NormalizeString(request.VisitType),
+            BusinessChargeTime = input.BusinessTime,
+            SourceSystem = "SPECIAL_FLAG_QUERY",
+            ChargeDeptCode = NormalizeString(request.ChargeDeptCode),
+            ExtraParams = NormalizeExtraParams(request.ExtraParams),
+            BodyPartCode = NormalizeString(request.BodyPartCode),
+            PricingParts = CreatePricingParts(request.PricingParts)
         };
     }
 
@@ -113,6 +170,14 @@ internal static class PricingContextFactory
         AddExtraParams(merged, requestParams);
         AddExtraParams(merged, itemParams);
         return merged.Count == 0 ? null : merged;
+    }
+
+    private static IReadOnlyDictionary<string, string>? NormalizeExtraParams(
+        IReadOnlyDictionary<string, object?>? source)
+    {
+        var normalized = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        AddExtraParams(normalized, source);
+        return normalized.Count == 0 ? null : normalized;
     }
 
     private static void AddExtraParams(
@@ -140,6 +205,23 @@ internal static class PricingContextFactory
                 target[key] = textValue;
             }
         }
+    }
+
+    private static List<PricingPartItem>? CreatePricingParts(IReadOnlyList<PricingPartItemRequest>? pricingParts)
+    {
+        return pricingParts?.Select(p => new PricingPartItem
+        {
+            PartSeq = p.PartSeq,
+            PartCode = NormalizeString(p.PartCode),
+            PartName = NormalizeString(p.PartName),
+            BodyPartCode = NormalizeString(p.BodyPartCode),
+            Qty = p.Qty,
+            Area = p.Area,
+            MeasureType = NormalizeString(p.MeasureType),
+            MeasureValue = p.MeasureValue,
+            MeasureUnit = NormalizeString(p.MeasureUnit),
+            LesionCount = p.LesionCount
+        }).ToList();
     }
 
     private static string? NormalizeString(string? value)

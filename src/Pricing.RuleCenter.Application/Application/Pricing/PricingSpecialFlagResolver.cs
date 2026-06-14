@@ -1,11 +1,11 @@
 using Pricing.RuleCenter.Application.Dto;
 using Pricing.RuleCenter.Application.Engine;
 using Pricing.RuleCenter.Application.Engine.EffectiveRules;
+using Pricing.RuleCenter.Application.Pricing.Builders;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
-using Pricing.RuleCenter.Core.Models;
 
 namespace Pricing.RuleCenter.Application.Pricing;
 
@@ -313,7 +313,12 @@ public sealed class PricingSpecialFlagResolver
             return await ResolveAsync(request);
         }
 
-        var context = BuildPricingContext(normalizedItemCode, request, businessTime);
+        var context = PricingContextFactory.Create(new SpecialFlagPricingContextBuildInput
+        {
+            ItemCode = normalizedItemCode,
+            Request = request,
+            BusinessTime = businessTime
+        });
         var matchedRules = new List<EffectiveRuleView>();
 
         foreach (var rule in candidateRules)
@@ -360,53 +365,6 @@ public sealed class PricingSpecialFlagResolver
             DecisionReason = BuildItemDecisionReason(publishedRules, rollbackMode),
             Blocking = isSpecial,
             RuleReadTime = decisionTime
-        };
-    }
-
-    private static PricingContext BuildPricingContext(
-        string normalizedItemCode,
-        SpecialFlagRequest request,
-        DateTime businessTime)
-    {
-        var inputQty = request.InputQty.HasValue && request.InputQty.Value > 0
-            ? request.InputQty.Value
-            : 1m;
-        var unitPrice = request.UnitPrice.GetValueOrDefault();
-
-        // special-flag 只需要规则匹配条件，不进行最终金额计算。
-        // 数量、单位、单价和 pricingParts 只作为提前模拟条件的诊断上下文。
-        return new PricingContext
-        {
-            CallType = "SPECIAL_FLAG",
-            PatientId = "-",
-            ItemCode = normalizedItemCode,
-            InputQty = inputQty,
-            ConvertedQty = inputQty,
-            FinalQty = inputQty,
-            Unit = NormalizeString(request.Unit),
-            UnitPrice = unitPrice,
-            FinalAmount = inputQty * unitPrice,
-            ChargeScene = NormalizeString(request.ChargeScene),
-            BusinessChargeTime = businessTime,
-            SourceSystem = "SPECIAL_FLAG_QUERY",
-            ItemGroupCode = NormalizeString(request.ItemGroupCode),
-            ExtraParams = NormalizeExtraParams(request.ExtraParams),
-            BodyPartCode = NormalizeString(request.BodyPartCode),
-            VisitType = NormalizeString(request.VisitType),
-            ChargeDeptCode = NormalizeString(request.ChargeDeptCode),
-            PricingParts = request.PricingParts?.Select(p => new PricingPartItem
-            {
-                PartSeq = p.PartSeq,
-                PartCode = NormalizeString(p.PartCode),
-                PartName = NormalizeString(p.PartName),
-                BodyPartCode = NormalizeString(p.BodyPartCode),
-                Qty = p.Qty,
-                Area = p.Area,
-                MeasureType = NormalizeString(p.MeasureType),
-                MeasureValue = p.MeasureValue,
-                MeasureUnit = NormalizeString(p.MeasureUnit),
-                LesionCount = p.LesionCount
-            }).ToList()
         };
     }
 
@@ -511,14 +469,6 @@ public sealed class PricingSpecialFlagResolver
         AddExtraParams(merged, requestParams);
         AddExtraParams(merged, itemParams);
         return merged.Count == 0 ? null : merged;
-    }
-
-    private static IReadOnlyDictionary<string, string>? NormalizeExtraParams(
-        IReadOnlyDictionary<string, object?>? source)
-    {
-        var normalized = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        AddExtraParams(normalized, source);
-        return normalized.Count == 0 ? null : normalized;
     }
 
     private static void AddExtraParams(
