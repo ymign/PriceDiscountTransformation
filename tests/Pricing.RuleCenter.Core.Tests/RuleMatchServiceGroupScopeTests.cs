@@ -3,7 +3,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Pricing.RuleCenter.Core.Aggregates.Catalog;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Application.Engine;
-using Pricing.RuleCenter.Application.Engine.RuleRuntimeSnapshot;
+using Pricing.RuleCenter.Application.Engine.EffectiveRules;
 using Pricing.RuleCenter.Core.Interfaces.Catalog;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
 using Pricing.RuleCenter.Core.Models;
@@ -29,9 +29,9 @@ public sealed class RuleMatchServiceGroupScopeTests
             new StubRuleActionRepository(),
             new StubDictRepository());
         var service = new RuleMatchService(
-            new EffectiveRuleSnapshotCache(
+            new EffectiveRuleViewCache(
                 new MemoryCache(new MemoryCacheOptions()),
-                new EffectiveRuleSnapshotLoader(repositories)),
+                new EffectiveRuleReader(repositories)),
             new RuleConditionGroupMatcher(
                 new ConditionEvaluatorFactory(Array.Empty<Pricing.RuleCenter.Core.Interfaces.IRuleConditionEvaluator>()),
                 NullLogger<RuleConditionGroupMatcher>.Instance),

@@ -231,7 +231,7 @@ public sealed class ApiDocumentationIntegrationTests
             .GetProperty("properties");
         Assert.True(calculateResponseProperties.TryGetProperty("next_action", out _));
         Assert.True(calculateResponseProperties.TryGetProperty("business_status", out _));
-        Assert.True(calculateResponseProperties.TryGetProperty("rule_snapshot_time", out _));
+        Assert.True(calculateResponseProperties.TryGetProperty("rule_read_time", out _));
 
         var specialFlagPath = document.RootElement
             .GetProperty("paths")
@@ -270,7 +270,7 @@ public sealed class ApiDocumentationIntegrationTests
         Assert.True(specialFlagBatchResponseProperties.TryGetProperty("next_action", out _));
         Assert.True(specialFlagBatchResponseProperties.TryGetProperty("decision_reason", out _));
         Assert.True(specialFlagBatchResponseProperties.TryGetProperty("blocking", out _));
-        Assert.True(specialFlagBatchResponseProperties.TryGetProperty("rule_snapshot_time", out _));
+        Assert.True(specialFlagBatchResponseProperties.TryGetProperty("rule_read_time", out _));
 
         var specialFlagBatchItemResponseProperties = schemas
             .GetProperty(nameof(SpecialFlagBatchItemResponse))

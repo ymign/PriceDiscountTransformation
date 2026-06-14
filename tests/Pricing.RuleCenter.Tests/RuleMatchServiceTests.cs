@@ -2,7 +2,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Caching.Memory;
 using Pricing.RuleCenter.Application.Engine;
-using Pricing.RuleCenter.Application.Engine.RuleRuntimeSnapshot;
+using Pricing.RuleCenter.Application.Engine.EffectiveRules;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 using Xunit;
@@ -396,9 +396,9 @@ public sealed class RuleMatchServiceTests
         IDictRepository dictRepository,
         ILogger<RuleMatchService> logger) =>
         new(
-            new EffectiveRuleSnapshotCache(
+            new EffectiveRuleViewCache(
                 new MemoryCache(new MemoryCacheOptions()),
-                new EffectiveRuleSnapshotLoader(
+                new EffectiveRuleReader(
                     new RuleMatchRepositories(
                         headerRepository,
                         conditionRepository,

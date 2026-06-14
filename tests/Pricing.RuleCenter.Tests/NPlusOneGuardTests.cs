@@ -7,7 +7,7 @@ using Pricing.RuleCenter.Core.Aggregates.Catalog;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Application.Engine;
-using Pricing.RuleCenter.Application.Engine.RuleRuntimeSnapshot;
+using Pricing.RuleCenter.Application.Engine.EffectiveRules;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Catalog;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
@@ -19,7 +19,7 @@ namespace Pricing.RuleCenter.Tests;
 public sealed class NPlusOneGuardTests
 {
     [Fact]
-    public async Task EffectiveRuleSnapshotLoader_ShouldUseBatchConditionAndActionQueries()
+    public async Task EffectiveRuleReader_ShouldUseBatchConditionAndActionQueries()
     {
         var headers = new[]
         {
@@ -33,7 +33,7 @@ public sealed class NPlusOneGuardTests
         actionRepository.Seed((1, 1), new RuleAction { RuleId = 1, VersionNo = 1, ActionType = RuleActionTypeCodes.FormulaCalc, IsEnabled = EnableFlag.Yes });
         actionRepository.Seed((2, 2), new RuleAction { RuleId = 2, VersionNo = 2, ActionType = RuleActionTypeCodes.ApplyMaxAmount, IsEnabled = EnableFlag.Yes });
 
-        var loader = new EffectiveRuleSnapshotLoader(new RuleMatchRepositories(
+        var loader = new EffectiveRuleReader(new RuleMatchRepositories(
             new FixedRuleHeaderRepository(headers),
             conditionRepository,
             actionRepository,

@@ -3,7 +3,7 @@ using Microsoft.Extensions.Caching.Memory;
 using System.Text.Json;
 using Pricing.RuleCenter.Application.Engine;
 using Pricing.RuleCenter.Application.Engine.Executors;
-using Pricing.RuleCenter.Application.Engine.RuleRuntimeSnapshot;
+using Pricing.RuleCenter.Application.Engine.EffectiveRules;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 using Pricing.RuleCenter.Infrastructure;
@@ -247,9 +247,9 @@ public sealed class ExceedToZeroExecutorTests
         IDictRepository dictRepository,
         Microsoft.Extensions.Logging.ILogger<RuleMatchService> logger) =>
         new(
-            new EffectiveRuleSnapshotCache(
+            new EffectiveRuleViewCache(
                 new MemoryCache(new MemoryCacheOptions()),
-                new EffectiveRuleSnapshotLoader(
+                new EffectiveRuleReader(
                     new RuleMatchRepositories(
                         headerRepository,
                         conditionRepository,

@@ -66,8 +66,30 @@ public interface IRuleHeaderRepository
     /// </summary>
     /// <param name="itemCodes">项目编码集合（HIS 物价项目编码）。</param>
     /// <returns>按项目编码分组的规则列表。</returns>
-    Task<IReadOnlyDictionary<string, IReadOnlyList<RuleAggregate>>> GetByItemCodesAsync(
-        IReadOnlyCollection<string> itemCodes);
+    /// <remarks>
+    /// 默认实现按项目编码逐个委托 <see cref="GetByItemCodeAsync"/> 组装，保证任意实现都有正确的批量语义。
+    /// 基础设施实现可覆盖为单条 SQL IN 批量查询以减少数据库往返。
+    /// </remarks>
+    async Task<IReadOnlyDictionary<string, IReadOnlyList<RuleAggregate>>> GetByItemCodesAsync(
+        IReadOnlyCollection<string> itemCodes)
+    {
+        var groups = new Dictionary<string, IReadOnlyList<RuleAggregate>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var itemCode in itemCodes)
+        {
+            if (string.IsNullOrWhiteSpace(itemCode))
+            {
+                continue;
+            }
+
+            var normalized = itemCode.Trim();
+            if (!groups.ContainsKey(normalized))
+            {
+                groups[normalized] = await GetByItemCodeAsync(normalized);
+            }
+        }
+
+        return groups;
+    }
 
     /// <summary>
     /// 分页查询规则主表，支持按项目编码、状态、分类筛选。

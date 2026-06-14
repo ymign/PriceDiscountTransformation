@@ -1,5 +1,5 @@
 using Pricing.RuleCenter.Application.Engine;
-using Pricing.RuleCenter.Application.Engine.RuleRuntimeSnapshot;
+using Pricing.RuleCenter.Application.Engine.EffectiveRules;
 using Pricing.RuleCenter.Core.Aggregates.Catalog;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Core.Constants;
@@ -12,9 +12,9 @@ namespace Pricing.RuleCenter.Tests;
 public sealed class ActiveRuntimePackageReaderTests
 {
     [Fact]
-    public async Task EffectiveRuleSnapshotLoader_LoadsRulesFromDirectRuleTables()
+    public async Task EffectiveRuleReader_LoadsRulesFromDirectRuleTables()
     {
-        var loader = new EffectiveRuleSnapshotLoader(new RuleMatchRepositories(
+        var loader = new EffectiveRuleReader(new RuleMatchRepositories(
             new FixedRuleHeaderRepository(new RuleAggregate
             {
                 RuleId = 101,
@@ -42,9 +42,9 @@ public sealed class ActiveRuntimePackageReaderTests
             }),
             new EmptyDictRepository()));
 
-        var result = await loader.LoadCurrentAsync("ITEM001");
+        var result = await loader.ReadCurrentAsync("ITEM001");
 
-        var snapshot = Assert.Single(result.Snapshots);
+        var snapshot = Assert.Single(result.Rules);
         Assert.Equal(101, snapshot.Header.RuleId);
         Assert.Equal("ITEM001", snapshot.Header.ItemCode);
         Assert.Single(snapshot.Conditions);
@@ -68,15 +68,15 @@ public sealed class ActiveRuntimePackageReaderTests
     }
 
     [Fact]
-    public void EffectiveRuleSnapshotLoader_DoesNotReferenceRuntimePackageReadModel()
+    public void EffectiveRuleReader_DoesNotReferenceRuntimePackageReadModel()
     {
         var source = File.ReadAllText(ResolveRepoFile(
             "src",
             "Pricing.RuleCenter.Application",
             "Application",
             "Engine",
-            "RuleRuntimeSnapshot",
-            "EffectiveRuleSnapshotLoader.cs"));
+            "EffectiveRules",
+            "EffectiveRuleReader.cs"));
 
         Assert.DoesNotContain("ActiveRuntimePackageReader", source);
         Assert.DoesNotContain("RuntimeRuleProjectionAdapter", source);

@@ -11,7 +11,7 @@ using Pricing.RuleCenter.Application.Pricing.Persistence;
 using Pricing.RuleCenter.Core.Constants;
 using Pricing.RuleCenter.Application.Engine;
 using Pricing.RuleCenter.Application.Engine.Evaluators;
-using Pricing.RuleCenter.Application.Engine.RuleRuntimeSnapshot;
+using Pricing.RuleCenter.Application.Engine.EffectiveRules;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Interfaces.Catalog;
 using Pricing.RuleCenter.Core.Interfaces.Rules;
@@ -536,7 +536,7 @@ public sealed class PricingApiServiceTests
         Assert.Equal("CALL_SIMULATE", result.NextAction);
         Assert.True(result.Blocking);
         Assert.Contains("1 条特殊项目", result.DecisionReason);
-        Assert.Equal(new DateTime(2026, 5, 10, 10, 0, 0), result.RuleSnapshotTime);
+        Assert.Equal(new DateTime(2026, 5, 10, 10, 0, 0), result.RuleReadTime);
         Assert.Collection(
             result.Items,
             first =>
@@ -557,7 +557,7 @@ public sealed class PricingApiServiceTests
                 Assert.Equal("RULE-BATCH-SPECIAL-FLAG", matchedRule.RuleCode);
                 Assert.Equal("批量特殊项目规则", matchedRule.RuleName);
                 Assert.Equal("STOP_CHARGE", matchedRule.RollbackMode);
-                Assert.Equal(new DateTime(2026, 5, 10, 10, 0, 0), first.RuleSnapshotTime);
+                Assert.Equal(new DateTime(2026, 5, 10, 10, 0, 0), first.RuleReadTime);
                 Assert.Equal("OUTPATIENT", first.EffectiveChargeScene);
                 Assert.Equal(new DateTime(2026, 5, 10, 9, 30, 0), first.EffectiveBusinessChargeTime);
                 Assert.Equal("OUTPATIENT", first.EffectiveVisitType);
@@ -577,7 +577,7 @@ public sealed class PricingApiServiceTests
                 Assert.Equal("NORMAL_PRICING", second.NextAction);
                 Assert.False(second.Blocking);
                 Assert.Contains("未命中特殊计价规则", second.DecisionReason);
-                Assert.Equal(new DateTime(2026, 5, 10, 10, 0, 0), second.RuleSnapshotTime);
+                Assert.Equal(new DateTime(2026, 5, 10, 10, 0, 0), second.RuleReadTime);
                 Assert.Equal("INPATIENT", second.EffectiveChargeScene);
                 Assert.Equal(new DateTime(2026, 5, 10, 10, 0, 0), second.EffectiveBusinessChargeTime);
                 Assert.Equal("INPATIENT", second.EffectiveVisitType);
@@ -713,7 +713,7 @@ public sealed class PricingApiServiceTests
         Assert.Equal(4200m, response.FinalAmount);
         Assert.Equal("CONFIRM_BEFORE_CHARGE", response.NextAction);
         Assert.Equal("SIMULATED", response.BusinessStatus);
-        Assert.Equal(new DateTime(2026, 5, 10, 10, 0, 0), response.RuleSnapshotTime);
+        Assert.Equal(new DateTime(2026, 5, 10, 10, 0, 0), response.RuleReadTime);
         Assert.Null(requestLogRepository.Inserted[0].ItemCode);
     }
 
@@ -879,7 +879,7 @@ public sealed class PricingApiServiceTests
         Assert.Equal(mainDetail.ResultGroupNo, replacementDetail.ResultGroupNo);
         Assert.Equal("COMMIT_OR_CANCEL", response.NextAction);
         Assert.Equal("CONFIRM_PENDING", response.BusinessStatus);
-        Assert.Equal(new DateTime(2026, 5, 10, 10, 0, 0), response.RuleSnapshotTime);
+        Assert.Equal(new DateTime(2026, 5, 10, 10, 0, 0), response.RuleReadTime);
     }
 
     [Fact]
@@ -1126,19 +1126,15 @@ public sealed class PricingApiServiceTests
         Assert.Equal(501, response.Items[0].TraceSteps[0].RuleId);
 
         var requestLog = Assert.Single(requestRepository.Inserted);
-        Assert.Null(requestLog.RuntimePackageId);
-        Assert.Null(requestLog.RuntimePackageVersion);
         Assert.Equal(2, traceRepository.Inserted.Count);
         Assert.All(traceRepository.Inserted, traceStep =>
         {
-            Assert.Null(traceStep.RuntimePackageId);
             Assert.Equal(501, traceStep.RuleId);
             Assert.Null(traceStep.RuntimeRuleId);
             Assert.Null(traceStep.SourcePolicyVersionId);
             Assert.Null(traceStep.SourceTemplateVersionId);
         });
         var discountDetail = Assert.Single(discountRepository.Inserted);
-        Assert.Null(discountDetail.RuntimePackageId);
         Assert.Equal(501, discountDetail.RuleId);
         Assert.Null(discountDetail.RuntimeRuleId);
         Assert.Null(discountDetail.SourcePolicyVersionId);
@@ -1262,8 +1258,6 @@ public sealed class PricingApiServiceTests
         Assert.True(engine.WasSwitched);
 
         var requestLog = Assert.Single(requestRepository.Inserted);
-        Assert.Null(requestLog.RuntimePackageId);
-        Assert.Null(requestLog.RuntimePackageVersion);
     }
 
     [Fact]
@@ -1766,7 +1760,7 @@ public sealed class PricingApiServiceTests
                 NullLogger<RuleConditionGroupMatcher>.Instance);
         var effectiveRuleSnapshotLoader = ruleConditionRepository is null
             ? null
-            : new EffectiveRuleSnapshotLoader(new RuleMatchRepositories(
+            : new EffectiveRuleReader(new RuleMatchRepositories(
                 headerRepository,
                 ruleConditionRepository,
                 ruleActionRepository ?? new EmptyRuleActionRepository(),

@@ -3,8 +3,8 @@ using Microsoft.Extensions.Caching.Memory;
 using Pricing.RuleCenter.Core.Aggregates.Quota;
 using Pricing.RuleCenter.Core.Aggregates.Rules;
 using Pricing.RuleCenter.Application.Engine;
+using Pricing.RuleCenter.Application.Engine.EffectiveRules;
 using Pricing.RuleCenter.Application.Engine.Executors;
-using Pricing.RuleCenter.Application.Engine.RuleRuntimeSnapshot;
 using Pricing.RuleCenter.Core.Interfaces;
 using Pricing.RuleCenter.Core.Models;
 using Pricing.RuleCenter.Infrastructure;
@@ -180,9 +180,9 @@ public sealed class SameGroupMutexPersistenceTests
         RuleMatchRepositories repositories,
         ConditionEvaluatorFactory evaluatorFactory)
     {
-        var snapshotCache = new EffectiveRuleSnapshotCache(
+        var snapshotCache = new EffectiveRuleViewCache(
             new MemoryCache(new MemoryCacheOptions()),
-            new EffectiveRuleSnapshotLoader(repositories));
+            new EffectiveRuleReader(repositories));
         var matcher = new RuleConditionGroupMatcher(
             evaluatorFactory,
             NullLogger<RuleConditionGroupMatcher>.Instance);

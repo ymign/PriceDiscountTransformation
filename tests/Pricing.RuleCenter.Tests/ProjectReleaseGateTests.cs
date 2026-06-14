@@ -127,8 +127,8 @@ public sealed class ProjectReleaseGateTests
             "Pricing.RuleCenter.Application",
             "Application",
             "Engine",
-            "RuleRuntimeSnapshot",
-            "EffectiveRuleSnapshotLoader.cs");
+            "EffectiveRules",
+            "EffectiveRuleReader.cs");
 
         var startupContent = File.ReadAllText(startupPath);
         var engineRegistration = ExtractMethodSection(

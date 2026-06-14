@@ -51,13 +51,9 @@ public sealed class SqlSugarEntityTypeConfigTests
     {
         using var db = CreateClient();
 
-        AssertMappedColumn<ChargeRequestLog>(db, nameof(ChargeRequestLog.RuntimePackageId), "RUNTIME_PACKAGE_ID");
-        AssertMappedColumn<ChargeRequestLog>(db, nameof(ChargeRequestLog.RuntimePackageVersion), "RUNTIME_PACKAGE_VERSION");
-        AssertMappedColumn<ChargeTraceStep>(db, nameof(ChargeTraceStep.RuntimePackageId), "RUNTIME_PACKAGE_ID");
         AssertMappedColumn<ChargeTraceStep>(db, nameof(ChargeTraceStep.RuntimeRuleId), "RUNTIME_RULE_ID");
         AssertMappedColumn<ChargeTraceStep>(db, nameof(ChargeTraceStep.SourcePolicyVersionId), "SOURCE_POLICY_VERSION_ID");
         AssertMappedColumn<ChargeTraceStep>(db, nameof(ChargeTraceStep.SourceTemplateVersionId), "SOURCE_TEMPLATE_VERSION_ID");
-        AssertMappedColumn<ChargeDiscountDetail>(db, nameof(ChargeDiscountDetail.RuntimePackageId), "RUNTIME_PACKAGE_ID");
         AssertMappedColumn<ChargeDiscountDetail>(db, nameof(ChargeDiscountDetail.RuntimeRuleId), "RUNTIME_RULE_ID");
         AssertMappedColumn<ChargeDiscountDetail>(db, nameof(ChargeDiscountDetail.SourcePolicyVersionId), "SOURCE_POLICY_VERSION_ID");
         AssertMappedColumn<ChargeDiscountDetail>(db, nameof(ChargeDiscountDetail.SourceTemplateVersionId), "SOURCE_TEMPLATE_VERSION_ID");
